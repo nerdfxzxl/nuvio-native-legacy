@@ -69,41 +69,41 @@ jobs:
       - name: Build native curl, JPEG and WebP libraries
         shell: bash
         env:
-          ANDROID_HOME: ${{ env.ANDROID_HOME }}
-          ANDROID_NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/27.2.12479018
+          NUVIO_ANDROID_CACHE: ${{ runner.temp }}/nuvio-android-cache
           NUVIO_ANDROID_JOBS: '2'
         run: |
           set -euo pipefail
+          export ANDROID_HOME="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/27.2.12479018"
           bash tools/android/deps.sh arm64-v8a armeabi-v7a
 
       - name: Build the P2P engine for both Android ABIs
         shell: bash
         env:
-          ANDROID_HOME: ${{ env.ANDROID_HOME }}
           NUVIO_P2P_MOTOR: ${{ runner.temp }}/nuvio-p2p-motor
           NV_JOBS: '2'
           NUVIO_BUILD_JOBS: '2'
         run: |
           set -euo pipefail
+          export ANDROID_HOME="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
           export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/27.2.12479018"
           bash tools/p2p-motor/build-android.sh "$NUVIO_P2P_MOTOR/android"
 
       - name: Build full APK with login configuration
         shell: bash
         env:
-          ANDROID_HOME: ${{ env.ANDROID_HOME }}
-          ANDROID_NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/27.2.12479018
           NUVIO_P2P_MOTOR: ${{ runner.temp }}/nuvio-p2p-motor
           NUVIO_ANDROID_CACHE: ${{ runner.temp }}/nuvio-android-cache
           NUVIO_REQUIRE_CORE: '1'
           NUVIO_ANDROID_JOBS: '2'
           NUVIO_BUILD_JOBS: '2'
-          RUSTUP_HOME: ${{ runner.temp }}/rustup
-          CARGO_HOME: ${{ runner.temp }}/cargo
         run: |
           set -euo pipefail
+          export ANDROID_HOME="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/27.2.12479018"
+          export RUSTUP_HOME="$HOME/.rustup"
+          export CARGO_HOME="$HOME/.cargo"
           export PATH="$CARGO_HOME/bin:$PATH"
-          export JAVA_HOME="$JAVA_HOME"
           mkdir -p "$NUVIO_ANDROID_CACHE"
           bash tools/android.sh --debug-only
 
