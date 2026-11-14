@@ -213,6 +213,7 @@ private fun StreamSelectorContent(
     var selectedProvider by remember { mutableStateOf<String?>(null) }
     var initialFocusRequested by remember { mutableStateOf(false) }
     var userInteracted by remember { mutableStateOf(false) }
+    var searchFocused by remember { mutableStateOf(false) }
     val firstStreamFocus = remember { FocusRequester() }
     val listState = rememberLazyListState()
     val keyboard = LocalSoftwareKeyboardController.current
@@ -398,7 +399,7 @@ private fun StreamSelectorContent(
                         .height(52.dp)
                         .clip(RoundedCornerShape(14.dp))
                         .background(Color(0xFF222222))
-                        .border(1.dp, Color(0x333FFFFFF), RoundedCornerShape(14.dp))
+                        .border(BorderStroke(if (searchFocused) 2.dp else 1.dp, if (searchFocused) Color.White else Color(0xFF333333)), RoundedCornerShape(14.dp))
                         .padding(horizontal = 16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -424,7 +425,10 @@ private fun StreamSelectorContent(
                             keyboardActions = KeyboardActions(onSearch = { keyboard?.hide() }),
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .onFocusChanged { if (it.isFocused) userInteracted = true }
+                                .onFocusChanged {
+                                    searchFocused = it.isFocused
+                                    if (it.isFocused) userInteracted = true
+                                }
                         )
                     }
                     if (query.isNotEmpty()) {
