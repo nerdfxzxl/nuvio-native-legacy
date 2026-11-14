@@ -4494,6 +4494,14 @@ static const char *arquivoDa(const Stream *s) {
 // A linha de marca e so para o que esta tocando e para a escolha anterior.
 // A fonte que o automatico tocaria ganha o selo "Melhor para esta TV" ao
 // lado do titulo (melhorDaFolha), e nao mais uma linha "Escolha automatica".
+static float alturaArquivoDa(const Stream *s) {
+  const char *arquivo = arquivoDa(s);
+  float h;
+  if (!arquivo[0]) return 0.0f;
+  h = txt_bloco(TXT_PG_FIM, arquivo, 125, 125, 123, 0, 0,
+                FOLHA_W - FOLHA_PAD_E - FOLHA_PAD_D - 2.0f * FOLHA_TXT, 28.0f, 0, 0);
+  return h > FOLHA_ARQ_H ? h : FOLHA_ARQ_H;
+}
 static int melhorFolha = -1;   // stream_automatico() do quadro, posto antes de montar()
 static int temMarca(int i, int automatica) {
   (void)automatica;
@@ -4511,8 +4519,8 @@ static float alturaLinha(int i, int automatica, float abertura) {
     h = 20 + 40 + vis * FOLHA_ADDON_LD + 18 + (temMarca(i, automatica) ? FOLHA_MARCA_H : 0);
     if (h < 96) h = 96;
   } else {
-    // The connection line opens with the focused row even without a file name.
-    float extra = (arquivoDa(&lista[i])[0] ? FOLHA_ARQ_H : 0) + FOLHA_FIT_H * fitLinhas(i);
+    // Full filenames wrap naturally; the focused row grows to fit every line.
+    float extra = alturaArquivoDa(&lista[i]) + FOLHA_FIT_H * fitLinhas(i);
     h += extra * abertura;
   }
   return h + linhasFaixas(&lista[i]) * FOLHA_FAIXA_H;
@@ -6649,10 +6657,10 @@ static void corpoFolha(float x, float w, float anim, Uint32 agora, int ilha) {
       if(a>.02f && arq[0]){ char d[512];
         snprintf(d,sizeof d,"%s",arq);
         for(char *p=d;*p;p++)if((unsigned char)*p<32)*p=' ';
-        txt_desenhar_alpha(txt_linha_corta(TXT_PG_FIM,d,125,125,123,255,tr-tx),tx,cy,anim*a); }
+        txt_bloco(TXT_PG_FIM,d,125,125,123,tx,cy,tr-tx,28.0f,anim*a,0); }
       if(a>.02f){ char f1[160], f2[128]; StreamfitClasse fc=fitTexto2(i,f1,sizeof f1,f2,sizeof f2);
         if(f1[0]){
-        float fy=cy+(arq[0]?FOLHA_ARQ_H:0);
+        float fy=cy+(arq[0]?alturaArquivoDa(s):0.0f);
         int c=fc==SF_DESCONHECIDA?118:150;
         txt_desenhar_alpha(txt_linha_corta(TXT_PG_FIM,f1,c,c,c-2,255,tr-tx),tx,fy,anim*a);
         if(f2[0]){
