@@ -865,6 +865,7 @@ typedef struct {
 
 typedef struct { char *dados; size_t usado, capacidade; int falhou; } StreamUiJson;
 static void streamUiContext(StreamUiJson *b);
+static void streamUiProviders(StreamUiJson *b);
 
 static void streamUiJsonReservar(StreamUiJson *b, size_t extra) {
   size_t precisa;
@@ -979,6 +980,7 @@ char *stream_ui_snapshot_json(void) {
 
   streamUiJsonFormat(&b, "{\"generation\":%u,\"revision\":%u,", geracao, revisao);
   streamUiContext(&b);
+  streamUiProviders(&b);
   streamUiJsonRaw(&b, ",\"streams\":[");
   for (int i = 0; i < qtd && !b.falhou; i++) {
     if (i) streamUiJsonRaw(&b, ",");
@@ -3559,12 +3561,38 @@ static const char *iconeBotao(int b) {
 static char provedores[13][96];
 static char provChaves[13][FONTEFALHA_CHAVE];
 static unsigned char provEstado[13];
+static pthread_mutex_t provTrava = PTHREAD_MUTEX_INITIALIZER;
 static int doProvedor(const Stream *s, int p) {
   if (s->addonChave[0] || provChaves[p][0])
     return !strcmp(s->addonChave, provChaves[p]);
   return !strcmp(s->provedor, provedores[p]);
 }
 static int nProvedores;
+
+static void streamUiProviders(StreamUiJson *b) {
+  char nomes[12][96];
+  char chaves[12][FONTEFALHA_CHAVE];
+  unsigned char estados[12];
+  int qtd = 0;
+  pthread_mutex_lock(&provTrava);
+  for (int i = 1; i < nProvedores && qtd < 12; i++) {
+    snprintf(nomes[qtd], sizeof nomes[qtd], "%s", provedores[i]);
+    snprintf(chaves[qtd], sizeof chaves[qtd], "%s", provChaves[i]);
+    estados[qtd] = provEstado[i];
+    qtd++;
+  }
+  pthread_mutex_unlock(&provTrava);
+  streamUiJsonRaw(b, ",\"providers\":[");
+  for (int i = 0; i < qtd; i++) {
+    if (i) streamUiJsonRaw(b, ",");
+    streamUiJsonRaw(b, "{\"key\":");
+    streamUiJsonString(b, chaves[i][0] ? chaves[i] : nomes[i]);
+    streamUiJsonRaw(b, ",\"name\":");
+    streamUiJsonString(b, nomes[i]);
+    streamUiJsonFormat(b, ",\"status\":%u}", (unsigned)estados[i]);
+  }
+  streamUiJsonRaw(b, "]");
+}
 
 static int temAudioPreferido(const Stream *s);
 // Os chips (MP4, cache, dublado) valem para a lista E para a contagem de cada
@@ -3689,6 +3717,7 @@ static void atualizarProvedores(void) {
   for (int i = 0; i < nAbas; i++)
     for (int j = i + 1; j < nAbas; j++)
       if (abas[j].ordem < abas[i].ordem) { ProvAba t = abas[i]; abas[i] = abas[j]; abas[j] = t; }
+  pthread_mutex_lock(&provTrava);
   nProvedores = 1;
   snprintf(provedores[0], sizeof provedores[0], "Todos");
   provEstado[0] = ADDON_ABA_PRONTO;
@@ -3706,6 +3735,7 @@ static void atualizarProvedores(void) {
     filtro = j < nProvedores ? j : 0;
   }
   if (filtro >= nProvedores) filtro = 0;
+  pthread_mutex_unlock(&provTrava);
 }
 static int nFiltrados(void) {
   folhaDados();
@@ -4750,9 +4780,6 @@ void stream_folha_abrir(void) {
   atomic_store(&cancelarAndroid, 0);
   atomic_store(&recarregarAndroid, 0);
   atomic_store(&androidSelectorAtivo, 1);
-#ifdef NV_ANDROID
-  if (ajustes_stream_selector() == 0) android_stream_selector_mostrar();
-#endif
   { float ix, iy, iw, ih;
     folhaRelogio = !player_aberto() && ajustes_relogio_ligado() && ilha_rect(&ix, &iy, &iw, &ih); }
   recarregarFonteConfirmacao = 0;
@@ -4800,6 +4827,9 @@ void stream_folha_abrir(void) {
          fitFoto.n, diag, pass, conhecidos, pesados,
          fitFotoOrigem == SF_DUR_MEDIA ? "media" : fitFotoOrigem == SF_DUR_METADATA ? "metadata" : "unknown");
   fflush(stdout);
+#ifdef NV_ANDROID
+  if (ajustes_stream_selector() == 0) android_stream_selector_mostrar();
+#endif
 }
 int stream_folha_aberta(void) {
   if (atomic_exchange(&cancelarAndroid, 0)) {
