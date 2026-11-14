@@ -435,11 +435,29 @@ private fun StreamSelectorContent(
                 Spacer(Modifier.height(12.dp))
 
                 when {
+                    visibleStreams.isEmpty() && providers.firstOrNull { it.key == selectedProvider }?.status == 1 -> {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text(
+                                "Waiting for " + (providers.firstOrNull { it.key == selectedProvider }?.label ?: "sources") + "…",
+                                color = Color(0xFFB3B3B3),
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                        }
+                    }
+                    visibleStreams.isEmpty() && providers.firstOrNull { it.key == selectedProvider }?.status == 2 -> {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text(
+                                (providers.firstOrNull { it.key == selectedProvider }?.label ?: "Source") + " did not respond. Press refresh to retry.",
+                                color = Color(0xFFB3B3B3),
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                        }
+                    }
                     snapshot.streams.isEmpty() -> {
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                             Text(
                                 "Waiting for sources…",
-                                color = Color(0xFFB7B8C1),
+                                color = Color(0xFFB3B3B3),
                                 style = MaterialTheme.typography.bodyLarge
                             )
                         }
@@ -448,7 +466,7 @@ private fun StreamSelectorContent(
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                             Text(
                                 "No streams match your search",
-                                color = Color(0xFFB7B8C1),
+                                color = Color(0xFFB3B3B3),
                                 style = MaterialTheme.typography.bodyLarge
                             )
                         }
