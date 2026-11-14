@@ -782,6 +782,7 @@ static float rolagem, velRol;
 // Native stream search. The query is applied during the existing list build,
 // so drawing and navigation still visit only visible rows.
 static char folhaBusca[TECLADO_MAX + 1];
+static float buscaAnim;
 
 void stream_lista_acrescentar(const Stream *l, int qtd, int ordemAddon) {
   int i, k = 0, focoIdx = -1, linhaAntes = -1, total;
@@ -4887,6 +4888,7 @@ void stream_folha_abrir(void) {
   aberta=1; escolha=-1; grupo=1; filtro=0; filtroVisto=-2; pillW=-1.0f; trocaDesde=0; soMp4=0; soCache=0; soDub=0; recarregar=0;
   selosAnimFoco = -1; // A fresh selector opening gets one badge-strip pass.
   folhaBusca[0] = 0;
+  buscaAnim = 0.0f;
   atomic_store(&escolhaAndroid, -1);
   atomic_store(&cancelarAndroid, 0);
   atomic_store(&recarregarAndroid, 0);
@@ -5403,6 +5405,7 @@ void stream_folha_atualizar(float dt, Uint32 agora) {
   medirCabecalho();
   if (aberta || anim > 0.001f) folhaGeometria();
   anim=anim_mola(anim,aberta?1:0,dt,NV_MOLA_TELA);
+  buscaAnim=anim_mola(buscaAnim,(aberta && grupo==-2)?1.0f:0.0f,dt,NV_MOLA_TELA);
   if(!aberta) { detAberto=0; if (ptAberto) partes_cancelar(); ptAberto=0; ctxhold_cancelar(&folhaHold); }
   ptAnim=anim_mola(ptAnim,ptAberto?1:0,dt,NV_MOLA_TELA);
   if (ptAberto) {
@@ -5835,7 +5838,7 @@ static void chipFolha(GfxRect r, const char *rot, float rotW, const char *icone,
 //      kicker explica o que ele faz em qualquer caso.
 // No degrau 2 o filtro ligado continua no acento, entao "qual esta ativo" se
 // le sem foco. Se nem os discos couberem (titulo enorme), o titulo e cortado.
-static float bwCab[BT_N], rotWCab[BT_N], titMaxCab, gapCab, buscaLarguraCab;
+static float bwCab[BT_N], rotWCab[BT_N], titMaxCab, gapCab;
 static const char *rotCab[BT_N], *icoCab[BT_N];
 static int nivelCab;
 static const char *iconeFiltro(int b) {
@@ -5845,14 +5848,10 @@ static const char *iconeFiltro(int b) {
 static void medirCabecalho(void) {
   float rw = FOLHA_W - FOLHA_PAD_E - FOLHA_PAD_D;
   float tit = (float)txt_linha(TXT_ILHA_TITULO, "Fontes", 255, 255, 255, 255).w;
-  int buscaExpandida = grupo == -2 || folhaBusca[0] != 0;
   int nbt = nBotoes();
-  float minBotoes = nbt * 40.0f + (nbt - 1) * 4.0f;
-  // The expanded search field must yield width to the action row on narrow
-  // layouts; otherwise the two independently measured regions can overlap.
-  buscaLarguraCab = buscaExpandida ? fminf(248.0f, rw - minBotoes - 24.0f) : FOLHA_CHIP_H;
-  if (buscaLarguraCab < FOLHA_CHIP_H) buscaLarguraCab = FOLHA_CHIP_H;
-  float reservado = buscaExpandida ? buscaLarguraCab : FOLHA_TXT + 64.0f + tit;
+  // Search now lives outside the panel, so the title and actions use the full
+  // header width on every TV size.
+  float reservado = FOLHA_TXT + tit;
   float livre = rw - reservado - 24.0f, soma = 0;
   for (nivelCab = 0; nivelCab < 3; nivelCab++) {
     float pad = nivelCab == 0 ? 20.0f : 14.0f;
@@ -6140,10 +6139,41 @@ void stream_folha_desenhar(Uint32 agora) {
 static Uint32 folhaAgora;
 // O corpo dentro da ilha (plrilha.h): `a` ja traz a entrada e a saida da
 // forma, e a ilha segue chamando o ultimo corpo enquanto encolhe.
+static void desenharBuscaExterna(GfxRect c, float a) {
+  if (!aberta || a < .01f) return;
+  const int focada = grupo == -2;
+  const float base = FOLHA_CHIP_H;
+  float maxW = fminf(280.0f, c.x - 32.0f);
+  if (maxW < base) maxW = base;
+  float w = base + (maxW - base) * buscaAnim;
+  float direita = c.x - 12.0f;
+  GfxRect r = { direita - w, folhaOY + FOLHA_CAB_Y, w, FOLHA_CHIP_H };
+  if (w <= base + 1.0f) {
+    chipFolha(r, NULL, 0.0f, "aj_search", focada, 0, a);
+  } else {
+    // Fixed right edge: the bar grows left and the lens travels with its
+    // leading edge, ending at the expanded bar's left side.
+    chipFolha(r, "", 0.0f, NULL, focada, 0, a);
+    float g = r.h * .42f;
+    int tinta = focada ? ajustes_tinta_foco() : 225;
+    gfx_icone((GfxRect){r.x + 14.0f, r.y + (r.h - g) * .5f, g, g},
+              "aj_search", tinta / 255.0f, tinta / 255.0f, tinta / 255.0f, a);
+    if (buscaAnim > .01f) {
+      const char *rot = folhaBusca[0] ? folhaBusca : "Buscar fontes";
+      TxtLinha t = txt_linha_corta(TXT_HERO_META, rot, tinta, tinta, tinta, 255,
+                                   fmaxf(0.0f, r.w - 58.0f));
+      txt_desenhar_alpha(t, r.x + 14.0f + g + 10.0f,
+                         r.y + (r.h - t.h) * .5f, a * buscaAnim);
+    }
+  }
+  if (ponteiro_ativo() && a > .5f)
+    ponteiro_alvo(r.x, r.y, r.w, r.h, ponteiroFolhaBusca, NULL, 0, 0);
+}
 static void corpoIlhaFolha(GfxRect c, float a, void *u) {
   (void)u;
   if (folhaRelogio && aberta && a > .5f && ponteiro_ativo()) ponteiro_camada();
   corpoFolha(c.x, c.w, a, folhaAgora, 1);
+  desenharBuscaExterna(c, a);
 }
 static void stream_folha_desenharCorpo_(Uint32 agora) {
   if(anim<.005f) return;
@@ -6270,19 +6300,11 @@ static void corpoFolha(float x, float w, float anim, Uint32 agora, int ilha) {
       txt_desenhar_alpha(txt_linha_corta(TXT_HERO_META,"Segure OK: todos os arquivos",130,130,128,255,rw-360-cw),tx+cw,oy+72,anim);
     } }
   medirCabecalho();
-  // Search sits on the far left of the header, aligned with the stream list.
-  // Focusing expands it; opening the shared keyboard requires an explicit OK.
-  { int buscaExpandida = grupo == -2 || folhaBusca[0] != 0;
-    float iconeW = FOLHA_CHIP_H * .42f;
-    GfxRect sr = { lx, oy + FOLHA_CAB_Y, buscaExpandida ? buscaLarguraCab : FOLHA_CHIP_H, FOLHA_CHIP_H };
-    chipFolha(sr, buscaExpandida ? (folhaBusca[0] ? folhaBusca : "Buscar fontes") : NULL,
-              buscaExpandida ? fmaxf(0.0f, buscaLarguraCab - iconeW - 26.0f) : 0.0f,
-              "aj_search", grupo == -2, 0, anim);
-    if (ptr) ponteiro_alvo(sr.x, sr.y, sr.w, sr.h, ponteiroFolhaBusca, NULL, 0, 0);
-    if (!buscaExpandida)
-      txt_desenhar_alpha(txt_linha_corta(TXT_ILHA_TITULO,"Fontes",243,242,239,255,titMaxCab),
-                         tx + 64.0f, oy + 94, anim);
-  }
+  // Search is a separate control outside the Dynamic Clock panel. The title
+  // keeps the full header row; the external search chip is drawn by the island
+  // callback so its right edge can stay fixed while it expands to the LEFT.
+  txt_desenhar_alpha(txt_linha_corta(TXT_ILHA_TITULO,"Fontes",243,242,239,255,titMaxCab),
+                     tx, oy + 94, anim);
   // Os botoes alinhados a direita, centrados no titulo. Ordem do foco = ordem
   // visivel, da esquerda: [Sem HDR] Só MP4, Em cache, Dublado, Recarregar, Fechar.
   { int nbt=nBotoes(); float bx=lx+rw;
