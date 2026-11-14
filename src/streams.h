@@ -240,6 +240,7 @@ const Stream *stream_item(int i);
 // Android UI gets an owned, mutex-protected JSON snapshot; never expose lista[] pointers.
 // Caller owns the returned buffer and must free() it.
 char *stream_ui_snapshot_json(void);
+uint64_t stream_ui_revision(void);
 // Fileira de selos do pacote ativo (ver selospacote.h) para fora da folha, como
 // o cartao "Abrindo fonte" do player: padrao em cinza `tom`, colorido em pecas.
 // `stream_selos_ha` diz se ha o que desenhar (a resolucao entra); 0 de largura
