@@ -776,6 +776,7 @@ static float *linhaY, focoFixoY;
 // conferencia paralela roda fora do fio da UI.
 static _Atomic int foraCacheFoco = -1;
 static void atualizarProvedores(void);
+static void abrirBuscaFolha(void);
 static int aberta, foco, grupo;
 static float rolagem, velRol;
 // Native stream search. The query is applied during the existing list build,
@@ -5546,7 +5547,7 @@ int stream_folha_escolheu(int *out) {
 // debaixo da mao. Clicar fora do painel fecha, como o Voltar.
 static void ponteiroFolhaBotao(int i, int b) { (void)b; grupo = -1; foco = i; }
 static void abrirBuscaFolha(void) {
-  teclado_abrir_com("Buscar fontes", "Título, addon, archivo ou qualidade", TECLADO_MAX,
+  teclado_abrir_com("Buscar fontes", "Título, addon, arquivo ou qualidade", TECLADO_MAX,
                     "abcdefghijklmnopqrstuvwxyz0123456789 ", folhaBusca);
   teclado_aceitar_utf8(1);
 }
