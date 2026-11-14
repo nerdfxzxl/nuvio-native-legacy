@@ -6317,7 +6317,7 @@ static void corpoFolha(float x, float w, float anim, Uint32 agora, int ilha) {
       if(!toquerol_livre(&toqueFontesAbas)) toqueFontesAbasOffset=antes;
       toquerol_vincular(&toqueFontesAbas,(GfxRect){sx,segY,maxW,FOLHA_ABAS_H},gfx_escala(),
                         0,total-6.0f-maxW,0,&toqueFontesAbasOffset);
-      ini=-1; fim=nProvedores;
+      ini=0; fim=nProvedores;
       gfx_recorte(sx,segY,maxW,FOLHA_ABAS_H);
     }
 #endif
