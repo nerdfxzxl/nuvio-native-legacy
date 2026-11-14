@@ -7533,13 +7533,13 @@ void app_desenhar(Uint32 agora) {
   // e o menu do cartaz ja foram desenhados acima) e esta camada so soma o
   // controle animado, a legenda e os pontinhos. O app continua desenhado
   // por baixo — sem FBO nem desfoque proprio (TV fraca).
-  // The shared keyboard is a modal over the Dynamic Clock selector,
-  // so draw it after the player and all of its islands.
-  if (stream_folha_aberta() && teclado_aberto()) teclado_desenhar(agora);
   if (dicascontrole_visivel()) {
     CAMADA_SE(dicascontrole_ocupado());
     dicascontrole_desenhar(agora);
   }
+  // The shared keyboard is a modal over the Dynamic Clock selector,
+  // so draw it last, above the player and all of its islands.
+  if (stream_folha_aberta() && teclado_aberto()) teclado_desenhar(agora);
 }
 
 int app_quer_sair(void) { return sair; }
