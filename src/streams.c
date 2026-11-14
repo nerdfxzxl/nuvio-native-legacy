@@ -537,7 +537,11 @@ int stream_automatico_excluir_irmas(int indice) {
   return k;
 }
 void stream_folha_contexto(const char *s) { snprintf(contexto, sizeof contexto, "%s", s ? s : ""); }
-int stream_folha_recarregar(void) { int r = recarregar; recarregar = 0; return r; }
+int stream_folha_recarregar(void) {
+  if (atomic_exchange(&recarregarAndroid, 0)) recarregar = 1;
+  int r = recarregar; recarregar = 0; return r;
+}
+void stream_folha_recarregar_externo(void) { atomic_store(&recarregarAndroid, 1); }
 
 static int aberta = 0, foco = 0, escolha = -1;
 static unsigned escolhaGeracao;
@@ -546,6 +550,7 @@ static _Atomic int escolhaAndroid = -1;
 static _Atomic unsigned escolhaAndroidGeracao;
 static _Atomic int cancelarAndroid;
 static _Atomic int androidSelectorAtivo;
+static _Atomic int recarregarAndroid;
 static float anim = 0.0f, rolagem = 0.0f;
 // Velocidade da mola de 2a ordem da rolagem (anim_mola2): partida macia e
 // cauda exponencial, a MESMA curva que a home mede. A de 1a ordem que estava
