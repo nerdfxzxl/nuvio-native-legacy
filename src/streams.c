@@ -34,6 +34,7 @@
 #include <strings.h>
 #include <stdlib.h>
 #include <math.h>
+#include <stdarg.h>
 #include "addons.h"
 #include "marco.h"
 #include "debrid.h"
@@ -834,6 +835,154 @@ int stream_n(void) {
 
 const Stream *stream_item(int i) {
   return i >= 0 && i < n ? &lista[i] : NULL;
+}
+
+/*
+ * A Kotlin selector must never retain pointers into lista[]. Add-on workers
+ * can realloc that array while the screen is open. Copy only display metadata
+ * while holding verTrava, then serialize the owned copy after releasing it.
+ */
+typedef struct {
+  int index, altura, dolbyVision, dolbyAtmos, mp4, fileIdx, temUrl;
+  unsigned long long badges, tamanhoBytes;
+  long tamanhoMB;
+  char rotulo[192], provedor[96], descricao[2048], arquivo[512];
+  char infoHash[48], audioIdiomas[512], legendaIdiomas[512];
+} StreamUiItem;
+
+typedef struct { char *dados; size_t usado, capacidade; int falhou; } StreamUiJson;
+
+static void streamUiJsonReservar(StreamUiJson *b, size_t extra) {
+  size_t precisa;
+  char *novo;
+  if (b->falhou || extra > SIZE_MAX - b->usado - 1) { b->falhou = 1; return; }
+  precisa = b->usado + extra + 1;
+  if (precisa <= b->capacidade) return;
+  size_t cap = b->capacidade ? b->capacidade : 1024;
+  while (cap < precisa) {
+    if (cap > SIZE_MAX / 2) { cap = precisa; break; }
+    cap *= 2;
+  }
+  novo = realloc(b->dados, cap);
+  if (!novo) { b->falhou = 1; return; }
+  b->dados = novo; b->capacidade = cap;
+}
+
+static void streamUiJsonBytes(StreamUiJson *b, const char *s, size_t n) {
+  streamUiJsonReservar(b, n);
+  if (b->falhou) return;
+  memcpy(b->dados + b->usado, s, n);
+  b->usado += n;
+  b->dados[b->usado] = 0;
+}
+
+static void streamUiJsonRaw(StreamUiJson *b, const char *s) {
+  streamUiJsonBytes(b, s, strlen(s));
+}
+
+static void streamUiJsonString(StreamUiJson *b, const char *s) {
+  const unsigned char *p = (const unsigned char *)(s ? s : "");
+  streamUiJsonRaw(b, "\"");
+  while (*p && !b->falhou) {
+    char escape[7];
+    switch (*p) {
+      case '"': streamUiJsonRaw(b, "\\\""); break;
+      case '\\': streamUiJsonRaw(b, "\\\\"); break;
+      case '\b': streamUiJsonRaw(b, "\\b"); break;
+      case '\f': streamUiJsonRaw(b, "\\f"); break;
+      case '\n': streamUiJsonRaw(b, "\\n"); break;
+      case '\r': streamUiJsonRaw(b, "\\r"); break;
+      case '\t': streamUiJsonRaw(b, "\\t"); break;
+      default:
+        if (*p < 0x20) {
+          snprintf(escape, sizeof escape, "\\u%04x", (unsigned)*p);
+          streamUiJsonRaw(b, escape);
+        } else {
+          streamUiJsonBytes(b, (const char *)p, 1);
+        }
+    }
+    p++;
+  }
+  streamUiJsonRaw(b, "\"");
+}
+
+static void streamUiJsonFormat(StreamUiJson *b, const char *fmt, ...) {
+  va_list ap, cp;
+  int nfmt;
+  va_start(ap, fmt);
+  va_copy(cp, ap);
+  nfmt = vsnprintf(NULL, 0, fmt, cp);
+  va_end(cp);
+  if (nfmt < 0) { va_end(ap); b->falhou = 1; return; }
+  streamUiJsonReservar(b, (size_t)nfmt);
+  if (!b->falhou) {
+    vsnprintf(b->dados + b->usado, b->capacidade - b->usado, fmt, ap);
+    b->usado += (size_t)nfmt;
+  }
+  va_end(ap);
+}
+
+char *stream_ui_snapshot_json(void) {
+  StreamUiItem *itens = NULL;
+  StreamUiJson b = {0};
+  int qtd;
+  unsigned geracao, revisao;
+  pthread_mutex_lock(&verTrava);
+  qtd = n;
+  geracao = listaGeracao;
+  revisao = atomic_load(&folhaRevisao);
+  if (qtd > 0) itens = calloc((size_t)qtd, sizeof *itens);
+  if (qtd > 0 && !itens) {
+    pthread_mutex_unlock(&verTrava);
+    return NULL;
+  }
+  for (int k = 0; k < qtd; k++) {
+    int i = ORD(k);
+    const Stream *s;
+    if (i < 0 || i >= n) continue;
+    s = &lista[i];
+    itens[k].index = i;
+    snprintf(itens[k].rotulo, sizeof itens[k].rotulo, "%s", s->rotulo);
+    snprintf(itens[k].provedor, sizeof itens[k].provedor, "%s", s->provedor);
+    snprintf(itens[k].descricao, sizeof itens[k].descricao, "%s", s->descricao);
+    snprintf(itens[k].arquivo, sizeof itens[k].arquivo, "%s", s->arquivo);
+    snprintf(itens[k].infoHash, sizeof itens[k].infoHash, "%s", s->infoHash);
+    snprintf(itens[k].audioIdiomas, sizeof itens[k].audioIdiomas, "%s", s->audioIdiomas);
+    snprintf(itens[k].legendaIdiomas, sizeof itens[k].legendaIdiomas, "%s", s->legendaIdiomas);
+    itens[k].altura = s->altura;
+    itens[k].dolbyVision = s->dolbyVision;
+    itens[k].dolbyAtmos = s->dolbyAtmos;
+    itens[k].mp4 = s->mp4;
+    itens[k].fileIdx = s->fileIdx;
+    itens[k].temUrl = s->url[0] != 0;
+    itens[k].badges = (unsigned long long)s->badges;
+    itens[k].tamanhoBytes = (unsigned long long)s->tamanhoBytes;
+    itens[k].tamanhoMB = s->tamanhoMB;
+  }
+  pthread_mutex_unlock(&verTrava);
+
+  streamUiJsonFormat(&b, "{\"generation\":%u,\"revision\":%u,\"streams\":[", geracao, revisao);
+  for (int i = 0; i < qtd && !b.falhou; i++) {
+    if (i) streamUiJsonRaw(&b, ",");
+    streamUiJsonFormat(&b, "{\"index\":%d,\"height\":%d,\"dolbyVision\":%d,"
+      "\"dolbyAtmos\":%d,\"mp4\":%d,\"fileIdx\":%d,\"hasUrl\":%s,"
+      "\"badges\":%llu,\"sizeBytes\":%llu,\"sizeMB\":%ld,\"name\":",
+      itens[i].index, itens[i].altura, itens[i].dolbyVision, itens[i].dolbyAtmos,
+      itens[i].mp4, itens[i].fileIdx, itens[i].temUrl ? "true" : "false",
+      itens[i].badges, itens[i].tamanhoBytes, itens[i].tamanhoMB);
+    streamUiJsonString(&b, itens[i].rotulo);
+    streamUiJsonRaw(&b, ",\"provider\":"); streamUiJsonString(&b, itens[i].provedor);
+    streamUiJsonRaw(&b, ",\"description\":"); streamUiJsonString(&b, itens[i].descricao);
+    streamUiJsonRaw(&b, ",\"filename\":"); streamUiJsonString(&b, itens[i].arquivo);
+    streamUiJsonRaw(&b, ",\"infoHash\":"); streamUiJsonString(&b, itens[i].infoHash);
+    streamUiJsonRaw(&b, ",\"audioLanguages\":"); streamUiJsonString(&b, itens[i].audioIdiomas);
+    streamUiJsonRaw(&b, ",\"subtitleLanguages\":"); streamUiJsonString(&b, itens[i].legendaIdiomas);
+    streamUiJsonRaw(&b, "}");
+  }
+  streamUiJsonRaw(&b, "]}");
+  free(itens);
+  if (b.falhou) { free(b.dados); return NULL; }
+  return b.dados;
 }
 
 // Pontuacao da regra do dono, do mais forte para o mais fraco:
