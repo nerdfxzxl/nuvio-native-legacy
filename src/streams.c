@@ -957,7 +957,7 @@ char *stream_ui_snapshot_json(void) {
     if (i < 0 || i >= n) continue;
     s = &lista[i];
     itens[k].index = i;
-    itens[k].addonOrdem = s->addonOrdem;
+    itens[k].addonOrdem = stream_ordem_addon(i);
     snprintf(itens[k].rotulo, sizeof itens[k].rotulo, "%s", s->rotulo);
     snprintf(itens[k].provedor, sizeof itens[k].provedor, "%s", s->provedor);
     snprintf(itens[k].addonChave, sizeof itens[k].addonChave, "%s", s->addonChave);
