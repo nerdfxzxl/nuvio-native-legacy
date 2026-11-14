@@ -4000,40 +4000,9 @@ static const TextoAddon *textoAddonDa(int i) {
   return &textoAddon[i];
 }
 
-// #479: montar() roda nos eventos, duas vezes no update e no desenho.
-// O texto cru nao muda com foco/altura; cada indice e limpo uma vez. Acrescentar
-// preserva as cartas prontas, trocar a lista libera tudo. Texturas continuam
-// no cache de text.c (nao guardar GLuint que o LRU pode despejar).
-typedef struct {
-  char titulo[192];
-  int nl;
-  LinhaAddon linhas[FOLHA_ADDON_LINHAS];
-} TextoAddon;
-static TextoAddon *textoAddon;
-static int textoAddonN, textoAddonCap;
-static void textoAddonLimpar(void) {
-  free(textoAddon); textoAddon = NULL; textoAddonN = textoAddonCap = 0;
-}
-static const TextoAddon *textoAddonDa(int i) {
-  static TextoAddon reserva;
-  if (textoAddonCap < n) {
-    TextoAddon *t = realloc(textoAddon, (size_t)n * sizeof *t);
-    if (!t) {
-      reserva.nl = linhasAddon(&lista[i], reserva.linhas, FOLHA_ADDON_LINHAS);
-      tituloAddon(&lista[i], reserva.titulo, sizeof reserva.titulo);
-      return &reserva;
-    }
-    textoAddon = t; textoAddonCap = n;
-  }
-  while (textoAddonN <= i) {
-    TextoAddon *t = &textoAddon[textoAddonN];
-    t->nl = linhasAddon(&lista[textoAddonN], t->linhas, FOLHA_ADDON_LINHAS);
-    tituloAddon(&lista[textoAddonN], t->titulo, sizeof t->titulo);
-    textoAddonN++;
-  }
-  return &textoAddon[i];
-}
-
+// #479: the addon display text and its wrapped line heights are cached per
+// source. Appending preserves prepared entries; replacing the list clears them.
+// Textures remain in text.c's LRU rather than storing GLuints here.
 // O mesmo indicador nas duas apresentacoes, sem depender de emoji na fonte
 // da TV. Negativa posterior, P2P e resposta que nao e video nunca sao prontas.
 static void legendaProvedor(const Stream *s, char *buf, size_t tam) {
