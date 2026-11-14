@@ -2,6 +2,7 @@
 #ifdef NV_ANDROID
 #include "android.h"
 #include "queda.h"
+#include "streams.h"
 #include <SDL2/SDL.h>
 #include <android/log.h>
 #include <jni.h>
@@ -72,6 +73,18 @@ Java_space_nuvio_nativelegacy_NuvioActivity_nativeCheckpoint(JNIEnv *env, jobjec
   SDL_Event e = {0};
   e.type = SDL_APP_WILLENTERBACKGROUND;
   SDL_PushEvent(&e);
+}
+
+JNIEXPORT jstring JNICALL
+Java_space_nuvio_nativelegacy_NuvioActivity_nativeStreamSnapshot(JNIEnv *env, jobject act) {
+  char *json;
+  jstring result;
+  (void)act;
+  json = stream_ui_snapshot_json();
+  if (!json) return (*env)->NewStringUTF(env, "{\\"generation\\":0,\\"revision\\":0,\\"streams\\":[]}");
+  result = (*env)->NewStringUTF(env, json);
+  free(json);
+  return result;
 }
 
 #ifdef NV_TOUCH_UI
