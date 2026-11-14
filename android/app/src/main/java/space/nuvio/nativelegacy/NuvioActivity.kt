@@ -187,6 +187,8 @@ class NuvioActivity : SDLActivity() {
     private var vigia: ArranqueVigia? = null
     private external fun nativeStreamTitle(): String
     fun streamSelectorTitle(): String = nativeStreamTitle()
+    private external fun nativeStreamRevision(): Long
+    fun streamSnapshotRevision(): Long = nativeStreamRevision()
     private external fun nativeStreamSnapshot(): String
     fun snapshotStreams(): String = nativeStreamSnapshot()
 
