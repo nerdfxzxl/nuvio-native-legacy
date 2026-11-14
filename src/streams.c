@@ -4002,24 +4002,12 @@ static int linhasAddon(const Stream *s, LinhaAddon *out, int max) {
   return nl;
 }
 static void tituloAddon(const Stream *s, char *buf, size_t tam) {
-  char t[sizeof s->rotulo], lim[sizeof s->rotulo];
-  size_t k = 0;
-  int esp = 0;
-  for (const char *p = s->rotulo; *p && k + 1 < sizeof t; p++) {
-    unsigned char c = (unsigned char)*p;
-    if (c < 33) { esp = k > 0; continue; }
-    if (esp) { t[k++] = ' '; esp = 0; }
-    t[k++] = (char)c;
-  }
-  t[k] = 0;
-  const char *nome = t;
-  if (cacheConfirmado(s) && !strncmp(nome, "⚡", strlen("⚡"))) {
-    nome += strlen("⚡");
-    if (!strncmp(nome, "\xEF\xB8\x8F", 3)) nome += 3;
-    while (*nome == ' ') nome++;
-  }
-  nv_limpar_texto(nome, lim, sizeof lim, NV_LIMPA_UMA_LINHA);
-  snprintf(buf, tam, "%s", lim[0] ? lim : s->provedor);
+  // Match NuvioTV's display-name precedence: name, then title, then description.
+  // rotulo already contains the addon's name/title; do not strip its emoji,
+  // punctuation, spacing, or cache marker before presenting it.
+  const char *nome = s->rotulo[0] ? s->rotulo
+                   : s->descricao[0] ? s->descricao : s->provedor;
+  snprintf(buf, tam, "%s", nome);
 }
 
 // #479: montar() roda nos eventos, duas vezes no update e no desenho.
@@ -4027,7 +4015,7 @@ static void tituloAddon(const Stream *s, char *buf, size_t tam) {
 // preserva as cartas prontas, trocar a lista libera tudo. Texturas continuam
 // no cache de text.c (nao guardar GLuint que o LRU pode despejar).
 typedef struct {
-  char titulo[96];
+  char titulo[192];
   int nl;
   LinhaAddon linhas[FOLHA_ADDON_LINHAS];
 } TextoAddon;
@@ -6515,6 +6503,7 @@ static void corpoFolha(float x, float w, float anim, Uint32 agora, int ilha) {
       char ep[64]="";
       float cacheW=desenharCache(s,tx,cy,anim*(sel?1.0f:.8f));
       float nx=tx+cacheW, nw=txtW-cacheW;
+      if (nw < 0.0f) nw = 0.0f;
       tira=0;
       if(ajustes_fonte_texto_addon()) snprintf(nome,sizeof nome,"%s",textoAddonDa(i)->titulo);
       else tituloConteudo(s,nome,sizeof nome,ep,sizeof ep);
@@ -6529,6 +6518,7 @@ static void corpoFolha(float x, float w, float anim, Uint32 agora, int ilha) {
         if (lt && la > .01f) {
           float lh = FOLHA_LOGO_H, lw = lh * la;
           if (lw > FOLHA_LOGO_W) { lw = FOLHA_LOGO_W; lh = lw / la; }
+          if (lw > nw) { lw = nw; lh = lw / la; }
           gfx_tex_aspect_atual = 0.0f;
           // A base da logo fica FOLHA_LOGO_VAO acima dos selos (que comecam em
           // cy + 40), e nao no meio da altura do nome: centrada, a logo de 40 px
