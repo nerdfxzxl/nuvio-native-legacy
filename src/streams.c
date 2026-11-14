@@ -856,7 +856,7 @@ const Stream *stream_item(int i) {
  * while holding verTrava, then serialize the owned copy after releasing it.
  */
 typedef struct {
-  int index, addonOrdem, altura, dolbyVision, dolbyAtmos, mp4, fileIdx, temUrl;
+  int index, addonOrdem, altura, dolbyVision, dolbyAtmos, av1, mp4, fileIdx, temUrl;
   unsigned long long badges, tamanhoBytes;
   long tamanhoMB;
   char rotulo[192], provedor[96], addonChave[FONTEFALHA_CHAVE], descricao[2048], arquivo[512];
@@ -969,6 +969,7 @@ char *stream_ui_snapshot_json(void) {
     itens[k].altura = s->altura;
     itens[k].dolbyVision = s->dolbyVision;
     itens[k].dolbyAtmos = s->dolbyAtmos;
+    itens[k].av1 = s->av1;
     itens[k].mp4 = s->mp4;
     itens[k].fileIdx = s->fileIdx;
     itens[k].temUrl = s->url[0] != 0;
@@ -985,10 +986,10 @@ char *stream_ui_snapshot_json(void) {
   for (int i = 0; i < qtd && !b.falhou; i++) {
     if (i) streamUiJsonRaw(&b, ",");
     streamUiJsonFormat(&b, "{\"index\":%d,\"addonOrder\":%d,\"height\":%d,\"dolbyVision\":%d,"
-      "\"dolbyAtmos\":%d,\"mp4\":%d,\"fileIdx\":%d,\"hasUrl\":%s,"
+      "\"dolbyAtmos\":%d,\"av1\":%d,\"mp4\":%d,\"fileIdx\":%d,\"hasUrl\":%s,"
       "\"badges\":%llu,\"sizeBytes\":%llu,\"sizeMB\":%ld,\"name\":",
       itens[i].index, itens[i].addonOrdem, itens[i].altura, itens[i].dolbyVision, itens[i].dolbyAtmos,
-      itens[i].mp4, itens[i].fileIdx, itens[i].temUrl ? "true" : "false",
+      itens[i].av1, itens[i].mp4, itens[i].fileIdx, itens[i].temUrl ? "true" : "false",
       itens[i].badges, itens[i].tamanhoBytes, itens[i].tamanhoMB);
     streamUiJsonString(&b, itens[i].rotulo);
     streamUiJsonRaw(&b, ",\"provider\":"); streamUiJsonString(&b, itens[i].provedor);
