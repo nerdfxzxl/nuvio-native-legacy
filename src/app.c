@@ -6757,6 +6757,8 @@ void app_atualizar(float dt, Uint32 agora) {
   if (player_quer_sair() && !player_minimizavel() && ajustes_saida_player_home())
     player_preparar_retencao();
   if (player_quer_sair() && !player_aberto()) {
+    // Discard a pending first-Play selector if its player session has ended.
+    pedirFolhaNoPlay = 0;
     if (player_minimizavel()) {
       // CANAL AO VIVO sai para PiP: o fluxo fica num canto da tela em vez de
       // morrer. O caminho de baixo e o dos filmes/series — progresso a
