@@ -445,6 +445,7 @@ static int    folhaCancelarTocar;
 // Play inicial e OK longo no botao primario: aguarda os addons e abre a folha
 // no Dynamic Clock da pagina de detalhes. Retomar curto continua automatico.
 static int    pedirFolhaNoPlay;
+static char   pedirFolhaAlvo[64]; // Exact movie/episode requested while add-ons finish.
 // Survives the asynchronous addon search so a short Resume keeps its intent.
 static int    retomarDiretoPendente;
 // Quantas renovacoes de link seguidas um canal de portal ganha antes de virar
@@ -5873,7 +5874,10 @@ void app_atualizar(float dt, Uint32 agora) {
     int escolherFonteInicial = detail_pediu_escolher_fonte_inicial();
     int pediuReproduzir = detail_pediu_reproduzir();
     int retomarDireto = pediuReproduzir ? detail_pediu_retomar_direto() : 0;
-    if (escolherFonteInicial && !doInicio) pedirFolhaNoPlay = 1;
+    if (escolherFonteInicial && !doInicio) {
+      pedirFolhaNoPlay = 1;
+      idDoAlvo(cat_item(detail_indice()), pedirFolhaAlvo, sizeof pedirFolhaAlvo);
+    }
     if ((pediuReproduzir || doInicio) && aguardandoFonte != 2) {
       retomarDiretoPendente = retomarDireto && ajustes_fonte_manual() && !doInicio;
       marco("abrir: reproduzir pedido");
@@ -6014,15 +6018,29 @@ void app_atualizar(float dt, Uint32 agora) {
   // Initial source selection stays on the detail page. Addons are already
   // prefetched there; open the sheet against that target without opening player.
   // If the list is still being populated, the sheet will update as results arrive.
-  if (pedirFolhaNoPlay && !detail_aberto()) {
-    pedirFolhaNoPlay = 0;
-    gravarFolhaTocar(0, 0, 0);
+  if (pedirFolhaNoPlay) {
+    char alvoAtual[64];
+    if (!detail_aberto()) {
+      pedirFolhaNoPlay = 0;
+      pedirFolhaAlvo[0] = 0;
+      gravarFolhaTocar(0, 0, 0);
+    } else {
+      idDoAlvo(cat_item(detail_indice()), alvoAtual, sizeof alvoAtual);
+      // The asynchronous addon response belongs to the exact title/episode
+      // that received Play. Never open a stale list after the user navigates.
+      if (!pedirFolhaAlvo[0] || strcmp(alvoAtual, pedirFolhaAlvo)) {
+        pedirFolhaNoPlay = 0;
+        pedirFolhaAlvo[0] = 0;
+        gravarFolhaTocar(0, 0, 0);
+      }
+    }
   }
 
   if (pedirFolhaNoPlay && detail_aberto() && !player_aberto() &&
       (stream_n() > 0 || addons_estado() != ADD_BUSCANDO)) {
     char base[24];
     pedirFolhaNoPlay = 0;
+    pedirFolhaAlvo[0] = 0;
     folhaParaTocar = 1;
     folhaCancelarTocar = 0;
     idBaseDoTitulo(base, sizeof base);
@@ -6133,6 +6151,7 @@ void app_atualizar(float dt, Uint32 agora) {
         nomeParaFolha(); stream_folha_abrir();
       } else {
         pedirFolhaNoPlay = 0;
+        pedirFolhaAlvo[0] = 0;
         char alvoP[64];
         int idx;
         alvoPlayer(alvoP, sizeof alvoP);
@@ -6813,6 +6832,7 @@ void app_atualizar(float dt, Uint32 agora) {
   if (player_quer_sair() && !player_aberto()) {
     // Discard a pending first-Play selector if its player session has ended.
     pedirFolhaNoPlay = 0;
+    pedirFolhaAlvo[0] = 0;
     retomarDiretoPendente = 0;
     folhaCancelarTocar = 0;
     folhaParaTocar = 0;
