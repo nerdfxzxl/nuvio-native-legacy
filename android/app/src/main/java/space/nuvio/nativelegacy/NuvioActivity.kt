@@ -48,6 +48,11 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.ViewCompositionStrategy
 import org.libsdl.app.SDLActivity
 import java.io.File
 import java.util.concurrent.ConcurrentLinkedQueue
@@ -92,6 +97,9 @@ class NuvioActivity : SDLActivity() {
     }
 
     private var camadaVideo: FrameLayout? = null
+    private var streamSelectorView: ComposeView? = null
+    private var streamSelectorVisible by mutableStateOf(false)
+    private var streamSelectorTitle by mutableStateOf("")
     private var touchInsetLeft = 0
     private var touchInsetTop = 0
     private var touchInsetRight = 0
@@ -179,6 +187,59 @@ class NuvioActivity : SDLActivity() {
     fun streamSelectorTitle(): String = nativeStreamTitle()
     private external fun nativeStreamSnapshot(): String
     fun snapshotStreams(): String = nativeStreamSnapshot()
+
+    // The selector is a normal Android view layered above SDL's SurfaceView.
+    // The native C stream list remains authoritative; Compose only displays a snapshot.
+    private fun prepararSeletorFontes() {
+        if (streamSelectorView != null || mBrokenLibraries) return
+        val overlay = ComposeView(this).apply {
+            isFocusable = true
+            isFocusableInTouchMode = true
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+            setContent {
+                if (streamSelectorVisible) {
+                    StreamSelectorOverlay(
+                        title = streamSelectorTitle,
+                        activity = this@NuvioActivity,
+                        onDismiss = {
+                            cancelStreamSelector()
+                            ocultarSeletorFontes()
+                        }
+                    )
+                }
+            }
+        }
+        mLayout.addView(
+            overlay,
+            RelativeLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        )
+        overlay.visibility = View.GONE
+        streamSelectorView = overlay
+    }
+
+    fun mostrarSeletorFontes() {
+        runOnUiThread {
+            if (mBrokenLibraries) return@runOnUiThread
+            prepararSeletorFontes()
+            val overlay = streamSelectorView ?: return@runOnUiThread
+            streamSelectorTitle = streamSelectorTitle()
+            streamSelectorVisible = true
+            overlay.visibility = View.VISIBLE
+            overlay.bringToFront()
+            overlay.requestFocus()
+        }
+    }
+
+    fun ocultarSeletorFontes() {
+        runOnUiThread {
+            streamSelectorVisible = false
+            streamSelectorView?.visibility = View.GONE
+            mSurface.requestFocus()
+        }
+    }
     private external fun nativeChooseStream(index: Int, generation: Int): Boolean
     private external fun nativeCancelStreamSelector()
     fun chooseStream(index: Int, generation: Int): Boolean = nativeChooseStream(index, generation)
@@ -246,6 +307,7 @@ class NuvioActivity : SDLActivity() {
         mSurface.holder.setFormat(PixelFormat.TRANSLUCENT)
         NvPlayer.iniciar(this, camada)
         NvPlayer.interfaceModo(interfaceMobile)
+        prepararSeletorFontes()
     }
 
     // SDL and video fill the window, including the camera cutout edges. Keeping
