@@ -256,6 +256,11 @@ internal fun StreamSelectorOverlay(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     ProviderChip(
+                        label = "↻",
+                        selected = false,
+                        onClick = { activity.refreshStreams() }
+                    )
+                    ProviderChip(
                         label = "All",
                         selected = selectedProvider == null,
                         onClick = { selectedProvider = null }
