@@ -92,6 +92,7 @@ private data class SelectorStream(
     fun searchText(): String = buildString {
         append(name).append(' ')
         append(provider).append(' ')
+        append(addonKey).append(' ')
         append(description).append(' ')
         append(filename).append(' ')
         append(infoHash).append(' ')
@@ -99,8 +100,8 @@ private data class SelectorStream(
         append(subtitleLanguages).append(' ')
         if (height > 0) append(height).append(' ').append(height).append('p').append(' ')
         if (height >= 2160) append("4K UHD ")
-        if (dolbyVision) append("Dolby Vision DV ")
-        if (dolbyAtmos) append("Dolby Atmos Atmos ")
+        if (dolbyVision) append("Dolby Vision DolbyVision DV ")
+        if (dolbyAtmos) append("Dolby Atmos DolbyAtmos Atmos ")
         if (mp4) append("MP4 ")
         if (sizeBytes > 0L) append(formatStreamSize(sizeBytes))
     }.lowercase(Locale.ROOT)
@@ -220,8 +221,9 @@ private fun StreamSelectorContent(
     val visibleStreams = remember(snapshot, query, selectedProvider) {
         val terms = query.trim().lowercase(Locale.ROOT).split(Regex("\\s+")).filter { it.isNotBlank() }
         snapshot.streams.filter { stream ->
+            val searchable = stream.searchText()
             (selectedProvider == null || stream.addonKey.ifBlank { stream.provider } == selectedProvider) &&
-                terms.all { stream.searchText().contains(it) }
+                terms.all { searchable.contains(it) }
         }
     }
 
