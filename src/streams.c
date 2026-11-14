@@ -3573,7 +3573,7 @@ static int botaoLigado(int b) {
   return (b == BT_SO_MP4 && soMp4) || (b == BT_CACHE && soCache) || (b == BT_DUB && soDub);
 }
 static const char *iconeBotao(int b) {
-  return b == BT_RECARREGAR ? "aj_rotate-cw" : b == BT_RECARREGAR_FONTE
+  return b == BT_RECARREGAR ? (addons_ocupado() ? "aj_loader" : "aj_rotate-cw") : b == BT_RECARREGAR_FONTE
       ? "pl_rotate-ccw" : b == BT_FECHAR ? "aj_x" : NULL;
 }
 static char provedores[13][96];
@@ -5366,10 +5366,7 @@ void stream_folha_evento(const SDL_Event *e) {
     if(foco>=nBotoes()) foco=nBotoes()-1;
   }
   if(k==SDLK_RETURN || k==SDLK_KP_ENTER) {
-    if (grupo == -2) {
-      teclado_abrir_com("Buscar fontes", "Título, addon, archivo o calidad", TECLADO_MAX, "abcdefghijklmnopqrstuvwxyz0123456789 ", folhaBusca);
-      teclado_aceitar_utf8(1);
-    }
+    if (grupo == -2) abrirBuscaFolha();
     else if(grupo==-1) {
       switch(botaoDe(foco)) {
         case BT_RECARREGAR: recarregar=1; break;
@@ -5548,7 +5545,16 @@ int stream_folha_escolheu(int *out) {
 // provedor so troca no CLIQUE — trocar ao passar por cima mudaria a lista
 // debaixo da mao. Clicar fora do painel fecha, como o Voltar.
 static void ponteiroFolhaBotao(int i, int b) { (void)b; grupo = -1; foco = i; }
-static void ponteiroFolhaBusca(int i, int b) { (void)i; (void)b; grupo = -2; }
+static void abrirBuscaFolha(void) {
+  teclado_abrir_com("Buscar fontes", "Título, addon, archivo ou qualidade", TECLADO_MAX,
+                    "abcdefghijklmnopqrstuvwxyz0123456789 ", folhaBusca);
+  teclado_aceitar_utf8(1);
+}
+static void ponteiroFolhaBusca(int i, int b) {
+  (void)i; (void)b;
+  if (grupo == -2 || folhaBusca[0]) abrirBuscaFolha();
+  else grupo = -2;
+}
 static void ponteiroFolhaDica(int i, int b) { (void)i; (void)b; grupo = 2; }
 static void ponteiroFolhaLinha(int row, int b) { (void)b; grupo = 1; foco = row; }
 static void ponteiroFolhaFiltro(int i, int b) {
@@ -6274,6 +6280,12 @@ static void corpoFolha(float x, float w, float anim, Uint32 agora, int ilha) {
       if (ptr) ponteiro_alvo(r.x, r.y, r.w, r.h, habilitado ? ponteiroFolhaBotao : NULL, NULL, i, 0);
       chipFolha(r,rotCab[i],rotWCab[i],icoCab[i],grupo==-1&&foco==i,botaoLigado(b),
                 habilitado ? anim : anim * .35f);
+      if (b == BT_RECARREGAR && addons_ocupado()) {
+        float spin = fmodf((float)agora * 0.0014f, 1.0f);
+        float cc = grupo == -1 && foco == i ? ajustes_tinta_foco() / 255.0f : .88f;
+        gfx_arco((GfxRect){r.x + (r.w - 24.0f) * .5f, r.y + (r.h - 24.0f) * .5f, 24.0f, 24.0f},
+                 2.5f, spin, .24f, cc, cc, cc, anim);
+      }
       bx+=bwCab[i]+gapCab;
     } }
   // SELETOR DE ADDON, segmentado: o selecionado em superficie clara, o foco
