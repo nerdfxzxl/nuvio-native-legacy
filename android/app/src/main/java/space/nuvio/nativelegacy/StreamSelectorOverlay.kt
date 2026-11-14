@@ -73,6 +73,7 @@ import java.util.Locale
 private data class SelectorStream(
     val index: Int,
     val addonOrder: Int,
+    val addonKey: String,
     val name: String,
     val provider: String,
     val description: String,
@@ -105,6 +106,8 @@ private data class SelectorStream(
     }.lowercase(Locale.ROOT)
 }
 
+private data class ProviderFilter(val key: String, val label: String)
+
 private data class SelectorSnapshot(
     val generation: Int = 0,
     val revision: Int = -1,
@@ -131,6 +134,7 @@ private fun parseSelectorSnapshot(raw: String): SelectorSnapshot = runCatching {
                 SelectorStream(
                     index = item.optInt("index", -1),
                     addonOrder = item.optInt("addonOrder", 0),
+                    addonKey = item.optString("addonKey", ""),
                     name = item.optString("name", ""),
                     provider = item.optString("provider", ""),
                     description = item.optString("description", ""),
@@ -209,14 +213,14 @@ private fun StreamSelectorContent(
     }
 
     val providers = remember(snapshot.streams) {
-        snapshot.streams.map { it.provider.trim() }
-            .filter { it.isNotEmpty() }
-            .distinct()
+        snapshot.streams.map { stream ->
+            ProviderFilter(stream.addonKey.ifBlank { stream.provider }, stream.provider.trim())
+        }.filter { it.label.isNotEmpty() }.distinctBy { it.key }
     }
     val visibleStreams = remember(snapshot, query, selectedProvider) {
         val terms = query.trim().lowercase(Locale.ROOT).split(Regex("\\s+")).filter { it.isNotBlank() }
         snapshot.streams.filter { stream ->
-            (selectedProvider == null || stream.provider == selectedProvider) &&
+            (selectedProvider == null || stream.addonKey.ifBlank { stream.provider } == selectedProvider) &&
                 terms.all { stream.searchText().contains(it) }
         }
     }
@@ -358,9 +362,9 @@ private fun StreamSelectorContent(
                     )
                     providers.forEach { provider ->
                         ProviderChip(
-                            label = provider,
-                            selected = selectedProvider == provider,
-                            onClick = { selectedProvider = provider }
+                            label = provider.label,
+                            selected = selectedProvider == provider.key,
+                            onClick = { selectedProvider = provider.key }
                         )
                     }
                 }
@@ -447,7 +451,7 @@ private fun StreamSelectorContent(
                                 key = { _, stream -> stream.index }
                             ) { index, stream ->
                                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    if (index == 0 || visibleStreams[index - 1].provider != stream.provider) {
+                                    if (index == 0 || visibleStreams[index - 1].addonKey != stream.addonKey || visibleStreams[index - 1].provider != stream.provider) {
                                         Text(
                                             text = stream.provider,
                                             modifier = Modifier.padding(start = 16.dp),
