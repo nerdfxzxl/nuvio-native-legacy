@@ -6488,19 +6488,19 @@ static void corpoFolha(float x, float w, float anim, Uint32 agora, int ilha) {
     }
     if (i < 0) continue;
     if (ptr) {
-      // So o que o recorte da lista deixa ver.
-      float t = y < FOLHA_TOPO ? FOLHA_TOPO : y;
-      float b = y + r.h > NV_TELA_H ? NV_TELA_H : y + r.h;
+      // The provider heading is informational; the card itself is the target.
+      float t = cardY < FOLHA_TOPO ? FOLHA_TOPO : cardY;
+      float b = cardY + r.h > NV_TELA_H ? NV_TELA_H : cardY + r.h;
       if (b > t) ponteiro_alvo(r.x, t, r.w, b - t, ponteiroFolhaLinha, NULL, row, 0);
     }
     if(sel){
       // The focused stream card gets the requested 2px white D-pad ring.
       // Keep the soft focused surface beneath it for both glass and solid modes.
-      if (!gfx_foco_placa(r,FOLHA_RAIO/h,1,anim)) {
-        if (ajustes_vidro()) gfx_cor(r,FOLHA_RAIO/h,1,1,1,.12f*anim);
-        else gfx_cor(r,FOLHA_RAIO/h,.17f,.176f,.204f,anim);
+      if (!gfx_foco_placa(r,FOLHA_RAIO/r.h,1,anim)) {
+        if (ajustes_vidro()) gfx_cor(r,FOLHA_RAIO/r.h,1,1,1,.12f*anim);
+        else gfx_cor(r,FOLHA_RAIO/r.h,.17f,.176f,.204f,anim);
       }
-      gfx_anel_fora(r,FOLHA_RAIO/h,0.0f,2.0f,1.0f,1.0f,1.0f,.96f*anim);
+      gfx_anel_fora(r,FOLHA_RAIO/r.h,0.0f,2.0f,1.0f,1.0f,1.0f,.96f*anim);
     }
     // COLUNA DA DIREITA: tamanho grande, addon embaixo. Medida primeiro: o
     // titulo e a fileira de logos param antes dela.
