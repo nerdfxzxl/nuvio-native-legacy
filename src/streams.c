@@ -105,7 +105,8 @@ static int folhaRelogio; // Latched at opening, retained through closing.
 #define FOLHA_ABA_H     44.0f  // a pilula de cada aba, dentro da faixa
 #define FOLHA_TOPO     (FOLHA_ABAS_Y + FOLHA_ABAS_H + 24.0f + folhaOY + folhaDica)
 static void medirCabecalho(void);
-#define FOLHA_LINHA_H  112.0f  // linha sem marca e sem arquivo
+#define FOLHA_LINHA_H  112.0f  // card sem marca e sem arquivo
+#define FOLHA_PROV_H    24.0f  // provider heading above each new addon group
 #define FOLHA_MARCA_H   30.0f  // "SUA ESCOLHA ANTERIOR" / "REPRODUZINDO AGORA"
 #define FOLHA_ARQ_H     34.0f  // nome do arquivo, so na linha em foco
 #define FOLHA_FIT_H     32.0f  // StreamFit: evidencia da conexao, so na linha em foco
@@ -3911,6 +3912,7 @@ static void rotuloQualidade(const Stream *s, char *res, size_t nr, char *faixa, 
 }
 static int *ordem;
 static float *linhaY, *linhaH;
+static unsigned char *linhaCabProv;
 static int ordemCap, nOrdem;
 static float secY[FOLHA_GRUPOS], alturaTotal;
 static int secN[FOLHA_GRUPOS];
@@ -4546,12 +4548,13 @@ static int temMarca(int i, int automatica) {
 }
 // Altura de uma linha: base, marca, e o nome do arquivo que abre por mola na
 // linha em foco. Usa nOrdem como o indice que a linha vai receber.
-static float alturaLinha(int i, int automatica, float abertura) {
-  float h = FOLHA_LINHA_H + (temMarca(i, automatica) ? FOLHA_MARCA_H : 0);
+static float alturaLinha(int i, int automatica, float abertura, int cabProv) {
+  float provH = cabProv ? FOLHA_PROV_H : 0.0f;
+  float h = FOLHA_LINHA_H + provH + (temMarca(i, automatica) ? FOLHA_MARCA_H : 0);
   if (ajustes_fonte_texto_addon()) {
     int nl = textoAddonDa(i)->nl;
     float vis = nl > FOLHA_ADDON_FECHADA ? FOLHA_ADDON_FECHADA + (nl - FOLHA_ADDON_FECHADA) * abertura : (float)nl;
-    h = 20 + 40 + vis * FOLHA_ADDON_LD + 18 + (temMarca(i, automatica) ? FOLHA_MARCA_H : 0);
+    h = provH + 20 + 40 + vis * FOLHA_ADDON_LD + 18 + (temMarca(i, automatica) ? FOLHA_MARCA_H : 0);
     if (abertura > 0.001f) h += (alturaArquivoDa(&lista[i]) + 8.0f) * abertura;
     if (h < 96) h = 96;
   } else {
@@ -4564,7 +4567,11 @@ static float alturaLinha(int i, int automatica, float abertura) {
 }
 static void porLinha(int i, float *y, int automatica) {
   float abertura = grupo == 1 && nOrdem == foco ? abreFoco : nOrdem == linhaAnt ? abreAnt : 0;
-  float h = alturaLinha(i, automatica, abertura);
+  int anterior = nOrdem > 0 ? ordem[nOrdem - 1] : -1;
+  int cabProv = lista[i].provedor[0] &&
+      (anterior < 0 || strcmp(lista[anterior].provedor, lista[i].provedor) != 0);
+  float h = alturaLinha(i, automatica, abertura, cabProv);
+  linhaCabProv[nOrdem] = (unsigned char)cabProv;
   ordem[nOrdem] = i;
   linhaY[nOrdem] = *y;
   linhaH[nOrdem] = h;
@@ -4605,14 +4612,16 @@ static void montarBase(int automatica) {
     if (a) linhaY = a;
     float *b = realloc(linhaH, cap * sizeof *b);
     if (b) linhaH = b;
-    if (!o || !a || !b) { nOrdem = 0; return; }
+    unsigned char *p = realloc(linhaCabProv, cap * sizeof *p);
+    if (p) linhaCabProv = p;
+    if (!o || !a || !b || !p) { nOrdem = 0; return; }
     ordemCap = cap;
   }
   if (filtro == -1) {
     memset(secN, 0, sizeof secN);
     nOrdem = needed;
     for (k = 0; k < needed; k++) {
-      ordem[k] = -2-k; linhaY[k] = y; linhaH[k] = FOLHA_LINHA_H;
+      ordem[k] = -2-k; linhaCabProv[k] = 0; linhaY[k] = y; linhaH[k] = FOLHA_LINHA_H;
       y += linhaH[k] + FOLHA_LINHA_GAP;
     }
     alturaTotal = y;
@@ -4778,7 +4787,7 @@ static int primeiraVisivel(float y) {
 }
 static float expansaoLinha(int row, float abertura, int automatica) {
   if (row < 0 || row >= nOrdem || ordem[row] < 0) return 0;
-  return alturaLinha(ordem[row], automatica, abertura) - linhaH[row];
+  return alturaLinha(ordem[row], automatica, abertura, linhaCabProv ? linhaCabProv[row] : 0) - linhaH[row];
 }
 static void montar(int automatica) {
   static unsigned versao;
@@ -6455,8 +6464,16 @@ static void corpoFolha(float x, float w, float anim, Uint32 agora, int ilha) {
     int i=ordem[row], sel=grupo==1&&foco==row;
     const Stream *s=i>=0?&lista[i]:NULL;
     uint64_t tira, logos;
+    float provH = (i >= 0 && linhaCabProv && linhaCabProv[row]) ? FOLHA_PROV_H : 0.0f;
+    float cardY = y + provH;
     if(y+h<FOLHA_TOPO-8 || y>NV_TELA_H) continue;
-    GfxRect r={lx,y,rw,h};
+    GfxRect r={lx,cardY,rw,h-provH};
+    // Match the official TV selector: a muted provider heading precedes the
+    // first card from each addon, rather than repeating the addon beside every row.
+    if (provH > 0.0f && s && s->provedor[0]) {
+      TxtLinha prov = txt_linha_corta(TXT_PG_FIM, s->provedor, 150, 150, 148, 255, rw - 40.0f);
+      txt_desenhar_alpha(prov, tx, y + (provH - (float)prov.h) * 0.5f, anim);
+    }
     if (i <= -2) {
       OndeVer o;
       if (ptr) ponteiro_alvo(r.x,r.y,r.w,r.h,ponteiroFolhaLinha,NULL,row,0);
@@ -6503,7 +6520,7 @@ static void corpoFolha(float x, float w, float anim, Uint32 agora, int ilha) {
         lp=txt_linha_corta(TXT_PG_FIM,pv,150,150,148,255,340); }
       colW=lp.w;
       if(gb[0] && lg.w+6+lu.w>colW) colW=lg.w+6+lu.w;
-      cy=y+20+(temMarca(i,automatica)?FOLHA_MARCA_H:0);
+      cy=cardY+20+(temMarca(i,automatica)?FOLHA_MARCA_H:0);
       if(gb[0]){
         txt_desenhar_alpha(lu,tr-lu.w,cy+(lg.h-lu.h)-3,anim);
         txt_desenhar_tom(lg,tr-lu.w-6-lg.w,cy,cg/250.0f,cg/250.0f,(cg-2)/248.0f,anim); }
@@ -6511,7 +6528,7 @@ static void corpoFolha(float x, float w, float anim, Uint32 agora, int ilha) {
       // Dica da tecla Info/Amarela: so na linha em foco, no canto do addon.
       if(sel) gfx_icone((GfxRect){tr-lp.w-30,(gb[0]?cy+40:cy+6)+3,20,20},"aj_info",.62f,.62f,.62f,anim*.85f); }
     txtW=tr-tx-colW-28;
-    cy=y+20;
+    cy=cardY+20;
     // A MARCA: o que esta tocando (com o equalizador), a escolha anterior e a
     // automatica. Texto espacado no acento, e nao pilula: a pilula cheia era a
     // forma mais pesada da linha e o olho ia nela antes da qualidade.
