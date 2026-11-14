@@ -95,13 +95,10 @@ static int folhaRelogio; // Latched at opening, retained through closing.
 #define FOLHA_ILHA_CAB   64.0f   // plrilha.c: CAB_H (a linha da hora)
 #define FOLHA_ILHA_BASE  48.0f   // margem de baixo = a de cima
 #define FOLHA_ILHA_PAD   22.0f   // do cabecalho ao kicker, como os Episodios
-// CABECALHO COMPACTO (dono, 06/10: "subir os botoes para o lado do titulo e
-// as abas em cima, para o cabecalho nao ficar tao grande"). Tres faixas, de
-// cima: a linha do kicker (contexto, ou a ajuda do botao em foco), a linha do
-// titulo com TODOS os botoes a direita (nunca mais desce uma linha, ver
-// medirCabecalho) e as abas de addon. A lista comeca logo abaixo das abas.
-#define FOLHA_CAB_Y     24.0f  // top inset shared by the search control and addon chips
-#define FOLHA_ABAS_Y    24.0f  // official Nuvio layout: addon chips are the first row
+// OFFICIAL NUVIO TV SELECTOR: the addon chips are the first row, followed
+// directly by provider headings and individual stream cards. Search sits just
+// outside the panel, aligned with the chip row and expanding to the left.
+#define FOLHA_ABAS_Y    24.0f  // top inset of the official addon-chip row
 #define FOLHA_ABAS_H    56.0f
 #define FOLHA_ABA_H     44.0f  // a pilula de cada aba, dentro da faixa
 #define FOLHA_TOPO     (FOLHA_ABAS_Y + FOLHA_ABAS_H + 24.0f + folhaOY + folhaDica)
