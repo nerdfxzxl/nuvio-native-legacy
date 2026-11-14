@@ -3574,7 +3574,7 @@ static int botaoLigado(int b) {
   return (b == BT_SO_MP4 && soMp4) || (b == BT_CACHE && soCache) || (b == BT_DUB && soDub);
 }
 static const char *iconeBotao(int b) {
-  return b == BT_RECARREGAR ? (addons_ocupado() ? "aj_loader" : "aj_rotate-cw") : b == BT_RECARREGAR_FONTE
+  return b == BT_RECARREGAR ? "aj_rotate-cw" : b == BT_RECARREGAR_FONTE
       ? "pl_rotate-ccw" : b == BT_FECHAR ? "aj_x" : NULL;
 }
 static char provedores[13][96];
