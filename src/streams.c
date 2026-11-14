@@ -5843,7 +5843,7 @@ static void chipFolha(GfxRect r, const char *rot, float rotW, const char *icone,
 //      kicker explica o que ele faz em qualquer caso.
 // No degrau 2 o filtro ligado continua no acento, entao "qual esta ativo" se
 // le sem foco. Se nem os discos couberem (titulo enorme), o titulo e cortado.
-static float bwCab[BT_N], rotWCab[BT_N], titMaxCab, gapCab;
+static float bwCab[BT_N], rotWCab[BT_N], titMaxCab, gapCab, buscaLarguraCab;
 static const char *rotCab[BT_N], *icoCab[BT_N];
 static int nivelCab;
 static const char *iconeFiltro(int b) {
@@ -5854,9 +5854,14 @@ static void medirCabecalho(void) {
   float rw = FOLHA_W - FOLHA_PAD_E - FOLHA_PAD_D;
   float tit = (float)txt_linha(TXT_ILHA_TITULO, "Fontes", 255, 255, 255, 255).w;
   int buscaExpandida = grupo == -2 || folhaBusca[0] != 0;
-  float reservado = buscaExpandida ? 248.0f : FOLHA_TXT + 64.0f + tit;
-  float livre = rw - reservado - 24.0f, soma = 0;
   int nbt = nBotoes();
+  float minBotoes = nbt * 40.0f + (nbt - 1) * 4.0f;
+  // The expanded search field must yield width to the action row on narrow
+  // layouts; otherwise the two independently measured regions can overlap.
+  buscaLarguraCab = buscaExpandida ? fminf(248.0f, rw - minBotoes - 24.0f) : FOLHA_CHIP_H;
+  if (buscaLarguraCab < FOLHA_CHIP_H) buscaLarguraCab = FOLHA_CHIP_H;
+  float reservado = buscaExpandida ? buscaLarguraCab : FOLHA_TXT + 64.0f + tit;
+  float livre = rw - reservado - 24.0f, soma = 0;
   for (nivelCab = 0; nivelCab < 3; nivelCab++) {
     float pad = nivelCab == 0 ? 20.0f : 14.0f;
     gapCab = nivelCab < 2 ? FOLHA_CHIP_GAP : 8.0f;
@@ -5881,11 +5886,10 @@ static void medirCabecalho(void) {
   // The playback-only seventh action must also fit beside the minimum
   // title on narrow phones. Preserve chip height/touch area; trim only
   // horizontal padding and gaps after all labels have become icons.
-  if (nivelCab == 2 && soma > rw - FOLHA_TXT - 24.0f - 80.0f) {
+  if (nivelCab == 2 && soma > livre) {
     float disco;
     gapCab = 4.0f;
-    disco = fminf(FOLHA_CHIP_H,
-        (rw - FOLHA_TXT - 24.0f - 80.0f - (nbt - 1) * gapCab) / nbt);
+    disco = (livre - (nbt - 1) * gapCab) / nbt;
     if (disco < 1.0f) disco = 1.0f;
     soma = (nbt - 1) * gapCab;
     for (int i = 0; i < nbt; i++) { bwCab[i] = disco; soma += disco; }
@@ -6277,9 +6281,11 @@ static void corpoFolha(float x, float w, float anim, Uint32 agora, int ilha) {
   // Search sits on the far left of the header, aligned with the stream list.
   // Focusing expands it; opening the shared keyboard requires an explicit OK.
   { int buscaExpandida = grupo == -2 || folhaBusca[0] != 0;
-    GfxRect sr = { lx, oy + FOLHA_CAB_Y, buscaExpandida ? 248.0f : FOLHA_CHIP_H, FOLHA_CHIP_H };
+    float iconeW = FOLHA_CHIP_H * .42f;
+    GfxRect sr = { lx, oy + FOLHA_CAB_Y, buscaExpandida ? buscaLarguraCab : FOLHA_CHIP_H, FOLHA_CHIP_H };
     chipFolha(sr, buscaExpandida ? (folhaBusca[0] ? folhaBusca : "Buscar fontes") : NULL,
-              buscaExpandida ? 190.0f : 0.0f, "aj_search", grupo == -2, 0, anim);
+              buscaExpandida ? fmaxf(0.0f, buscaLarguraCab - iconeW - 26.0f) : 0.0f,
+              "aj_search", grupo == -2, 0, anim);
     if (ptr) ponteiro_alvo(sr.x, sr.y, sr.w, sr.h, ponteiroFolhaBusca, NULL, 0, 0);
     if (!buscaExpandida)
       txt_desenhar_alpha(txt_linha_corta(TXT_ILHA_TITULO,"Fontes",243,242,239,255,titMaxCab),
