@@ -100,7 +100,7 @@ static int folhaRelogio; // Latched at opening, retained through closing.
 // outside the panel, aligned with the chip row and expanding to the left.
 #define FOLHA_ABAS_Y    24.0f  // top inset of the official addon-chip row
 #define FOLHA_ABAS_H    56.0f
-#define FOLHA_ABA_H     44.0f  // a pilula de cada aba, dentro da faixa
+#define FOLHA_ABA_H     48.0f  // roomier focus target, closer to official TV chips
 #define FOLHA_TOPO     (FOLHA_ABAS_Y + FOLHA_ABAS_H + 24.0f + folhaOY + folhaDica)
 static void medirCabecalho(void);
 #define FOLHA_LINHA_H  112.0f  // card sem marca e sem arquivo
@@ -783,6 +783,8 @@ static float rolagem, velRol;
 // so drawing and navigation still visit only visible rows.
 static char folhaBusca[TECLADO_MAX + 1];
 static float buscaAnim;
+// TV addon strip: All stays pinned while provider chips glide underneath it.
+static float provChipOffset, provChipVel, provChipTarget;
 
 void stream_lista_acrescentar(const Stream *l, int qtd, int ordemAddon) {
   int i, k = 0, focoIdx = -1, linhaAntes = -1, total;
@@ -4887,6 +4889,7 @@ void stream_folha_abrir(void) {
   selosAnimFoco = -1; // A fresh selector opening gets one badge-strip pass.
   folhaBusca[0] = 0;
   buscaAnim = 0.0f;
+  provChipOffset = provChipVel = provChipTarget = 0.0f;
   // The official selector has no legacy quick-filter toolbar.
   soMp4 = soCache = soDub = 0;
   atomic_store(&escolhaAndroid, -1);
@@ -5352,6 +5355,8 @@ void stream_folha_evento(const SDL_Event *e) {
   if (grupo==1 && k==SDLK_RIGHT) { grupo=0; filtroSelecionar(0); foco=0; }
   else if (grupo==1 && k==SDLK_LEFT) { grupo=-2; filtroSelecionar(0); foco=0; rolagem=0; velRol=0; }
   else if (grupo==-2 && k==SDLK_RIGHT) { grupo=1; foco=0; }
+  else if (grupo==0 && k==SDLK_LEFT && filtro==0) { grupo=-1; foco=0; }
+  else if (grupo==-1 && k==SDLK_RIGHT) { grupo=0; filtroSelecionar(0); foco=0; }
   else if (grupo>=0 && (k==SDLK_LEFT || k==SDLK_RIGHT)) {
     int novo=filtro+(k==SDLK_RIGHT?1:-1);
     if(novo < 0) novo=0;
@@ -5405,7 +5410,8 @@ void stream_folha_atualizar(float dt, Uint32 agora) {
   medirCabecalho();
   if (aberta || anim > 0.001f) folhaGeometria();
   anim=anim_mola(anim,aberta?1:0,dt,NV_MOLA_TELA);
-  buscaAnim=anim_mola(buscaAnim,(aberta && grupo==-2)?1.0f:0.0f,dt,NV_MOLA_TELA);
+  buscaAnim=anim_mola(buscaAnim,(aberta && (grupo==-2 || folhaBusca[0]))?1.0f:0.0f,dt,NV_MOLA_TELA);
+  provChipOffset=anim_mola2(&provChipVel,provChipOffset,provChipTarget,dt,NV_MOLA2_SCROLL);
   if(!aberta) {
     if (st_dono() == ST_BUSCA) st_fechar(ST_BUSCA);
     detAberto=0; if (ptAberto) partes_cancelar(); ptAberto=0; ctxhold_cancelar(&folhaHold);
@@ -6171,7 +6177,7 @@ static void desenharBuscaExterna(GfxRect c, float a) {
     gfx_icone((GfxRect){r.x + 14.0f, r.y + (r.h - g) * .5f, g, g},
               "aj_search", tinta / 255.0f, tinta / 255.0f, tinta / 255.0f, a);
     if (buscaAnim > .01f) {
-      const char *rot = folhaBusca[0] ? folhaBusca : "Buscar fontes";
+      const char *rot = folhaBusca[0] ? folhaBusca : "Search streams";
       TxtLinha t = txt_linha_corta(TXT_HERO_META, rot, tinta, tinta, tinta, 255,
                                    fmaxf(0.0f, r.w - 58.0f));
       txt_desenhar_alpha(t, r.x + 14.0f + g + 10.0f,
@@ -6301,47 +6307,51 @@ static void corpoFolha(float x, float w, float anim, Uint32 agora, int ilha) {
     }
     sx=lx-2.0f+FOLHA_ABA_H+10.0f;
     float maxW=rw-(sx-(lx-2.0f));
-    int ini=0; float soma;
-    for(;;){ soma=2*pin; for(int i=ini;i<=filtro&&i<nProvedores;i++) soma+=iw[i]+6.0f;
-      if(soma<=maxW||ini>=filtro) break; ini++; }
-    int fim=ini;
-    while(fim<nProvedores && soma+iw[fim]+6.0f<=maxW){ soma+=iw[fim]+6.0f; fim++; }
-    if(fim==ini) fim=ini+1;
+    // Pin All beside Refresh. Only addon chips belong to the horizontal strip.
+    float allW=iw[0]-6.0f, providerX=sx+allW+6.0f;
+    float providerW=maxW-allW-6.0f, providerTotal=0.0f, providerOffset=0.0f;
+    GfxRect allR={sx,segY+pin,allW,FOLHA_ABA_H};
+    if (providerW < 0.0f) providerW=0.0f;
+    for(int i=1;i<nProvedores;i++) providerTotal+=iw[i]+6.0f;
+    if(ptr) ponteiro_alvo(allR.x,allR.y,allR.w,allR.h,NULL,ponteiroFolhaFiltro,0,0);
+    chipFolha(allR,rot[0],(float)nome[0].w,NULL,grupo==0&&filtro==0,filtro==0,anim);
 #ifdef NV_TOUCH_UI
     if(layout_modo_mobile()) {
-      float total=2*pin,antes=0;
-      for(int i=0;i<nProvedores;i++){ total+=iw[i]+6.0f; if(i<ini) antes+=iw[i]+6.0f; }
-      if(!toquerol_livre(&toqueFontesAbas)) toqueFontesAbasOffset=antes;
-      toquerol_vincular(&toqueFontesAbas,(GfxRect){sx,segY,maxW,FOLHA_ABAS_H},gfx_escala(),
-                        0,total-6.0f-maxW,0,&toqueFontesAbasOffset);
-      ini=0; fim=nProvedores;
-      gfx_recorte(sx,segY,maxW,FOLHA_ABAS_H);
+      if(!toquerol_livre(&toqueFontesAbas)) toqueFontesAbasOffset=0.0f;
+      toquerol_vincular(&toqueFontesAbas,(GfxRect){providerX,segY,providerW,FOLHA_ABAS_H},gfx_escala(),
+                        0,fmaxf(0.0f,providerTotal-6.0f-providerW),0,&toqueFontesAbasOffset);
+      providerOffset=toqueFontesAbasOffset;
+    } else
+#endif
+    {
+      float start=0.0f, end=0.0f, maxOffset=fmaxf(0.0f,providerTotal-6.0f-providerW);
+      if(filtro>0 && filtro<nProvedores) {
+        for(int i=1;i<filtro;i++) start+=iw[i]+6.0f;
+        end=start+iw[filtro]-6.0f;
+        if(end-provChipOffset>providerW) provChipTarget=end-providerW;
+        else if(start<provChipOffset) provChipTarget=start;
+      } else provChipTarget=0.0f;
+      if(provChipTarget<0.0f) provChipTarget=0.0f;
+      if(provChipTarget>maxOffset) provChipTarget=maxOffset;
+      providerOffset=provChipOffset;
     }
-#endif
-    { float tabX=sx;
-#ifdef NV_TOUCH_UI
-      if(layout_modo_mobile()) tabX-=toqueFontesAbasOffset;
-#endif
-      for(int i=ini;i<fim;i++){
-        int qidx=i, sel=i==filtro;
-        GfxRect r={tabX,segY+pin,iw[qidx]-6.0f,FOLHA_ABA_H};
-        if(ptr) {
-#ifdef NV_TOUCH_UI
-          if(layout_modo_mobile()) {
-            float l=fmaxf(r.x,sx), d=fminf(r.x+r.w,sx+maxW);
+    if(providerW>0.0f) {
+      gfx_recorte(providerX,segY,providerW,FOLHA_ABAS_H);
+      {
+        float tabX=providerX-providerOffset;
+        for(int i=1;i<nProvedores;i++) {
+          GfxRect r={tabX,segY+pin,iw[i]-6.0f,FOLHA_ABA_H};
+          int sel=i==filtro;
+          if(ptr) {
+            float l=fmaxf(r.x,providerX), d=fminf(r.x+r.w,providerX+providerW);
             if(d>l) ponteiro_alvo(l,r.y,d-l,r.h,NULL,ponteiroFolhaFiltro,i,0);
-          } else
-#endif
-            ponteiro_alvo(r.x,r.y,r.w,r.h,NULL,ponteiroFolhaFiltro,i,0);
+          }
+          chipFolha(r,rot[i],(float)nome[i].w,NULL,grupo==0&&sel,sel,anim);
+          tabX+=iw[i]+6.0f;
         }
-        chipFolha(r,rot[qidx],(float)nome[qidx].w,NULL,grupo==0&&sel,sel,anim);
-        tabX+=iw[qidx]+6.0f;
       }
+      gfx_sem_recorte();
     }
-#ifdef NV_TOUCH_UI
-    if(layout_modo_mobile()) gfx_sem_recorte();
-#endif
-  }
   // The list comes in from the side the new tab is on, fading up.
   const float animLista=anim, dxLista=trocaDir*28.0f*(1-trocaEase(agora));
   { float e=trocaEase(agora); anim*=.3f+.7f*e; lx+=dxLista; tx+=dxLista; tr+=dxLista; }
