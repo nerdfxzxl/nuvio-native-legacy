@@ -28,7 +28,10 @@
 #include "anim.h"
 #include "layout.h"
 #include "ilha.h"
-#include "ajustes.h"   /* ajustes_qualidade: o teto de "Qualidade maxima" */
+#include "ajustes.h"
+#ifdef NV_ANDROID
+#include "android.h"
+#endif   /* ajustes_qualidade: o teto de "Qualidade maxima" */
 #include <stdio.h>
 #include <string.h>
 #include <strings.h>
@@ -4709,6 +4712,9 @@ void stream_folha_abrir(void) {
   atomic_store(&escolhaAndroid, -1);
   atomic_store(&cancelarAndroid, 0);
   atomic_store(&androidSelectorAtivo, 1);
+#ifdef NV_ANDROID
+  if (ajustes_stream_selector() == 0) android_stream_selector_mostrar();
+#endif
   { float ix, iy, iw, ih;
     folhaRelogio = !player_aberto() && ajustes_relogio_ligado() && ilha_rect(&ix, &iy, &iw, &ih); }
   recarregarFonteConfirmacao = 0;
