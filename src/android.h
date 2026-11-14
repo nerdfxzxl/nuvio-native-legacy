@@ -12,8 +12,6 @@ void android_limpar_cache(void);
 // Saved device mode: changes the existing Activity, without recreating native state.
 void android_interface_modo(int mobile);
 // Show/hide the Official Nuvio stream selector above the SDL surface.
-void android_stream_selector_mostrar(void);
-void android_stream_selector_ocultar(void);
 // Salva uma copia local do registro pelo seletor de arquivos do Android.
 // As mensagens ja vem traduzidas; nao envia nem altera o registro original.
 void android_baixar_registro(const char *arquivo, const char *sucesso, const char *falha);
