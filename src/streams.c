@@ -6303,6 +6303,7 @@ static void corpoFolha(float x, float w, float anim, Uint32 agora, int ilha) {
       }
       gfx_sem_recorte();
     }
+  }
   // The list comes in from the side the new tab is on, fading up.
   const float animLista=anim, dxLista=trocaDir*28.0f*(1-trocaEase(agora));
   { float e=trocaEase(agora); anim*=.3f+.7f*e; lx+=dxLista; tx+=dxLista; tr+=dxLista; }
