@@ -3986,7 +3986,7 @@ static void textoAddonMedirCompleto(TextoAddon *t, const Stream *s) {
     t->descMedida = 1;
   }
 }
-static const TextoAddon *textoAddonDa(int i) {
+static TextoAddon *textoAddonDa(int i) {
   static TextoAddon reserva;
   if (textoAddonCap < n) {
     TextoAddon *t = realloc(textoAddon, (size_t)n * sizeof *t);
