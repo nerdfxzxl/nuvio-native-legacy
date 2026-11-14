@@ -58,7 +58,7 @@
 #include "plrilha.h"
 #include "partes.h"
 #include "ctxlista.h"
-#include "teclado.h"
+#include "sistexto.h"
 #define NV_ESCALA_TELA   // o arquivo inteiro mede pela tela virtual (escala.h)
 #include "escala.h"
 
@@ -5278,21 +5278,9 @@ static void okNaLinha(void) {
 }
 
 void stream_folha_evento(const SDL_Event *e) {
-  // The shared keyboard is modal; its result is consumed here before the
-  // underlying D-pad list can react to the same key.
-  if (teclado_aberto()) {
-    teclado_evento(e);
-    { int resultado = teclado_resultado();
-      if (resultado == TECLADO_PRONTO) {
-        snprintf(folhaBusca, sizeof folhaBusca, "%s", teclado_texto());
-        grupo = -2; foco = 0; rolagem = 0; velRol = 0;
-        montar(automaticaDaFolha());
-      } else if (resultado == TECLADO_CANCELOU) {
-        grupo = -2;
-      }
-    }
-    return;
-  }
+  // The Android IME owns text entry directly. Its full-value events are read
+  // in stream_folha_atualizar; never open the app's separate keyboard modal.
+  if (st_evento(e)) return;
   if (e->type == SDL_WINDOWEVENT && (e->window.event == SDL_WINDOWEVENT_FOCUS_LOST ||
       e->window.event == SDL_WINDOWEVENT_HIDDEN)) recarregarFonteConfirmacao = 0;
   if (aberta && recarregarFonteConfirmacao && e->type == SDL_KEYUP) {
@@ -5401,12 +5389,27 @@ void stream_folha_evento(const SDL_Event *e) {
 }
 void stream_folha_atualizar(float dt, Uint32 agora) {
   int nf;
-  if (aberta && teclado_aberto()) teclado_atualizar(dt, agora);
+  // ST_TEXTO is the complete current value from Android's system IME. Apply
+  // every change immediately so filtering never waits for the keyboard's Done.
+  if (aberta && st_dono() == ST_BUSCA) {
+    char texto[TECLADO_MAX + 1];
+    int r = st_ler(ST_BUSCA, texto, sizeof texto);
+    if (r == ST_TEXTO || r == ST_FIM) {
+      snprintf(folhaBusca, sizeof folhaBusca, "%s", texto);
+      grupo = -2; foco = 0; rolagem = 0; velRol = 0;
+      montar(automaticaDaFolha());
+    } else if (r == ST_CANCELOU) {
+      grupo = -2; // Keep the expanded search control and its last value.
+    }
+  }
   medirCabecalho();
   if (aberta || anim > 0.001f) folhaGeometria();
   anim=anim_mola(anim,aberta?1:0,dt,NV_MOLA_TELA);
   buscaAnim=anim_mola(buscaAnim,(aberta && grupo==-2)?1.0f:0.0f,dt,NV_MOLA_TELA);
-  if(!aberta) { detAberto=0; if (ptAberto) partes_cancelar(); ptAberto=0; ctxhold_cancelar(&folhaHold); }
+  if(!aberta) {
+    if (st_dono() == ST_BUSCA) st_fechar(ST_BUSCA);
+    detAberto=0; if (ptAberto) partes_cancelar(); ptAberto=0; ctxhold_cancelar(&folhaHold);
+  }
   ptAnim=anim_mola(ptAnim,ptAberto?1:0,dt,NV_MOLA_TELA);
   if (ptAberto) {
     int e = partes_resultado(NULL);
@@ -5558,14 +5561,14 @@ int stream_folha_escolheu(int *out) {
 // debaixo da mao. Clicar fora do painel fecha, como o Voltar.
 static void ponteiroFolhaBotao(int i, int b) { (void)b; grupo = -1; foco = i; }
 static void abrirBuscaFolha(void) {
-  teclado_abrir_com("Buscar fontes", "Título, addon, arquivo ou qualidade", TECLADO_MAX,
-                    "abcdefghijklmnopqrstuvwxyz0123456789 .-_[]()", folhaBusca);
-  teclado_aceitar_utf8(1);
+  // Android's invisible EditText launches the native TV IME in place; the
+  // search chip remains the visible field and receives live text updates.
+  st_ime_abrir(ST_BUSCA, folhaBusca, TECLADO_MAX);
 }
 static void ponteiroFolhaBusca(int i, int b) {
   (void)i; (void)b;
-  if (grupo == -2 || folhaBusca[0]) abrirBuscaFolha();
-  else grupo = -2;
+  // Pointer/tap focuses and expands only. The keyboard opens on explicit OK.
+  grupo = -2;
 }
 static void ponteiroFolhaDica(int i, int b) { (void)i; (void)b; grupo = 2; }
 static void ponteiroFolhaLinha(int row, int b) { (void)b; grupo = 1; foco = row; }
