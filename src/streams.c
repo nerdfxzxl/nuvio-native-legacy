@@ -3503,6 +3503,10 @@ static int automaticoDaFolhaModoCalcular(void) {
 
 
 static int grupo, filtro, soMp4, soCache, soDub;
+// Only the currently focused stream may animate its badge strip.
+static int selosAnimFoco = -1;
+static unsigned selosAnimGeracao;
+static Uint32 selosAnimDesde;
 
 // BOTOES DO CABECALHO. "Sem HDR" so existe onde ha o que renegociar (webOS);
 // ver o bloco "TELA PRETA COM AUDIO TOCANDO" em video.h. Oferecer um botao que
@@ -5626,6 +5630,25 @@ static float selosDesenhar(const unsigned short *ids, int n, float x, float y, f
   }
   return x > x0 ? x - x0 - gap : 0.0f;
 }
+static float selosDeslocamento(int indice, float largura, float viewport, Uint32 agora) {
+  float excesso = largura - viewport;
+  const float velocidade = 42.0f; // px/s: deliberate, readable movement.
+  const float pausa = 0.55f;
+  float viagem, ciclo, t;
+  if (indice < 0 || excesso <= 1.0f || ajustes_animacoes_reduzidas()) return 0.0f;
+  viagem = excesso / velocidade;
+  ciclo = pausa * 2.0f + viagem * 2.0f;
+  if (ciclo <= 0.0f) return 0.0f;
+  t = fmodf((float)(agora - selosAnimDesde) * 0.001f, ciclo);
+  if (t < pausa) return 0.0f;
+  t -= pausa;
+  if (t < viagem) return t * velocidade;
+  t -= viagem;
+  if (t < pausa) return excesso;
+  t -= pausa;
+  return excesso - fminf(excesso, t * velocidade);
+}
+
 static float desenharSelosPacote(const Stream *s, float x, float y, float maxW, float h, float a,
                                  float tom, int semResolucao) {
   return selosDesenhar(s->selosPacote, (int)s->nSelosPacote, x, y, maxW, h, a, tom, semResolucao, 0);
@@ -6091,6 +6114,13 @@ static void corpoFolha(float x, float w, float anim, Uint32 agora, int ilha) {
   if (folhaRelogio) ilhaR = (GfxRect){x, NV_ILHA_Y, w, folhaBase + 16.0f - NV_ILHA_Y};
   else if (ilha) plrilha_rect(&ilhaR);
   int ptr = aberta && anim > .5f && ponteiro_ativo();
+  { int indiceFoco = grupo == 1 ? filtrado(foco) : -1;
+    if (indiceFoco != selosAnimFoco || selosAnimGeracao != listaGeracao) {
+      selosAnimFoco = indiceFoco;
+      selosAnimGeracao = listaGeracao;
+      selosAnimDesde = agora;
+    }
+  }
 #ifdef NV_TOUCH_UI
   toquerol_vincular(&toqueFontes, (GfxRect){x, FOLHA_TOPO, w, areaLista()},
                    gfx_escala(), 0, alturaTotal - areaLista() + 40, 1, &rolagem);
@@ -6215,7 +6245,11 @@ static void corpoFolha(float x, float w, float anim, Uint32 agora, int ilha) {
       { float e=trocaEase(agora);
         pillX=pillDeX+(tx0-pillDeX)*e; pillW=pillDeW+(tw-pillDeW)*e; }
       { GfxRect r={lx+pillX,segY+pin,pillW,FOLHA_ABA_H};
-        if(grupo==0) focoFonte(r,.5f,anim);
+        if(grupo==0) {
+          focoFonte(r,.5f,anim);
+          // Keep selected state in the fill; the white 2px ring communicates D-pad focus.
+          gfx_anel_fora(r,.5f,0.0f,2.0f,1.0f,1.0f,1.0f,.96f*anim);
+        }
         else if (ajustes_vidro()) gfx_cor(r,.5f,1,1,1,.12f*anim); else gfx_cor(r,.5f,.204f,.212f,.243f,anim); } }
     for(int i=ini;i<fim;i++){
       int qidx=i+1;
@@ -6502,8 +6536,27 @@ static void corpoFolha(float x, float w, float anim, Uint32 agora, int ilha) {
       // cada selo na peca da cor do seu grupo; desligada (o padrao do Glass
       // UI), todos na mesma tinta branca.
       if(selosPacoteVisiveis((Stream *)s)) {
-        lw=desenharSelosPacote(s,tx0,cy,txtW0-mpW,FOLHA_SELO_H,
-                               ajustes_selos_coloridos()?anim*(sel?1.0f:.85f):anim,t,1);
+        float badgeMax = txtW0 - mpW;
+        if (badgeMax < 0.0f) badgeMax = 0.0f;
+        if (sel) {
+          float badgeTotal = selosDesenhar(s->selosPacote, (int)s->nSelosPacote,
+                                           tx0, cy, 1000000.0f, FOLHA_SELO_H, 1.0f, t, 1, 1);
+          if (badgeTotal > badgeMax) {
+            float desloc = selosDeslocamento(i, badgeTotal, badgeMax, agora);
+            float clipY = FOLHA_TOPO - (rolagem > 1.0f ? 0.0f : 8.0f);
+            gfx_recorte(tx0, cy - 3.0f, badgeMax, FOLHA_SELO_H + 6.0f);
+            lw = selosDesenhar(s->selosPacote, (int)s->nSelosPacote,
+                               tx0 - desloc, cy, 1000000.0f, FOLHA_SELO_H,
+                               ajustes_selos_coloridos()?anim:anim, t, 1, 0);
+            gfx_recorte(x, clipY, w, folhaBase - clipY);
+          } else {
+            lw=desenharSelosPacote(s,tx0,cy,badgeMax,FOLHA_SELO_H,
+                                   ajustes_selos_coloridos()?anim*(sel?1.0f:.85f):anim,t,1);
+          }
+        } else {
+          lw=desenharSelosPacote(s,tx0,cy,badgeMax,FOLHA_SELO_H,
+                                 ajustes_selos_coloridos()?anim*.85f:anim,t,1);
+        }
         // O Crave (servico canadense) nao esta em nenhum dos dois pacotes
         // embutidos: sai pela arte antiga para nao ser perdido.
         if(selospacote_ativo()<0 && (logos&badges_bit("p-crave"))) {
