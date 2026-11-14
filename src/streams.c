@@ -859,7 +859,7 @@ typedef struct {
   int index, addonOrdem, altura, dolbyVision, dolbyAtmos, mp4, fileIdx, temUrl;
   unsigned long long badges, tamanhoBytes;
   long tamanhoMB;
-  char rotulo[192], provedor[96], descricao[2048], arquivo[512];
+  char rotulo[192], provedor[96], addonChave[FONTEFALHA_CHAVE], descricao[2048], arquivo[512];
   char infoHash[48], audioIdiomas[512], legendaIdiomas[512];
 } StreamUiItem;
 
@@ -959,6 +959,7 @@ char *stream_ui_snapshot_json(void) {
     itens[k].addonOrdem = s->addonOrdem;
     snprintf(itens[k].rotulo, sizeof itens[k].rotulo, "%s", s->rotulo);
     snprintf(itens[k].provedor, sizeof itens[k].provedor, "%s", s->provedor);
+    snprintf(itens[k].addonChave, sizeof itens[k].addonChave, "%s", s->addonChave);
     snprintf(itens[k].descricao, sizeof itens[k].descricao, "%s", s->descricao);
     snprintf(itens[k].arquivo, sizeof itens[k].arquivo, "%s", s->arquivo);
     snprintf(itens[k].infoHash, sizeof itens[k].infoHash, "%s", s->infoHash);
@@ -989,6 +990,7 @@ char *stream_ui_snapshot_json(void) {
       itens[i].badges, itens[i].tamanhoBytes, itens[i].tamanhoMB);
     streamUiJsonString(&b, itens[i].rotulo);
     streamUiJsonRaw(&b, ",\"provider\":"); streamUiJsonString(&b, itens[i].provedor);
+    streamUiJsonRaw(&b, ",\"addonKey\":"); streamUiJsonString(&b, itens[i].addonChave);
     streamUiJsonRaw(&b, ",\"description\":"); streamUiJsonString(&b, itens[i].descricao);
     streamUiJsonRaw(&b, ",\"filename\":"); streamUiJsonString(&b, itens[i].arquivo);
     streamUiJsonRaw(&b, ",\"infoHash\":"); streamUiJsonString(&b, itens[i].infoHash);
