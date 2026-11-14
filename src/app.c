@@ -5866,6 +5866,7 @@ void app_atualizar(float dt, Uint32 agora) {
     // player_definir_episodio.
     int doInicio = detail_pediu_do_inicio();
     int escolherFonteInicial = detail_pediu_escolher_fonte_inicial();
+    int retomarDireto = detail_pediu_retomar_direto();
     if (escolherFonteInicial && !doInicio) pedirFolhaNoPlay = 1;
     if ((detail_pediu_reproduzir() || doInicio) && aguardandoFonte != 2) {
       marco("abrir: reproduzir pedido");
@@ -6080,7 +6081,7 @@ void app_atualizar(float dt, Uint32 agora) {
       // vivo, e la a escolha ja e feita pela playlist que responde.
       //
       // #667: a remembered source sets the sheet's focus, never consent to play.
-      if ((ajustes_fonte_manual() || pedirFolhaNoPlay) && stream_n() > 0) {
+      if (((ajustes_fonte_manual() && !retomarDireto) || pedirFolhaNoPlay) && stream_n() > 0) {
         pedirFolhaNoPlay = 0;
         aguardandoFonte = 0;
         folhaParaTocar = 1;
