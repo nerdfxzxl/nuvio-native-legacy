@@ -5357,7 +5357,7 @@ void stream_folha_evento(const SDL_Event *e) {
   else if (grupo==-2 && k==SDLK_RIGHT) { grupo=1; foco=0; }
   else if (grupo>=0 && (k==SDLK_LEFT || k==SDLK_RIGHT)) {
     int novo=filtro+(k==SDLK_RIGHT?1:-1);
-    if(novo < -1) novo=-1;
+    if(novo < 0) novo=0;
     if(novo>=nProvedores) novo=nProvedores-1;
     filtroSelecionar(novo);
     foco=0;rolagem=0;velRol=0;
@@ -5587,7 +5587,7 @@ static void ponteiroFolhaFiltro(int i, int b) {
   toquerol_limpar(&toqueFontes);
 #endif
   (void)b;
-  if (i < -1 || i >= nProvedores) return;
+  if (i < 0 || i >= nProvedores) return;
   filtroSelecionar(i); foco = 0; rolagem = 0; grupo = 1;
 }
 static void ponteiroFolhaFora(int a, int b) { (void)a; (void)b; aberta = 0; }
@@ -6280,9 +6280,9 @@ static void corpoFolha(float x, float w, float anim, Uint32 agora, int ilha) {
     TxtLinha nome[14];
     char rot[14][128];
     folhaDados();
-    for(int i=-1;i<nProvedores;i++){
-      int qidx=i+1;
-      const char *base=i<0?"Onde ver":i?provedores[i]:"Todos";
+    for(int i=0;i<nProvedores;i++){
+      int qidx=i;
+      const char *base=i?provedores[i]:"Todos";
       const char *status=contagemProvedorAba(i);
       if(status) snprintf(rot[qidx],sizeof rot[qidx],"%s %s",base,status);
       else snprintf(rot[qidx],sizeof rot[qidx],"%s",base);
@@ -6304,16 +6304,16 @@ static void corpoFolha(float x, float w, float anim, Uint32 agora, int ilha) {
     }
     sx=lx-2.0f+FOLHA_ABA_H+10.0f;
     float maxW=rw-(sx-(lx-2.0f));
-    int ini=-1; float soma;
-    for(;;){ soma=2*pin; for(int i=ini;i<=filtro&&i<nProvedores;i++) soma+=iw[i+1]+6.0f;
+    int ini=0; float soma;
+    for(;;){ soma=2*pin; for(int i=ini;i<=filtro&&i<nProvedores;i++) soma+=iw[i]+6.0f;
       if(soma<=maxW||ini>=filtro) break; ini++; }
     int fim=ini;
-    while(fim<nProvedores && soma+iw[fim+1]+6.0f<=maxW){ soma+=iw[fim+1]+6.0f; fim++; }
+    while(fim<nProvedores && soma+iw[fim]+6.0f<=maxW){ soma+=iw[fim]+6.0f; fim++; }
     if(fim==ini) fim=ini+1;
 #ifdef NV_TOUCH_UI
     if(layout_modo_mobile()) {
       float total=2*pin,antes=0;
-      for(int i=-1;i<nProvedores;i++){ total+=iw[i+1]+6.0f; if(i<ini) antes+=iw[i+1]+6.0f; }
+      for(int i=0;i<nProvedores;i++){ total+=iw[i]+6.0f; if(i<ini) antes+=iw[i]+6.0f; }
       if(!toquerol_livre(&toqueFontesAbas)) toqueFontesAbasOffset=antes;
       toquerol_vincular(&toqueFontesAbas,(GfxRect){sx,segY,maxW,FOLHA_ABAS_H},gfx_escala(),
                         0,total-6.0f-maxW,0,&toqueFontesAbasOffset);
@@ -6326,7 +6326,7 @@ static void corpoFolha(float x, float w, float anim, Uint32 agora, int ilha) {
       if(layout_modo_mobile()) tabX-=toqueFontesAbasOffset;
 #endif
       for(int i=ini;i<fim;i++){
-        int qidx=i+1, sel=i==filtro;
+        int qidx=i, sel=i==filtro;
         GfxRect r={tabX,segY+pin,iw[qidx]-6.0f,FOLHA_ABA_H};
         if(ptr) {
 #ifdef NV_TOUCH_UI
