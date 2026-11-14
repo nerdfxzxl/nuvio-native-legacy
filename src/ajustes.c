@@ -7628,6 +7628,8 @@ static void focarOpcao(int op) {
 // separado de proposito: as duas perguntas sao diferentes e juntas viram um
 // paragrafo que ninguem le do sofa.
 static const char *ajudaOpcaoBase(int op) {
+  if (op == AJ_STREAM_SELECTOR)
+    return "Escolhe a tela de seleção de fontes: Nuvio oficial ou a interface original Legacy.";
   if (ajLegendaPrincipal(op) || op == AJ_LEG1_RESTAURAR)
     return "Tamanho, fonte, cores, fundo e posição das legendas.";
   if (op >= AJ_LEG2_FONTE && op <= AJ_LEG2_RESTAURAR)
