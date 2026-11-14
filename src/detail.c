@@ -324,6 +324,8 @@ static int  pedReproduzir = 0, pedMarcar = 0, pedFontes = 0;
 // O Play inicial e o OK longo do botao primario pedem a folha no player.
 // O OK longo tambem vale em Retomar; o OK curto de Retomar continua automatico.
 static int  pedEscolherFonteInicial = 0;
+// A short Resume must bypass the manual-source preference and use the last source.
+static int  pedRetomarDireto = 0;
 // O EPISODIO TRAVADO COM O PEDIDO DE FONTES (#513). A folha rouba o foco do
 // teclado: uma seta na folha nao chega a detail_evento, mas o menu do
 // episodio e as animacoes podem mover `foco` — e a escolha na folha lia
@@ -3109,6 +3111,7 @@ static void detail_evento_(const SDL_Event *e) {
       if (acao == ACAO_PRIMARIO) {
         pedReproduzir = 1;
         pedEscolherFonteInicial = dur >= NV_HOLD_MS || !temInicio();
+        pedRetomarDireto = !pedEscolherFonteInicial;
 
       } else if (acao == ACAO_INICIO) {
         // "Assistir do comeco" (issue #46): mesmo caminho do primario, mas o
@@ -8205,10 +8208,11 @@ static void ultimoEpisodio(int *t, int *e) {
 int detail_indice(void) { return idx; }
 int detail_pediu_reproduzir(void) { int v = pedReproduzir; pedReproduzir = 0; return v; }
 int detail_pediu_escolher_fonte_inicial(void) { int v = pedEscolherFonteInicial; pedEscolherFonteInicial = 0; return v; }
+int detail_pediu_retomar_direto(void) { int v = pedRetomarDireto; pedRetomarDireto = 0; return v; }
 // Pedido de reproducao vindo de FORA da tela (OK no card de "Continuar
 // assistindo", issue #93): o quadro seguinte cai no mesmo ramo de
 // detail_pediu_reproduzir do app.c, com a pagina ja aberta por baixo.
-void detail_pedir_reproduzir(void) { pedReproduzir = 1; }
+void detail_pedir_reproduzir(void) { pedReproduzir = 1; pedRetomarDireto = 1; }
 int detail_pediu_abrir(void) { int v = pedAbrir; pedAbrir = -1; return v; }
 void detail_volta_notar(int novo) {
   if (voltando) { voltando = 0; return; }       // esta troca E a volta: nao empilha
