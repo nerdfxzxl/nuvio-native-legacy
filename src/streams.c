@@ -3950,64 +3950,54 @@ static const struct { const char *emoji, *icone; } EMOJI_ICONE[] = {
   { "\xF0\x9F\x8F\xB7", "aj_tag" },          // 🏷
   { "\xE2\x8F\xB1",     "aj_clock" },       // ⏱
 };
-#define ADDON_PECAS 6
-typedef struct { int n; const char *ic[ADDON_PECAS]; char tx[ADDON_PECAS][96]; } LinhaAddon;
-static const char *emojiIcone(const char *p, size_t *len) {
-  for (size_t k = 0; k < sizeof EMOJI_ICONE / sizeof EMOJI_ICONE[0]; k++) {
-    size_t n = strlen(EMOJI_ICONE[k].emoji);
-    if (strncmp(p, EMOJI_ICONE[k].emoji, n)) continue;
-    if (!strncmp(p + n, "\xEF\xB8\x8F", 3)) n += 3;
-    *len = n;
-    return EMOJI_ICONE[k].icone;
-  }
-  return NULL;
-}
-// Uma linha crua do addon vira pecas "[icone] texto". O texto de cada peca
-// passa pelo limpador do #144 (versalete, subscrito, glifo que a fonte nao
-// tem) antes de ir para a tela, como o resto da folha.
-static void pecasAddon(const char *ini, size_t n, LinhaAddon *L) {
-  char cru[1024];
-  const char *p, *ate;
-  size_t len;
-  L->n = 0;
-  linhaLimpa(cru, sizeof cru, ini, n);
-  p = cru;
-  ate = cru + strlen(cru);
-  while (p < ate && L->n < ADDON_PECAS) {
-    const char *ic = NULL, *q = p;
-    char seg[512];
-    size_t k;
-    // O icone (se a peca abre com um) e o texto ate o proximo emoji conhecido.
-    if (!(ic = emojiIcone(p, &len))) len = 0;
-    q = p + len;
-    for (k = 0; q + k < ate; k++) { size_t l2; if (emojiIcone(q + k, &l2)) break; }
-    snprintf(seg, sizeof seg, "%.*s", (int)(k < sizeof seg - 1 ? k : sizeof seg - 1), q);
-    nv_limpar_texto(seg, L->tx[L->n], sizeof L->tx[0], NV_LIMPA_UMA_LINHA);
-    nv_aparar_separadores(L->tx[L->n]);   // "31.4 GB | 43.2 Mbps |" -> sem o | solto
-    if (ic || L->tx[L->n][0]) L->ic[L->n++] = ic;
-    p = q + k;
-  }
-}
-static int linhasAddon(const Stream *s, LinhaAddon *out, int max) {
-  const char *p = s->descricao;
-  int nl = 0;
-  while (*p && nl < max) {
-    const char *f = strchr(p, '\n');
-    size_t n = f ? (size_t)(f - p) : strlen(p);
-    pecasAddon(p, n, &out[nl]);
-    if (out[nl].n) nl++;
-    if (!f) break;
-    p = f + 1;
-  }
-  return nl;
+static const char *descricaoAddon(const Stream *s) {
+  // NuvioTV displays description ?: title, but suppresses it when it repeats
+  // the display name. Keep the addon's original description intact.
+  if (!s->descricao[0] || !strcmp(s->descricao, s->rotulo)) return "";
+  return s->descricao;
 }
 static void tituloAddon(const Stream *s, char *buf, size_t tam) {
-  // Match NuvioTV's display-name precedence: name, then title, then description.
-  // rotulo already contains the addon's name/title; do not strip its emoji,
-  // punctuation, spacing, or cache marker before presenting it.
+  // NuvioTV precedence: name, then title, then description.
   const char *nome = s->rotulo[0] ? s->rotulo
                    : s->descricao[0] ? s->descricao : s->provedor;
   snprintf(buf, tam, "%s", nome);
+}
+typedef struct {
+  char titulo[192];
+  int descLinhas;
+  float descHFechada, descHCompleta;
+} TextoAddon;
+static TextoAddon *textoAddon;
+static int textoAddonN, textoAddonCap;
+static void textoAddonLimpar(void) {
+  free(textoAddon); textoAddon = NULL; textoAddonN = textoAddonCap = 0;
+}
+static void textoAddonPreparar(TextoAddon *t, const Stream *s) {
+  const char *desc = descricaoAddon(s);
+  const float largura = FOLHA_W - FOLHA_PAD_E - FOLHA_PAD_D - 2.0f * FOLHA_TXT;
+  t->descHFechada = txt_bloco(TXT_PG_FIM, desc, 170, 170, 170, 0, 0,
+                              largura, FOLHA_ADDON_LD, 0.0f, FOLHA_ADDON_FECHADA);
+  t->descHCompleta = txt_bloco(TXT_PG_FIM, desc, 170, 170, 170, 0, 0,
+                               largura, FOLHA_ADDON_LD, 0.0f, FOLHA_ADDON_LINHAS);
+  t->descLinhas = (int)ceilf(t->descHCompleta / FOLHA_ADDON_LD);
+  if (t->descLinhas > FOLHA_ADDON_LINHAS) t->descLinhas = FOLHA_ADDON_LINHAS;
+  tituloAddon(s, t->titulo, sizeof t->titulo);
+}
+static const TextoAddon *textoAddonDa(int i) {
+  static TextoAddon reserva;
+  if (textoAddonCap < n) {
+    TextoAddon *t = realloc(textoAddon, (size_t)n * sizeof *t);
+    if (!t) {
+      textoAddonPreparar(&reserva, &lista[i]);
+      return &reserva;
+    }
+    textoAddon = t; textoAddonCap = n;
+  }
+  while (textoAddonN <= i) {
+    textoAddonPreparar(&textoAddon[textoAddonN], &lista[textoAddonN]);
+    textoAddonN++;
+  }
+  return &textoAddon[i];
 }
 
 // #479: montar() roda nos eventos, duas vezes no update e no desenho.
@@ -4529,9 +4519,9 @@ static float alturaLinha(int i, int automatica, float abertura, int cabProv) {
   float provH = cabProv ? FOLHA_PROV_H : 0.0f;
   float h = FOLHA_LINHA_H + provH + (temMarca(i, automatica) ? FOLHA_MARCA_H : 0);
   if (ajustes_fonte_texto_addon()) {
-    int nl = textoAddonDa(i)->nl;
-    float vis = nl > FOLHA_ADDON_FECHADA ? FOLHA_ADDON_FECHADA + (nl - FOLHA_ADDON_FECHADA) * abertura : (float)nl;
-    h = provH + 20 + 40 + vis * FOLHA_ADDON_LD + 18 + (temMarca(i, automatica) ? FOLHA_MARCA_H : 0);
+    const TextoAddon *t = textoAddonDa(i);
+    float vis = t->descHFechada + (t->descHCompleta - t->descHFechada) * abertura;
+    h = provH + 20 + 40 + vis + 18 + (temMarca(i, automatica) ? FOLHA_MARCA_H : 0);
     if (abertura > 0.001f) h += (alturaArquivoDa(&lista[i]) + 8.0f) * abertura;
     if (h < provH + 96.0f) h = provH + 96.0f;
   } else {
@@ -6537,30 +6527,18 @@ static void corpoFolha(float x, float w, float anim, Uint32 agora, int ilha) {
     if(ajustes_fonte_texto_addon()) {
       cy+=desenharFaixas(s,tx,cy,tr-tx,sel,anim);
       const TextoAddon *t=textoAddonDa(i);
-      const LinhaAddon *ls=t->linhas;
-      int nl=t->nl;
-      // abertura da linha: a mesma mola da altura (alturaLinha)
+      const char *desc=descricaoAddon(s);
+      // Keep the addon description as one raw text block, like NuvioTV's
+      // getDisplayDescription(); wrap to the card width instead of turning
+      // emojis into replacement icons or truncating each fragment.
       float abr = grupo==1 && row==foco ? abreFoco : row==linhaAnt ? abreAnt : 0.0f;
-      for(int k=0;k<nl;k++){
-        float ak = anim;
-        if(k>=FOLHA_ADDON_FECHADA){ if(abr<.02f) break; ak = anim*abr; }
-        // A primeira linha do addon costuma ser a de numeros (tamanho, taxa):
-        // um degrau mais clara. As outras no cinza da especificacao.
-        int c = k==0 ? (sel?215:180) : (sel?170:130);
-        float px=tx, maxw=k==0?txtW:tr-tx, ly=cy+k*FOLHA_ADDON_LD;
-        for(int pc=0;pc<ls[k].n && maxw-(px-tx)>30;pc++){
-          if(ls[k].ic[pc]){
-            // O icone na altura do texto, na mesma tinta; so vale se couber.
-            gfx_icone((GfxRect){px,ly+3,22,22},ls[k].ic[pc],c/255.0f,c/255.0f,c/255.0f,ak);
-            px+=22+8;
-          }
-          if(ls[k].tx[pc][0] && maxw-(px-tx)>30){
-            int base=k==0?215:170;
-            TxtLinha lp=txt_linha_corta(TXT_PG_FIM,ls[k].tx[pc],base,base,base,255,maxw-(px-tx));
-            txt_desenhar_tom(lp,px,ly,(float)c/base,(float)c/base,(float)c/base,ak);
-            px+=lp.w+18;
-          }
-        }
+      int linhasVisiveis=t->descLinhas;
+      if(linhasVisiveis>FOLHA_ADDON_FECHADA) {
+        linhasVisiveis=FOLHA_ADDON_FECHADA+(int)floorf((linhasVisiveis-FOLHA_ADDON_FECHADA)*abr);
+      }
+      if(linhasVisiveis>0 && desc[0]) {
+        int c=sel?180:130;
+        txt_bloco_corta(TXT_PG_FIM,desc,c,c,c,tx,cy,tr-tx,FOLHA_ADDON_LD,anim,linhasVisiveis);
       }
       if (abr > .02f) {
         const char *arq = arquivoDa(s);
@@ -6568,10 +6546,8 @@ static void corpoFolha(float x, float w, float anim, Uint32 agora, int ilha) {
           char d[512];
           snprintf(d, sizeof d, "%s", arq);
           for (char *p = d; *p; p++) if ((unsigned char)*p < 32) *p = ' ';
-          float vis = nl > FOLHA_ADDON_FECHADA
-                   ? FOLHA_ADDON_FECHADA + (nl - FOLHA_ADDON_FECHADA) * abr : (float)nl;
           txt_bloco(TXT_PG_FIM, d, 125, 125, 123, tx,
-                    cy + vis * FOLHA_ADDON_LD + 8.0f, tr - tx, 28.0f, anim * abr, 0);
+                    cy + t->descHCompleta + 8.0f, tr - tx, 28.0f, anim * abr, 0);
         }
       }
       continue;
