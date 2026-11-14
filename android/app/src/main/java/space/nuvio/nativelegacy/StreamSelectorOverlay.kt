@@ -107,7 +107,7 @@ private data class SelectorStream(
     }.lowercase(Locale.ROOT)
 }
 
-private data class ProviderFilter(val key: String, val label: String)
+private data class ProviderFilter(val key: String, val label: String, val status: Int = 0)
 
 private data class SelectorSnapshot(
     val generation: Int = 0,
@@ -122,6 +122,7 @@ private data class SelectorSnapshot(
     val season: Int = 0,
     val episode: Int = 0,
     val episodeName: String = "",
+    val providers: List<ProviderFilter> = emptyList(),
     val streams: List<SelectorStream> = emptyList()
 )
 
@@ -154,6 +155,19 @@ private fun parseSelectorSnapshot(raw: String): SelectorSnapshot = runCatching {
             )
         }
     }
+    val providerArray = root.optJSONArray("providers")
+    val providers = if (providerArray == null) emptyList() else buildList {
+        for (i in 0 until providerArray.length()) {
+            val item = providerArray.optJSONObject(i) ?: continue
+            add(
+                ProviderFilter(
+                    key = item.optString("key", ""),
+                    label = item.optString("name", ""),
+                    status = item.optInt("status", 0)
+                )
+            )
+        }
+    }
     SelectorSnapshot(
         generation = root.optInt("generation", 0),
         revision = root.optInt("revision", -1),
@@ -167,6 +181,7 @@ private fun parseSelectorSnapshot(raw: String): SelectorSnapshot = runCatching {
         season = root.optInt("season", 0),
         episode = root.optInt("episode", 0),
         episodeName = root.optString("episodeName", ""),
+        providers = providers,
         streams = streams.sortedWith(compareBy<SelectorStream> { it.addonOrder }.thenBy { it.index })
     )
 }.getOrDefault(SelectorSnapshot())
@@ -206,18 +221,14 @@ private fun StreamSelectorContent(
                 runCatching { parseSelectorSnapshot(activity.snapshotStreams()) }
                     .getOrDefault(SelectorSnapshot())
             }
-            if (next.revision != snapshot.revision || next.generation != snapshot.generation) {
+            if (next.revision != snapshot.revision || next.generation != snapshot.generation || next.providers != snapshot.providers) {
                 snapshot = next
             }
             delay(300)
         }
     }
 
-    val providers = remember(snapshot.streams) {
-        snapshot.streams.map { stream ->
-            ProviderFilter(stream.addonKey.ifBlank { stream.provider }, stream.provider.trim())
-        }.filter { it.label.isNotEmpty() }.distinctBy { it.key }
-    }
+    val providers = snapshot.providers
     val visibleStreams = remember(snapshot, query, selectedProvider) {
         val terms = query.trim().lowercase(Locale.ROOT).split(Regex("\\s+")).filter { it.isNotBlank() }
         snapshot.streams.filter { stream ->
@@ -365,6 +376,7 @@ private fun StreamSelectorContent(
                     providers.forEach { provider ->
                         ProviderChip(
                             label = provider.label,
+                            status = provider.status,
                             selected = selectedProvider == provider.key,
                             onClick = { selectedProvider = provider.key }
                         )
@@ -528,6 +540,7 @@ private fun NuvioSelectorTheme(content: @Composable () -> Unit) {
 private fun ProviderChip(
     label: String,
     selected: Boolean,
+    status: Int = 0,
     onClick: () -> Unit
 ) {
     var focused by remember { mutableStateOf(false) }
@@ -547,12 +560,22 @@ private fun ProviderChip(
             .focusable()
             .padding(horizontal = 15.dp, vertical = 9.dp)
     ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelMedium,
-            color = if (selected) Color(0xFF111111) else Color(0xFFF5F5F5),
-            maxLines = 1
-        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelMedium,
+                color = if (selected) Color(0xFF111111) else Color(0xFFF5F5F5),
+                maxLines = 1
+            )
+            if (status == 1) {
+                Text("…", color = if (selected) Color(0xFF111111) else Color(0xFFB3B3B3))
+            } else if (status == 2) {
+                Text("!", color = Color(0xFFCF6679))
+            }
+        }
     }
 }
 
