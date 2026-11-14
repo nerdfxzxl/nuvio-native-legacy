@@ -6768,9 +6768,9 @@ void app_atualizar(float dt, Uint32 agora) {
     if (q) faixas_abrir_em(q == 2 ? 1 : 0); }
   if (!player_retido()) faixas_atualizar(dt, agora);
   atualizarFolha(dt, agora);
-  // Back from the first-play picker means return to the title page. Do
-  // not turn cancellation into a "could not open source" error. Let the
-  // Dynamic Clock finish collapsing before ending the temporary player shell.
+  // Back from the first-play picker returns directly to the title detail page.
+  // Do not turn cancellation into a "could not open source" error; let the
+  // Dynamic Clock finish collapsing before clearing any pending playback state.
   if (folhaParaTocar && !stream_folha_aberta()) {
     folhaParaTocar = 0;
     folhaCancelarTocar = 1;
