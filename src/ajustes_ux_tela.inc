@@ -13,6 +13,9 @@
 static const Item TELA[] = {
   // ---- ASSISTIR ------------------------------------------------------------------
   SEC("Reprodução", "Qualidade, som e o que o player faz", "aj_circle-play"),
+#ifdef NV_ANDROID
+    OPC(AJ_STREAM_SELECTOR),
+#endif
     ROT("Imagem e som"),
       OPC(AJ_QUALIDADE), OPC(AJ_FONTE_HDR), OPC(AJ_DV), OPC(AJ_ATMOS),
 #ifdef NV_TPK
@@ -20,9 +23,6 @@ static const Item TELA[] = {
 #endif
     ROT("Escolha da fonte"),
       OPC(AJ_FONTE_MANUAL),
-#ifdef NV_ANDROID
-      OPC(AJ_STREAM_SELECTOR),
-#endif
       OPC(AJ_FONTE_PRIORIDADE), OPC(AJ_FONTE_IDIOMA_AUDIO), OPC(AJ_FONTE_PRAZO),
       OPC(AJ_FONTE_REPOR), OPC(AJ_TAM_MAX),
       OPC(AJ_FONTE_GRUPO), OPC(AJ_FONTE_GRUPO_SESSOES),
