@@ -6544,10 +6544,11 @@ static void corpoFolha(float x, float w, float anim, Uint32 agora, int ilha) {
         const char *arq = arquivoDa(s);
         if (arq[0]) {
           char d[512];
+          float descHVis=t->descHFechada+(t->descHCompleta-t->descHFechada)*abr;
           snprintf(d, sizeof d, "%s", arq);
           for (char *p = d; *p; p++) if ((unsigned char)*p < 32) *p = ' ';
           txt_bloco(TXT_PG_FIM, d, 125, 125, 123, tx,
-                    cy + t->descHCompleta + 8.0f, tr - tx, 28.0f, anim * abr, 0);
+                    cy + descHVis + 8.0f, tr - tx, 28.0f, anim * abr, 0);
         }
       }
       continue;
