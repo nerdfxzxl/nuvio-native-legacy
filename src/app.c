@@ -5887,11 +5887,11 @@ void app_atualizar(float dt, Uint32 agora) {
         player_precarregar_cancelar(preparo.token); preparo.token = 0;
       }
 #endif
-      int usouPreparo = !ajustes_fonte_manual() &&
+      int usouPreparo = !escolherFonteInicial && !ajustes_fonte_manual() &&
                        preparoUsar(alvoPreparo, lembradaPreparo, &idxPreparado);
       // Armado antes da abertura: o proximo quadro nao cancela o worker
       // quando a pagina do titulo cede lugar ao player.
-      if (!usouPreparo && preparoEmCurso(alvoPreparo, lembradaPreparo)) {
+      if (!escolherFonteInicial && !usouPreparo && preparoEmCurso(alvoPreparo, lembradaPreparo)) {
         preparoEspera = 1; preparoLembradaPlay = lembradaPreparo;
       }
       diagnostico_cancelar_vazao();
@@ -5925,7 +5925,7 @@ void app_atualizar(float dt, Uint32 agora) {
       } else {
         if (usouPreparo) limparFonteVOD();
         renovarListaDoPlayer();
-        if (tocarParteGuardada() || tocarFonteGuardada()) { preparoEspera = 0; }
+        if (!escolherFonteInicial && (tocarParteGuardada() || tocarFonteGuardada())) { preparoEspera = 0; }
         else aguardandoFonte = 1;
       }
     }
