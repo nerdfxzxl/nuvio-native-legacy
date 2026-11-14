@@ -4653,7 +4653,7 @@ static void folhaDados(void) {
   static struct FolhaChave {
     unsigned revisao, regras, mortas, abas;
     int valores[29];
-    char audio[96], qualidade[32];
+    char audio[96], qualidade[32], busca[TECLADO_MAX + 1];
     FonteFalhaConfig falhas;
     int decoder[8];
   } anterior;
@@ -4678,6 +4678,7 @@ static void folhaDados(void) {
   memcpy(key.valores, v, sizeof v);
   snprintf(key.audio, sizeof key.audio, "%s", idiomaFiltroAudio());
   snprintf(key.qualidade, sizeof key.qualidade, "%s", ajustes_qualidade());
+  snprintf(key.busca, sizeof key.busca, "%s", folhaBusca);
   fontefalha_config(&key.falhas);
   if (valid && !memcmp(&key, &anterior, sizeof key)) return;
   busy = 1;
@@ -5332,15 +5333,6 @@ void stream_folha_evento(const SDL_Event *e) {
   else if (grupo==1 && k==SDLK_LEFT) { grupo=-2; }
   else if (grupo==-2 && k==SDLK_RIGHT) { grupo=1; foco=0; }
   else if (grupo>=0 && (k==SDLK_LEFT || k==SDLK_RIGHT)) {
-    filtro+=k==SDLK_RIGHT?1:-1;
-    if(filtro < -1) filtro=-1;
-    if(filtro>=nProvedores) filtro=nProvedores-1;
-    foco=0;rolagem=0;velRol=0;
-  }
-  // ESQUERDA/DIREITA NUMA FONTE TROCAM A ABA DE ADDON (dono, 02/10), como no
-  // seletor: a lista nao tem nada na horizontal, e subir ate as abas para
-  // trocar de addon eram duas teclas a mais a cada troca.
-  if(grupo>=0 && (k==SDLK_LEFT || k==SDLK_RIGHT)) {
     filtro+=k==SDLK_RIGHT?1:-1;
     if(filtro < -1) filtro=-1;
     if(filtro>=nProvedores) filtro=nProvedores-1;
