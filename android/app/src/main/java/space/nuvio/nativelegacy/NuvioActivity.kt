@@ -2,7 +2,6 @@ package space.nuvio.nativelegacy
 
 import android.Manifest
 import android.app.UiModeManager
-import android.app.Dialog
 import android.content.Context
 import android.content.ComponentName
 import android.content.Intent
@@ -12,7 +11,6 @@ import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.drawable.GradientDrawable
-import android.graphics.drawable.ColorDrawable
 import android.net.Uri
 import android.net.ConnectivityManager
 import android.net.Network
