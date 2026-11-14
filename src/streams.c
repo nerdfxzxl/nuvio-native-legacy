@@ -5875,7 +5875,7 @@ static void medirCabecalho(void) {
   }
   if (nivelCab == 3) nivelCab = 2, gapCab = 8.0f;
   // The playback-only seventh action must also fit beside the minimum
-  // title on narrow phones. Preserve chip height/touch area; trim only
+  // title on narrow TV layouts. Preserve chip height; trim only
   // horizontal padding and gaps after all labels have become icons.
   if (nivelCab == 2 && soma > livre) {
     float disco;
