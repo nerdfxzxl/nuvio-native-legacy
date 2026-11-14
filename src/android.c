@@ -116,7 +116,7 @@ Java_space_nuvio_nativelegacy_NuvioActivity_nativeStreamSnapshot(JNIEnv *env, jo
   jstring result;
   (void)act;
   json = stream_ui_snapshot_json();
-  if (!json) return (*env)->NewStringUTF(env, "{\"generation\":0,\"revision\":0,\"streams\":[]}");
+  if (!json) return (*env)->NewStringUTF(env, "{\"generation\":0,\"revision\":-1,\"streams\":[]}");
   result = (*env)->NewStringUTF(env, json);
   free(json);
   return result;
