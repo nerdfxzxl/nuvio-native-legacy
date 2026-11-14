@@ -69,6 +69,7 @@ import java.util.Locale
 
 private data class SelectorStream(
     val index: Int,
+    val addonOrder: Int,
     val name: String,
     val provider: String,
     val description: String,
@@ -126,6 +127,7 @@ private fun parseSelectorSnapshot(raw: String): SelectorSnapshot = runCatching {
             add(
                 SelectorStream(
                     index = item.optInt("index", -1),
+                    addonOrder = item.optInt("addonOrder", 0),
                     name = item.optString("name", ""),
                     provider = item.optString("provider", ""),
                     description = item.optString("description", ""),
@@ -157,7 +159,7 @@ private fun parseSelectorSnapshot(raw: String): SelectorSnapshot = runCatching {
         season = root.optInt("season", 0),
         episode = root.optInt("episode", 0),
         episodeName = root.optString("episodeName", ""),
-        streams = streams
+        streams = streams.sortedWith(compareBy<SelectorStream> { it.addonOrder }.thenBy { it.index })
     )
 }.getOrDefault(SelectorSnapshot())
 
