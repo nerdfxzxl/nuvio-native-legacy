@@ -636,6 +636,7 @@ private fun StreamSourceCard(
 ) {
     Card(
         onClick = onClick,
+        enabled = stream.hasUrl || stream.infoHash.isNotBlank(),
         modifier = Modifier
             .fillMaxWidth()
             .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier),
