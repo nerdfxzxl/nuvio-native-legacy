@@ -439,8 +439,8 @@ static int stalkerRenovando;
 // Sem isto, sair da folha com Voltar deixaria a tela em "carregando" para
 // sempre — o pedido de fonte ja tinha sido consumido e ninguem mais viria.
 static int    folhaParaTocar;
-// Pedido do Play inicial: aguarda a busca de addons e abre a folha no player.
-// Retomar e os pedidos explicitos de episodio nao armam este latch.
+// Play inicial e OK longo no botao primario: aguarda os addons e abre a folha
+// dentro do player. Retomar curto continua automatico.
 static int    pedirFolhaNoPlay;
 // Quantas renovacoes de link seguidas um canal de portal ganha antes de virar
 // erro. Tres: um link que expirou renova na primeira; um portal fora do ar
