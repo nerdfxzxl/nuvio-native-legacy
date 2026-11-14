@@ -4490,14 +4490,14 @@ static uint64_t logosDa(const Stream *s, uint64_t tira) {
 // repetia os numeros que a coluna da direita ja mostra. Buffer estatico: so
 // o fio principal chama, e cada chamador usa o texto antes da seguinte.
 static const char *arquivoDa(const Stream *s) {
-  static char ult[192];
+  static char ult[512];
   const char *p, *f;
   if (s->arquivo[0]) return s->arquivo;
   if (!logosDa(s, 0) && !selosPacoteVisiveis((Stream *)s) && strcmp(containerDa(s), "MP4") && !idiomaDa(s)) return "";
   ult[0] = 0;
   for (p = s->descricao; *p; p = f + 1) {
     f = strchr(p, '\n');
-    char l[192];
+    char l[512];
     linhaLimpa(l, sizeof l, p, f ? (size_t)(f - p) : strlen(p));
     if (l[0]) snprintf(ult, sizeof ult, "%s", l);
     if (!f) break;
@@ -4531,6 +4531,7 @@ static float alturaLinha(int i, int automatica, float abertura) {
     int nl = textoAddonDa(i)->nl;
     float vis = nl > FOLHA_ADDON_FECHADA ? FOLHA_ADDON_FECHADA + (nl - FOLHA_ADDON_FECHADA) * abertura : (float)nl;
     h = 20 + 40 + vis * FOLHA_ADDON_LD + 18 + (temMarca(i, automatica) ? FOLHA_MARCA_H : 0);
+    if (abertura > 0.001f) h += (alturaArquivoDa(&lista[i]) + 8.0f) * abertura;
     if (h < 96) h = 96;
   } else {
     // Full filenames wrap naturally; the focused row grows to fit every line.
@@ -6593,6 +6594,16 @@ static void corpoFolha(float x, float w, float anim, Uint32 agora, int ilha) {
             txt_desenhar_tom(lp,px,ly,(float)c/base,(float)c/base,(float)c/base,ak);
             px+=lp.w+18;
           }
+        }
+      }
+      if (abr > .02f) {
+        const char *arq = arquivoDa(s);
+        if (arq[0]) {
+          char d[512];
+          snprintf(d, sizeof d, "%s", arq);
+          for (char *p = d; *p; p++) if ((unsigned char)*p < 32) *p = ' ';
+          txt_bloco(TXT_PG_FIM, d, 125, 125, 123, tx,
+                    cy + nl * FOLHA_ADDON_LD + 8.0f, tr - tx, 28.0f, anim * abr, 0);
         }
       }
       continue;
