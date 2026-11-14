@@ -58,6 +58,7 @@
 #include "plrilha.h"
 #include "partes.h"
 #include "ctxlista.h"
+#include "teclado.h"  // TECLADO_MAX buffer sizing; stream search itself uses sistexto
 #include "sistexto.h"
 #define NV_ESCALA_TELA   // o arquivo inteiro mede pela tela virtual (escala.h)
 #include "escala.h"
