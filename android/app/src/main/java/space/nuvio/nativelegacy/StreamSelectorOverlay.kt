@@ -32,7 +32,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -171,8 +170,8 @@ internal fun StreamSelectorOverlay(
     onDismiss: () -> Unit
 ) {
     var snapshot by remember { mutableStateOf(SelectorSnapshot()) }
-    var query by rememberSaveable { mutableStateOf("") }
-    var selectedProvider by rememberSaveable { mutableStateOf<String?>(null) }
+    var query by remember { mutableStateOf("") }
+    var selectedProvider by remember { mutableStateOf<String?>(null) }
     var initialFocusRequested by remember { mutableStateOf(false) }
     val firstStreamFocus = remember { FocusRequester() }
     val listState = rememberLazyListState()
