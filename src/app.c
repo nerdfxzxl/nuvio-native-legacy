@@ -147,7 +147,6 @@
 #include "legsync.h"
 #include "badges.h"
 #include "streams.h"
-#include "teclado.h"
 #include "streamfitdur.h"
 #include "streamfitpassiva.h"
 #include "vazao.h"
