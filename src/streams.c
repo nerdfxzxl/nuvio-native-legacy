@@ -6427,31 +6427,17 @@ static void corpoFolha(float x, float w, float anim, Uint32 agora, int ilha) {
       else gfx_cor(r,FOLHA_RAIO/r.h,.14f,.15f,.17f,.92f*anim);
       gfx_anel(r,FOLHA_RAIO/r.h,1.0f,.34f,.36f,.40f,.18f*anim);
     }
-    // COLUNA DA DIREITA: tamanho grande, addon embaixo. Medida primeiro: o
-    // titulo e a fileira de logos param antes dela.
-    { char gb[24]="";
-      TxtLinha lg, lu, lp;
-      int cg=sel?250:218;
-      // No modo do addon o tamanho ja vem no texto dele; so o addon fica.
-      if(s->tamanhoMB && !ajustes_fonte_texto_addon()) { snprintf(gb,sizeof gb,s->tamanhoMB>=102400?"%.0f":"%.1f",s->tamanhoMB/1024.0); plrui_decimal(gb); }
-      lg=txt_linha(TXT_CW_TITULO,gb,250,250,248,255);
-      lu=txt_linha(TXT_PG_FIM,"GB",120,120,118,255);
-      // TORRENT SEM DEBRID: quantos semeiam vai junto do addon. E o numero que
-      // diz se a fonte abre (log da 2.0.0 no Android: "metadados nao chegaram
-      // em 30 s"); a pessoa escolhia as cegas. "seeds" fica sem traducao: e o
-      // termo que quem usa torrent conhece em qualquer idioma.
-      { char pv[160];
-        legendaProvedor(s,pv,sizeof pv);
-        lp=txt_linha_corta(TXT_PG_FIM,pv,150,150,148,255,340); }
+    // Official cards keep the add-on identity in the right column. File size
+    // belongs with the badges, not as a large legacy metric above the provider.
+    { TxtLinha lp;
+      char pv[160];
+      legendaProvedor(s,pv,sizeof pv);
+      lp=txt_linha_corta(TXT_PG_FIM,pv,150,150,148,255,340);
       colW=lp.w;
-      if(gb[0] && lg.w+6+lu.w>colW) colW=lg.w+6+lu.w;
       cy=cardY+20+(temMarca(i,automatica)?FOLHA_MARCA_H:0);
-      if(gb[0]){
-        txt_desenhar_alpha(lu,tr-lu.w,cy+(lg.h-lu.h)-3,anim);
-        txt_desenhar_tom(lg,tr-lu.w-6-lg.w,cy,cg/250.0f,cg/250.0f,(cg-2)/248.0f,anim); }
-      txt_desenhar_tom(lp,tr-lp.w,gb[0]?cy+40:cy+6,sel?1:110.0f/150,sel?1:110.0f/150,sel?1:108.0f/148,anim);
+      txt_desenhar_tom(lp,tr-lp.w,cy+6,sel?1:110.0f/150,sel?1:110.0f/150,sel?1:108.0f/148,anim);
       // Dica da tecla Info/Amarela: so na linha em foco, no canto do addon.
-      if(sel) gfx_icone((GfxRect){tr-lp.w-30,(gb[0]?cy+40:cy+6)+3,20,20},"aj_info",.62f,.62f,.62f,anim*.85f); }
+      if(sel) gfx_icone((GfxRect){tr-lp.w-30,cy+9,20,20},"aj_info",.62f,.62f,.62f,anim*.85f); }
     txtW=tr-tx-colW-28;
     cy=cardY+20;
     // A MARCA: o que esta tocando (com o equalizador), a escolha anterior e a
@@ -6614,7 +6600,16 @@ static void corpoFolha(float x, float w, float anim, Uint32 agora, int ilha) {
         txt_desenhar_alpha(lf,lx2,cy+(FOLHA_SELO_H-lf.h)*.5f,anim); lx2+=lf.w+26;
         tx0=lx2; txtW0=txtW-(lx2-tx); if(txtW0<80) txtW0=80; }
       int ehMp4=!strcmp(containerDa(s),"MP4");
-      TxtLinha mp;
+      TxtLinha mp, sizeLine;
+      char sizeLabel[40]="";
+      float sizeW=0.0f;
+      if(s->tamanhoBytes) {
+        double gib=(double)s->tamanhoBytes/(1024.0*1024.0*1024.0);
+        if(gib>=1.0) snprintf(sizeLabel,sizeof sizeLabel,"%.1f GB",floor(gib*10.0+0.5)/10.0);
+        else snprintf(sizeLabel,sizeof sizeLabel,"%.0f MB",(double)s->tamanhoBytes/(1024.0*1024.0));
+        sizeLine=txt_linha(TXT_HERO_META,sizeLabel,255,255,255,255);
+        sizeW=(float)sizeLine.w+12.0f;
+      }
       if(ehMp4){ mp=txt_linha(TXT_HERO_META,"MP4",ai,(int)(ag*255),(int)(ab*255),255); mpW=mp.w+18; }
       // TODOS OS LOGOS NA MESMA TINTA (dono, 02/10: "podemos deixar elas
       // todas brancas"). A rodada de "cor so no premium" deixava uns logos no
@@ -6624,7 +6619,7 @@ static void corpoFolha(float x, float w, float anim, Uint32 agora, int ilha) {
       // cada selo na peca da cor do seu grupo; desligada (o padrao do Glass
       // UI), todos na mesma tinta branca.
       if(selosPacoteVisiveis((Stream *)s)) {
-        float badgeMax = txtW0 - mpW;
+        float badgeMax = txtW0 - mpW - sizeW - (sizeW>0.0f?18.0f:0.0f);
         if (badgeMax < 0.0f) badgeMax = 0.0f;
         if (sel) {
           float badgeTotal = selosDesenhar(s->selosPacote, (int)s->nSelosPacote,
@@ -6651,16 +6646,24 @@ static void corpoFolha(float x, float w, float anim, Uint32 agora, int ilha) {
         // O Crave (servico canadense) nao esta em nenhum dos dois pacotes
         // embutidos: sai pela arte antiga para nao ser perdido.
         if(selospacote_ativo()<0 && (logos&badges_bit("p-crave"))) {
-          float cw=badges_desenhar_tom(badges_bit("p-crave"),tx0+(lw>0?lw+16:0),cy,txtW0-mpW-lw-16,FOLHA_SELO_H,t,t,t,anim);
+          float cw=badges_desenhar_tom(badges_bit("p-crave"),tx0+(lw>0?lw+16:0),cy,badgeMax-lw-16,FOLHA_SELO_H,t,t,t,anim);
           if(cw>0) lw+=(lw>0?16:0)+cw; }
       } else if(logos) lw=ajustes_selos_coloridos()
-        ? badges_desenhar_selos(logos,tx0,cy,txtW0-mpW,FOLHA_SELO_H,anim*(sel?1.0f:.85f))
-        : badges_desenhar_tom(logos,tx0,cy,txtW0-mpW,FOLHA_SELO_H,t,t,t,anim);
+        ? badges_desenhar_selos(logos,tx0,cy,badgeMax,FOLHA_SELO_H,anim*(sel?1.0f:.85f))
+        : badges_desenhar_tom(logos,tx0,cy,badgeMax,FOLHA_SELO_H,t,t,t,anim);
       else if(!ehMp4){ char d[sizeof s->descricao];
         snprintf(d,sizeof d,"%s",s->descricao);
         for(char *p=d;*p;p++)if((unsigned char)*p<32)*p=' ';
         int c=sel?180:130;
-        txt_desenhar_alpha(txt_linha_corta(TXT_PG_FIM,d,c,c,c,255,txtW0),tx0,cy+(FOLHA_SELO_H-26)*.5f,anim); }
+        txt_desenhar_alpha(txt_linha_corta(TXT_PG_FIM,d,c,c,c,255,badgeMax),tx0,cy+(FOLHA_SELO_H-26)*.5f,anim); }
+      if(sizeW>0.0f && lw+sizeW+18.0f<=txtW0) {
+        float bx=tx0+(lw>0.0f?lw+18.0f:0.0f);
+        GfxRect sr={bx,cy+(FOLHA_SELO_H-20.0f)*.5f,sizeW,20.0f};
+        gfx_cor(sr,.30f,.04f,.047f,.05f,anim);
+        gfx_anel(sr,.30f,1.0f,.18f,.19f,.20f,.65f*anim);
+        txt_desenhar_alpha(sizeLine,bx+6.0f,cy+(FOLHA_SELO_H-sizeLine.h)*.5f,anim);
+        lw+=(lw>0.0f?18.0f:0.0f)+sizeW;
+      }
       if(ehMp4){ txt_desenhar_alpha(mp,tx0+(lw>0?lw+18:0),cy+(FOLHA_SELO_H-mp.h)*.5f,anim); lw+=(lw>0?18:0)+mp.w; }
       // O IDIOMA, em texto no fim da fileira (nao ha logo para ele).
       { const char *id=idiomaDa(s);
