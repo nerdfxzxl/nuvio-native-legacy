@@ -1134,15 +1134,15 @@ int stream_extrair(const char *json, const char *provedor, Stream **saida) {
           js_texto_raiz_em(bh, fim, "videoHash", s.videoHash, sizeof s.videoHash);
           lerProxyHeaders(bh, fim, s.cabecalhos, sizeof s.cabecalhos);
         } }
-      // Preserve both sibling fields, as official Nuvio does. Title often
-      // carries the provider/release while description carries size/language.
-      if (titulo[0] && strcmp(titulo, s.descricao)) {
-        char descricao[sizeof s.descricao];
-        snprintf(descricao, sizeof descricao, "%s", s.descricao);
-        snprintf(s.descricao, sizeof s.descricao, "%s%s%s", titulo,
-                 descricao[0] ? "\n" : "", descricao);
-      }
-      if (!s.rotulo[0]) snprintf(s.rotulo, sizeof s.rotulo, "%s", provedor);
+      // Match official NuvioTV display precedence:
+      // name ?: title ?: description, and description ?: title.
+      // Keep title and description separate instead of merging them into one
+      // synthetic description; stream_parse metadata below still examines all.
+      if (!s.rotulo[0])
+        snprintf(s.rotulo, sizeof s.rotulo, "%s",
+                 titulo[0] ? titulo : s.descricao[0] ? s.descricao : provedor);
+      if (!s.descricao[0] && titulo[0])
+        snprintf(s.descricao, sizeof s.descricao, "%s", titulo);
       snprintf(s.provedor, sizeof s.provedor, "%s", provedor);
       snprintf(texto, sizeof texto, "%s %s %s %s", s.rotulo, s.descricao, titulo, s.arquivo);
       for (char *q = texto; *q; q++) if (*q == '\n') *q = ' ';
