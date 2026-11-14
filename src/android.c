@@ -104,6 +104,12 @@ Java_space_nuvio_nativelegacy_NuvioActivity_nativeStreamTitle(JNIEnv *env, jobje
   return (*env)->NewStringUTF(env, titulo);
 }
 
+JNIEXPORT jlong JNICALL
+Java_space_nuvio_nativelegacy_NuvioActivity_nativeStreamRevision(JNIEnv *env, jobject act) {
+  (void)env; (void)act;
+  return (jlong)stream_ui_revision();
+}
+
 JNIEXPORT jstring JNICALL
 Java_space_nuvio_nativelegacy_NuvioActivity_nativeStreamSnapshot(JNIEnv *env, jobject act) {
   char *json;
