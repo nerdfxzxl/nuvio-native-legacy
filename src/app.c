@@ -6081,7 +6081,9 @@ void app_atualizar(float dt, Uint32 agora) {
       // vivo, e la a escolha ja e feita pela playlist que responde.
       //
       // #667: a remembered source sets the sheet's focus, never consent to play.
-      if (((ajustes_fonte_manual() && !retomarDireto) || pedirFolhaNoPlay) && stream_n() > 0) {
+      // A late addon response must not resurrect the selector after the player was closed.
+      if (player_aberto() && !player_quer_sair() &&
+          ((ajustes_fonte_manual() && !retomarDireto) || pedirFolhaNoPlay) && stream_n() > 0) {
         pedirFolhaNoPlay = 0;
         aguardandoFonte = 0;
         folhaParaTocar = 1;
