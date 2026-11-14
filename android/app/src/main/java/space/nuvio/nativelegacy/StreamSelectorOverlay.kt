@@ -436,7 +436,6 @@ private fun StreamSelectorContent(
                                 .clip(CircleShape)
                                 .clickable { query = "" }
                                 .onFocusChanged { if (it.isFocused) userInteracted = true }
-                                .focusable()
                                 .padding(horizontal = 8.dp, vertical = 2.dp)
                         )
                     }
@@ -598,7 +597,6 @@ private fun ProviderChip(
                 focused = it.isFocused
                 if (it.isFocused) onFocus()
             }
-            .focusable()
             .padding(horizontal = 15.dp, vertical = 9.dp)
     ) {
         Row(
