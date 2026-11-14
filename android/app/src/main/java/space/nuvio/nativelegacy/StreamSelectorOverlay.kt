@@ -456,6 +456,15 @@ private fun StreamSelectorContent(
                             )
                         }
                     }
+                    snapshot.streams.isEmpty() && providers.isNotEmpty() && providers.all { it.status == 2 } -> {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text(
+                                "No sources returned. Press refresh to retry.",
+                                color = Color(0xFFB3B3B3),
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                        }
+                    }
                     snapshot.streams.isEmpty() -> {
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                             Text(
