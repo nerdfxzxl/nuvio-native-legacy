@@ -14,6 +14,7 @@ PAGE_SIZE = 16384
 MACHINES = {'arm64-v8a': 183, 'x86_64': 62}
 PT_LOAD = 1
 PT_GNU_RELRO = 0x6474E552
+PF_W = 2
 
 
 def check_elf(data, abi):
@@ -30,23 +31,109 @@ def check_elf(data, abi):
         raise ValueError('invalid/unsupported ELF program-header table')
     if phoff < 64 or phoff + entsize * count > len(data):
         raise ValueError('truncated ELF program-header table')
-    aligns, errors = [], []
+
+    loads, relros, errors = [], [], []
     for index in range(count):
-        kind, _, offset, address, _, file_size, memory_size, align = struct.unpack_from(
+        kind, flags, offset, address, _, file_size, memory_size, align = struct.unpack_from(
             '<IIQQQQQQ', data, phoff + index * entsize)
         if kind == PT_LOAD:
-            aligns.append(align)
+            loads.append({
+                'index': index,
+                'flags': flags,
+                'start': address,
+                'end': address + memory_size,
+                'align': align,
+            })
             if align < PAGE_SIZE or align & (align - 1):
-                errors.append(f'LOAD[{index}] alignment={align}, expected a power of two >= {PAGE_SIZE}')
+                errors.append(
+                    f'LOAD[{index}] alignment={align}, expected a power of two >= {PAGE_SIZE}'
+                )
             elif offset % align != address % align:
-                errors.append(f'LOAD[{index}] offset/address are not congruent modulo alignment')
+                errors.append(
+                    f'LOAD[{index}] offset/address are not congruent modulo alignment'
+                )
             if file_size > memory_size or offset + file_size > len(data):
                 errors.append(f'LOAD[{index}] invalid file/memory range')
-        elif kind == PT_GNU_RELRO and (address + memory_size) % PAGE_SIZE:
-            errors.append(f'GNU_RELRO[{index}] end is not {PAGE_SIZE}-byte aligned')
-    if not aligns:
+        elif kind == PT_GNU_RELRO:
+            relros.append((index, address, address + memory_size))
+
+    if not loads:
         raise ValueError('ELF has no LOAD segment')
-    return len(aligns), min(aligns), errors
+
+    # Android's 16 KB rule has an explicit exception: a non-aligned RELRO
+    # end is safe when the RELRO consumes the entire remainder of its
+    # containing writable LOAD segment. In that case no writable .data/.bss
+    # follows RELRO in that LOAD segment.
+    for index, relro_start, relro_end in relros:
+        if relro_end % PAGE_SIZE == 0:
+            continue
+
+        containing_writable = [
+            load for load in loads
+            if (load['flags'] & PF_W)
+            and load['start'] <= relro_start
+            and load['end'] >= relro_end
+        ]
+        if not containing_writable:
+            errors.append(
+                f'GNU_RELRO[{index}] end=0x{relro_end:x} is not {PAGE_SIZE}-byte aligned '
+                'and no containing writable LOAD segment was found to verify the exception'
+            )
+            continue
+
+        extending = [
+            load for load in containing_writable if load['end'] > relro_end
+        ]
+        if extending:
+            details = ', '.join(
+                f"LOAD[{load['index']}] end=0x{load['end']:x}" for load in extending
+            )
+            errors.append(
+                f'GNU_RELRO[{index}] end=0x{relro_end:x} is not {PAGE_SIZE}-byte aligned; '
+                f'writable data may follow in the same segment ({details})'
+            )
+
+    return len(loads), min(load['align'] for load in loads), errors
+
+
+def _synthetic_elf(program_headers, abi='arm64-v8a'):
+    """Build a minimal ELF header for deterministic checker self-tests."""
+    phoff, phentsize = 64, 56
+    ident = b'\x7fELF' + bytes((2, 1, 1)) + bytes(9)
+    header = struct.pack(
+        '<16sHHIQQQIHHHHHH',
+        ident, 3, MACHINES[abi], 1, 0, phoff, 0, 0,
+        64, phentsize, len(program_headers), 0, 0, 0
+    )
+    return header + b''.join(
+        struct.pack('<IIQQQQQQ', *entry) for entry in program_headers
+    )
+
+
+def self_test():
+    """Exercise aligned, permitted-exception, and genuinely unsafe RELRO cases."""
+    load = lambda flags, memsz, align=PAGE_SIZE: (
+        PT_LOAD, flags, 0, 0x4000, 0, 0, memsz, align
+    )
+    relro = lambda memsz: (
+        PT_GNU_RELRO, 4, 0, 0x4000, 0, 0, memsz, 1
+    )
+
+    cases = [
+        ('aligned RELRO', [load(6, PAGE_SIZE), relro(PAGE_SIZE)], False),
+        ('RELRO ending with writable LOAD', [load(6, 0x1000), relro(0x1000)], False),
+        ('writable data after RELRO', [load(6, 0x2000), relro(0x1000)], True),
+        ('no RELRO segment', [load(6, 0x1000)], False),
+        ('no containing writable LOAD', [load(4, 0x1000), relro(0x1000)], True),
+        ('under-aligned LOAD', [load(6, 0x1000, 4096)], True),
+    ]
+    for name, headers, should_fail in cases:
+        _, _, errors = check_elf(_synthetic_elf(headers), 'arm64-v8a')
+        if bool(errors) != should_fail:
+            raise AssertionError(
+                f'checker self-test failed for {name}: expected failure={should_fail}, '
+                f'got errors={errors}'
+            )
 
 
 def check_apk(path, output=sys.stdout):
@@ -70,20 +157,38 @@ def check_apk(path, output=sys.stdout):
                     failures += 1
                     print(f'UNALIGNED {item.filename}: {"; ".join(errors)}', file=output)
                 else:
-                    print(f'ALIGNED {item.filename}: {count} LOAD segments, min alignment={minimum}', file=output)
+                    print(
+                        f'ALIGNED {item.filename}: {count} LOAD segments, '
+                        f'min alignment={minimum}',
+                        file=output
+                    )
             except (ValueError, struct.error, zipfile.BadZipFile) as error:
                 failures += 1
                 print(f'INVALID {item.filename}: {error}', file=output)
-    print(f'android-apk-pages: {checked} 64-bit libraries, {failures} failed, '
-          f'{skipped} other-ABI libraries excluded', file=output)
+    print(
+        f'android-apk-pages: {checked} 64-bit libraries, {failures} failed, '
+        f'{skipped} other-ABI libraries excluded',
+        file=output
+    )
     return failures == 0
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('apk', type=Path)
+    parser.add_argument('apk', nargs='?', type=Path)
+    parser.add_argument(
+        '--self-test', action='store_true',
+        help='run synthetic ELF alignment tests without an APK'
+    )
     args = parser.parse_args()
+
     try:
+        self_test()
+        print('android-apk-pages: RELRO checker self-tests passed')
+        if args.self_test:
+            return 0
+        if args.apk is None:
+            parser.error('an APK path is required unless --self-test is used')
         return 0 if check_apk(args.apk) else 1
     except (OSError, zipfile.BadZipFile) as error:
         print(f'android-apk-pages: {error}', file=sys.stderr)
