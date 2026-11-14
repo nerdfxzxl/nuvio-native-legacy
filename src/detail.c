@@ -321,7 +321,8 @@ static int  amigosDoTitulo(AmigosTitulo *t) {
 // "Rafa terminou a série". 0/0 = nao se sabe ainda: a frase nunca e afirmada.
 static void ultimoEpisodio(int *t, int *e);
 static int  pedReproduzir = 0, pedMarcar = 0, pedFontes = 0;
-// A primeira reproducao pelo botao primario pede escolha manual; Retomar nao.
+// O Play inicial e o OK longo do botao primario pedem a folha no player.
+// O OK longo tambem vale em Retomar; o OK curto de Retomar continua automatico.
 static int  pedEscolherFonteInicial = 0;
 // O EPISODIO TRAVADO COM O PEDIDO DE FONTES (#513). A folha rouba o foco do
 // teclado: uma seta na folha nao chega a detail_evento, mas o menu do
@@ -3106,8 +3107,8 @@ static void detail_evento_(const SDL_Event *e) {
       // marcou nada, apesar do icone. Agora tem pedido proprio.
       int acao = acaoEm(botao);
       if (acao == ACAO_PRIMARIO) {
-        if (dur >= NV_HOLD_MS) pedFontes = 1;
-        else { pedReproduzir = 1; pedEscolherFonteInicial = !temInicio(); }
+        pedReproduzir = 1;
+        pedEscolherFonteInicial = dur >= NV_HOLD_MS || !temInicio();
 
       } else if (acao == ACAO_INICIO) {
         // "Assistir do comeco" (issue #46): mesmo caminho do primario, mas o
