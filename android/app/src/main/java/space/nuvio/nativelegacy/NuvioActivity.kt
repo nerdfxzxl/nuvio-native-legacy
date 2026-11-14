@@ -240,6 +240,8 @@ class NuvioActivity : SDLActivity() {
     }
     private external fun nativeChooseStream(index: Int, generation: Int): Boolean
     private external fun nativeCancelStreamSelector()
+    private external fun nativeRefreshStreams()
+    fun refreshStreams() = nativeRefreshStreams()
     fun chooseStream(index: Int, generation: Int): Boolean = nativeChooseStream(index, generation)
     fun cancelStreamSelector() = nativeCancelStreamSelector()
 
