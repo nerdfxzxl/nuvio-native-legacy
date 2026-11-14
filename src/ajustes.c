@@ -725,7 +725,7 @@ typedef enum {
   // Hero logo and information size (0 Normal, 1 Grande, 2 Muito grande). LOCAL, append-only.
   AJ_HERO_TAMANHO,
   AJ_HERO_PASTA_DETALHES, // Device-local folder hero details, append-only; on by default.
-  AJ_STREAM_SELECTOR, // Device-local: Official Nuvio selector or Legacy selector.
+  AJ_STREAM_SELECTOR, // Retired selector-mode slot; keep its persisted index stable.
   AJ_N
 } OpcaoId;
 _Static_assert(DEBRID_RD == 0 && DEBRID_TB == 1 && DEBRID_PM == 2 && DEBRID_AD == 3,
@@ -735,7 +735,6 @@ _Static_assert(DEBRID_RD == 0 && DEBRID_TB == 1 && DEBRID_PM == 2 && DEBRID_AD =
 // de cada valor vem de selospacote_nome (textoValor / uxValorTexto).
 static const char *V_PROVEDORES_ESCOPO[] = { "Compartilhada neste aparelho", "Separada para este perfil" };
 static const char *V_HDR_UI[] = { "Automático", "Desligado" };
-static const char *V_STREAM_SELECTOR[] = { "Nuvio oficial", "Legacy" };
 static const char *V_LEG_MOSTRAR[] = { "Só meus idiomas", "Todas" };
 static const char *V_SELOS_PACOTE[] = { "Do Nuvio", "Pacote 1", "Pacote 2", "Pacote 3" };
 
@@ -1865,8 +1864,7 @@ static const Opcao OPCOES[AJ_N] = {
   ESC("Suavizar degradês", V_DEGRADES, 3),
   ESC("Tamanho do destaque", V_HERO_TAMANHO, 3),       // local: heroSizeLocal
   ESC("Mostrar detalhes da pasta no destaque", V_LIGA, 2),
-  ESC("Seletor de fontes", V_STREAM_SELECTOR, 2),
-};
+  };
 
 // Nome de cada opcao no arquivo. O formato era POSICIONAL — uma linha por
 // opcao, na ordem do enum — e por isso acrescentar uma opcao no meio fazia o
@@ -2905,7 +2903,6 @@ int ajustes_proximo_contagem(void)    { int n = valor[AJ_PROXIMO_CONTAGEM]; retu
 int ajustes_pular_creditos(void)      { return lig(AJ_PULAR_CREDITOS); }
 int ajustes_medidor_desempenho(void)  { return valor[AJ_MEDIDOR]; }
 int ajustes_fonte_manual(void)        { return lig(AJ_FONTE_MANUAL); }
-int ajustes_stream_selector(void)      { return valor[AJ_STREAM_SELECTOR] == 1 ? 1 : 0; }
 int ajustes_fonte_primeira(void)      { return ajustes_fonte_prioridade() == 3 || valor[AJ_FONTE_AUTO] == 1; }
 int ajustes_fonte_prioridade(void) { int v = valor[AJ_FONTE_PRIORIDADE]; return v < 0 || v > 3 ? 0 : v; }
 int ajustes_enquetes(void)         { return lig(AJ_ENQUETES); }
@@ -7628,8 +7625,6 @@ static void focarOpcao(int op) {
 // separado de proposito: as duas perguntas sao diferentes e juntas viram um
 // paragrafo que ninguem le do sofa.
 static const char *ajudaOpcaoBase(int op) {
-  if (op == AJ_STREAM_SELECTOR)
-    return "Nuvio oficial expande as fontes no Relógio Dinâmico; Legacy mantém a folha original.";
   if (ajLegendaPrincipal(op) || op == AJ_LEG1_RESTAURAR)
     return "Tamanho, fonte, cores, fundo e posição das legendas.";
   if (op >= AJ_LEG2_FONTE && op <= AJ_LEG2_RESTAURAR)
