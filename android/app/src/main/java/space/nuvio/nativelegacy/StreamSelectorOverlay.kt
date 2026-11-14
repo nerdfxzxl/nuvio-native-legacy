@@ -221,13 +221,18 @@ private fun StreamSelectorContent(
     // Poll only while the selector is visible. Native list revisions change as
     // asynchronous add-on responses arrive; indices remain native-owned.
     LaunchedEffect(Unit) {
+        var lastSnapshotVersion = Long.MIN_VALUE
         while (isActive) {
-            val next = withContext(Dispatchers.IO) {
-                runCatching { parseSelectorSnapshot(activity.snapshotStreams()) }
-                    .getOrDefault(SelectorSnapshot())
-            }
-            if (next.revision != snapshot.revision || next.generation != snapshot.generation || next.providers != snapshot.providers) {
+            val currentVersion = withContext(Dispatchers.IO) { activity.streamSnapshotRevision() }
+            if (currentVersion != lastSnapshotVersion) {
+                val next = withContext(Dispatchers.IO) {
+                    runCatching { parseSelectorSnapshot(activity.snapshotStreams()) }
+                        .getOrDefault(SelectorSnapshot())
+                }
                 snapshot = next
+                lastSnapshotVersion =
+                    ((next.generation.toLong() and 0xffffffffL) shl 32) or
+                        (next.revision.toLong() and 0xffffffffL)
             }
             delay(300)
         }
