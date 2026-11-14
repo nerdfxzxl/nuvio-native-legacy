@@ -3954,7 +3954,7 @@ static void tituloAddon(const Stream *s, char *buf, size_t tam) {
 }
 typedef struct {
   char titulo[192];
-  int descLinhas;
+  int descLinhas, descMedida;
   float descHFechada, descHCompleta;
 } TextoAddon;
 static TextoAddon *textoAddon;
@@ -3963,15 +3963,28 @@ static void textoAddonLimpar(void) {
   free(textoAddon); textoAddon = NULL; textoAddonN = textoAddonCap = 0;
 }
 static void textoAddonPreparar(TextoAddon *t, const Stream *s) {
-  const char *desc = descricaoAddon(s);
-  const float largura = FOLHA_W - FOLHA_PAD_E - FOLHA_PAD_D - 2.0f * FOLHA_TXT;
-  t->descHFechada = txt_bloco(TXT_PG_FIM, desc, 170, 170, 170, 0, 0,
-                              largura, FOLHA_ADDON_LD, 0.0f, FOLHA_ADDON_FECHADA);
-  t->descHCompleta = txt_bloco(TXT_PG_FIM, desc, 170, 170, 170, 0, 0,
-                               largura, FOLHA_ADDON_LD, 0.0f, FOLHA_ADDON_LINHAS);
-  t->descLinhas = (int)ceilf(t->descHCompleta / FOLHA_ADDON_LD);
-  if (t->descLinhas > FOLHA_ADDON_LINHAS) t->descLinhas = FOLHA_ADDON_LINHAS;
+  // Most rows need only the compact two-line height. Do not measure every
+  // addon description while building a large list; measure full wrapping only
+  // when that particular row receives focus.
+  t->descHFechada = FOLHA_ADDON_FECHADA * FOLHA_ADDON_LD;
+  t->descHCompleta = t->descHFechada;
+  t->descLinhas = FOLHA_ADDON_FECHADA;
+  t->descMedida = 0;
   tituloAddon(s, t->titulo, sizeof t->titulo);
+}
+static void textoAddonMedirCompleto(TextoAddon *t, const Stream *s) {
+  if (t->descMedida) return;
+  {
+    const char *desc = descricaoAddon(s);
+    const float largura = FOLHA_W - FOLHA_PAD_E - FOLHA_PAD_D - 2.0f * FOLHA_TXT;
+    float h = txt_bloco(TXT_PG_FIM, desc, 170, 170, 170, 0, 0,
+                        largura, FOLHA_ADDON_LD, 0.0f, FOLHA_ADDON_LINHAS);
+    if (h < t->descHFechada) h = t->descHFechada;
+    t->descHCompleta = h;
+    t->descLinhas = (int)ceilf(h / FOLHA_ADDON_LD);
+    if (t->descLinhas > FOLHA_ADDON_LINHAS) t->descLinhas = FOLHA_ADDON_LINHAS;
+    t->descMedida = 1;
+  }
 }
 static const TextoAddon *textoAddonDa(int i) {
   static TextoAddon reserva;
@@ -4478,7 +4491,8 @@ static float alturaLinha(int i, int automatica, float abertura, int cabProv) {
   float provH = cabProv ? FOLHA_PROV_H : 0.0f;
   float h = FOLHA_LINHA_H + provH + (temMarca(i, automatica) ? FOLHA_MARCA_H : 0);
   if (ajustes_fonte_texto_addon()) {
-    const TextoAddon *t = textoAddonDa(i);
+    TextoAddon *t = textoAddonDa(i);
+    if (abertura > 0.001f) textoAddonMedirCompleto(t, &lista[i]);
     float vis = t->descHFechada + (t->descHCompleta - t->descHFechada) * abertura;
     h = provH + 20 + 40 + vis + 18 + (temMarca(i, automatica) ? FOLHA_MARCA_H : 0);
     if (abertura > 0.001f) h += (alturaArquivoDa(&lista[i]) + 8.0f) * abertura;
@@ -6485,8 +6499,9 @@ static void corpoFolha(float x, float w, float anim, Uint32 agora, int ilha) {
     cy+=40;
     if(ajustes_fonte_texto_addon()) {
       cy+=desenharFaixas(s,tx,cy,tr-tx,sel,anim);
-      const TextoAddon *t=textoAddonDa(i);
+      TextoAddon *t=textoAddonDa(i);
       const char *desc=descricaoAddon(s);
+      if (abr > .001f) textoAddonMedirCompleto(t, s);
       // Keep the addon description as one raw text block, like NuvioTV's
       // getDisplayDescription(); wrap to the card width instead of turning
       // emojis into replacement icons or truncating each fragment.
