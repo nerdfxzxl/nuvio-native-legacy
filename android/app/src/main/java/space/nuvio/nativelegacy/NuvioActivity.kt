@@ -2,6 +2,7 @@ package space.nuvio.nativelegacy
 
 import android.Manifest
 import android.app.UiModeManager
+import android.app.Dialog
 import android.content.Context
 import android.content.ComponentName
 import android.content.Intent
@@ -11,6 +12,7 @@ import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.ColorDrawable
 import android.net.Uri
 import android.net.ConnectivityManager
 import android.net.Network
@@ -97,6 +99,7 @@ class NuvioActivity : SDLActivity() {
 
     private var camadaVideo: FrameLayout? = null
     private var streamSelectorView: ComposeView? = null
+    private var streamSelectorDialog: Dialog? = null
     private var streamSelectorVisible by mutableStateOf(false)
     private var streamSelectorTitle by mutableStateOf("")
     private var touchInsetLeft = 0
@@ -207,15 +210,21 @@ class NuvioActivity : SDLActivity() {
                 }
             }
         }
-        mLayout.addView(
-            overlay,
-            RelativeLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
-        )
-        overlay.visibility = View.GONE
+        val dialog = Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen).apply {
+            setCancelable(false)
+            setContentView(overlay)
+            setOnKeyListener { _, keyCode, event ->
+                if (keyCode == KeyEvent.KEYCODE_BACK) {
+                    if (event.action == KeyEvent.ACTION_UP) {
+                        cancelStreamSelector()
+                        ocultarSeletorFontes()
+                    }
+                    true
+                } else false
+            }
+        }
         streamSelectorView = overlay
+        streamSelectorDialog = dialog
     }
 
     fun mostrarSeletorFontes() {
@@ -223,10 +232,20 @@ class NuvioActivity : SDLActivity() {
             if (mBrokenLibraries) return@runOnUiThread
             prepararSeletorFontes()
             val overlay = streamSelectorView ?: return@runOnUiThread
+            val dialog = streamSelectorDialog ?: return@runOnUiThread
             streamSelectorTitle = streamSelectorTitle()
             streamSelectorVisible = true
-            overlay.visibility = View.VISIBLE
-            overlay.bringToFront()
+            dialog.show()
+            dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+            dialog.window?.setDimAmount(0f)
+            dialog.window?.setLayout(
+                WindowManager.LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.MATCH_PARENT
+            )
+            dialog.window?.setFlags(
+                WindowManager.LayoutParams.FLAG_FULLSCREEN,
+                WindowManager.LayoutParams.FLAG_FULLSCREEN
+            )
             overlay.requestFocus()
         }
     }
@@ -234,7 +253,9 @@ class NuvioActivity : SDLActivity() {
     fun ocultarSeletorFontes() {
         runOnUiThread {
             streamSelectorVisible = false
-            streamSelectorView?.visibility = View.GONE
+            streamSelectorDialog?.dismiss()
+            streamSelectorDialog = null
+            streamSelectorView = null
             mSurface.requestFocus()
         }
     }
