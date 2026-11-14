@@ -779,6 +779,7 @@ static float *linhaY, focoFixoY;
 static _Atomic int foraCacheFoco = -1;
 static void atualizarProvedores(void);
 static void abrirBuscaFolha(void);
+static void filtroSelecionar(int novo);
 static int aberta, foco, grupo;
 static float rolagem, velRol;
 // Native stream search. The query is applied during the existing list build,
