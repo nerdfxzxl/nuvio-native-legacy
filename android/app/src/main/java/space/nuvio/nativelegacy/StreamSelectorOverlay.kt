@@ -301,9 +301,7 @@ internal fun StreamSelectorOverlay(
                             ),
                             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                             keyboardActions = KeyboardActions(onSearch = { keyboard?.hide() }),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .focusable()
+                            modifier = Modifier.fillMaxWidth()
                         )
                     }
                     if (query.isNotEmpty()) {
