@@ -4805,13 +4805,9 @@ static int linhaDe(int indice) {
   return -1;
 }
 static int folhaIlha(void) {
-#ifdef NV_ANDROID
-  // Official mode expands the source list from the player's Dynamic Clock.
-  // Legacy mode retains the original right-side sheet.
-  return player_aberto() && ajustes_stream_selector() == 0;
-#else
+  // The Dynamic Clock is the single host for source selection while playing.
+  // The full-screen Compose selector is intentionally no longer launched.
   return player_aberto();
-#endif
 }
 // A lista nasce da ilha do relogio, mas nao precisa ocupar quase a tela toda.
 // Reserva cerca de 40% da altura virtual para as fontes (aprox. quatro linhas
