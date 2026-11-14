@@ -6618,9 +6618,9 @@ static void corpoFolha(float x, float w, float anim, Uint32 agora, int ilha) {
       // SELOS COLORIDOS (Ajustes, #198): o dono manteve a opcao (03/10). Ligada,
       // cada selo na peca da cor do seu grupo; desligada (o padrao do Glass
       // UI), todos na mesma tinta branca.
+      float badgeMax = txtW0 - mpW - sizeW - (sizeW>0.0f?18.0f:0.0f);
+      if (badgeMax < 0.0f) badgeMax = 0.0f;
       if(selosPacoteVisiveis((Stream *)s)) {
-        float badgeMax = txtW0 - mpW - sizeW - (sizeW>0.0f?18.0f:0.0f);
-        if (badgeMax < 0.0f) badgeMax = 0.0f;
         if (sel) {
           float badgeTotal = selosDesenhar(s->selosPacote, (int)s->nSelosPacote,
                                            tx0, cy, 1000000.0f, FOLHA_SELO_H, 1.0f, t, 1, 1);
@@ -6655,7 +6655,8 @@ static void corpoFolha(float x, float w, float anim, Uint32 agora, int ilha) {
         snprintf(d,sizeof d,"%s",s->descricao);
         for(char *p=d;*p;p++)if((unsigned char)*p<32)*p=' ';
         int c=sel?180:130;
-        txt_desenhar_alpha(txt_linha_corta(TXT_PG_FIM,d,c,c,c,255,badgeMax),tx0,cy+(FOLHA_SELO_H-26)*.5f,anim); }
+        txt_desenhar_alpha(txt_linha_corta(TXT_PG_FIM,d,c,c,c,255,badgeMax),tx0,cy+(FOLHA_SELO_H-26)*.5f,anim);
+        if(sizeW>0.0f) lw=badgeMax; }
       if(sizeW>0.0f && lw+sizeW+18.0f<=txtW0) {
         float bx=tx0+(lw>0.0f?lw+18.0f:0.0f);
         GfxRect sr={bx,cy+(FOLHA_SELO_H-20.0f)*.5f,sizeW,20.0f};
