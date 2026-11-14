@@ -100,8 +100,8 @@ static int folhaRelogio; // Latched at opening, retained through closing.
 // cima: a linha do kicker (contexto, ou a ajuda do botao em foco), a linha do
 // titulo com TODOS os botoes a direita (nunca mais desce uma linha, ver
 // medirCabecalho) e as abas de addon. A lista comeca logo abaixo das abas.
-#define FOLHA_CAB_Y    100.0f  // topo dos botoes, centrados no titulo
-#define FOLHA_ABAS_Y   168.0f  // topo da faixa das abas
+#define FOLHA_CAB_Y     24.0f  // top inset shared by the search control and addon chips
+#define FOLHA_ABAS_Y    24.0f  // official Nuvio layout: addon chips are the first row
 #define FOLHA_ABAS_H    56.0f
 #define FOLHA_ABA_H     44.0f  // a pilula de cada aba, dentro da faixa
 #define FOLHA_TOPO     (FOLHA_ABAS_Y + FOLHA_ABAS_H + 24.0f + folhaOY + folhaDica)
@@ -3541,23 +3541,11 @@ static int folhaAuto, folhaVisiveis, folhaContagens[13], folhaBuscaContagens[13]
 static int filtrosVisiveis(void) { folhaDados(); return folhaVisiveis; }
 static int automaticoDaFolhaModo(void) { folhaDados(); return folhaAuto; }
 static int botaoDe(int i) {
-  if (!video_pode_forcar_sdr()) i++;
-  if (i == 0) return BT_SEM_HDR;
-  // Live TV sources do not carry the same stable container, debrid-cache and
-  // audio metadata as movie/episode sources. Keep only actions that work for
-  // channels instead of offering filters that can hide valid streams.
-  if (!filtrosVisiveis()) return i == 1 ? BT_RECARREGAR : BT_FECHAR;
-  if (i == 1) return BT_SO_MP4;
-  if (i == 2) return BT_CACHE;
-  if (i == 3) return BT_DUB;
-  if (i == 4) return BT_RECARREGAR;
-  if (i == 5 && recarregarFonteContexto) return BT_RECARREGAR_FONTE;
-  return BT_FECHAR;
+  (void)i;
+  // Official Nuvio TV puts Refresh at the start of the addon-chip row.
+  return BT_RECARREGAR;
 }
-static int nBotoes(void) {
-  if (!filtrosVisiveis()) return video_pode_forcar_sdr() ? 3 : 2;
-  return (video_pode_forcar_sdr() ? 6 : 5) + (recarregarFonteContexto != 0);
-}
+static int nBotoes(void) { return 1; }
 static const char *idiomaFiltroAudio(void) {
   return ling_audio_fonte(idioma_iso(ajustes_idioma()));
 }
@@ -4632,17 +4620,17 @@ static void montarBase(int automatica) {
   }
   // #400/#402: ordem do addon, com negativas de cache conhecidas no fim.
   // Rebuilt only when the source data or settings change.
-  if (ordemDoAddon() || ajustes_fonte_ordem_addon()) {
-    // A classificacao do StreamFit (avisos "Acima da conexao") e o
-    // enriquecimento de canal (grupoRes -> stream_canal_enriquecer) continuam;
-    // so a ordem e a do addon.
+  {
+    // Official Nuvio TV groups results by provider, not by resolution/HDR.
+    // Preserve add-on response order and keep cached and uncached results
+    // together inside their provider instead of splitting the same add-on.
     fitAtualizar();
     memset(secN, 0, sizeof secN);
     nOrdem = 0;
     if (saved >= 0) porLinha(saved, &y, automatica);
-    for (int fora = 0; fora < (ordemDoAddon() ? 1 : 2); fora++) for (k = 0; k < n; k++) {
+    for (k = 0; k < n; k++) {
       i = ORD(k);
-      if (i == saved || !passaFiltro(i) || (!ordemDoAddon() && !!lista[i].foraCache != fora)) continue;
+      if (i == saved || !passaFiltro(i)) continue;
       (void)grupoRes(&lista[i]);
       porLinha(i, &y, automatica);
     }
@@ -4902,6 +4890,8 @@ void stream_folha_abrir(void) {
   selosAnimFoco = -1; // A fresh selector opening gets one badge-strip pass.
   folhaBusca[0] = 0;
   buscaAnim = 0.0f;
+  // The official selector has no legacy quick-filter toolbar.
+  soMp4 = soCache = soDub = 0;
   atomic_store(&escolhaAndroid, -1);
   atomic_store(&cancelarAndroid, 0);
   atomic_store(&recarregarAndroid, 0);
@@ -6159,11 +6149,13 @@ static void desenharBuscaExterna(GfxRect c, float a) {
   if (!aberta || a < .01f) return;
   const int focada = grupo == -2;
   const float base = FOLHA_CHIP_H;
+  const float pin = (FOLHA_ABAS_H - FOLHA_ABA_H) * .5f;
   float maxW = fminf(280.0f, c.x - 32.0f);
   if (maxW < base) maxW = base;
   float w = base + (maxW - base) * buscaAnim;
   float direita = c.x - 12.0f;
-  GfxRect r = { direita - w, folhaOY + FOLHA_CAB_Y, w, FOLHA_CHIP_H };
+  // Align with the addon chips and keep the bar OUTSIDE the panel on its left.
+  GfxRect r = { direita - w, folhaOY + FOLHA_ABAS_Y + pin, w, FOLHA_ABA_H };
   if (w <= base + 1.0f) {
     chipFolha(r, NULL, 0.0f, "aj_search", focada, 0, a);
   } else {
@@ -6189,6 +6181,8 @@ static void corpoIlhaFolha(GfxRect c, float a, void *u) {
   (void)u;
   if (folhaRelogio && aberta && a > .5f && ponteiro_ativo()) ponteiro_camada();
   corpoFolha(c.x, c.w, a, folhaAgora, 1);
+  // Search is outside the island bounds; release the rounded panel scissor first.
+  gfx_sem_recorte();
   desenharBuscaExterna(c, a);
 }
 static void stream_folha_desenharCorpo_(Uint32 agora) {
@@ -6270,160 +6264,80 @@ static void corpoFolha(float x, float w, float anim, Uint32 agora, int ilha) {
     // O painel em si absorve o clique no vazio (nao fecha, nao da OK).
     ponteiro_alvo(x, 0, FOLHA_W, NV_TELA_H, NULL, NULL, 0, 0);
   }
-  // CABECALHO, tres faixas (ver FOLHA_CAB_Y): kicker, titulo com os botoes a
-  // direita, abas de addon.
-  //
-  // A LINHA DE AJUDA so aparece com a fileira de botoes em foco, NO LUGAR do
-  // kicker: "Sem HDR" nao se explica pelo rotulo (e no degrau compacto o
-  // filtro e so um icone), e uma linha propria empurrava as abas para baixo
-  // a cada vez que o foco subia.
-  const char *ajuda=NULL;
-  if (grupo==-1) {
-    if(botaoDe(foco)==BT_SEM_HDR)
-      ajuda="Imagem preta com o áudio tocando? Recarrega esta fonte sem HDR nem Dolby Vision.";
-    else if(botaoDe(foco)==BT_RECARREGAR || botaoDe(foco)==BT_RECARREGAR_FONTE) {
-      static char acao[160];
-      snprintf(acao, sizeof acao, "%s · %s", i18n(botaoDe(foco)==BT_RECARREGAR ? "Atualizar" : "Recarregar"),
-               i18n(botaoDe(foco)==BT_RECARREGAR ? "Fontes" : "Reproduzindo agora"));
-      ajuda=acao;
-    }
-    else if(botaoDe(foco)==BT_CACHE)
-      ajuda=soCache
-        ? "Mostrando só fontes que o debrid já tem: tocam na hora. OK tira o filtro."
-        : "Filtra para fontes que o debrid já tem (tocam na hora, sem baixar antes). OK liga o filtro.";
-    else if(botaoDe(foco)==BT_DUB)
-      ajuda=ajudaFiltroAudio();
-    else if(botaoDe(foco)==BT_SO_MP4)
-      ajuda=soMp4
-        ? "Mostrando só containers MP4 (útil para achar Dolby Vision em MP4). OK tira o filtro."
-        : "Filtra a lista para fontes em MP4. OK liga o filtro.";
-  }
-  if (ajuda) txt_desenhar_alpha(txt_linha_corta(TXT_HERO_META,ajuda,160,160,158,255,rw-FOLHA_TXT),tx,oy+70,anim);
-  else { float cw = 0, ch = 0;
-    if (contexto[0]) {
-      // Kicker do Glass UI: 15/700 em caixa alta espacada, cinza 45%.
-      cw = plrui_kicker(contexto,tx,oy+74,243,242,239,anim*.45f) + 22.0f; ch = 18.0f;
-    }
-    // AINDA HA ADDON RESPONDENDO, com fonte ja na lista (#221): a lista vai
-    // crescer, e quem escolhe agora escolhe entre o que chegou. Na linha do
-    // contexto, no acento, para nao disputar com o titulo nem com a ajuda.
-    if (n > 0 && addons_ocupado() && rw-360-cw > 80) {
-      if (cw > 0) gfx_cor((GfxRect){tx+cw-13.5f,oy+74+ch*.5f-2.5f,5,5},.5f,.5f,.5f,.49f,anim);
-      txt_desenhar_alpha(txt_linha_corta(TXT_HERO_META,"Buscando mais fontes…",ai,(int)(ag*255),(int)(ab*255),255,rw-360-cw),tx+cw,oy+72,anim);
-    } else if (grupo == 1 && linhaAceitaPartes(filtrado(foco)) && rw-360-cw > 80) {
-      // O GESTO NAO SE ADIVINHA: a dica fica no lugar do "Buscando mais fontes".
-      if (cw > 0) gfx_cor((GfxRect){tx+cw-13.5f,oy+74+ch*.5f-2.5f,5,5},.5f,.5f,.5f,.49f,anim);
-      txt_desenhar_alpha(txt_linha_corta(TXT_HERO_META,"Segure OK: todos os arquivos",130,130,128,255,rw-360-cw),tx+cw,oy+72,anim);
-    } }
+  // Official Nuvio TV layout: one addon-chip row (Refresh, All, providers)
+  // above a provider-grouped stream list. The title/detail page remains visible
+  // beside the Dynamic Clock panel; no legacy title or filter toolbar.
   medirCabecalho();
-  // Search is a separate control outside the Dynamic Clock panel. The title
-  // keeps the full header row; the external search chip is drawn by the island
-  // callback so its right edge can stay fixed while it expands to the LEFT.
-  txt_desenhar_alpha(txt_linha_corta(TXT_ILHA_TITULO,"Fontes",243,242,239,255,titMaxCab),
-                     tx, oy + 94, anim);
-  // Os botoes alinhados a direita, centrados no titulo. Ordem do foco = ordem
-  // visivel, da esquerda: [Sem HDR] Só MP4, Em cache, Dublado, Recarregar, Fechar.
-  { int nbt=nBotoes(); float bx=lx+rw;
-    for(int i=0;i<nbt;i++) bx-=bwCab[i]+(i?gapCab:0.0f);
-    for(int i=0;i<nbt;i++){
-      int b=botaoDe(i);
-      GfxRect r={bx,oy+FOLHA_CAB_Y,bwCab[i],FOLHA_CHIP_H};
-      int habilitado = b != BT_RECARREGAR_FONTE || recarregarFontePode();
-      if (ptr) ponteiro_alvo(r.x, r.y, r.w, r.h, habilitado ? ponteiroFolhaBotao : NULL, NULL, i, 0);
-      chipFolha(r,rotCab[i],rotWCab[i],icoCab[i],grupo==-1&&foco==i,botaoLigado(b),
-                habilitado ? anim : anim * .35f);
-      if (b == BT_RECARREGAR && addons_ocupado()) {
-        float spin = fmodf((float)agora * 0.0014f, 1.0f);
-        float cc = grupo == -1 && foco == i ? ajustes_tinta_foco() / 255.0f : .88f;
-        gfx_arco((GfxRect){r.x + (r.w - 24.0f) * .5f, r.y + (r.h - 24.0f) * .5f, 24.0f, 24.0f},
-                 2.5f, spin, .24f, cc, cc, cc, anim);
-      }
-      bx+=bwCab[i]+gapCab;
-    } }
-  // SELETOR DE ADDON, segmentado: o selecionado em superficie clara, o foco
-  // no acento. Quantas fontes cada addon tem, ao lado do nome.
-  { int cnt[13]={0}; float iw[14], sx, segY=FOLHA_ABAS_Y+oy, maxW=rw+4.0f;
+  { float iw[14], sx, segY=FOLHA_ABAS_Y+oy;
     const float pin=(FOLHA_ABAS_H-FOLHA_ABA_H)*.5f;
-    TxtLinha nome[14], num[14];
+    TxtLinha nome[14];
+    char rot[14][128];
     folhaDados();
-    memcpy(cnt, folhaContagens, sizeof cnt);
     for(int i=-1;i<nProvedores;i++){
       int qidx=i+1;
-      int sel=i==filtro, foc=sel&&grupo==0, c=foc?ajustes_tinta_foco():sel?250:150;
-      char q[16];
-      const char *cont = contagemProvedorAba(i);
-      if (cont) snprintf(q, sizeof q, "%s", cont);
-      else snprintf(q, sizeof q, "%d", i < 0 ? ondever_n(alvoPedido) : cnt[i]);
-      nome[qidx]=txt_linha_corta(TXT_HERO_META,i<0?"Onde ver":i?provedores[i]:"Todos",c,c,c,255,260);
-      num[qidx]=txt_linha(TXT_PG_FIM,q,foc?c:sel?170:100,foc?c:sel?170:100,foc?c:sel?170:100,255);
-      iw[qidx]=nome[qidx].w+10.0f+num[qidx].w+44.0f; }
+      const char *base=i<0?"Onde ver":i?provedores[i]:"Todos";
+      const char *status=contagemProvedorAba(i);
+      if(status) snprintf(rot[qidx],sizeof rot[qidx],"%s %s",base,status);
+      else snprintf(rot[qidx],sizeof rot[qidx],"%s",base);
+      nome[qidx]=txt_linha_corta(TXT_HERO_META,rot[qidx],235,235,235,255,260);
+      iw[qidx]=(float)nome[qidx].w+36.0f;
+    }
+    // Refresh is the first chip. Rotate the actual arrow while loading.
+    { GfxRect rr={lx-2.0f,segY+pin,FOLHA_ABA_H,FOLHA_ABA_H};
+      if(ptr) ponteiro_alvo(rr.x,rr.y,rr.w,rr.h,ponteiroFolhaBotao,NULL,0,0);
+      if(addons_ocupado()) {
+        float spin=0.0f, cc=grupo==-1?ajustes_tinta_foco()/255.0f:.88f;
+        if(!ajustes_animacoes_reduzidas()) spin=fmodf((float)agora*.0014f,1.0f)*6.2831853f;
+        chipFolha(rr,NULL,0.0f,NULL,grupo==-1,0,anim);
+        gfx_girar(spin,rr.x+rr.w*.5f,rr.y+rr.h*.5f);
+        gfx_icone((GfxRect){rr.x+(rr.w-rr.h*.42f)*.5f,rr.y+(rr.h-rr.h*.42f)*.5f,
+                            rr.h*.42f,rr.h*.42f},"aj_rotate-cw",cc,cc,cc,anim);
+        gfx_sem_girar();
+      } else chipFolha(rr,NULL,0.0f,"aj_rotate-cw",grupo==-1,0,anim);
+    }
+    sx=lx-2.0f+FOLHA_ABA_H+10.0f;
+    float maxW=rw-(sx-(lx-2.0f));
     int ini=-1; float soma;
     for(;;){ soma=2*pin; for(int i=ini;i<=filtro&&i<nProvedores;i++) soma+=iw[i+1]+6.0f;
       if(soma<=maxW||ini>=filtro) break; ini++; }
-    soma=2*pin; int fim=ini;
+    int fim=ini;
     while(fim<nProvedores && soma+iw[fim+1]+6.0f<=maxW){ soma+=iw[fim+1]+6.0f; fim++; }
     if(fim==ini) fim=ini+1;
 #ifdef NV_TOUCH_UI
-    if (layout_modo_mobile())
-    { float total = 2 * pin, antes = 0;
-      for (int i = -1; i < nProvedores; i++) { total += iw[i + 1] + 6; if (i < ini) antes += iw[i + 1] + 6; }
-      if (!toquerol_livre(&toqueFontesAbas)) toqueFontesAbasOffset = antes;
-      toquerol_vincular(&toqueFontesAbas, (GfxRect){lx - 2, segY, maxW, FOLHA_ABAS_H}, gfx_escala(),
-                       0, total - 6 - maxW, 0, &toqueFontesAbasOffset);
-      ini = -1; fim = nProvedores; soma = fminf(total, maxW + 6);
-      gfx_recorte(lx - 2, segY, maxW, FOLHA_ABAS_H);
+    if(layout_modo_mobile()) {
+      float total=2*pin,antes=0;
+      for(int i=-1;i<nProvedores;i++){ total+=iw[i+1]+6.0f; if(i<ini) antes+=iw[i+1]+6.0f; }
+      if(!toquerol_livre(&toqueFontesAbas)) toqueFontesAbasOffset=antes;
+      toquerol_vincular(&toqueFontesAbas,(GfxRect){sx,segY,maxW,FOLHA_ABAS_H},gfx_escala(),
+                        0,total-6.0f-maxW,0,&toqueFontesAbasOffset);
+      ini=-1; fim=nProvedores;
+      gfx_recorte(sx,segY,maxW,FOLHA_ABAS_H);
     }
 #endif
-    sx=lx-2.0f;
-    if (ajustes_vidro()) gfx_vidro_folha((GfxRect){sx,segY,soma-6.0f,FOLHA_ABAS_H},.5f,anim);
-    else gfx_cor((GfxRect){sx,segY,soma-6.0f,FOLHA_ABAS_H},.5f,.113f,.118f,.137f,anim);
-    sx+=pin;
+    { float tabX=sx;
 #ifdef NV_TOUCH_UI
-    if (layout_modo_mobile()) sx -= toqueFontesAbasOffset;
+      if(layout_modo_mobile()) tabX-=toqueFontesAbasOffset;
 #endif
-    { float tx0=sx, tw=0;
-      for(int i=ini;i<fim;i++){ if(i==filtro) tw=iw[i+1]; else if(!tw) tx0+=iw[i+1]+6.0f; }
-      tx0-=lx;
-      if(filtro!=filtroVisto){
-        if(filtroVisto==-2||pillW<0) pillW=tw, pillX=tx0;
-        else { trocaDesde=agora; trocaDir=filtro>filtroVisto?1:-1; }
-        pillDeX=pillX; pillDeW=pillW; filtroVisto=filtro; }
-      { float e=trocaEase(agora);
-        pillX=pillDeX+(tx0-pillDeX)*e; pillW=pillDeW+(tw-pillDeW)*e; }
-      { GfxRect r={lx+pillX,segY+pin,pillW,FOLHA_ABA_H};
-        if(grupo==0) {
-          focoFonte(r,.5f,anim);
-          // Keep selected state in the fill; the white 2px ring communicates D-pad focus.
-          gfx_anel_fora(r,.5f,0.0f,2.0f,1.0f,1.0f,1.0f,.96f*anim);
+      for(int i=ini;i<fim;i++){
+        int qidx=i+1, sel=i==filtro;
+        GfxRect r={tabX,segY+pin,iw[qidx]-6.0f,FOLHA_ABA_H};
+        if(ptr) {
+#ifdef NV_TOUCH_UI
+          if(layout_modo_mobile()) {
+            float l=fmaxf(r.x,sx), d=fminf(r.x+r.w,sx+maxW);
+            if(d>l) ponteiro_alvo(l,r.y,d-l,r.h,NULL,ponteiroFolhaFiltro,i,0);
+          } else
+#endif
+            ponteiro_alvo(r.x,r.y,r.w,r.h,NULL,ponteiroFolhaFiltro,i,0);
         }
-        else if (ajustes_vidro()) gfx_cor(r,.5f,1,1,1,.12f*anim); else gfx_cor(r,.5f,.204f,.212f,.243f,anim); } }
-    for(int i=ini;i<fim;i++){
-      int qidx=i+1;
-      GfxRect r={sx,segY+pin,iw[qidx],FOLHA_ABA_H}; int sel=i==filtro;
-      if (ptr) {
-#ifdef NV_TOUCH_UI
-        if (layout_modo_mobile()) {
-        float l = fmaxf(r.x, lx - 2), d = fminf(r.x + r.w, lx - 2 + maxW);
-        if (d > l) ponteiro_alvo(l, r.y, d - l, r.h, NULL, ponteiroFolhaFiltro, i, 0);
-        } else
-#endif
-        ponteiro_alvo(r.x, r.y, r.w, r.h, NULL, ponteiroFolhaFiltro, i, 0);
+        chipFolha(r,rot[qidx],(float)nome[qidx].w,NULL,grupo==0&&sel,sel,anim);
+        tabX+=iw[qidx]+6.0f;
       }
-      txt_desenhar_alpha(nome[qidx],r.x+22,r.y+(FOLHA_ABA_H-nome[qidx].h)*.5f,anim);
-      txt_desenhar_alpha(num[qidx],r.x+22+nome[qidx].w+10,r.y+(FOLHA_ABA_H-num[qidx].h)*.5f+1,anim);
-      sx+=iw[qidx]+6.0f; } }
-  // AVISO DOS FILTROS RAPIDOS, sob as abas: quantas fontes eles escondem. OK
-  // (ou toque) tira todos. Reserva todas as linhas, inclusive a acao de recuperar.
-  { const char *dica = fraseDicaChips();
-    if (dica) {
-      float tw = (float)txt_linha(TXT_HERO_META, dica, 255, 255, 255, 255).w;
-      GfxRect r = {lx-2.0f, FOLHA_ABAS_Y+oy+FOLHA_ABAS_H+6.0f, fminf(tw+48.0f, rw+4.0f), folhaDica-6.0f};
-      if (ptr) ponteiro_alvo(r.x, r.y, r.w, r.h, ponteiroFolhaDica, NULL, 0, 0);
-      chipFolha(r, "", r.w-48.0f, NULL, grupo==2, 1, anim);
-      int c = ajustes_tinta_foco();
-      txt_bloco(TXT_HERO_META, dica, grupo==2?c:ai, grupo==2?c:(int)(ag*255),
-                grupo==2?c:(int)(ab*255), r.x+24.0f, r.y+6.0f, r.w-48.0f, 28.0f, anim, 0);
-    } }
+    }
+#ifdef NV_TOUCH_UI
+    if(layout_modo_mobile()) gfx_sem_recorte();
+#endif
+  }
   // The list comes in from the side the new tab is on, fading up.
   const float animLista=anim, dxLista=trocaDir*28.0f*(1-trocaEase(agora));
   { float e=trocaEase(agora); anim*=.3f+.7f*e; lx+=dxLista; tx+=dxLista; tr+=dxLista; }
@@ -6498,13 +6412,16 @@ static void corpoFolha(float x, float w, float anim, Uint32 agora, int ilha) {
       if (b > t) ponteiro_alvo(r.x, t, r.w, b - t, ponteiroFolhaLinha, NULL, row, 0);
     }
     if(sel){
-      // The focused stream card gets the requested 2px white D-pad ring.
-      // Keep the soft focused surface beneath it for both glass and solid modes.
+      // Elevated official-style card surface plus the focused outline.
       if (!gfx_foco_placa(r,FOLHA_RAIO/r.h,1,anim)) {
         if (ajustes_vidro()) gfx_cor(r,FOLHA_RAIO/r.h,1,1,1,.12f*anim);
         else gfx_cor(r,FOLHA_RAIO/r.h,.17f,.176f,.204f,anim);
       }
       gfx_anel_fora(r,FOLHA_RAIO/r.h,0.0f,2.0f,1.0f,1.0f,1.0f,.96f*anim);
+    } else {
+      if (ajustes_vidro()) gfx_cor(r,FOLHA_RAIO/r.h,.24f,.25f,.28f,.42f*anim);
+      else gfx_cor(r,FOLHA_RAIO/r.h,.14f,.15f,.17f,.92f*anim);
+      gfx_anel(r,FOLHA_RAIO/r.h,1.0f,.34f,.36f,.40f,.18f*anim);
     }
     // COLUNA DA DIREITA: tamanho grande, addon embaixo. Medida primeiro: o
     // titulo e a fileira de logos param antes dela.
