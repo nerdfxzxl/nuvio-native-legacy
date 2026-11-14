@@ -27,7 +27,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -465,7 +464,7 @@ private fun StreamSourceCard(
                     )
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    if (stream.height > 0) StreamBadge(if (stream.height >= 2160) "4K" else "\${stream.height}p")
+                    if (stream.height > 0) StreamBadge(if (stream.height >= 2160) "4K" else "${stream.height}p")
                     if (stream.dolbyVision) StreamBadge("Dolby Vision")
                     if (stream.dolbyAtmos) StreamBadge("Atmos")
                     if (stream.mp4) StreamBadge("MP4")
