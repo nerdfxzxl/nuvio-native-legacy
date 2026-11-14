@@ -129,6 +129,12 @@ Java_space_nuvio_nativelegacy_NuvioActivity_nativeCancelStreamSelector(JNIEnv *e
   stream_folha_cancelar_externo();
 }
 
+JNIEXPORT void JNICALL
+Java_space_nuvio_nativelegacy_NuvioActivity_nativeRefreshStreams(JNIEnv *env, jobject act) {
+  (void)env; (void)act;
+  stream_folha_recarregar_externo();
+}
+
 #ifdef NV_TOUCH_UI
 static SDL_atomic_t toqueCancelEvento;
 
