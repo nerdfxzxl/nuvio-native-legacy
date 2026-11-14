@@ -3675,9 +3675,24 @@ static int textoContemBusca(const char *texto, const char *consulta) {
 static int passaBusca(int i) {
   const Stream *s;
   const char *p;
+  char formato[192] = "";
   if (!folhaBusca[0]) return 1;
   if (i < 0 || i >= n) return 0;
   s = &lista[i];
+  if (s->altura > 0) {
+    char resolucao[24];
+    snprintf(resolucao, sizeof resolucao, "%d %dp", s->altura, s->altura);
+    snprintf(formato + strlen(formato), sizeof formato - strlen(formato), " %s", resolucao);
+    if (s->altura >= 2160) strncat(formato, " 4K UHD", sizeof formato - strlen(formato) - 1);
+  }
+  if (s->dolbyVision) strncat(formato, " Dolby Vision DolbyVision DV", sizeof formato - strlen(formato) - 1);
+  if (s->dolbyAtmos) strncat(formato, " Dolby Atmos DolbyAtmos Atmos", sizeof formato - strlen(formato) - 1);
+  if (s->av1) strncat(formato, " AV1", sizeof formato - strlen(formato) - 1);
+  if (s->mp4) strncat(formato, " MP4", sizeof formato - strlen(formato) - 1);
+  if (s->badges & badges_bit("q-remux")) strncat(formato, " REMUX", sizeof formato - strlen(formato) - 1);
+  if (s->badges & badges_bit("q-bluray")) strncat(formato, " BluRay", sizeof formato - strlen(formato) - 1);
+  if (s->badges & badges_bit("q-web-dl")) strncat(formato, " WEB-DL", sizeof formato - strlen(formato) - 1);
+  if (s->badges & badges_bit("q-webrip")) strncat(formato, " WEBRip", sizeof formato - strlen(formato) - 1);
   // Match every word, but allow each word to occur in a different field.
   // This mirrors the mobile selector's broad, case-insensitive search.
   for (p = folhaBusca; *p;) {
@@ -3691,7 +3706,11 @@ static int passaBusca(int i) {
         !textoContemBusca(s->provedor, termo) &&
         !textoContemBusca(s->addonChave, termo) &&
         !textoContemBusca(s->descricao, termo) &&
-        !textoContemBusca(s->arquivo, termo)) return 0;
+        !textoContemBusca(s->arquivo, termo) &&
+        !textoContemBusca(s->infoHash, termo) &&
+        !textoContemBusca(s->audioIdiomas, termo) &&
+        !textoContemBusca(s->legendaIdiomas, termo) &&
+        !textoContemBusca(formato, termo)) return 0;
     while (*p && !isspace((unsigned char)*p)) p++;
   }
   return 1;
