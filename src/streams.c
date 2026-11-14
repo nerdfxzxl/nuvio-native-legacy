@@ -4569,8 +4569,10 @@ static float alturaLinha(int i, int automatica, float abertura, int cabProv) {
 static void porLinha(int i, float *y, int automatica) {
   float abertura = grupo == 1 && nOrdem == foco ? abreFoco : nOrdem == linhaAnt ? abreAnt : 0;
   int anterior = nOrdem > 0 ? ordem[nOrdem - 1] : -1;
+  // Provider headings follow addon identity, not just the visible label:
+  // two configured add-ons may share the same provider name.
   int cabProv = lista[i].provedor[0] &&
-      (anterior < 0 || strcmp(lista[anterior].provedor, lista[i].provedor) != 0);
+      (anterior < 0 || !mesmoAddon(&lista[anterior], &lista[i]));
   float h = alturaLinha(i, automatica, abertura, cabProv);
   linhaCabProv[nOrdem] = (unsigned char)cabProv;
   ordem[nOrdem] = i;
