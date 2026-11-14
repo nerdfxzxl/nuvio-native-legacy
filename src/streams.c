@@ -4816,8 +4816,9 @@ static int linhaDe(int indice) {
   return -1;
 }
 static int folhaIlha(void) {
-  // The Dynamic Clock is the single host for source selection while playing.
-  // The full-screen Compose selector is intentionally no longer launched.
+  // Playback hosts the selector in the player island. On the title detail page,
+  // folhaRelogio routes the same body through the main Dynamic Clock instead.
+  // The old full-screen Compose selector is intentionally no longer launched.
   return player_aberto();
 }
 // The source panel occupies the full usable height of the Dynamic Clock.
