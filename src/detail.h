@@ -56,6 +56,7 @@ int  detail_arte_titulo(const CatItem *titulo, char *saida, size_t tam, int *pos
 int  detail_ep_foco(int *temporada, int *episodio);
 int  detail_pediu_reproduzir(void);   // consome o pedido
 int  detail_pediu_escolher_fonte_inicial(void); // Play inicial ou OK longo
+int  detail_pediu_retomar_direto(void); // short Resume uses the last source
 void detail_pedir_reproduzir(void);   // arma o pedido (OK no card de retomada)
 
 // Indice do titulo que a tela pediu para ABRIR no lugar do atual, ou -1.
