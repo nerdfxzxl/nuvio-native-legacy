@@ -864,6 +864,7 @@ typedef struct {
 } StreamUiItem;
 
 typedef struct { char *dados; size_t usado, capacidade; int falhou; } StreamUiJson;
+static void streamUiContext(StreamUiJson *b);
 
 static void streamUiJsonReservar(StreamUiJson *b, size_t extra) {
   size_t precisa;
@@ -974,7 +975,9 @@ char *stream_ui_snapshot_json(void) {
   }
   pthread_mutex_unlock(&verTrava);
 
-  streamUiJsonFormat(&b, "{\"generation\":%u,\"revision\":%u,\"streams\":[", geracao, revisao);
+  streamUiJsonFormat(&b, "{\"generation\":%u,\"revision\":%u,", geracao, revisao);
+  streamUiContext(&b);
+  streamUiJsonRaw(&b, ",\"streams\":[");
   for (int i = 0; i < qtd && !b.falhou; i++) {
     if (i) streamUiJsonRaw(&b, ",");
     streamUiJsonFormat(&b, "{\"index\":%d,\"height\":%d,\"dolbyVision\":%d,"
@@ -4201,6 +4204,32 @@ void stream_folha_item(int indice) { itemFolha = indice; }
 void stream_folha_nome(const char *nome) {
   snprintf(nomeFolha, sizeof nomeFolha, "%s", nome ? nome : "");
 }
+
+static void streamUiContext(StreamUiJson *b) {
+  CatItem *item = NULL;
+  char titulo[160];
+  int indice = itemFolha;
+  snprintf(titulo, sizeof titulo, "%s", nomeFolha);
+  streamUiJsonRaw(b, "\"title\":"); streamUiJsonString(b, titulo);
+  item = malloc(sizeof *item);
+  if (item && indice >= 0 && cat_copiar_item(indice, item)) {
+    streamUiJsonRaw(b, ",\"backdrop\":"); streamUiJsonString(b, item->backdrop);
+    streamUiJsonRaw(b, ",\"poster\":"); streamUiJsonString(b, item->poster);
+    streamUiJsonRaw(b, ",\"logo\":"); streamUiJsonString(b, item->logo);
+    streamUiJsonRaw(b, ",\"genres\":"); streamUiJsonString(b, item->genero);
+    streamUiJsonRaw(b, ",\"meta\":"); streamUiJsonString(b, item->meta);
+    streamUiJsonFormat(b, ",\"isEpisode\":%s,\"season\":%d,\"episode\":%d",
+                       item->temporada > 0 && item->episodio > 0 ? "true" : "false",
+                       item->temporada, item->episodio);
+    streamUiJsonRaw(b, ",\"episodeName\":"); streamUiJsonString(b, item->nomeEpisodio);
+  } else {
+    streamUiJsonRaw(b, ",\"backdrop\":\"\",\"poster\":\"\",\"logo\":\"\","
+                      "\"genres\":\"\",\"meta\":\"\",\"isEpisode\":false,"
+                      "\"season\":0,\"episode\":0,\"episodeName\":\"\"");
+  }
+  free(item);
+}
+
 void stream_folha_titulo(char *dst, size_t tamanho) {
   if (dst && tamanho) snprintf(dst, tamanho, "%s", nomeFolha);
 }
