@@ -176,7 +176,7 @@ int ajustes_medidor_desempenho(void);
 // NAO VALE PARA CANAL AO VIVO: la a folha entraria entre um zap e outro, e o
 // proprio fluxo do guia ja escolhe pela playlist que responde (ver tocarCanal).
 int ajustes_fonte_manual(void);
-// Android TV stream selector: 0 = Official Nuvio, 1 = original Legacy C selector.
+// Android TV selector: 0 = Nuvio Dynamic Clock; 1 = original Legacy sheet.
 int ajustes_stream_selector(void);
 
 // "Fonte automatica" = "Primeira da lista" (issue #130): o automatico toca a
