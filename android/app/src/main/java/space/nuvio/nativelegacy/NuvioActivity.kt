@@ -175,6 +175,9 @@ class NuvioActivity : SDLActivity() {
 
     // Vigia do arranque (#266, ArranqueVigia.kt) e o que ele le do C (android.c).
     private var vigia: ArranqueVigia? = null
+    private external fun nativeStreamSnapshot(): String
+    fun snapshotStreams(): String = nativeStreamSnapshot()
+
     external fun nativeEtapa(): String
     external fun nativeQuadros(): Long
     external fun nativeRecUrl(): String
