@@ -4557,7 +4557,7 @@ static float alturaLinha(int i, int automatica, float abertura, int cabProv) {
     float vis = nl > FOLHA_ADDON_FECHADA ? FOLHA_ADDON_FECHADA + (nl - FOLHA_ADDON_FECHADA) * abertura : (float)nl;
     h = provH + 20 + 40 + vis * FOLHA_ADDON_LD + 18 + (temMarca(i, automatica) ? FOLHA_MARCA_H : 0);
     if (abertura > 0.001f) h += (alturaArquivoDa(&lista[i]) + 8.0f) * abertura;
-    if (h < 96) h = 96;
+    if (h < provH + 96.0f) h = provH + 96.0f;
   } else {
     // Full filenames wrap naturally; the focused row grows to fit every line.
     float extra = (abertura > 0.001f ? alturaArquivoDa(&lista[i]) : 0.0f) +
