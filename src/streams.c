@@ -58,6 +58,7 @@
 #include "plrilha.h"
 #include "partes.h"
 #include "ctxlista.h"
+#include "teclado.h"
 #define NV_ESCALA_TELA   // o arquivo inteiro mede pela tela virtual (escala.h)
 #include "escala.h"
 
@@ -777,6 +778,11 @@ static _Atomic int foraCacheFoco = -1;
 static void atualizarProvedores(void);
 static int aberta, foco, grupo;
 static float rolagem, velRol;
+// Native stream search. The query is applied during the existing list build,
+// so drawing and navigation still visit only visible rows.
+static char folhaBusca[TECLADO_MAX + 1];
+static int folhaBuscaFoco;
+static int folhaBuscaAtiva;
 
 void stream_lista_acrescentar(const Stream *l, int qtd, int ordemAddon) {
   int i, k = 0, focoIdx = -1, linhaAntes = -1, total;
@@ -3658,9 +3664,29 @@ static const char *fraseVazioChips(void) {
   snprintf(frase, sizeof frase, i18n("Os filtros ligados (%s) esconderam todas as fontes."), nomes);
   return frase;
 }
+static int textoContemBusca(const char *texto, const char *consulta) {
+  if (!texto || !consulta || !*consulta) return 0;
+  for (; *texto; texto++) {
+    const char *a = texto, *b = consulta;
+    while (*a && *b && tolower((unsigned char)*a) == tolower((unsigned char)*b)) { a++; b++; }
+    if (!*b) return 1;
+  }
+  return 0;
+}
+static int passaBusca(int i) {
+  const Stream *s;
+  if (!folhaBusca[0]) return 1;
+  if (i < 0 || i >= n) return 0;
+  s = &lista[i];
+  return textoContemBusca(s->rotulo, folhaBusca) ||
+         textoContemBusca(s->provedor, folhaBusca) ||
+         textoContemBusca(s->addonChave, folhaBusca) ||
+         textoContemBusca(s->descricao, folhaBusca) ||
+         textoContemBusca(s->arquivo, folhaBusca);
+}
 static int passaFiltro(int i) {
   if (filtro < 0) return 0;
-  if (!passaChips(i)) return 0;
+  if (!passaChips(i) || !passaBusca(i)) return 0;
   if (filtro && !doProvedor(&lista[i], filtro)) return 0;
   return 1;
 }
@@ -4825,6 +4851,7 @@ void stream_folha_abrir(void) {
   int excl, aut, alvo;
   fitAbrir();
   aberta=1; escolha=-1; grupo=1; filtro=0; filtroVisto=-2; pillW=-1.0f; trocaDesde=0; soMp4=0; soCache=0; soDub=0; recarregar=0;
+  folhaBusca[0] = 0; folhaBuscaFoco = 0; folhaBuscaAtiva = 0;
   atomic_store(&escolhaAndroid, -1);
   atomic_store(&cancelarAndroid, 0);
   atomic_store(&recarregarAndroid, 0);
@@ -5214,6 +5241,21 @@ static void okNaLinha(void) {
 }
 
 void stream_folha_evento(const SDL_Event *e) {
+  // The shared keyboard is modal; its result is consumed here before the
+  // underlying D-pad list can react to the same key.
+  if (teclado_aberto()) {
+    teclado_evento(e);
+    { int resultado = teclado_resultado();
+      if (resultado == TECLADO_PRONTO) {
+        snprintf(folhaBusca, sizeof folhaBusca, "%s", teclado_texto());
+        grupo = -2; folhaBuscaFoco = 1; foco = 0; rolagem = 0; velRol = 0;
+        montar(automaticaDaFolha());
+      } else if (resultado == TECLADO_CANCELOU) {
+        grupo = -2; folhaBuscaFoco = 1;
+      }
+    }
+    return;
+  }
 #ifdef NV_ANDROID
   // Keyboard/back handling belongs to Compose in Official mode; SDL must not
   // operate the hidden Legacy selector underneath it.
@@ -5280,10 +5322,22 @@ void stream_folha_evento(const SDL_Event *e) {
     else if(grupo==0) {grupo=-1;foco=nBotoes()-1;}
   }
   if(k==SDLK_DOWN) {
-    if(grupo==-1) grupo=0;
+    if(grupo==-2) { grupo=0; filtro=-1; foco=0; }
+    else if(grupo==-1) grupo=0;
     else if(grupo==0) {grupo=chipsOcultos(NULL,0)?2:1;foco=0;}
     else if(grupo==2) {grupo=1;foco=0;}
     else if(foco<nf-1) foco++;
+  }
+  // The card's horizontal exits are deliberate shortcuts: Right -> All
+  // streams, Left -> Search. No existing filter/tab behaviour is changed.
+  if (grupo==1 && k==SDLK_RIGHT) { grupo=0; filtro=-1; foco=0; }
+  else if (grupo==1 && k==SDLK_LEFT) { grupo=-2; folhaBuscaFoco=1; }
+  else if (grupo==-2 && k==SDLK_RIGHT) { grupo=1; foco=0; }
+  else if (grupo==0 && (k==SDLK_LEFT || k==SDLK_RIGHT)) {
+    filtro+=k==SDLK_RIGHT?1:-1;
+    if(filtro < -1) filtro=-1;
+    if(filtro>=nProvedores) filtro=nProvedores-1;
+    foco=0;rolagem=0;velRol=0;
   }
   // ESQUERDA/DIREITA NUMA FONTE TROCAM A ABA DE ADDON (dono, 02/10), como no
   // seletor: a lista nao tem nada na horizontal, e subir ate as abas para
@@ -5300,7 +5354,11 @@ void stream_folha_evento(const SDL_Event *e) {
     if(foco>=nBotoes()) foco=nBotoes()-1;
   }
   if(k==SDLK_RETURN || k==SDLK_KP_ENTER) {
-    if(grupo==-1) {
+    if (grupo == -2) {
+      teclado_abrir_com("Buscar fuentes", "Título, addon, archivo o calidad", TECLADO_MAX, NULL, folhaBusca);
+      teclado_aceitar_utf8(1);
+    }
+    else if(grupo==-1) {
       switch(botaoDe(foco)) {
         case BT_RECARREGAR: recarregar=1; break;
         case BT_RECARREGAR_FONTE:
@@ -6180,6 +6238,17 @@ static void corpoFolha(float x, float w, float anim, Uint32 agora, int ilha) {
       txt_desenhar_alpha(txt_linha_corta(TXT_HERO_META,"Segure OK: todos os arquivos",130,130,128,255,rw-360-cw),tx+cw,oy+72,anim);
     } }
   medirCabecalho();
+  // Search sits on the far left of the header, aligned with the stream list.
+  // Focusing expands it; opening the shared keyboard requires an explicit OK.
+  { GfxRect sr = { lx, oy + FOLHA_CAB_Y, folhaBusca[0] || grupo == -2 ? 248.0f : FOLHA_CHIP_H, FOLHA_CHIP_H };
+    if (grupo == -2 || folhaBusca[0]) {
+      chipFolha(sr, folhaBusca[0] ? folhaBusca : "Buscar fontes", folhaBusca[0] ? 190.0f : 150.0f,
+                "aj_search", grupo == -2, 0, anim);
+    } else {
+      chipFolha(sr, NULL, 0, "aj_search", 0, 0, anim);
+    }
+    if (ptr) ponteiro_alvo(sr.x, sr.y, sr.w, sr.h, NULL, NULL, 0, 0);
+  }
   txt_desenhar_alpha(txt_linha_corta(TXT_ILHA_TITULO,"Fontes",243,242,239,255,titMaxCab),tx,oy+94,anim);
   // Os botoes alinhados a direita, centrados no titulo. Ordem do foco = ordem
   // visivel, da esquerda: [Sem HDR] Só MP4, Em cache, Dublado, Recarregar, Fechar.
