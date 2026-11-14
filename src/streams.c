@@ -5343,7 +5343,7 @@ void stream_folha_evento(const SDL_Event *e) {
     else if(grupo==0) {grupo=-1;foco=nBotoes()-1;}
   }
   if(k==SDLK_DOWN) {
-    if(grupo==-2) { grupo=0; filtro=0; foco=0; }
+    if(grupo==-2) { grupo=0; filtroSelecionar(0); foco=0; }
     else if(grupo==-1) grupo=0;
     else if(grupo==0) {grupo=chipsOcultos(NULL,0)?2:1;foco=0;}
     else if(grupo==2) {grupo=1;foco=0;}
@@ -5351,13 +5351,14 @@ void stream_folha_evento(const SDL_Event *e) {
   }
   // The card's horizontal exits are deliberate shortcuts: Right -> All
   // streams, Left -> Search. No existing filter/tab behaviour is changed.
-  if (grupo==1 && k==SDLK_RIGHT) { grupo=0; filtro=0; foco=0; }
-  else if (grupo==1 && k==SDLK_LEFT) { grupo=-2; filtro=0; foco=0; rolagem=0; velRol=0; }
+  if (grupo==1 && k==SDLK_RIGHT) { grupo=0; filtroSelecionar(0); foco=0; }
+  else if (grupo==1 && k==SDLK_LEFT) { grupo=-2; filtroSelecionar(0); foco=0; rolagem=0; velRol=0; }
   else if (grupo==-2 && k==SDLK_RIGHT) { grupo=1; foco=0; }
   else if (grupo>=0 && (k==SDLK_LEFT || k==SDLK_RIGHT)) {
-    filtro+=k==SDLK_RIGHT?1:-1;
-    if(filtro < -1) filtro=-1;
-    if(filtro>=nProvedores) filtro=nProvedores-1;
+    int novo=filtro+(k==SDLK_RIGHT?1:-1);
+    if(novo < -1) novo=-1;
+    if(novo>=nProvedores) novo=nProvedores-1;
+    filtroSelecionar(novo);
     foco=0;rolagem=0;velRol=0;
   }
   if(grupo==-1 && (k==SDLK_LEFT || k==SDLK_RIGHT)) {
@@ -5573,13 +5574,20 @@ static void ponteiroFolhaBusca(int i, int b) {
 }
 static void ponteiroFolhaDica(int i, int b) { (void)i; (void)b; grupo = 2; }
 static void ponteiroFolhaLinha(int row, int b) { (void)b; grupo = 1; foco = row; }
+static void filtroSelecionar(int novo) {
+  if (novo != filtro) {
+    trocaDesde = SDL_GetTicks();
+    trocaDir = novo > filtro ? 1 : -1;
+  }
+  filtro = novo;
+}
 static void ponteiroFolhaFiltro(int i, int b) {
 #ifdef NV_TOUCH_UI
   toquerol_limpar(&toqueFontes);
 #endif
   (void)b;
   if (i < -1 || i >= nProvedores) return;
-  filtro = i; foco = 0; rolagem = 0; grupo = 1;
+  filtroSelecionar(i); foco = 0; rolagem = 0; grupo = 1;
 }
 static void ponteiroFolhaFora(int a, int b) { (void)a; (void)b; aberta = 0; }
 
