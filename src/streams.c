@@ -4896,6 +4896,7 @@ void stream_folha_abrir(void) {
   int excl, aut, alvo;
   fitAbrir();
   aberta=1; escolha=-1; grupo=1; filtro=0; filtroVisto=-2; pillW=-1.0f; trocaDesde=0; soMp4=0; soCache=0; soDub=0; recarregar=0;
+  selosAnimFoco = -1; // A fresh selector opening gets one badge-strip pass.
   folhaBusca[0] = 0;
   atomic_store(&escolhaAndroid, -1);
   atomic_store(&cancelarAndroid, 0);
@@ -5736,8 +5737,10 @@ static float selosDeslocamento(int indice, float largura, float viewport, Uint32
   viagem = excesso / velocidade;
   ciclo = pausa * 2.0f + viagem * 2.0f;
   if (ciclo <= 0.0f) return 0.0f;
-  t = fmodf((float)(agora - selosAnimDesde) * 0.001f, ciclo);
-  if (t < pausa) return 0.0f;
+  // One deliberate trip to the end and back. Do not turn this into a
+  // perpetual marquee; after the return the focused strip rests at its start.
+  t = (float)(agora - selosAnimDesde) * 0.001f;
+  if (t >= ciclo || t < pausa) return 0.0f;
   t -= pausa;
   if (t < viagem) return t * velocidade;
   t -= viagem;
