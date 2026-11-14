@@ -139,6 +139,9 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.tv:tv-material:1.0.0")
     implementation("androidx.activity:activity-compose:1.9.3")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
+    implementation("androidx.lifecycle:lifecycle-viewmodel:2.8.7")
+    implementation("androidx.savedstate:savedstate:1.2.1")
     implementation("io.coil-kt:coil-compose:2.7.0")
 
     // Video (NvPlayer.kt, de outro agente): Media3 ExoPlayer.
