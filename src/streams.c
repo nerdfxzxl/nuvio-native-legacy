@@ -538,6 +538,11 @@ int stream_folha_recarregar(void) { int r = recarregar; recarregar = 0; return r
 
 static int aberta = 0, foco = 0, escolha = -1;
 static unsigned escolhaGeracao;
+// JNI callbacks never mutate SDL-owned UI state directly.
+static _Atomic int escolhaAndroid = -1;
+static _Atomic unsigned escolhaAndroidGeracao;
+static _Atomic int cancelarAndroid;
+static _Atomic int androidSelectorAtivo;
 static float anim = 0.0f, rolagem = 0.0f;
 // Velocidade da mola de 2a ordem da rolagem (anim_mola2): partida macia e
 // cauda exponencial, a MESMA curva que a home mede. A de 1a ordem que estava
@@ -4698,6 +4703,9 @@ void stream_folha_abrir(void) {
   int excl, aut, alvo;
   fitAbrir();
   aberta=1; escolha=-1; grupo=1; filtro=0; filtroVisto=-2; pillW=-1.0f; trocaDesde=0; soMp4=0; soCache=0; soDub=0; recarregar=0;
+  atomic_store(&escolhaAndroid, -1);
+  atomic_store(&cancelarAndroid, 0);
+  atomic_store(&androidSelectorAtivo, 1);
   { float ix, iy, iw, ih;
     folhaRelogio = !player_aberto() && ajustes_relogio_ligado() && ilha_rect(&ix, &iy, &iw, &ih); }
   recarregarFonteConfirmacao = 0;
@@ -4746,7 +4754,11 @@ void stream_folha_abrir(void) {
          fitFotoOrigem == SF_DUR_MEDIA ? "media" : fitFotoOrigem == SF_DUR_METADATA ? "metadata" : "unknown");
   fflush(stdout);
 }
-int stream_folha_aberta(void) { return aberta; }
+int stream_folha_aberta(void) {
+  if (atomic_exchange(&cancelarAndroid, 0)) { aberta = 0; escolha = -1; }
+  if (!aberta) atomic_store(&androidSelectorAtivo, 0);
+  return aberta;
+}
 float stream_folha_anim(void) { return anim; }
 
 // A MESMA FONTE entre duas montagens da lista (ver stream_atualizar_lista).
@@ -5286,7 +5298,33 @@ void stream_folha_atualizar(float dt, Uint32 agora) {
 #endif
   rolagem=anim_mola2(&velRol,rolagem,alvoRolagem(),dt,NV_MOLA2_SCROLL);
 }
+int stream_folha_escolher_externo(int indice, unsigned geracao) {
+  int valido = 0;
+  if (!atomic_load(&androidSelectorAtivo)) return 0;
+  pthread_mutex_lock(&verTrava);
+  if (geracao == listaGeracao && indice >= 0 && indice < n) {
+    atomic_store(&escolhaAndroidGeracao, geracao);
+    atomic_store_explicit(&escolhaAndroid, indice, memory_order_release);
+    valido = 1;
+  }
+  pthread_mutex_unlock(&verTrava);
+  return valido;
+}
+
+void stream_folha_cancelar_externo(void) {
+  atomic_store(&cancelarAndroid, 1);
+}
+
 int stream_folha_escolheu(int *out) {
+  if (atomic_exchange(&cancelarAndroid, 0)) { aberta = 0; escolha = -1; }
+  if (escolha < 0) {
+    int externo = atomic_exchange_explicit(&escolhaAndroid, -1, memory_order_acq_rel);
+    if (externo >= 0) {
+      escolha = externo;
+      escolhaGeracao = atomic_load(&escolhaAndroidGeracao);
+      aberta = 0;
+    }
+  }
   if(escolha<0) return 0;
   // A resposta da busca pode substituir a lista entre o OK e este quadro.
   // O indice escolhido so vale na mesma lista e para o alvo pedido.
@@ -5296,7 +5334,7 @@ int stream_folha_escolheu(int *out) {
     return 0;
   }
   if(out) *out=escolha;
-  escolha=-1;return 1;
+  escolha=-1; atomic_store(&androidSelectorAtivo, 0); return 1;
 }
 // PONTEIRO (#99): as mesmas variaveis das setas (grupo, foco, filtro). O
 // provedor so troca no CLIQUE — trocar ao passar por cima mudaria a lista
