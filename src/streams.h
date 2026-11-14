@@ -172,6 +172,7 @@ void stream_folha_item(int indice);
 void stream_folha_canal(int sim);
 void stream_canal_enriquecer(Stream *s);
 int stream_folha_recarregar(void);
+void stream_folha_recarregar_externo(void);
 // Abertura animada da folha (0..1): o player apaga o OSD por baixo dela.
 float stream_folha_anim(void);
 
