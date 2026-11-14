@@ -321,7 +321,7 @@ static int  amigosDoTitulo(AmigosTitulo *t) {
 // "Rafa terminou a série". 0/0 = nao se sabe ainda: a frase nunca e afirmada.
 static void ultimoEpisodio(int *t, int *e);
 static int  pedReproduzir = 0, pedMarcar = 0, pedFontes = 0;
-// O Play inicial e o OK longo do botao primario pedem a folha no player.
+// O Play inicial e o OK longo do botao primario pedem a folha na pagina de detalhe.
 // O OK longo tambem vale em Retomar; o OK curto de Retomar continua automatico.
 static int  pedEscolherFonteInicial = 0;
 // A short Resume must bypass the manual-source preference and use the last source.
