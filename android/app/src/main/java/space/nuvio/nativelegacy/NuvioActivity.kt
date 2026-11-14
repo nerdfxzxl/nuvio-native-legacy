@@ -100,6 +100,7 @@ class NuvioActivity : SDLActivity() {
     private var camadaVideo: FrameLayout? = null
     private var streamSelectorView: ComposeView? = null
     private var streamSelectorDialog: Dialog? = null
+    private var streamSelectorOwner: StreamSelectorViewTreeOwner? = null
     private var streamSelectorVisible by mutableStateOf(false)
     private var streamSelectorTitle by mutableStateOf("")
     private var touchInsetLeft = 0
@@ -196,7 +197,9 @@ class NuvioActivity : SDLActivity() {
     // The native C stream list remains authoritative; Compose only displays a snapshot.
     private fun prepararSeletorFontes() {
         if (streamSelectorView != null || mBrokenLibraries) return
+        val owner = StreamSelectorViewTreeOwner()
         val overlay = ComposeView(this).apply {
+            owner.installOn(this)
             isFocusable = true
             isFocusableInTouchMode = true
             setContent {
@@ -225,6 +228,7 @@ class NuvioActivity : SDLActivity() {
                 } else false
             }
         }
+        streamSelectorOwner = owner
         streamSelectorView = overlay
         streamSelectorDialog = dialog
     }
@@ -238,6 +242,7 @@ class NuvioActivity : SDLActivity() {
             streamSelectorTitle = streamSelectorTitle()
             streamSelectorVisible = true
             dialog.show()
+            streamSelectorOwner?.onDialogShown()
             dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
             dialog.window?.setDimAmount(0f)
             dialog.window?.setLayout(
@@ -256,7 +261,10 @@ class NuvioActivity : SDLActivity() {
     fun ocultarSeletorFontes() {
         runOnUiThread {
             streamSelectorVisible = false
+            streamSelectorOwner?.onDialogHidden()
             streamSelectorDialog?.dismiss()
+            streamSelectorOwner?.dispose()
+            streamSelectorOwner = null
             streamSelectorDialog = null
             streamSelectorView = null
             mSurface.requestFocus()
