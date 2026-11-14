@@ -243,7 +243,10 @@ class NuvioActivity : SDLActivity() {
             streamSelectorVisible = true
             dialog.show()
             streamSelectorOwner?.onDialogShown()
-            dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+            // Never reveal the Legacy SDL selector if Compose takes a frame
+            // to attach or report an error; the official screen is opaque.
+            dialog.window?.setBackgroundDrawable(ColorDrawable(Color.BLACK))
+            dialog.window?.decorView?.setBackgroundColor(Color.BLACK)
             dialog.window?.setDimAmount(0f)
             dialog.window?.setLayout(
                 WindowManager.LayoutParams.MATCH_PARENT,
