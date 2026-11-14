@@ -5376,7 +5376,7 @@ void stream_folha_evento(const SDL_Event *e) {
     if(foco>=nBotoes()) foco=nBotoes()-1;
   }
   if(k==SDLK_RETURN || k==SDLK_KP_ENTER) {
-    if (grupo == -2) abrirBuscaFolha();
+    if (grupo == -2) { if (!e->key.repeat) abrirBuscaFolha(); }
     else if(grupo==-1) {
       switch(botaoDe(foco)) {
         case BT_RECARREGAR: recarregar=1; break;
