@@ -6014,6 +6014,11 @@ void app_atualizar(float dt, Uint32 agora) {
   // Initial source selection stays on the detail page. Addons are already
   // prefetched there; open the sheet against that target without opening player.
   // If the list is still being populated, the sheet will update as results arrive.
+  if (pedirFolhaNoPlay && !detail_aberto()) {
+    pedirFolhaNoPlay = 0;
+    gravarFolhaTocar(0, 0, 0);
+  }
+
   if (pedirFolhaNoPlay && detail_aberto() && !player_aberto() &&
       (stream_n() > 0 || addons_estado() != ADD_BUSCANDO)) {
     char base[24];
