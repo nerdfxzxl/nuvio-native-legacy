@@ -76,6 +76,14 @@ Java_space_nuvio_nativelegacy_NuvioActivity_nativeCheckpoint(JNIEnv *env, jobjec
 }
 
 JNIEXPORT jstring JNICALL
+Java_space_nuvio_nativelegacy_NuvioActivity_nativeStreamTitle(JNIEnv *env, jobject act) {
+  char titulo[160];
+  (void)act;
+  stream_folha_titulo(titulo, sizeof titulo);
+  return (*env)->NewStringUTF(env, titulo);
+}
+
+JNIEXPORT jstring JNICALL
 Java_space_nuvio_nativelegacy_NuvioActivity_nativeStreamSnapshot(JNIEnv *env, jobject act) {
   char *json;
   jstring result;
