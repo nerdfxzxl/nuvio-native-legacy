@@ -52,7 +52,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.ComposeView
-import androidx.compose.ui.platform.ViewCompositionStrategy
 import org.libsdl.app.SDLActivity
 import java.io.File
 import java.util.concurrent.ConcurrentLinkedQueue
@@ -195,7 +194,6 @@ class NuvioActivity : SDLActivity() {
         val overlay = ComposeView(this).apply {
             isFocusable = true
             isFocusableInTouchMode = true
-            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
             setContent {
                 if (streamSelectorVisible) {
                     StreamSelectorOverlay(
