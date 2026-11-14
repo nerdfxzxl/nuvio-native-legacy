@@ -2,9 +2,6 @@ name: Android APK (debug)
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - feature/official-stream-selector
 
 permissions:
   contents: read
