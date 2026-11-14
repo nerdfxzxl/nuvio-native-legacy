@@ -5872,7 +5872,7 @@ void app_atualizar(float dt, Uint32 agora) {
     int retomarDireto = pediuReproduzir ? detail_pediu_retomar_direto() : 0;
     if (escolherFonteInicial && !doInicio) pedirFolhaNoPlay = 1;
     if ((pediuReproduzir || doInicio) && aguardandoFonte != 2) {
-      retomarDiretoPendente = retomarDireto && !doInicio;
+      retomarDiretoPendente = retomarDireto && ajustes_fonte_manual() && !doInicio;
       marco("abrir: reproduzir pedido");
       // A tela abre JA, no estado "abrindo fonte", e a escolha acontece depois.
       // Escolher antes deixaria o botao sem resposta por segundos, e escolher
@@ -5930,8 +5930,11 @@ void app_atualizar(float dt, Uint32 agora) {
       } else {
         if (usouPreparo) limparFonteVOD();
         renovarListaDoPlayer();
-        if (!escolherFonteInicial && (tocarParteGuardada() || tocarFonteGuardada())) { preparoEspera = 0; }
-        else aguardandoFonte = 1;
+        if (!escolherFonteInicial && (tocarParteGuardada() || tocarFonteGuardada())) {
+          preparoEspera = 0;
+          // The saved link already resumed playback; no addon decision remains.
+          retomarDiretoPendente = 0;
+        } else aguardandoFonte = 1;
       }
     }
     if (detail_pediu_marcar()) {
