@@ -53,8 +53,6 @@ static void interfaceVoid(const char *nome) {
   (*env)->DeleteLocalRef(env, act);
 }
 
-void android_stream_selector_mostrar(void) { interfaceVoid("mostrarSeletorFontes"); }
-void android_stream_selector_ocultar(void) { interfaceVoid("ocultarSeletorFontes"); }
 
 int android_interface_mobile_auto(void) {
   const char *modo = getenv("NUVIO_INTERFACE_AUTO");
