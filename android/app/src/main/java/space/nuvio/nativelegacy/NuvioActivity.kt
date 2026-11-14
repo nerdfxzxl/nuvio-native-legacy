@@ -246,6 +246,7 @@ class NuvioActivity : SDLActivity() {
                 WindowManager.LayoutParams.FLAG_FULLSCREEN,
                 WindowManager.LayoutParams.FLAG_FULLSCREEN
             )
+            dialog.window?.decorView?.systemUiVisibility = window.decorView.systemUiVisibility
             overlay.requestFocus()
         }
     }
