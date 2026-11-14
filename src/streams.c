@@ -6501,11 +6501,11 @@ static void corpoFolha(float x, float w, float anim, Uint32 agora, int ilha) {
       cy+=desenharFaixas(s,tx,cy,tr-tx,sel,anim);
       TextoAddon *t=textoAddonDa(i);
       const char *desc=descricaoAddon(s);
-      if (abr > .001f) textoAddonMedirCompleto(t, s);
       // Keep the addon description as one raw text block, like NuvioTV's
       // getDisplayDescription(); wrap to the card width instead of turning
       // emojis into replacement icons or truncating each fragment.
       float abr = grupo==1 && row==foco ? abreFoco : row==linhaAnt ? abreAnt : 0.0f;
+      if (abr > .001f) textoAddonMedirCompleto(t, s);
       int linhasVisiveis=t->descLinhas;
       if(linhasVisiveis>FOLHA_ADDON_FECHADA) {
         linhasVisiveis=FOLHA_ADDON_FECHADA+(int)floorf((linhasVisiveis-FOLHA_ADDON_FECHADA)*abr);
