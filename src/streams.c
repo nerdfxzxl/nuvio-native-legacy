@@ -6477,12 +6477,13 @@ static void corpoFolha(float x, float w, float anim, Uint32 agora, int ilha) {
       if (b > t) ponteiro_alvo(r.x, t, r.w, b - t, ponteiroFolhaLinha, NULL, row, 0);
     }
     if(sel){
-      // Foco so pela superficie clara: o contorno saiu a pedido do dono (02/10).
-      // No solido a superficie e um cinza opaco um degrau acima do miolo.
+      // The focused stream card gets the requested 2px white D-pad ring.
+      // Keep the soft focused surface beneath it for both glass and solid modes.
       if (!gfx_foco_placa(r,FOLHA_RAIO/h,1,anim)) {
         if (ajustes_vidro()) gfx_cor(r,FOLHA_RAIO/h,1,1,1,.12f*anim);
         else gfx_cor(r,FOLHA_RAIO/h,.17f,.176f,.204f,anim);
       }
+      gfx_anel_fora(r,FOLHA_RAIO/h,0.0f,2.0f,1.0f,1.0f,1.0f,.96f*anim);
     }
     // COLUNA DA DIREITA: tamanho grande, addon embaixo. Medida primeiro: o
     // titulo e a fileira de logos param antes dela.
