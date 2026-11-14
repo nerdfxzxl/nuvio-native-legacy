@@ -489,6 +489,9 @@ void stream_folha_atualizar(float dt, Uint32 agora);
 void stream_folha_desenhar(Uint32 agora);
 // Devolve 1 uma vez quando o usuario escolheu, com o indice em *escolhido.
 int  stream_folha_escolheu(int *escolhido);
+// Android selector callbacks enqueue an index; the SDL thread consumes it normally.
+int stream_folha_escolher_externo(int indice, unsigned geracao);
+void stream_folha_cancelar_externo(void);
 
 // Captured at dispatch, so a delayed worker cannot adopt another profile's list.
 int stream_canal_primeira_viva_sessao(int tentativas, uint64_t sessao);
