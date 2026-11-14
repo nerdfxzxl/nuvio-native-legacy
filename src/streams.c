@@ -6673,9 +6673,12 @@ static void corpoFolha(float x, float w, float anim, Uint32 agora, int ilha) {
             float desloc = selosDeslocamento(i, badgeTotal, badgeMax, agora);
             float clipY = FOLHA_TOPO - (rolagem > 1.0f ? 0.0f : 8.0f);
             gfx_recorte(tx0, cy - 3.0f, badgeMax, FOLHA_SELO_H + 6.0f);
-            lw = selosDesenhar(s->selosPacote, (int)s->nSelosPacote,
-                               tx0 - desloc, cy, 1000000.0f, FOLHA_SELO_H,
-                               ajustes_selos_coloridos()?anim:anim, t, 1, 0);
+            selosDesenhar(s->selosPacote, (int)s->nSelosPacote,
+                           tx0 - desloc, cy, 1000000.0f, FOLHA_SELO_H,
+                           ajustes_selos_coloridos()?anim:anim, t, 1, 0);
+            // The badges scroll inside their viewport; trailing MP4/metadata
+            // stays anchored after that viewport instead of being pushed off-row.
+            lw = badgeMax;
             gfx_recorte(x, clipY, w, folhaBase - clipY);
           } else {
             lw=desenharSelosPacote(s,tx0,cy,badgeMax,FOLHA_SELO_H,
