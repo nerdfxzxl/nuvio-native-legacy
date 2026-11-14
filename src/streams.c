@@ -3729,9 +3729,9 @@ static void atualizarProvedores(void) {
       if (abas[j].ordem < abas[i].ordem) { ProvAba t = abas[i]; abas[i] = abas[j]; abas[j] = t; }
   int mudouProvedores = 0;
   pthread_mutex_lock(&provTrava);
-  mudouProvedores = nProvedores != total + 1;
+  mudouProvedores = nProvedores != nAbas + 1;
   if (!mudouProvedores) {
-    for (int i = 0; i < total; i++) {
+    for (int i = 0; i < nAbas; i++) {
       if (strcmp(provedores[i + 1], abas[i].nome) ||
           strcmp(provChaves[i + 1], abas[i].chave) ||
           provEstado[i + 1] != abas[i].estado) {
