@@ -4755,7 +4755,12 @@ void stream_folha_abrir(void) {
   fflush(stdout);
 }
 int stream_folha_aberta(void) {
-  if (atomic_exchange(&cancelarAndroid, 0)) { aberta = 0; escolha = -1; }
+  if (atomic_exchange(&cancelarAndroid, 0)) {
+    aberta = 0; escolha = -1;
+    atomic_store(&escolhaAndroid, -1);
+    atomic_store(&androidSelectorAtivo, 0);
+    return 0;
+  }
   if (!aberta) atomic_store(&androidSelectorAtivo, 0);
   return aberta;
 }
@@ -5302,7 +5307,7 @@ int stream_folha_escolher_externo(int indice, unsigned geracao) {
   int valido = 0;
   if (!atomic_load(&androidSelectorAtivo)) return 0;
   pthread_mutex_lock(&verTrava);
-  if (geracao == listaGeracao && indice >= 0 && indice < n) {
+  if (atomic_load(&androidSelectorAtivo) && geracao == listaGeracao && indice >= 0 && indice < n) {
     atomic_store(&escolhaAndroidGeracao, geracao);
     atomic_store_explicit(&escolhaAndroid, indice, memory_order_release);
     valido = 1;
@@ -5316,7 +5321,12 @@ void stream_folha_cancelar_externo(void) {
 }
 
 int stream_folha_escolheu(int *out) {
-  if (atomic_exchange(&cancelarAndroid, 0)) { aberta = 0; escolha = -1; }
+  if (atomic_exchange(&cancelarAndroid, 0)) {
+    aberta = 0; escolha = -1;
+    atomic_store(&escolhaAndroid, -1);
+    atomic_store(&androidSelectorAtivo, 0);
+    return 0;
+  }
   if (escolha < 0) {
     int externo = atomic_exchange_explicit(&escolhaAndroid, -1, memory_order_acq_rel);
     if (externo >= 0) {
