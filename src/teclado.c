@@ -151,10 +151,7 @@ static int vozOk(void) {
 static int celOk(void) { return (forcaCel >= 0 ? forcaCel : celb_disponivel()) && !semCel; }
 // Ajuste "Teclado" (Android): 0 automatico, 1 so a grade do app, 2 o teclado do
 // sistema direto. Onde o ajuste nao existe (Mac) st_teclado_modo() e 0.
-// Some TV overlays must always use the in-app D-pad grid, regardless of
-// the global Android/system-keyboard preference.
-static int somenteGradeAtiva, somenteGradeProxima;
-static int modoTeclado(void) { return somenteGradeAtiva ? 1 : st_teclado_modo(); }
+static int modoTeclado(void) { return st_teclado_modo(); }
 static int teTelefoneIme(void) { return telefoneui_ativo() && imeOk() && modoTeclado() != 1; }
 #ifdef NV_TOUCH_UI
 enum { TE_P_CAMPO=0, TE_P_FALAR, TE_P_CEL, TE_P_APAGAR, TE_P_LIMPAR,
@@ -545,8 +542,6 @@ void teclado_permitir_vazio(int permitir) { confirmarVazio = aberto && permitir;
 
 void teclado_abrir_com(const char *titulo, const char *dica, int max,
                        const char *alfabeto, const char *inicial) {
-  somenteGradeAtiva = somenteGradeProxima;
-  somenteGradeProxima = 0;
 #ifdef NV_TOUCH_UI
   if (teTelefoneIme()) {
     // Uma nova modal nao herda nem o editor nem um dedo da entrada anterior.
@@ -592,18 +587,12 @@ void teclado_abrir_com(const char *titulo, const char *dica, int max,
   // fica PENDENTE (pendIme): login e ajustes chamam teclado_tipo logo depois,
   // e abrir duas vezes no mesmo quadro (a primeira com o tipo errado) faz o
   // IME piscar em alguns aparelhos.
-  if (!somenteGradeAtiva && imeOk() && modoTeclado() == 2) {
+  if (imeOk() && modoTeclado() == 2) {
     fileira = -1; coluna = campoFocavel() ? TE_B_CAMPO : TE_B_IME;
     pendIme = 1;
   }
 }
 
-// Force the app's D-pad keyboard for this modal only.
-void teclado_abrir_grade_com(const char *titulo, const char *dica, int max,
-                             const char *alfabeto, const char *inicial) {
-  somenteGradeProxima = 1;
-  teclado_abrir_com(titulo, dica, max, alfabeto, inicial);
-}
 
 // O texto do sistema passa pelo ALFABETO da modal: o codigo de pareamento e
 // a-z0-9, o MAC e 0-9a-f — caixa alta vira baixa quando so a baixa existe, e
@@ -631,7 +620,6 @@ static void definirDoSistema(const char *t) {
 
 static void fechar(int r) {
   aberto = 0;
-  somenteGradeAtiva = 0;
   pendIme = 0;
   celb_fechar_dono(CELB_TECLADO);
   resultado = r;
