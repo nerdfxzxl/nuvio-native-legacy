@@ -3681,7 +3681,7 @@ static int passaBusca(int i) {
   s = &lista[i];
   if (s->altura > 0) {
     char resolucao[24];
-    snprintf(resolucao, sizeof resolucao, "%d %dp", s->altura, s->altura);
+    snprintf(resolucao, sizeof resolucao, "%dp", s->altura);
     snprintf(formato + strlen(formato), sizeof formato - strlen(formato), " %s", resolucao);
     if (s->altura >= 2160) strncat(formato, " 4K UHD", sizeof formato - strlen(formato) - 1);
   }
@@ -5566,7 +5566,7 @@ int stream_folha_escolheu(int *out) {
 static void ponteiroFolhaBotao(int i, int b) { (void)b; grupo = -1; foco = i; }
 static void abrirBuscaFolha(void) {
   teclado_abrir_com("Buscar fontes", "Título, addon, arquivo ou qualidade", TECLADO_MAX,
-                    "abcdefghijklmnopqrstuvwxyz0123456789 ", folhaBusca);
+                    "abcdefghijklmnopqrstuvwxyz0123456789 .-_[]()", folhaBusca);
   teclado_aceitar_utf8(1);
 }
 static void ponteiroFolhaBusca(int i, int b) {
