@@ -161,6 +161,7 @@ void stream_folha_contexto(const char *texto);
 // cada linha no modo "Do Nuvio" ("Silo  Temporada 2 Episodio 5"). Chamar antes
 // de stream_folha_abrir; vazio cai no nome do addon.
 void stream_folha_nome(const char *nome);
+void stream_folha_titulo(char *dst, size_t tamanho);
 // Indice no catalogo do conteudo da folha (-1: canal ou nenhum), para a logo
 // do titulo no lugar do nome (Ajustes > Texto das fontes > Logo do titulo).
 void stream_folha_item(int indice);
