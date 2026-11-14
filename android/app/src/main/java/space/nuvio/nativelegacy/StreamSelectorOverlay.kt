@@ -42,6 +42,8 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
@@ -57,6 +59,7 @@ import androidx.tv.material3.CardDefaults
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import coil3.compose.AsyncImage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -101,6 +104,16 @@ private data class SelectorStream(
 private data class SelectorSnapshot(
     val generation: Int = 0,
     val revision: Int = -1,
+    val title: String = "",
+    val backdrop: String = "",
+    val poster: String = "",
+    val logo: String = "",
+    val genres: String = "",
+    val meta: String = "",
+    val isEpisode: Boolean = false,
+    val season: Int = 0,
+    val episode: Int = 0,
+    val episodeName: String = "",
     val streams: List<SelectorStream> = emptyList()
 )
 
@@ -134,6 +147,16 @@ private fun parseSelectorSnapshot(raw: String): SelectorSnapshot = runCatching {
     SelectorSnapshot(
         generation = root.optInt("generation", 0),
         revision = root.optInt("revision", -1),
+        title = root.optString("title", ""),
+        backdrop = root.optString("backdrop", ""),
+        poster = root.optString("poster", ""),
+        logo = root.optString("logo", ""),
+        genres = root.optString("genres", ""),
+        meta = root.optString("meta", ""),
+        isEpisode = root.optBoolean("isEpisode", false),
+        season = root.optInt("season", 0),
+        episode = root.optInt("episode", 0),
+        episodeName = root.optString("episodeName", ""),
         streams = streams
     )
 }.getOrDefault(SelectorSnapshot())
@@ -188,20 +211,11 @@ internal fun StreamSelectorOverlay(
         }
     }
 
+    val displayTitle = snapshot.title.ifBlank { title }
+    val backdrop = snapshot.backdrop.ifBlank { snapshot.poster }
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                Brush.horizontalGradient(
-                    listOf(
-                        Color(0xFF08090D),
-                        Color(0xE6101118),
-                        Color(0xB6101118),
-                        Color(0xE6101118),
-                        Color(0xFF08090D)
-                    )
-                )
-            )
             .onPreviewKeyEvent { event ->
                 if (event.key == Key.Back) {
                     if (event.nativeKeyEvent.action == KeyEvent.ACTION_UP) onDismiss()
@@ -209,6 +223,29 @@ internal fun StreamSelectorOverlay(
                 } else false
             }
     ) {
+        if (backdrop.isNotBlank()) {
+            AsyncImage(
+                model = backdrop,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize().graphicsLayer { alpha = 0.5f },
+                contentScale = ContentScale.Crop
+            )
+        }
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.horizontalGradient(
+                        listOf(
+                            Color(0xFF08090D),
+                            Color(0xE6101118),
+                            Color(0xB6101118),
+                            Color(0xE6101118),
+                            Color(0xFF08090D)
+                        )
+                    )
+                )
+        )
         Row(modifier = Modifier.fillMaxSize()) {
             // Official selector composition: title/content column on the left,
             // translucent source panel on the right.
@@ -220,19 +257,54 @@ internal fun StreamSelectorOverlay(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
-                Text(
-                    text = title.ifBlank { "Choose a source" },
-                    style = MaterialTheme.typography.displaySmall,
-                    color = Color(0xFFF4F4F6),
-                    maxLines = 3,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Spacer(Modifier.height(12.dp))
-                Text(
-                    text = "SELECT A STREAM",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = Color(0xFF9A9BA5)
-                )
+                if (snapshot.logo.isNotBlank()) {
+                    AsyncImage(
+                        model = snapshot.logo,
+                        contentDescription = displayTitle,
+                        modifier = Modifier.fillMaxWidth(0.8f).height(120.dp),
+                        contentScale = ContentScale.Fit
+                    )
+                } else {
+                    Text(
+                        text = displayTitle.ifBlank { "Choose a source" },
+                        style = MaterialTheme.typography.displaySmall,
+                        color = Color(0xFFF4F4F6),
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                if (snapshot.isEpisode && snapshot.season > 0 && snapshot.episode > 0) {
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        text = "Season " + snapshot.season + " · Episode " + snapshot.episode,
+                        style = MaterialTheme.typography.titleLarge,
+                        color = Color(0xFFB4B5BF)
+                    )
+                    if (snapshot.episodeName.isNotBlank()) {
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            text = snapshot.episodeName,
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = Color(0xFFF0F0F3),
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                } else {
+                    val info = listOf(snapshot.genres, snapshot.meta)
+                        .filter { it.isNotBlank() }
+                        .joinToString(" • ")
+                    if (info.isNotBlank()) {
+                        Spacer(Modifier.height(12.dp))
+                        Text(
+                            text = info,
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = Color(0xFFB4B5BF),
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
             }
 
             Column(
