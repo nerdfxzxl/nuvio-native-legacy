@@ -321,6 +321,8 @@ static int  amigosDoTitulo(AmigosTitulo *t) {
 // "Rafa terminou a série". 0/0 = nao se sabe ainda: a frase nunca e afirmada.
 static void ultimoEpisodio(int *t, int *e);
 static int  pedReproduzir = 0, pedMarcar = 0, pedFontes = 0;
+// A primeira reproducao pelo botao primario pede escolha manual; Retomar nao.
+static int  pedEscolherFonteInicial = 0;
 // O EPISODIO TRAVADO COM O PEDIDO DE FONTES (#513). A folha rouba o foco do
 // teclado: uma seta na folha nao chega a detail_evento, mas o menu do
 // episodio e as animacoes podem mover `foco` — e a escolha na folha lia
@@ -3104,7 +3106,8 @@ static void detail_evento_(const SDL_Event *e) {
       // marcou nada, apesar do icone. Agora tem pedido proprio.
       int acao = acaoEm(botao);
       if (acao == ACAO_PRIMARIO) {
-        if (dur >= NV_HOLD_MS) pedFontes = 1; else pedReproduzir = 1;
+        if (dur >= NV_HOLD_MS) pedFontes = 1;
+        else { pedReproduzir = 1; pedEscolherFonteInicial = !temInicio(); }
 
       } else if (acao == ACAO_INICIO) {
         // "Assistir do comeco" (issue #46): mesmo caminho do primario, mas o
@@ -8200,6 +8203,7 @@ static void ultimoEpisodio(int *t, int *e) {
 
 int detail_indice(void) { return idx; }
 int detail_pediu_reproduzir(void) { int v = pedReproduzir; pedReproduzir = 0; return v; }
+int detail_pediu_escolher_fonte_inicial(void) { int v = pedEscolherFonteInicial; pedEscolherFonteInicial = 0; return v; }
 // Pedido de reproducao vindo de FORA da tela (OK no card de "Continuar
 // assistindo", issue #93): o quadro seguinte cai no mesmo ramo de
 // detail_pediu_reproduzir do app.c, com a pagina ja aberta por baixo.
