@@ -1007,6 +1007,15 @@ char *stream_ui_snapshot_json(void) {
   return b.dados;
 }
 
+uint64_t stream_ui_revision(void) {
+  unsigned geracao, revisao;
+  pthread_mutex_lock(&verTrava);
+  geracao = listaGeracao;
+  revisao = atomic_load(&folhaRevisao);
+  pthread_mutex_unlock(&verTrava);
+  return ((uint64_t)geracao << 32) | (uint64_t)revisao;
+}
+
 // Pontuacao da regra do dono, do mais forte para o mais fraco:
 //   MP4 4K Dolby Vision  >  4K Dolby Vision (qualquer container)
 //   >  4K  >  Dolby Vision  >  resolucao  >  ordem de chegada
@@ -3718,7 +3727,19 @@ static void atualizarProvedores(void) {
   for (int i = 0; i < nAbas; i++)
     for (int j = i + 1; j < nAbas; j++)
       if (abas[j].ordem < abas[i].ordem) { ProvAba t = abas[i]; abas[i] = abas[j]; abas[j] = t; }
+  int mudouProvedores = 0;
   pthread_mutex_lock(&provTrava);
+  mudouProvedores = nProvedores != total + 1;
+  if (!mudouProvedores) {
+    for (int i = 0; i < total; i++) {
+      if (strcmp(provedores[i + 1], abas[i].nome) ||
+          strcmp(provChaves[i + 1], abas[i].chave) ||
+          provEstado[i + 1] != abas[i].estado) {
+        mudouProvedores = 1;
+        break;
+      }
+    }
+  }
   nProvedores = 1;
   snprintf(provedores[0], sizeof provedores[0], "Todos");
   provEstado[0] = ADDON_ABA_PRONTO;
@@ -3737,6 +3758,7 @@ static void atualizarProvedores(void) {
   }
   if (filtro >= nProvedores) filtro = 0;
   pthread_mutex_unlock(&provTrava);
+  if (mudouProvedores) atomic_fetch_add(&folhaRevisao, 1);
 }
 static int nFiltrados(void) {
   folhaDados();
