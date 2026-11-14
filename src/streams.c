@@ -6279,7 +6279,7 @@ static void corpoFolha(float x, float w, float anim, Uint32 agora, int ilha) {
     folhaDados();
     for(int i=0;i<nProvedores;i++){
       int qidx=i;
-      const char *base=i?provedores[i]:"Todos";
+      const char *base=i?provedores[i]:i18n("Todos");
       const char *status=contagemProvedorAba(i);
       if(status) snprintf(rot[qidx],sizeof rot[qidx],"%s %s",base,status);
       else snprintf(rot[qidx],sizeof rot[qidx],"%s",base);
