@@ -13,6 +13,7 @@
 #define NV_STREAMS_H
 #include <SDL2/SDL.h>
 #include <stdint.h>
+#include <stddef.h>
 #include "streamfit.h"
 #include "mediaurl.h"
 #include "fontefalha.h"
