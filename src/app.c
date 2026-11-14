@@ -5877,67 +5877,77 @@ void app_atualizar(float dt, Uint32 agora) {
     if ((pediuReproduzir || doInicio) && aguardandoFonte != 2) {
       retomarDiretoPendente = retomarDireto && ajustes_fonte_manual() && !doInicio;
       marco("abrir: reproduzir pedido");
-      // A tela abre JA, no estado "abrindo fonte", e a escolha acontece depois.
-      // Escolher antes deixaria o botao sem resposta por segundos, e escolher
-      // sem verificar entregava o video de aviso do debrid — que toca normal e
-      // por isso passa por sucesso.
-      const CatItem *ci = cat_item(detail_indice());
-      limparFonteVOD();
-      char alvoPreparo[64], basePreparo[24];
-      int idxPreparado = -1;
-      idDoAlvo(ci, alvoPreparo, sizeof alvoPreparo);
-      if (ci && cwTocarT >= 0 && cwTocarE > 0)
-        cat_id_stream(detail_indice(), cwTocarT, cwTocarE, alvoPreparo, sizeof alvoPreparo);
-      idBaseDoTitulo(basePreparo, sizeof basePreparo);
-      int lembradaPreparo = basePreparo[0] ? fontepref_escolher(basePreparo) : -1;
-#ifdef NV_ANDROID
-      if (doInicio && preparo.token) {
-        player_precarregar_cancelar(preparo.token); preparo.token = 0;
-      }
-#endif
-      int usouPreparo = !escolherFonteInicial && !ajustes_fonte_manual() &&
-                       preparoUsar(alvoPreparo, lembradaPreparo, &idxPreparado);
-      // Armado antes da abertura: o proximo quadro nao cancela o worker
-      // quando a pagina do titulo cede lugar ao player.
-      if (!escolherFonteInicial && !usouPreparo && preparoEmCurso(alvoPreparo, lembradaPreparo)) {
-        preparoEspera = 1; preparoLembradaPlay = lembradaPreparo;
-      }
-      diagnostico_cancelar_vazao();
-      player_abrir(detail_indice(), NULL);
-      episodioDoDetalhe();
-      // CW direto (issue #93): o episodio que o card anunciava vale sobre o
-      // que episodioAlvo resolveu — ele e a unica copia fiel do "T/E do card"
-      // quando a lista de episodios ainda esta a caminho.
-      if (cwTocarT >= 0 && cwTocarE > 0) {
-        player_definir_episodio(cwTocarT, cwTocarE);
-        cwTocarT = cwTocarE = 0;
-      }
-      if (doInicio) player_do_inicio();
-      // O episodio so fica definitivo DEPOIS de abrir o player. Refaça sempre
-      // o pedido de legenda nesse ponto; a busca de prefetch pode ter comecado
-      // no episodio anteriormente focado e o worker agora troca para o pedido
-      // mais recente sem publicar resultados velhos.
-      if (ci && ci->imdb[0]) {
-        char alvoLeg[64]; alvoPlayer(alvoLeg, sizeof alvoLeg);
-        addons_buscar_legendas(alvoLeg, ci->tipo);
-      }
-      // A busca de fontes sai SEMPRE (renovarListaDoPlayer): com a fonte
-      // guardada ela corre em segundo plano e so serve a folha e ao recuo.
-      char alvoDefinitivo[64]; alvoPlayer(alvoDefinitivo, sizeof alvoDefinitivo);
-      if (usouPreparo && !strcmp(alvoDefinitivo, alvoPreparo)) {
-        fontePedidoGeracao = novaGeracaoFonte();
-        limparFontePendente();
-        fonteEscolhida = idxPreparado; aguardandoFonte = 2;
-        if (idxPreparado == -2 && fonteFalha &&
-            pedirFonteJob(FJOB_FALHA, fontePedidoGeracao, NULL, 0) < 0) fonteEscolhida = -1;
+      if (escolherFonteInicial && !doInicio) {
+        // Initial Play opens the native Dynamic Clock picker ON THE DETAIL PAGE.
+        // Do not create a player session until the user actually chooses a stream.
+        int t = 0, e = 0;
+        int temEp = detail_ep_foco(&t, &e);
+        gravarFolhaTocar(t, e, temEp);
+        retomarDiretoPendente = 0;
       } else {
-        if (usouPreparo) limparFonteVOD();
-        renovarListaDoPlayer();
-        if (!escolherFonteInicial && (tocarParteGuardada() || tocarFonteGuardada())) {
-          preparoEspera = 0;
-          // The saved link already resumed playback; no addon decision remains.
-          retomarDiretoPendente = 0;
-        } else aguardandoFonte = 1;
+        // A tela abre JA, no estado "abrindo fonte", e a escolha acontece depois.
+        // Escolher antes deixaria o botao sem resposta por segundos, e escolher
+        // sem verificar entregava o video de aviso do debrid — que toca normal e
+        // por isso passa por sucesso.
+        const CatItem *ci = cat_item(detail_indice());
+        limparFonteVOD();
+        char alvoPreparo[64], basePreparo[24];
+        int idxPreparado = -1;
+        idDoAlvo(ci, alvoPreparo, sizeof alvoPreparo);
+        if (ci && cwTocarT >= 0 && cwTocarE > 0)
+          cat_id_stream(detail_indice(), cwTocarT, cwTocarE, alvoPreparo, sizeof alvoPreparo);
+        idBaseDoTitulo(basePreparo, sizeof basePreparo);
+        int lembradaPreparo = basePreparo[0] ? fontepref_escolher(basePreparo) : -1;
+  #ifdef NV_ANDROID
+        if (doInicio && preparo.token) {
+          player_precarregar_cancelar(preparo.token); preparo.token = 0;
+        }
+  #endif
+        int usouPreparo = !escolherFonteInicial && !ajustes_fonte_manual() &&
+                         preparoUsar(alvoPreparo, lembradaPreparo, &idxPreparado);
+        // Armado antes da abertura: o proximo quadro nao cancela o worker
+        // quando a pagina do titulo cede lugar ao player.
+        if (!escolherFonteInicial && !usouPreparo && preparoEmCurso(alvoPreparo, lembradaPreparo)) {
+          preparoEspera = 1; preparoLembradaPlay = lembradaPreparo;
+        }
+        diagnostico_cancelar_vazao();
+        player_abrir(detail_indice(), NULL);
+        episodioDoDetalhe();
+        // CW direto (issue #93): o episodio que o card anunciava vale sobre o
+        // que episodioAlvo resolveu — ele e a unica copia fiel do "T/E do card"
+        // quando a lista de episodios ainda esta a caminho.
+        if (cwTocarT >= 0 && cwTocarE > 0) {
+          player_definir_episodio(cwTocarT, cwTocarE);
+          cwTocarT = cwTocarE = 0;
+        }
+        if (doInicio) player_do_inicio();
+        // O episodio so fica definitivo DEPOIS de abrir o player. Refaça sempre
+        // o pedido de legenda nesse ponto; a busca de prefetch pode ter comecado
+        // no episodio anteriormente focado e o worker agora troca para o pedido
+        // mais recente sem publicar resultados velhos.
+        if (ci && ci->imdb[0]) {
+          char alvoLeg[64]; alvoPlayer(alvoLeg, sizeof alvoLeg);
+          addons_buscar_legendas(alvoLeg, ci->tipo);
+        }
+        // A busca de fontes sai SEMPRE (renovarListaDoPlayer): com a fonte
+        // guardada ela corre em segundo plano e so serve a folha e ao recuo.
+        char alvoDefinitivo[64]; alvoPlayer(alvoDefinitivo, sizeof alvoDefinitivo);
+        if (usouPreparo && !strcmp(alvoDefinitivo, alvoPreparo)) {
+          fontePedidoGeracao = novaGeracaoFonte();
+          limparFontePendente();
+          fonteEscolhida = idxPreparado; aguardandoFonte = 2;
+          if (idxPreparado == -2 && fonteFalha &&
+              pedirFonteJob(FJOB_FALHA, fontePedidoGeracao, NULL, 0) < 0) fonteEscolhida = -1;
+        } else {
+          if (usouPreparo) limparFonteVOD();
+          renovarListaDoPlayer();
+          if (!escolherFonteInicial && (tocarParteGuardada() || tocarFonteGuardada())) {
+            preparoEspera = 0;
+            // The saved link already resumed playback; no addon decision remains.
+            retomarDiretoPendente = 0;
+          } else aguardandoFonte = 1;
+        }
+  
       }
     }
     if (detail_pediu_marcar()) {
@@ -6001,6 +6011,21 @@ void app_atualizar(float dt, Uint32 agora) {
   // duas ficariam presas no mesmo pipeline.
   // A busca disparada por Reproduzir terminou: agora VERIFICA as fontes, em
   // ordem, ate achar uma que leve ao arquivo — e so entao liga o video.
+  // Initial source selection stays on the detail page. Addons are already
+  // prefetched there; open the sheet against that target without opening player.
+  // If the list is still being populated, the sheet will update as results arrive.
+  if (pedirFolhaNoPlay && detail_aberto() && !player_aberto() &&
+      (stream_n() > 0 || addons_estado() != ADD_BUSCANDO)) {
+    char base[24];
+    pedirFolhaNoPlay = 0;
+    folhaParaTocar = 1;
+    folhaCancelarTocar = 0;
+    idBaseDoTitulo(base, sizeof base);
+    stream_preferir(base[0] ? fontepref_escolher_manual(base) : -1);
+    nomeParaFolha();
+    stream_folha_abrir();
+  }
+
   if (aguardandoFonte == 1 &&
       (addons_estado() != ADD_BUSCANDO ||
        ((player_id_canal()[0] || !fontefalha_ativa()) && autoParcialPronto()))) {
