@@ -3938,18 +3938,7 @@ static void linhaLimpa(char *d, size_t tam, const char *ini, size_t n) {
 // Emoji do formatador -> icone Lucide (aj_<nome>.png). A TV nao tem emoji
 // colorido; o que nao esta aqui sai limpo em nv_limpar_texto (sem quadrado).
 // Um emoji pode vir com o seletor de variacao U+FE0F (EF B8 8F) colado.
-static const struct { const char *emoji, *icone; } EMOJI_ICONE[] = {
-  { "\xF0\x9F\x92\xBE", "aj_hard-drive" },   // 💾
-  { "\xF0\x9F\x91\xA4", "aj_users" },        // 👤
-  { "\xF0\x9F\x8E\x9E", "aj_film" },         // 🎞
-  { "\xF0\x9F\x94\x8A", "aj_volume-2" },     // 🔊
-  { "\xF0\x9F\x8C\x90", "aj_globe" },        // 🌐
-  { "\xE2\x9A\x99",     "aj_settings-2" },  // ⚙
-  { "\xE2\x9A\xA1",     "aj_zap" },         // ⚡
-  { "\xF0\x9F\x93\xA6", "aj_package" },      // 📦
-  { "\xF0\x9F\x8F\xB7", "aj_tag" },          // 🏷
-  { "\xE2\x8F\xB1",     "aj_clock" },       // ⏱
-};
+
 static const char *descricaoAddon(const Stream *s) {
   // NuvioTV displays description ?: title, but suppresses it when it repeats
   // the display name. Keep the addon's original description intact.
