@@ -4809,10 +4809,9 @@ static int folhaIlha(void) {
   // The full-screen Compose selector is intentionally no longer launched.
   return player_aberto();
 }
-// A lista nasce da ilha do relogio, mas nao precisa ocupar quase a tela toda.
-// Reserva cerca de 40% da altura virtual para as fontes (aprox. quatro linhas
-// comuns); o restante continua acessivel pela rolagem nativa. O limite inferior
-// preserva pelo menos duas linhas e meia em telas mais baixas.
+// The source panel occupies the full usable height of the Dynamic Clock.
+// Keep only the top header and a small bottom safe margin; the list itself
+// scrolls inside this full-height body.
 static float folhaIlhaH(void) { return folhaBase - FOLHA_ILHA_Y - FOLHA_ILHA_CAB; }
 static void folhaGeometria(void) {
   if (folhaRelogio) {
@@ -4829,16 +4828,6 @@ static void folhaGeometria(void) {
   const char *dica = fraseDicaChips();
   folhaDica = dica ? 18.0f + txt_bloco(TXT_HERO_META, dica, 255,255,255, 0,0,
       FOLHA_W-FOLHA_PAD_E-FOLHA_PAD_D+4.0f-48.0f, 28.0f, 0, 0) : 0.0f;
-  if (folhaIlha()) {
-    float topo = FOLHA_TOPO;
-    float disponivel = NV_TELA_H - topo - FOLHA_ILHA_BASE - 16.0f;
-    float area = NV_TELA_H * 0.40f;
-    float minimo = FOLHA_LINHA_H * 2.5f;
-    if (area < minimo) area = minimo;
-    if (area > disponivel) area = disponivel;
-    if (area < 0.0f) area = 0.0f;
-    folhaBase = topo + area;
-  }
 }
 static float areaLista(void) { return folhaBase - FOLHA_TOPO; }
 // A linha em foco no meio da area; a primeira de um grupo leva o cabecalho
