@@ -212,6 +212,7 @@ private fun StreamSelectorContent(
     var query by remember { mutableStateOf("") }
     var selectedProvider by remember { mutableStateOf<String?>(null) }
     var initialFocusRequested by remember { mutableStateOf(false) }
+    var userInteracted by remember { mutableStateOf(false) }
     val firstStreamFocus = remember { FocusRequester() }
     val listState = rememberLazyListState()
     val keyboard = LocalSoftwareKeyboardController.current
@@ -242,7 +243,7 @@ private fun StreamSelectorContent(
     }
 
     LaunchedEffect(visibleStreams.firstOrNull()?.index) {
-        if (!initialFocusRequested && visibleStreams.isNotEmpty()) {
+        if (!initialFocusRequested && !userInteracted && visibleStreams.isNotEmpty()) {
             initialFocusRequested = true
             runCatching { firstStreamFocus.requestFocus() }
         }
@@ -369,19 +370,22 @@ private fun StreamSelectorContent(
                     ProviderChip(
                         label = "↻",
                         selected = false,
-                        onClick = { activity.refreshStreams() }
+                        onClick = { activity.refreshStreams() },
+                        onFocus = { userInteracted = true }
                     )
                     ProviderChip(
                         label = "All",
                         selected = selectedProvider == null,
-                        onClick = { selectedProvider = null }
+                        onClick = { selectedProvider = null },
+                        onFocus = { userInteracted = true }
                     )
                     providers.forEach { provider ->
                         ProviderChip(
                             label = provider.label,
                             status = provider.status,
                             selected = selectedProvider == provider.key,
-                            onClick = { selectedProvider = provider.key }
+                            onClick = { selectedProvider = provider.key },
+                            onFocus = { userInteracted = true }
                         )
                     }
                 }
@@ -418,7 +422,9 @@ private fun StreamSelectorContent(
                             ),
                             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                             keyboardActions = KeyboardActions(onSearch = { keyboard?.hide() }),
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .onFocusChanged { if (it.isFocused) userInteracted = true }
                         )
                     }
                     if (query.isNotEmpty()) {
@@ -429,6 +435,7 @@ private fun StreamSelectorContent(
                             modifier = Modifier
                                 .clip(CircleShape)
                                 .clickable { query = "" }
+                                .onFocusChanged { if (it.isFocused) userInteracted = true }
                                 .focusable()
                                 .padding(horizontal = 8.dp, vertical = 2.dp)
                         )
@@ -571,7 +578,8 @@ private fun ProviderChip(
     label: String,
     selected: Boolean,
     status: Int = 0,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onFocus: () -> Unit = {}
 ) {
     var focused by remember { mutableStateOf(false) }
     Box(
@@ -586,7 +594,10 @@ private fun ProviderChip(
                 CircleShape
             )
             .clickable(onClick = onClick)
-            .onFocusChanged { focused = it.isFocused }
+            .onFocusChanged {
+                focused = it.isFocused
+                if (it.isFocused) onFocus()
+            }
             .focusable()
             .padding(horizontal = 15.dp, vertical = 9.dp)
     ) {
