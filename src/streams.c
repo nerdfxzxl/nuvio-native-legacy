@@ -4520,7 +4520,8 @@ static float alturaLinha(int i, int automatica, float abertura) {
     if (h < 96) h = 96;
   } else {
     // Full filenames wrap naturally; the focused row grows to fit every line.
-    float extra = alturaArquivoDa(&lista[i]) + FOLHA_FIT_H * fitLinhas(i);
+    float extra = (abertura > 0.001f ? alturaArquivoDa(&lista[i]) : 0.0f) +
+                  FOLHA_FIT_H * fitLinhas(i);
     h += extra * abertura;
   }
   return h + linhasFaixas(&lista[i]) * FOLHA_FAIXA_H;
