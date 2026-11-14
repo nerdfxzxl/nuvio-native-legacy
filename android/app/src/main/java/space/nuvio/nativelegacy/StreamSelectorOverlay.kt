@@ -82,6 +82,7 @@ private data class SelectorStream(
     val height: Int,
     val dolbyVision: Boolean,
     val dolbyAtmos: Boolean,
+    val av1: Boolean,
     val mp4: Boolean,
     val hasUrl: Boolean,
     val sizeBytes: Long,
@@ -102,6 +103,7 @@ private data class SelectorStream(
         if (height >= 2160) append("4K UHD ")
         if (dolbyVision) append("Dolby Vision DolbyVision DV ")
         if (dolbyAtmos) append("Dolby Atmos DolbyAtmos Atmos ")
+        if (av1) append("AV1 ")
         if (mp4) append("MP4 ")
         if (sizeBytes > 0L) append(formatStreamSize(sizeBytes))
     }.lowercase(Locale.ROOT)
@@ -145,6 +147,7 @@ private fun parseSelectorSnapshot(raw: String): SelectorSnapshot = runCatching {
                     height = item.optInt("height", 0),
                     dolbyVision = item.optInt("dolbyVision", 0) != 0,
                     dolbyAtmos = item.optInt("dolbyAtmos", 0) != 0,
+                    av1 = item.optInt("av1", 0) != 0,
                     mp4 = item.optInt("mp4", 0) != 0,
                     hasUrl = item.optBoolean("hasUrl", false),
                     sizeBytes = item.optLong("sizeBytes", 0L),
@@ -647,6 +650,7 @@ private fun StreamSourceCard(
                     if (stream.height > 0) StreamBadge(if (stream.height >= 2160) "4K" else "${stream.height}p")
                     if (stream.dolbyVision) StreamBadge("Dolby Vision")
                     if (stream.dolbyAtmos) StreamBadge("Atmos")
+                    if (stream.av1) StreamBadge("AV1")
                     if (stream.mp4) StreamBadge("MP4")
                     if (stream.sizeBytes > 0L) StreamBadge(formatStreamSize(stream.sizeBytes))
                 }
