@@ -177,7 +177,6 @@ int ajustes_medidor_desempenho(void);
 // proprio fluxo do guia ja escolhe pela playlist que responde (ver tocarCanal).
 int ajustes_fonte_manual(void);
 // Android TV selector: 0 = Nuvio Dynamic Clock; 1 = original Legacy sheet.
-int ajustes_stream_selector(void);
 
 // "Fonte automatica" = "Primeira da lista" (issue #130): o automatico toca a
 // primeira fonte na ordem do addon e confere SO ela. 0 = "Melhor fonte", a
