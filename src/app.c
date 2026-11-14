@@ -439,6 +439,9 @@ static int stalkerRenovando;
 // Sem isto, sair da folha com Voltar deixaria a tela em "carregando" para
 // sempre — o pedido de fonte ja tinha sido consumido e ninguem mais viria.
 static int    folhaParaTocar;
+// Pedido do Play inicial: aguarda a busca de addons e abre a folha no player.
+// Retomar e os pedidos explicitos de episodio nao armam este latch.
+static int    pedirFolhaNoPlay;
 // Quantas renovacoes de link seguidas um canal de portal ganha antes de virar
 // erro. Tres: um link que expirou renova na primeira; um portal fora do ar
 // falha nas tres e para de tentar em ~36 s em vez de nunca.
@@ -5862,6 +5865,8 @@ void app_atualizar(float dt, Uint32 agora) {
     // definitivo — player_do_inicio sobrevive as re-chamadas tardias de
     // player_definir_episodio.
     int doInicio = detail_pediu_do_inicio();
+    int escolherFonteInicial = detail_pediu_escolher_fonte_inicial();
+    if (escolherFonteInicial && !doInicio) pedirFolhaNoPlay = 1;
     if ((detail_pediu_reproduzir() || doInicio) && aguardandoFonte != 2) {
       marco("abrir: reproduzir pedido");
       // A tela abre JA, no estado "abrindo fonte", e a escolha acontece depois.
@@ -6075,11 +6080,13 @@ void app_atualizar(float dt, Uint32 agora) {
       // vivo, e la a escolha ja e feita pela playlist que responde.
       //
       // #667: a remembered source sets the sheet's focus, never consent to play.
-      if (ajustes_fonte_manual() && stream_n() > 0) {
+      if ((ajustes_fonte_manual() || pedirFolhaNoPlay) && stream_n() > 0) {
+        pedirFolhaNoPlay = 0;
         aguardandoFonte = 0;
         folhaParaTocar = 1;
         nomeParaFolha(); stream_folha_abrir();
       } else {
+        pedirFolhaNoPlay = 0;
         char alvoP[64];
         int idx;
         alvoPlayer(alvoP, sizeof alvoP);
