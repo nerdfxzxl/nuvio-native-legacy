@@ -443,7 +443,7 @@ static int    folhaParaTocar;
 // the Dynamic Clock body has finished its collapse animation.
 static int    folhaCancelarTocar;
 // Play inicial e OK longo no botao primario: aguarda os addons e abre a folha
-// dentro do player. Retomar curto continua automatico.
+// no Dynamic Clock da pagina de detalhes. Retomar curto continua automatico.
 static int    pedirFolhaNoPlay;
 // Survives the asynchronous addon search so a short Resume keeps its intent.
 static int    retomarDiretoPendente;
