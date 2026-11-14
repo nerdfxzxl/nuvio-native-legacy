@@ -5345,7 +5345,7 @@ void stream_folha_evento(const SDL_Event *e) {
   }
   if(k==SDLK_RETURN || k==SDLK_KP_ENTER) {
     if (grupo == -2) {
-      teclado_abrir_com("Buscar fuentes", "Título, addon, archivo o calidad", TECLADO_MAX, NULL, folhaBusca);
+      teclado_abrir_com("Buscar fontes", "Título, addon, archivo o calidad", TECLADO_MAX, "abcdefghijklmnopqrstuvwxyz0123456789 ", folhaBusca);
       teclado_aceitar_utf8(1);
     }
     else if(grupo==-1) {
