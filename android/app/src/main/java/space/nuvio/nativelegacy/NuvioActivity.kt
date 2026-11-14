@@ -238,7 +238,6 @@ class NuvioActivity : SDLActivity() {
         mSurface.holder.setFormat(PixelFormat.TRANSLUCENT)
         NvPlayer.iniciar(this, camada)
         NvPlayer.interfaceModo(interfaceMobile)
-        prepararSeletorFontes()
     }
 
     // SDL and video fill the window, including the camera cutout edges. Keeping
@@ -1322,14 +1321,14 @@ class NuvioActivity : SDLActivity() {
 
     // Controle remoto: troca a tecla ANTES do SDL, para cair no SDLK que o app espera.
     override fun dispatchKeyEvent(ev: KeyEvent): Boolean {
-        if (ev.action == KeyEvent.ACTION_DOWN && !campoAberto && !streamSelectorVisible && mSurface?.isFocused == false) {
+        if (ev.action == KeyEvent.ACTION_DOWN && !campoAberto && mSurface?.isFocused == false) {
             Log.w("Nuvio", "foco fora da SDLSurface: devolvendo antes da tecla ${ev.keyCode}")
             devolverFoco()
         }
         // Voltar com o C sem desenhar: o SDL entregaria a tecla a um main()
         // preso e nada aconteceria. O vigia abre a tela com "Sair".
         if (ev.keyCode == KeyEvent.KEYCODE_BACK && ev.action == KeyEvent.ACTION_DOWN &&
-            ev.repeatCount == 0 && !streamSelectorVisible && vigia?.voltar() == true) return true
+            ev.repeatCount == 0 && vigia?.voltar() == true) return true
         val novo = when (ev.keyCode) {
             KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> KeyEvent.KEYCODE_ENTER
             KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_MEDIA_PLAY,
