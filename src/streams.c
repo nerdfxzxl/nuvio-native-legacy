@@ -781,8 +781,6 @@ static float rolagem, velRol;
 // Native stream search. The query is applied during the existing list build,
 // so drawing and navigation still visit only visible rows.
 static char folhaBusca[TECLADO_MAX + 1];
-static int folhaBuscaFoco;
-static int folhaBuscaAtiva;
 
 void stream_lista_acrescentar(const Stream *l, int qtd, int ordemAddon) {
   int i, k = 0, focoIdx = -1, linhaAntes = -1, total;
@@ -4851,7 +4849,7 @@ void stream_folha_abrir(void) {
   int excl, aut, alvo;
   fitAbrir();
   aberta=1; escolha=-1; grupo=1; filtro=0; filtroVisto=-2; pillW=-1.0f; trocaDesde=0; soMp4=0; soCache=0; soDub=0; recarregar=0;
-  folhaBusca[0] = 0; folhaBuscaFoco = 0; folhaBuscaAtiva = 0;
+  folhaBusca[0] = 0;
   atomic_store(&escolhaAndroid, -1);
   atomic_store(&cancelarAndroid, 0);
   atomic_store(&recarregarAndroid, 0);
@@ -5248,10 +5246,10 @@ void stream_folha_evento(const SDL_Event *e) {
     { int resultado = teclado_resultado();
       if (resultado == TECLADO_PRONTO) {
         snprintf(folhaBusca, sizeof folhaBusca, "%s", teclado_texto());
-        grupo = -2; folhaBuscaFoco = 1; foco = 0; rolagem = 0; velRol = 0;
+        grupo = -2; foco = 0; rolagem = 0; velRol = 0;
         montar(automaticaDaFolha());
       } else if (resultado == TECLADO_CANCELOU) {
-        grupo = -2; folhaBuscaFoco = 1;
+        grupo = -2;
       }
     }
     return;
@@ -5322,7 +5320,7 @@ void stream_folha_evento(const SDL_Event *e) {
     else if(grupo==0) {grupo=-1;foco=nBotoes()-1;}
   }
   if(k==SDLK_DOWN) {
-    if(grupo==-2) { grupo=0; filtro=-1; foco=0; }
+    if(grupo==-2) { grupo=0; filtro=0; foco=0; }
     else if(grupo==-1) grupo=0;
     else if(grupo==0) {grupo=chipsOcultos(NULL,0)?2:1;foco=0;}
     else if(grupo==2) {grupo=1;foco=0;}
@@ -5330,10 +5328,10 @@ void stream_folha_evento(const SDL_Event *e) {
   }
   // The card's horizontal exits are deliberate shortcuts: Right -> All
   // streams, Left -> Search. No existing filter/tab behaviour is changed.
-  if (grupo==1 && k==SDLK_RIGHT) { grupo=0; filtro=-1; foco=0; }
-  else if (grupo==1 && k==SDLK_LEFT) { grupo=-2; folhaBuscaFoco=1; }
+  if (grupo==1 && k==SDLK_RIGHT) { grupo=0; filtro=0; foco=0; }
+  else if (grupo==1 && k==SDLK_LEFT) { grupo=-2; }
   else if (grupo==-2 && k==SDLK_RIGHT) { grupo=1; foco=0; }
-  else if (grupo==0 && (k==SDLK_LEFT || k==SDLK_RIGHT)) {
+  else if (grupo>=0 && (k==SDLK_LEFT || k==SDLK_RIGHT)) {
     filtro+=k==SDLK_RIGHT?1:-1;
     if(filtro < -1) filtro=-1;
     if(filtro>=nProvedores) filtro=nProvedores-1;
@@ -5535,6 +5533,7 @@ int stream_folha_escolheu(int *out) {
 // provedor so troca no CLIQUE — trocar ao passar por cima mudaria a lista
 // debaixo da mao. Clicar fora do painel fecha, como o Voltar.
 static void ponteiroFolhaBotao(int i, int b) { (void)b; grupo = -1; foco = i; }
+static void ponteiroFolhaBusca(int i, int b) { (void)i; (void)b; grupo = -2; }
 static void ponteiroFolhaDica(int i, int b) { (void)i; (void)b; grupo = 2; }
 static void ponteiroFolhaLinha(int row, int b) { (void)b; grupo = 1; foco = row; }
 static void ponteiroFolhaFiltro(int i, int b) {
@@ -5814,7 +5813,7 @@ static const char *iconeFiltro(int b) {
 static void medirCabecalho(void) {
   float rw = FOLHA_W - FOLHA_PAD_E - FOLHA_PAD_D;
   float tit = (float)txt_linha(TXT_ILHA_TITULO, "Fontes", 255, 255, 255, 255).w;
-  float livre = rw - FOLHA_TXT - tit - 24.0f, soma = 0;
+  float livre = rw - FOLHA_TXT - 64.0f - tit - 24.0f, soma = 0;
   int nbt = nBotoes();
   for (nivelCab = 0; nivelCab < 3; nivelCab++) {
     float pad = nivelCab == 0 ? 20.0f : 14.0f;
@@ -6240,16 +6239,15 @@ static void corpoFolha(float x, float w, float anim, Uint32 agora, int ilha) {
   medirCabecalho();
   // Search sits on the far left of the header, aligned with the stream list.
   // Focusing expands it; opening the shared keyboard requires an explicit OK.
-  { GfxRect sr = { lx, oy + FOLHA_CAB_Y, folhaBusca[0] || grupo == -2 ? 248.0f : FOLHA_CHIP_H, FOLHA_CHIP_H };
-    if (grupo == -2 || folhaBusca[0]) {
-      chipFolha(sr, folhaBusca[0] ? folhaBusca : "Buscar fontes", folhaBusca[0] ? 190.0f : 150.0f,
-                "aj_search", grupo == -2, 0, anim);
-    } else {
-      chipFolha(sr, NULL, 0, "aj_search", 0, 0, anim);
-    }
-    if (ptr) ponteiro_alvo(sr.x, sr.y, sr.w, sr.h, NULL, NULL, 0, 0);
+  { int buscaExpandida = grupo == -2 || folhaBusca[0] != 0;
+    GfxRect sr = { lx, oy + FOLHA_CAB_Y, buscaExpandida ? 248.0f : FOLHA_CHIP_H, FOLHA_CHIP_H };
+    chipFolha(sr, buscaExpandida ? (folhaBusca[0] ? folhaBusca : "Buscar fontes") : NULL,
+              buscaExpandida ? 190.0f : 0.0f, "aj_search", grupo == -2, 0, anim);
+    if (ptr) ponteiro_alvo(sr.x, sr.y, sr.w, sr.h, ponteiroFolhaBusca, NULL, 0, 0);
+    if (!buscaExpandida)
+      txt_desenhar_alpha(txt_linha_corta(TXT_ILHA_TITULO,"Fontes",243,242,239,255,titMaxCab),
+                         tx + 64.0f, oy + 94, anim);
   }
-  txt_desenhar_alpha(txt_linha_corta(TXT_ILHA_TITULO,"Fontes",243,242,239,255,titMaxCab),tx,oy+94,anim);
   // Os botoes alinhados a direita, centrados no titulo. Ordem do foco = ordem
   // visivel, da esquerda: [Sem HDR] Só MP4, Em cache, Dublado, Recarregar, Fechar.
   { int nbt=nBotoes(); float bx=lx+rw;
