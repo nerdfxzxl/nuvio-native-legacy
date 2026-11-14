@@ -50,10 +50,6 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.platform.ComposeView
 import org.libsdl.app.SDLActivity
 import java.io.File
 import java.util.concurrent.ConcurrentLinkedQueue
@@ -98,11 +94,6 @@ class NuvioActivity : SDLActivity() {
     }
 
     private var camadaVideo: FrameLayout? = null
-    private var streamSelectorView: ComposeView? = null
-    private var streamSelectorDialog: Dialog? = null
-    private var streamSelectorOwner: StreamSelectorViewTreeOwner? = null
-    private var streamSelectorVisible by mutableStateOf(false)
-    private var streamSelectorTitle by mutableStateOf("")
     private var touchInsetLeft = 0
     private var touchInsetTop = 0
     private var touchInsetRight = 0
@@ -186,99 +177,6 @@ class NuvioActivity : SDLActivity() {
 
     // Vigia do arranque (#266, ArranqueVigia.kt) e o que ele le do C (android.c).
     private var vigia: ArranqueVigia? = null
-    private external fun nativeStreamTitle(): String
-    fun streamSelectorTitle(): String = nativeStreamTitle()
-    private external fun nativeStreamRevision(): Long
-    fun streamSnapshotRevision(): Long = nativeStreamRevision()
-    private external fun nativeStreamSnapshot(): String
-    fun snapshotStreams(): String = nativeStreamSnapshot()
-
-    // The selector is a normal Android view layered above SDL's SurfaceView.
-    // The native C stream list remains authoritative; Compose only displays a snapshot.
-    private fun prepararSeletorFontes() {
-        if (streamSelectorView != null || mBrokenLibraries) return
-        val owner = StreamSelectorViewTreeOwner()
-        val overlay = ComposeView(this).apply {
-            owner.installOn(this)
-            isFocusable = true
-            isFocusableInTouchMode = true
-            setContent {
-                if (streamSelectorVisible) {
-                    StreamSelectorOverlay(
-                        title = streamSelectorTitle,
-                        activity = this@NuvioActivity,
-                        onDismiss = {
-                            cancelStreamSelector()
-                            ocultarSeletorFontes()
-                        }
-                    )
-                }
-            }
-        }
-        val dialog = Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen).apply {
-            setCancelable(false)
-            setContentView(overlay)
-            setOnKeyListener { _, keyCode, event ->
-                if (keyCode == KeyEvent.KEYCODE_BACK) {
-                    if (event.action == KeyEvent.ACTION_UP) {
-                        cancelStreamSelector()
-                        ocultarSeletorFontes()
-                    }
-                    true
-                } else false
-            }
-        }
-        streamSelectorOwner = owner
-        streamSelectorView = overlay
-        streamSelectorDialog = dialog
-    }
-
-    fun mostrarSeletorFontes() {
-        runOnUiThread {
-            if (mBrokenLibraries) return@runOnUiThread
-            prepararSeletorFontes()
-            val overlay = streamSelectorView ?: return@runOnUiThread
-            val dialog = streamSelectorDialog ?: return@runOnUiThread
-            streamSelectorTitle = streamSelectorTitle()
-            streamSelectorVisible = true
-            dialog.show()
-            streamSelectorOwner?.onDialogShown()
-            // Never reveal the Legacy SDL selector if Compose takes a frame
-            // to attach or report an error; the official screen is opaque.
-            dialog.window?.setBackgroundDrawable(ColorDrawable(Color.BLACK))
-            dialog.window?.decorView?.setBackgroundColor(Color.BLACK)
-            dialog.window?.setDimAmount(0f)
-            dialog.window?.setLayout(
-                WindowManager.LayoutParams.MATCH_PARENT,
-                WindowManager.LayoutParams.MATCH_PARENT
-            )
-            dialog.window?.setFlags(
-                WindowManager.LayoutParams.FLAG_FULLSCREEN,
-                WindowManager.LayoutParams.FLAG_FULLSCREEN
-            )
-            dialog.window?.decorView?.systemUiVisibility = window.decorView.systemUiVisibility
-            overlay.requestFocus()
-        }
-    }
-
-    fun ocultarSeletorFontes() {
-        runOnUiThread {
-            streamSelectorVisible = false
-            streamSelectorOwner?.onDialogHidden()
-            streamSelectorDialog?.dismiss()
-            streamSelectorOwner?.dispose()
-            streamSelectorOwner = null
-            streamSelectorDialog = null
-            streamSelectorView = null
-            mSurface.requestFocus()
-        }
-    }
-    private external fun nativeChooseStream(index: Int, generation: Int): Boolean
-    private external fun nativeCancelStreamSelector()
-    private external fun nativeRefreshStreams()
-    fun refreshStreams() = nativeRefreshStreams()
-    fun chooseStream(index: Int, generation: Int): Boolean = nativeChooseStream(index, generation)
-    fun cancelStreamSelector() = nativeCancelStreamSelector()
 
     external fun nativeEtapa(): String
     external fun nativeQuadros(): Long
