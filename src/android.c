@@ -87,6 +87,19 @@ Java_space_nuvio_nativelegacy_NuvioActivity_nativeStreamSnapshot(JNIEnv *env, jo
   return result;
 }
 
+JNIEXPORT jboolean JNICALL
+Java_space_nuvio_nativelegacy_NuvioActivity_nativeChooseStream(JNIEnv *env, jobject act,
+                                                                jint indice, jint geracao) {
+  (void)env; (void)act;
+  return stream_folha_escolher_externo((int)indice, (unsigned)geracao) ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT void JNICALL
+Java_space_nuvio_nativelegacy_NuvioActivity_nativeCancelStreamSelector(JNIEnv *env, jobject act) {
+  (void)env; (void)act;
+  stream_folha_cancelar_externo();
+}
+
 #ifdef NV_TOUCH_UI
 static SDL_atomic_t toqueCancelEvento;
 
