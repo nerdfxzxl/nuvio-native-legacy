@@ -1,6 +1,7 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    id("org.jetbrains.kotlin.plugin.compose")
 }
 
 // Tudo que vem de fora do projeto entra por propriedade (-P) que o
@@ -100,6 +101,8 @@ android {
         assets.srcDir("$estagio/assets")              // art/ e fonts/ (tools/android.sh)
         jniLibs.srcDir("$estagio/jnilibs")            // libcurl.so/libjpeg.so, se existirem
     }
+    buildFeatures { compose = true }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -129,6 +132,14 @@ val copiaSdlJava = tasks.register<Copy>("copiaSdlJava") {
 tasks.named("preBuild") { dependsOn(copiaSdlJava) }
 
 dependencies {
+    // Jetpack Compose TV selector overlay (kept above the existing SDL surface).
+    implementation(platform("androidx.compose:compose-bom:2024.12.01"))
+    implementation("androidx.compose.ui:ui")
+    implementation("androidx.compose.foundation:foundation")
+    implementation("androidx.compose.material3:material3")
+    implementation("androidx.tv:tv-material:1.0.0")
+    implementation("androidx.activity:activity-compose:1.9.3")
+
     // Video (NvPlayer.kt, de outro agente): Media3 ExoPlayer.
     implementation("androidx.media3:media3-exoplayer:1.8.0")
     implementation("androidx.media3:media3-exoplayer-hls:1.8.0")
