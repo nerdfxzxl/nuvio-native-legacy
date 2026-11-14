@@ -5286,11 +5286,6 @@ void stream_folha_evento(const SDL_Event *e) {
     }
     return;
   }
-#ifdef NV_ANDROID
-  // Keyboard/back handling belongs to Compose in Official mode; SDL must not
-  // operate the hidden Legacy selector underneath it.
-  if (atomic_load(&androidSelectorAtivo) && ajustes_stream_selector() == 0) return;
-#endif
   if (e->type == SDL_WINDOWEVENT && (e->window.event == SDL_WINDOWEVENT_FOCUS_LOST ||
       e->window.event == SDL_WINDOWEVENT_HIDDEN)) recarregarFonteConfirmacao = 0;
   if (aberta && recarregarFonteConfirmacao && e->type == SDL_KEYUP) {
@@ -6140,11 +6135,6 @@ static void corpoIlhaFolha(GfxRect c, float a, void *u) {
   corpoFolha(c.x, c.w, a, folhaAgora, 1);
 }
 static void stream_folha_desenharCorpo_(Uint32 agora) {
-#ifdef NV_ANDROID
-  // The official Compose selector owns the screen while it is active. Do not
-  // paint the Legacy SDL sheet underneath its transparent artwork/backdrop.
-  if (atomic_load(&androidSelectorAtivo) && ajustes_stream_selector() == 0) return;
-#endif
   if(anim<.005f) return;
   folhaGeometria();
   folhaAgora = agora;
