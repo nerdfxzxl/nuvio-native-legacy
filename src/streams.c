@@ -4725,7 +4725,15 @@ static int linhaDe(int indice) {
   for (int r = 0; r < nOrdem; r++) if (ordem[r] == indice) return r;
   return -1;
 }
-static int folhaIlha(void) { return player_aberto(); }
+static int folhaIlha(void) {
+#ifdef NV_ANDROID
+  // Official mode expands the source list from the player's Dynamic Clock.
+  // Legacy mode retains the original right-side sheet.
+  return player_aberto() && ajustes_stream_selector() == 0;
+#else
+  return player_aberto();
+#endif
+}
 // A lista nasce da ilha do relogio, mas nao precisa ocupar quase a tela toda.
 // Reserva cerca de 40% da altura virtual para as fontes (aprox. quatro linhas
 // comuns); o restante continua acessivel pela rolagem nativa. O limite inferior
@@ -4816,7 +4824,6 @@ void stream_folha_abrir(void) {
   atomic_store(&escolhaAndroid, -1);
   atomic_store(&cancelarAndroid, 0);
   atomic_store(&recarregarAndroid, 0);
-  atomic_store(&androidSelectorAtivo, 1);
   { float ix, iy, iw, ih;
     folhaRelogio = !player_aberto() && ajustes_relogio_ligado() && ilha_rect(&ix, &iy, &iw, &ih); }
   recarregarFonteConfirmacao = 0;
@@ -4864,9 +4871,6 @@ void stream_folha_abrir(void) {
          fitFoto.n, diag, pass, conhecidos, pesados,
          fitFotoOrigem == SF_DUR_MEDIA ? "media" : fitFotoOrigem == SF_DUR_METADATA ? "metadata" : "unknown");
   fflush(stdout);
-#ifdef NV_ANDROID
-  if (ajustes_stream_selector() == 0) android_stream_selector_mostrar();
-#endif
 }
 int stream_folha_aberta(void) {
   if (atomic_exchange(&cancelarAndroid, 0)) {
