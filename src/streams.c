@@ -3688,7 +3688,7 @@ static int passaBusca(int i) {
   if (s->dolbyVision) strncat(formato, " Dolby Vision DolbyVision DV", sizeof formato - strlen(formato) - 1);
   if (s->dolbyAtmos) strncat(formato, " Dolby Atmos DolbyAtmos Atmos", sizeof formato - strlen(formato) - 1);
   if (s->av1) strncat(formato, " AV1", sizeof formato - strlen(formato) - 1);
-  if (s->mp4) strncat(formato, " MP4", sizeof formato - strlen(formato) - 1);
+  if (stream_e_mp4(s)) strncat(formato, " MP4", sizeof formato - strlen(formato) - 1);
   if (s->badges & badges_bit("q-remux")) strncat(formato, " REMUX", sizeof formato - strlen(formato) - 1);
   if (s->badges & badges_bit("q-bluray")) strncat(formato, " BluRay", sizeof formato - strlen(formato) - 1);
   if (s->badges & badges_bit("q-web-dl")) strncat(formato, " WEB-DL", sizeof formato - strlen(formato) - 1);
