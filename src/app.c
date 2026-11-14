@@ -442,6 +442,8 @@ static int    folhaParaTocar;
 // Play inicial e OK longo no botao primario: aguarda os addons e abre a folha
 // dentro do player. Retomar curto continua automatico.
 static int    pedirFolhaNoPlay;
+// Survives the asynchronous addon search so a short Resume keeps its intent.
+static int    retomarDiretoPendente;
 // Quantas renovacoes de link seguidas um canal de portal ganha antes de virar
 // erro. Tres: um link que expirou renova na primeira; um portal fora do ar
 // falha nas tres e para de tentar em ~36 s em vez de nunca.
@@ -5866,9 +5868,11 @@ void app_atualizar(float dt, Uint32 agora) {
     // player_definir_episodio.
     int doInicio = detail_pediu_do_inicio();
     int escolherFonteInicial = detail_pediu_escolher_fonte_inicial();
-    int retomarDireto = detail_pediu_retomar_direto();
+    int pediuReproduzir = detail_pediu_reproduzir();
+    int retomarDireto = pediuReproduzir ? detail_pediu_retomar_direto() : 0;
     if (escolherFonteInicial && !doInicio) pedirFolhaNoPlay = 1;
-    if ((detail_pediu_reproduzir() || doInicio) && aguardandoFonte != 2) {
+    if ((pediuReproduzir || doInicio) && aguardandoFonte != 2) {
+      retomarDiretoPendente = retomarDireto && !doInicio;
       marco("abrir: reproduzir pedido");
       // A tela abre JA, no estado "abrindo fonte", e a escolha acontece depois.
       // Escolher antes deixaria o botao sem resposta por segundos, e escolher
@@ -5994,6 +5998,8 @@ void app_atualizar(float dt, Uint32 agora) {
   if (aguardandoFonte == 1 &&
       (addons_estado() != ADD_BUSCANDO ||
        ((player_id_canal()[0] || !fontefalha_ativa()) && autoParcialPronto()))) {
+    int retomarDireto = retomarDiretoPendente;
+    retomarDiretoPendente = 0;
     unsigned geracao = novaGeracaoFonte();
     // QUANTO O PLAY ESPEROU PELA DECISAO, e por que ela saiu (#202). Medido no
     // D1 so havia a decisao parcial; a completa nao deixava rastro.
@@ -6759,6 +6765,7 @@ void app_atualizar(float dt, Uint32 agora) {
   if (player_quer_sair() && !player_aberto()) {
     // Discard a pending first-Play selector if its player session has ended.
     pedirFolhaNoPlay = 0;
+    retomarDiretoPendente = 0;
     if (player_minimizavel()) {
       // CANAL AO VIVO sai para PiP: o fluxo fica num canto da tela em vez de
       // morrer. O caminho de baixo e o dos filmes/series — progresso a
