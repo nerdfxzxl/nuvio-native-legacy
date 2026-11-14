@@ -60,37 +60,31 @@ def check_elf(data, abi):
     if not loads:
         raise ValueError('ELF has no LOAD segment')
 
-    # Android's 16 KB rule has an explicit exception: a non-aligned RELRO
-    # end is safe when the RELRO consumes the entire remainder of its
-    # containing writable LOAD segment. In that case no writable .data/.bss
-    # follows RELRO in that LOAD segment.
+    # Android's 16 KB rule allows a non-aligned RELRO end when no writable
+    # data occupies the remainder of the 16 KB page that the linker protects.
+    # This includes the documented case where RELRO is the tail of its LOAD
+    # segment and the next writable LOAD starts at the next 16 KB boundary.
     for index, relro_start, relro_end in relros:
         if relro_end % PAGE_SIZE == 0:
             continue
 
-        containing_writable = [
+        protected_page_end = (
+            (relro_end + PAGE_SIZE - 1) // PAGE_SIZE
+        ) * PAGE_SIZE
+        following_writable = [
             load for load in loads
             if (load['flags'] & PF_W)
-            and load['start'] <= relro_start
-            and load['end'] >= relro_end
+            and load['start'] < protected_page_end
+            and load['end'] > relro_end
         ]
-        if not containing_writable:
-            errors.append(
-                f'GNU_RELRO[{index}] end=0x{relro_end:x} is not {PAGE_SIZE}-byte aligned '
-                'and no containing writable LOAD segment was found to verify the exception'
-            )
-            continue
-
-        extending = [
-            load for load in containing_writable if load['end'] > relro_end
-        ]
-        if extending:
+        if following_writable:
             details = ', '.join(
-                f"LOAD[{load['index']}] end=0x{load['end']:x}" for load in extending
+                f"LOAD[{load['index']}] range=0x{load['start']:x}-0x{load['end']:x}"
+                for load in following_writable
             )
             errors.append(
                 f'GNU_RELRO[{index}] end=0x{relro_end:x} is not {PAGE_SIZE}-byte aligned; '
-                f'writable data may follow in the same segment ({details})'
+                f'writable data occupies the protected trailing page ({details})'
             )
 
     return len(loads), min(load['align'] for load in loads), errors
@@ -122,9 +116,18 @@ def self_test():
     cases = [
         ('aligned RELRO', [load(6, PAGE_SIZE), relro(PAGE_SIZE)], False),
         ('RELRO ending with writable LOAD', [load(6, 0x1000), relro(0x1000)], False),
-        ('writable data after RELRO', [load(6, 0x2000), relro(0x1000)], True),
+        ('next writable LOAD starts at page boundary', [
+            load(4, 0x1000),
+            relro(0x1000),
+            (PT_LOAD, 6, 0, 0x8000, 0, 0, 0x1000, PAGE_SIZE),
+        ], False),
+        ('writable data after RELRO in same LOAD', [load(6, 0x2000), relro(0x1000)], True),
+        ('separate writable LOAD starts inside protected page', [
+            load(4, 0x1000),
+            relro(0x1000),
+            (PT_LOAD, 6, 0, 0x6000, 0, 0, 0x1000, PAGE_SIZE),
+        ], True),
         ('no RELRO segment', [load(6, 0x1000)], False),
-        ('no containing writable LOAD', [load(4, 0x1000), relro(0x1000)], True),
         ('under-aligned LOAD', [load(6, 0x1000, 4096)], True),
     ]
     for name, headers, should_fail in cases:
