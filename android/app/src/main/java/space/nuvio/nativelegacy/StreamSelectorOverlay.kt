@@ -692,11 +692,6 @@ private fun StreamSourceCard(
                     color = Color(0xFFB3B3B3),
                     maxLines = 1
                 )
-                Text(
-                    text = if (stream.hasUrl || stream.infoHash.isNotBlank()) "Available" else "Resolving",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Color(0xFFB8BAC4)
-                )
             }
         }
     }
