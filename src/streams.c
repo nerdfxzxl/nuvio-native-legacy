@@ -4748,6 +4748,7 @@ void stream_folha_abrir(void) {
   aberta=1; escolha=-1; grupo=1; filtro=0; filtroVisto=-2; pillW=-1.0f; trocaDesde=0; soMp4=0; soCache=0; soDub=0; recarregar=0;
   atomic_store(&escolhaAndroid, -1);
   atomic_store(&cancelarAndroid, 0);
+  atomic_store(&recarregarAndroid, 0);
   atomic_store(&androidSelectorAtivo, 1);
 #ifdef NV_ANDROID
   if (ajustes_stream_selector() == 0) android_stream_selector_mostrar();
