@@ -7629,7 +7629,7 @@ static void focarOpcao(int op) {
 // paragrafo que ninguem le do sofa.
 static const char *ajudaOpcaoBase(int op) {
   if (op == AJ_STREAM_SELECTOR)
-    return "Escolhe a tela de seleção de fontes: Nuvio oficial ou a interface original Legacy.";
+    return "Nuvio oficial expande as fontes no Relógio Dinâmico; Legacy mantém a folha original.";
   if (ajLegendaPrincipal(op) || op == AJ_LEG1_RESTAURAR)
     return "Tamanho, fonte, cores, fundo e posição das legendas.";
   if (op >= AJ_LEG2_FONTE && op <= AJ_LEG2_RESTAURAR)
