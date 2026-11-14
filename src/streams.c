@@ -5843,7 +5843,9 @@ static const char *iconeFiltro(int b) {
 static void medirCabecalho(void) {
   float rw = FOLHA_W - FOLHA_PAD_E - FOLHA_PAD_D;
   float tit = (float)txt_linha(TXT_ILHA_TITULO, "Fontes", 255, 255, 255, 255).w;
-  float livre = rw - FOLHA_TXT - 64.0f - tit - 24.0f, soma = 0;
+  int buscaExpandida = grupo == -2 || folhaBusca[0] != 0;
+  float reservado = buscaExpandida ? 248.0f : FOLHA_TXT + 64.0f + tit;
+  float livre = rw - reservado - 24.0f, soma = 0;
   int nbt = nBotoes();
   for (nivelCab = 0; nivelCab < 3; nivelCab++) {
     float pad = nivelCab == 0 ? 20.0f : 14.0f;
