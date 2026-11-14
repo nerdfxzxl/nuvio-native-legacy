@@ -5371,6 +5371,7 @@ void stream_folha_evento(const SDL_Event *e) {
 }
 void stream_folha_atualizar(float dt, Uint32 agora) {
   int nf;
+  if (aberta && teclado_aberto()) teclado_atualizar(dt, agora);
   medirCabecalho();
   if (aberta || anim > 0.001f) folhaGeometria();
   anim=anim_mola(anim,aberta?1:0,dt,NV_MOLA_TELA);
