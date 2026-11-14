@@ -112,7 +112,7 @@ static void medirCabecalho(void);
 #define FOLHA_ARQ_H     34.0f  // nome do arquivo, so na linha em foco
 #define FOLHA_FIT_H     32.0f  // StreamFit: evidencia da conexao, so na linha em foco
 #define FOLHA_FAIXA_H   28.0f  // idiomas declarados pelo addon, antes de reproduzir
-#define FOLHA_LINHA_GAP  4.0f
+#define FOLHA_LINHA_GAP  8.0f
 #define FOLHA_SEC_H     64.0f  // cabecalho "4K  ULTRA HD ... 3 fontes"
 #define FOLHA_SEC_GAP   26.0f
 #define FOLHA_RAIO      22.0f
@@ -4627,10 +4627,9 @@ static void montarBase(int automatica) {
     fitAtualizar();
     memset(secN, 0, sizeof secN);
     nOrdem = 0;
-    if (saved >= 0) porLinha(saved, &y, automatica);
     for (k = 0; k < n; k++) {
       i = ORD(k);
-      if (i == saved || !passaFiltro(i)) continue;
+      if (!passaFiltro(i)) continue;
       (void)grupoRes(&lista[i]);
       porLinha(i, &y, automatica);
     }
@@ -4906,9 +4905,8 @@ void stream_folha_abrir(void) {
   atualizarProvedores();
   ondever_apps_atualizar();
   // A FOLHA ABRE NA FONTE QUE IMPORTA: a que esta tocando, senao a que o
-  // automatico tocaria. Com a lista agrupada por resolucao a primeira linha ja
-  // nao e a de maior pontuacao, entao abrir na linha 0 poria o realce numa
-  // fonte qualquer de 4K enquanto a marca "automatica" fica la embaixo.
+  // automatico tocaria. A lista segue a ordem oficial dos addons; o foco vai
+  // diretamente para a fonte ativa/automatica dentro do grupo do provedor.
   aut = automaticaDaFolha();
   melhorFolha = automaticoDaFolhaModo();
   alvo = atual >= 0 ? atual : aut;
