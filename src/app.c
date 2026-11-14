@@ -439,6 +439,9 @@ static int stalkerRenovando;
 // Sem isto, sair da folha com Voltar deixaria a tela em "carregando" para
 // sempre — o pedido de fonte ja tinha sido consumido e ninguem mais viria.
 static int    folhaParaTocar;
+// Back from the initial source picker cancels the pending player only after
+// the Dynamic Clock body has finished its collapse animation.
+static int    folhaCancelarTocar;
 // Play inicial e OK longo no botao primario: aguarda os addons e abre a folha
 // dentro do player. Retomar curto continua automatico.
 static int    pedirFolhaNoPlay;
@@ -6096,6 +6099,7 @@ void app_atualizar(float dt, Uint32 agora) {
         pedirFolhaNoPlay = 0;
         aguardandoFonte = 0;
         folhaParaTocar = 1;
+        folhaCancelarTocar = 0;
         nomeParaFolha(); stream_folha_abrir();
       } else {
         pedirFolhaNoPlay = 0;
@@ -6541,6 +6545,7 @@ void app_atualizar(float dt, Uint32 agora) {
       parteZerar();
     }
     folhaParaTocar = 0;
+    folhaCancelarTocar = 0;
     printf("fonte escolhida: %s\n", s ? s->rotulo : "?");
     // GUARDAR A ESCOLHA, e SO a manual. O que o automatico escolhe nao vira
     // preferencia: quem nunca abriu esta folha continua com a regra da
@@ -6733,13 +6738,23 @@ void app_atualizar(float dt, Uint32 agora) {
     if (q) faixas_abrir_em(q == 2 ? 1 : 0); }
   if (!player_retido()) faixas_atualizar(dt, agora);
   atualizarFolha(dt, agora);
-  // FOLHA FECHADA SEM ESCOLHER, com o player esperando por ela. Voltar na
-  // folha e "desisti", nao "tente sozinho": abrir a fonte que a pessoa acabou
-  // de recusar seria contradizer o gesto. O player mostra o erro de fonte, que
-  // ja tem saida pela mesma tecla.
+  // Back from the first-play picker means return to the title page. Do
+  // not turn cancellation into a "could not open source" error. Let the
+  // Dynamic Clock finish collapsing before ending the temporary player shell.
   if (folhaParaTocar && !stream_folha_aberta()) {
     folhaParaTocar = 0;
-    if (player_aberto()) player_erro_fonte();
+    folhaCancelarTocar = 1;
+  }
+  if (folhaCancelarTocar && stream_folha_anim() <= 0.005f) {
+    folhaCancelarTocar = 0;
+    if (player_aberto()) {
+      novaGeracaoFonte();
+      limparFontePendente();
+      aguardandoFonte = 0;
+      limparFonteVOD();
+      preparoEspera = 0;
+      player_encerrar();
+    }
   }
 
   // SAIR DO PLAYER COLOCA O TITULO NA FRENTE DE "CONTINUAR ASSISTINDO".
@@ -6769,6 +6784,8 @@ void app_atualizar(float dt, Uint32 agora) {
     // Discard a pending first-Play selector if its player session has ended.
     pedirFolhaNoPlay = 0;
     retomarDiretoPendente = 0;
+    folhaCancelarTocar = 0;
+    folhaParaTocar = 0;
     if (player_minimizavel()) {
       // CANAL AO VIVO sai para PiP: o fluxo fica num canto da tela em vez de
       // morrer. O caminho de baixo e o dos filmes/series — progresso a
