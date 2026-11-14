@@ -86,6 +86,7 @@ private data class SelectorStream(
     val hasUrl: Boolean,
     val sizeBytes: Long,
     val sizeMb: Long,
+    val badgeMask: Long,
     val audioLanguages: String,
     val subtitleLanguages: String
 ) {
@@ -105,8 +106,28 @@ private data class SelectorStream(
         if (av1) append("AV1 ")
         if (mp4) append("MP4 ")
         if (sizeBytes > 0L) append(formatStreamSize(sizeBytes))
+        badgeLabels(badgeMask).forEach { append(it).append(' ') }
     }.lowercase(Locale.ROOT)
 }
+
+private val selectorBadgeDefinitions = listOf(
+    0 to "4K", 1 to "1080p", 2 to "720p", 3 to "SD",
+    4 to "REMUX", 5 to "BluRay", 6 to "WEB-DL", 7 to "WEBRip", 8 to "SeaDex",
+    9 to "Dolby Vision", 10 to "HDR10+", 11 to "HDR10", 12 to "HDR", 13 to "HLG",
+    14 to "IMAX Enhanced", 15 to "IMAX", 16 to "SDR",
+    17 to "Atmos DV", 18 to "Atmos", 19 to "TrueHD DV", 20 to "TrueHD",
+    21 to "DTS:X", 22 to "DTS-HD MA", 23 to "DTS-HD", 24 to "DTS",
+    25 to "Dolby Digital DV", 26 to "DD+", 27 to "Dolby Digital",
+    28 to "7.1", 29 to "5.1", 30 to "x265", 31 to "x264", 32 to "AV1",
+    33 to "Netflix", 34 to "Prime Video", 35 to "Apple TV+", 36 to "Disney+",
+    37 to "Max", 38 to "Hulu", 39 to "Peacock", 40 to "Paramount+",
+    41 to "Crave", 42 to "Crunchyroll"
+)
+
+private fun badgeLabels(mask: Long): List<String> =
+    selectorBadgeDefinitions.mapNotNull { (bit, label) ->
+        if ((mask and (1L shl bit)) != 0L) label else null
+    }
 
 private data class ProviderFilter(val key: String, val label: String, val status: Int = 0)
 
@@ -151,6 +172,7 @@ private fun parseSelectorSnapshot(raw: String): SelectorSnapshot = runCatching {
                     hasUrl = item.optBoolean("hasUrl", false),
                     sizeBytes = item.optLong("sizeBytes", 0L),
                     sizeMb = item.optLong("sizeMB", 0L),
+                    badgeMask = item.optLong("badges", 0L),
                     audioLanguages = item.optString("audioLanguages", ""),
                     subtitleLanguages = item.optString("subtitleLanguages", "")
                 )
@@ -633,66 +655,71 @@ private fun StreamSourceCard(
     focusRequester: FocusRequester?,
     onClick: () -> Unit
 ) {
+    var focused by remember { mutableStateOf(false) }
+    val badges = badgeLabels(stream.badgeMask).ifEmpty {
+        buildList {
+            if (stream.height > 0) add(if (stream.height >= 2160) "4K" else "${stream.height}p")
+            if (stream.dolbyVision) add("Dolby Vision")
+            if (stream.dolbyAtmos) add("Atmos")
+            if (stream.av1) add("AV1")
+            if (stream.mp4) add("MP4")
+        }
+    }
     Card(
         onClick = {
             if (stream.hasUrl || stream.infoHash.isNotBlank()) onClick()
         },
         modifier = Modifier
             .fillMaxWidth()
-            .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier),
+            .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
+            .onFocusChanged { focused = it.isFocused }
+            .border(
+                BorderStroke(if (focused) 2.dp else 1.dp, if (focused) Color.White else Color(0x22333333)),
+                RoundedCornerShape(14.dp)
+            ),
         colors = CardDefaults.colors(
             containerColor = Color(0xFF222222),
-            focusedContainerColor = Color(0xFF303030)
+            focusedContainerColor = Color(0xFF222222)
         ),
         shape = CardDefaults.shape(shape = RoundedCornerShape(14.dp)),
         scale = CardDefaults.scale(focusedScale = 1f)
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
+            verticalArrangement = Arrangement.spacedBy(7.dp)
         ) {
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
+            Text(
+                text = stream.name.ifBlank { "Unknown stream" },
+                style = MaterialTheme.typography.titleMedium,
+                color = Color(0xFFF2F2F5),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (stream.description.isNotBlank() && stream.description != stream.name) {
                 Text(
-                    text = stream.name.ifBlank { "Unknown stream" },
-                    style = MaterialTheme.typography.titleMedium,
-                    color = Color(0xFFF2F2F5),
+                    text = stream.description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color(0xFFB3B3B3),
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
-                if (stream.description.isNotBlank() && stream.description != stream.name) {
-                    Text(
-                        text = stream.description,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color(0xFFB3B3B3),
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    if (stream.height > 0) StreamBadge(if (stream.height >= 2160) "4K" else "${stream.height}p")
-                    if (stream.dolbyVision) StreamBadge("Dolby Vision")
-                    if (stream.dolbyAtmos) StreamBadge("Atmos")
-                    if (stream.av1) StreamBadge("AV1")
-                    if (stream.mp4) StreamBadge("MP4")
-                    if (stream.sizeBytes > 0L) StreamBadge(formatStreamSize(stream.sizeBytes))
-                }
             }
-            Column(
-                horizontalAlignment = Alignment.End,
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Text(
-                    text = stream.provider,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Color(0xFFB3B3B3),
-                    maxLines = 1
-                )
+            if (badges.isNotEmpty()) {
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    badges.forEach { StreamBadge(it) }
+                    if (stream.sizeBytes > 0L && badges.none { it == formatStreamSize(stream.sizeBytes) }) {
+                        StreamBadge(formatStreamSize(stream.sizeBytes))
+                    }
+                }
+            } else if (stream.sizeBytes > 0L) {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    StreamBadge(formatStreamSize(stream.sizeBytes))
+                }
             }
         }
     }
