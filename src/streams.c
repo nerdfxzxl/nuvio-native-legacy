@@ -4193,6 +4193,9 @@ void stream_folha_item(int indice) { itemFolha = indice; }
 void stream_folha_nome(const char *nome) {
   snprintf(nomeFolha, sizeof nomeFolha, "%s", nome ? nome : "");
 }
+void stream_folha_titulo(char *dst, size_t tamanho) {
+  if (dst && tamanho) snprintf(dst, tamanho, "%s", nomeFolha);
+}
 // Duas partes: o NOME (grande) e o EPISODIO ("Temporada 2 Episodio 5"),
 // desenhado menor e mais apagado ao lado (dono, 02/10: "pode deixar menor e
 // mais delicado"). Filme e canal ficam so com o nome.
