@@ -3534,7 +3534,7 @@ static int filtrosVisiveisCalcular(void) {
   for (int i = 0; i < n; i++) if (!lista[i].filtro.naoVod) return 1;
   return 0;
 }
-static int folhaAuto, folhaVisiveis, folhaContagens[13], folhaOcultos, folhaBloqueada;
+static int folhaAuto, folhaVisiveis, folhaContagens[13], folhaBuscaContagens[13], folhaOcultos, folhaBloqueada;
 static int filtrosVisiveis(void) { folhaDados(); return folhaVisiveis; }
 static int automaticoDaFolhaModo(void) { folhaDados(); return folhaAuto; }
 static int botaoDe(int i) {
@@ -3659,7 +3659,7 @@ static int nFiltrados(void);
 static const char *fraseVazioChips(void) {
   static char frase[256];
   char nomes[128];
-  if (!chipsOcultos(nomes, sizeof nomes) || nFiltrados()) return NULL;
+  if (folhaBusca[0] || !chipsOcultos(nomes, sizeof nomes) || nFiltrados()) return NULL;
   snprintf(frase, sizeof frase, i18n("Os filtros ligados (%s) esconderam todas as fontes."), nomes);
   return frase;
 }
@@ -3804,7 +3804,8 @@ static void atualizarProvedores(void) {
 }
 static int nFiltrados(void) {
   folhaDados();
-  return filtro == -1 ? ondever_n(alvoPedido) : folhaContagens[filtro];
+  if (filtro == -1) return ondever_n(alvoPedido);
+  return folhaBusca[0] ? folhaBuscaContagens[filtro] : folhaContagens[filtro];
 }
 
 // A FONTE QUE O AUTOMATICO ESCOLHERIA. E a resposta a "se eu nao escolher
@@ -4708,10 +4709,16 @@ static void folhaDados(void) {
   busy = 1;
   atualizarProvedores();
   memset(folhaContagens, 0, sizeof folhaContagens);
+  memset(folhaBuscaContagens, 0, sizeof folhaBuscaContagens);
   folhaOcultos = 0;
   for (int i = 0; i < n; i++) {
     if (passaChips(i)) {
       folhaContagens[0]++;
+      if (passaBusca(i)) {
+        folhaBuscaContagens[0]++;
+        for (int p = 1; p < nProvedores; p++)
+          if (doProvedor(&lista[i], p)) { folhaBuscaContagens[p]++; break; }
+      }
       for (int p = 1; p < nProvedores; p++)
         if (doProvedor(&lista[i], p)) { folhaContagens[p]++; break; }
     } else if ((canalFolha || stream_filtro_permite(&lista[i])) && !chipsOk(i) &&
@@ -6602,8 +6609,10 @@ static void corpoFolha(float x, float w, float anim, Uint32 agora, int ilha) {
           char d[512];
           snprintf(d, sizeof d, "%s", arq);
           for (char *p = d; *p; p++) if ((unsigned char)*p < 32) *p = ' ';
+          float vis = nl > FOLHA_ADDON_FECHADA
+                   ? FOLHA_ADDON_FECHADA + (nl - FOLHA_ADDON_FECHADA) * abr : (float)nl;
           txt_bloco(TXT_PG_FIM, d, 125, 125, 123, tx,
-                    cy + nl * FOLHA_ADDON_LD + 8.0f, tr - tx, 28.0f, anim * abr, 0);
+                    cy + vis * FOLHA_ADDON_LD + 8.0f, tr - tx, 28.0f, anim * abr, 0);
         }
       }
       continue;
@@ -6733,6 +6742,7 @@ static void corpoFolha(float x, float w, float anim, Uint32 agora, int ilha) {
     char causa[160], frase[320];
     const char *s = fraseVazioAba(filtro);
     if (!s) s = addons_estado()==ADD_BUSCANDO?"Buscando fontes nos addons…":"Nenhuma fonte direta disponível. Use Recarregar para tentar novamente.";
+    if (folhaBusca[0] && addons_estado()!=ADD_BUSCANDO) s = "Nenhuma fonte corresponde à busca.";
     if (!canalFolha && addons_estado()!=ADD_BUSCANDO && folhaBloqueada)
       s = "Nenhuma fonte passa pelos filtros";
     if (addons_estado()!=ADD_BUSCANDO && fraseVazioChips()) s = fraseVazioChips();
