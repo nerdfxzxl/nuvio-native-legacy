@@ -3673,14 +3673,27 @@ static int textoContemBusca(const char *texto, const char *consulta) {
 }
 static int passaBusca(int i) {
   const Stream *s;
+  const char *p;
   if (!folhaBusca[0]) return 1;
   if (i < 0 || i >= n) return 0;
   s = &lista[i];
-  return textoContemBusca(s->rotulo, folhaBusca) ||
-         textoContemBusca(s->provedor, folhaBusca) ||
-         textoContemBusca(s->addonChave, folhaBusca) ||
-         textoContemBusca(s->descricao, folhaBusca) ||
-         textoContemBusca(s->arquivo, folhaBusca);
+  // Match every word, but allow each word to occur in a different field.
+  // This mirrors the mobile selector's broad, case-insensitive search.
+  for (p = folhaBusca; *p;) {
+    char termo[TECLADO_MAX + 1];
+    size_t k = 0;
+    while (*p && isspace((unsigned char)*p)) p++;
+    if (!*p) break;
+    while (*p && !isspace((unsigned char)*p) && k < sizeof termo - 1) termo[k++] = *p++;
+    termo[k] = 0;
+    if (!textoContemBusca(s->rotulo, termo) &&
+        !textoContemBusca(s->provedor, termo) &&
+        !textoContemBusca(s->addonChave, termo) &&
+        !textoContemBusca(s->descricao, termo) &&
+        !textoContemBusca(s->arquivo, termo)) return 0;
+    while (*p && !isspace((unsigned char)*p)) p++;
+  }
+  return 1;
 }
 static int passaFiltro(int i) {
   if (filtro < 0) return 0;
@@ -5339,7 +5352,7 @@ void stream_folha_evento(const SDL_Event *e) {
   // The card's horizontal exits are deliberate shortcuts: Right -> All
   // streams, Left -> Search. No existing filter/tab behaviour is changed.
   if (grupo==1 && k==SDLK_RIGHT) { grupo=0; filtro=0; foco=0; }
-  else if (grupo==1 && k==SDLK_LEFT) { grupo=-2; }
+  else if (grupo==1 && k==SDLK_LEFT) { grupo=-2; filtro=0; foco=0; rolagem=0; velRol=0; }
   else if (grupo==-2 && k==SDLK_RIGHT) { grupo=1; foco=0; }
   else if (grupo>=0 && (k==SDLK_LEFT || k==SDLK_RIGHT)) {
     filtro+=k==SDLK_RIGHT?1:-1;
