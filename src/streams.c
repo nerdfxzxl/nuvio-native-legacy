@@ -3942,7 +3942,8 @@ static void linhaLimpa(char *d, size_t tam, const char *ini, size_t n) {
 static const char *descricaoAddon(const Stream *s) {
   // NuvioTV displays description ?: title, but suppresses it when it repeats
   // the display name. Keep the addon's original description intact.
-  if (!s->descricao[0] || !strcmp(s->descricao, s->rotulo)) return "";
+  const char *nome = s->rotulo[0] ? s->rotulo : s->descricao;
+  if (!s->descricao[0] || !strcmp(s->descricao, nome)) return "";
   return s->descricao;
 }
 static void tituloAddon(const Stream *s, char *buf, size_t tam) {
