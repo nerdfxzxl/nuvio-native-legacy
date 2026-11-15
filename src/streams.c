@@ -781,6 +781,9 @@ static void filtroSelecionar(int novo);
 static int aberta, foco, grupo;
 static float rolagem, velRol;
 static int folhaNavegou; // The first configured addon wins until the user navigates.
+// Results arrive before the renderer below; focus state must be declared here.
+static float abreFoco = 1.0f, abreAnt;
+static int linhaAnt = -1, focoVisto = -1;
 // Native stream search. The query is applied during the existing list build,
 // so drawing and navigation still visit only visible rows.
 static char folhaBusca[TECLADO_MAX + 1];
@@ -3917,8 +3920,7 @@ static int secN[FOLHA_GRUPOS];
 // A linha em foco abre (abreFoco 0->1) e a que perdeu o foco fecha (abreAnt
 // 1->0) ao mesmo tempo: abrir uma e fechar a outra no mesmo quadro empurraria
 // a lista inteira de uma vez.
-static float abreFoco = 1.0f, abreAnt;
-static int linhaAnt = -1, focoVisto = -1;
+
 
 
 // MODO "DO ADDON" (Ajustes > Texto das fontes; dono, 02/10: "tem que ter a
