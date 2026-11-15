@@ -1,5 +1,8 @@
 # Nuvio Personalization Project — Living Specification
 
+## AI handoff entry points
+Read this file together with [ARCHITECTURE.md](ARCHITECTURE.md) (verified build facts, architecture and unverified source map) and [DEVELOPMENT_LOG.md](DEVELOPMENT_LOG.md) (historical attempts, bug reports, next steps). These documents distinguish verified code evidence from user-reported behavior. Do not treat TODO entries as completed investigation.
+
 Status: planning and recovery; no feature is considered complete without build and device verification.
 Primary target: Android TV / Google TV build of Nuvio Native Legacy.
 Working branch: `feature/official-stream-selector`. Keep `master` untouched until changes are verified.
