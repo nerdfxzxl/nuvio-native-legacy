@@ -5616,13 +5616,13 @@ static void desenharOnde(GfxRect r, float tx, float tr, const OndeVer *o, int se
 // sem imagem (ou imagem que nao baixou) vira uma pilula com o NOME e as cores
 // do filtro. Para no `maxW`. Devolve a largura usada.
 // `medir` = so a conta da largura, sem desenhar (quem ancora pela direita).
-static float selosDesenhar(const unsigned short *ids, int n, float x, float y, float maxW, float h,
-                           float a, float tom, int semResolucao, int medir) {
+static float selosDesenharPacote(int pacote,const unsigned short *ids,int n,float x,float y,float maxW,float h,
+                                 float a,float tom,int semResolucao,int medir) {
   const float gap = 8.0f, padX = 9.0f, imgMaxW = 220.0f;
   float x0 = x;
   int k, colorido = ajustes_selos_coloridos();
   for (k = 0; k < n; k++) {
-    const SeloFiltro *f = selospacote_filtro(ids[k]);
+    const SeloFiltro *f = selospacote_filtro_pacote(pacote,ids[k]);
     float w, r, g, b, al;
     int pronta = 0;
     if (!f) continue;
@@ -5667,16 +5667,23 @@ static float selosDesenhar(const unsigned short *ids, int n, float x, float y, f
         continue;
       }
       if (t && asp > 0.01f) {
-        float ih = h;
-        w = ih * asp;
-        if (w > imgMaxW) { w = imgMaxW; ih = w / asp; }
-        if (x + w > x0 + maxW) break;
-        if (!medir) {
-          gfx_tex_aspect_atual = 0.0f;
-          gfx_rect((GfxRect){x, y + (h - ih) * .5f, w, ih}, t, GFX_TEXTO, 0, 0, 0, 0.0f, 1, 1, 1, a);
+        // Fusion-imported image badges may define a colored tag behind dark
+        // artwork. Render that declared tagColor, rather than dark-on-dark
+        // transparent artwork as in the previous build.
+        float ih=h, pad=f->temTag?6.0f:0.0f;
+        w=ih*asp;
+        if(w>imgMaxW) {w=imgMaxW;ih=w/asp;}
+        if(x+w+2*pad>x0+maxW)break;
+        if(!medir) {
+          if(f->temTag && f->tag[3]>.01f) {
+            GfxRect bg={x,y-3.0f,w+2*pad,h+6.0f};
+            gfx_cor(bg,6.0f/bg.h,f->tag[0],f->tag[1],f->tag[2],f->tag[3]*a);
+          }
+          gfx_tex_aspect_atual=0.0f;
+          gfx_rect((GfxRect){x+pad,y+(h-ih)*.5f,w,ih},t,GFX_TEXTO,
+                   0,0,0,0.0f,1,1,1,a);
         }
-        x += w + gap;
-        continue;
+        x+=w+2*pad+gap;continue;
       }
       // Ainda baixando: guarda o lugar (a fileira nao pula quando chega) e nao
       // desenha. Se falhou, mostra o nome.
@@ -5711,6 +5718,10 @@ static float selosDesenhar(const unsigned short *ids, int n, float x, float y, f
   }
   return x > x0 ? x - x0 - gap : 0.0f;
 }
+static float selosDesenhar(const unsigned short *ids,int n,float x,float y,float maxW,float h,
+                           float a,float tom,int semResolucao,int medir) {
+  return selosDesenharPacote(-1,ids,n,x,y,maxW,h,a,tom,semResolucao,medir);
+}
 static float selosDeslocamento(int indice, float largura, float viewport, Uint32 agora) {
   float excesso = largura - viewport;
   const float velocidade = 42.0f; // px/s: deliberate, readable movement.
@@ -5737,11 +5748,43 @@ static float desenharSelosPacote(const Stream *s, float x, float y, float maxW, 
   return selosDesenhar(s->selosPacote, (int)s->nSelosPacote, x, y, maxW, h, a, tom, semResolucao, 0);
 }
 
-int stream_selos_ha(const Stream *s) { return s && selosPacoteDa((Stream *)s) > 0; }
-float stream_selos_fileira(const Stream *s, float x, float y, float maxW, float h, float tom, float a) {
-  if (!s || !selosPacoteDa((Stream *)s)) return 0.0f;
-  return desenharSelosPacote(s, x, y, maxW, h,
-                             ajustes_selos_coloridos() ? a * 0.9f : a, tom, 0);
+// The playing source may use a different imported Fusion badge pack than
+// the source selection list. Cache matches for its unchanged metadata, so
+// player overlays never run regexes every frame.
+static unsigned short playerBadgeIds[SELOS_MAX_CASADOS];
+static int playerBadgeN, playerBadgeChoice=-1, playerBadgePointerRev=-1;
+static const Stream *playerBadgePointer;
+static unsigned playerBadgeVersion;
+static const unsigned short *playerBadgeDo(const Stream *s,int *count,int *pacote) {
+  int choice=selospacote_player_fonte();
+  if(pacote)*pacote=choice>=2?choice-2:-1;
+  if(count)*count=0;
+  if(!s||choice==1)return NULL;
+  if(choice==0) {
+    if(count)*count=selosPacoteDa((Stream *)s);
+    return s->selosPacote;
+  }
+  unsigned version=selospacote_versao();
+  int rev=(int)atomic_load(&folhaRevisao);
+  if(s!=playerBadgePointer||choice!=playerBadgeChoice||
+     version!=playerBadgeVersion||rev!=playerBadgePointerRev) {
+    const char *fields[]={s->arquivo,s->rotulo,s->descricao,s->provedor};
+    playerBadgeN=selospacote_casar_pacote(choice-2,fields,4,playerBadgeIds,SELOS_MAX_CASADOS);
+    playerBadgePointer=s;playerBadgeChoice=choice;
+    playerBadgeVersion=version;playerBadgePointerRev=rev;
+  }
+  if(count)*count=playerBadgeN;
+  return playerBadgeIds;
+}
+int stream_selos_ha(const Stream *s) {
+  int count=0;playerBadgeDo(s,&count,NULL);return count>0;
+}
+float stream_selos_fileira(const Stream *s,float x,float y,float maxW,float h,float tom,float a) {
+  int count=0,pacote=-1;
+  const unsigned short *ids=playerBadgeDo(s,&count,&pacote);
+  if(!ids||!count)return 0.0f;
+  return selosDesenharPacote(pacote,ids,count,x,y,maxW,h,
+                            ajustes_selos_coloridos()?a*.9f:a,tom,0,0);
 }
 
 // SELOS DO QUE ESTA TOCANDO (OSD do player): o pacote ativo casado com um
@@ -5754,16 +5797,20 @@ float stream_selos_medidos(const char *texto, float x, float y, float maxW, floa
   static unsigned short ids[SELOS_MAX_CASADOS];
   static int n;
   selospacote_colorido(ajustes_selos_coloridos());
-  if (selospacote_ativo() < 0 && !selospacote_embutidos_ok()) return 0.0f;
+  int choice=selospacote_player_fonte();
+  if(choice==1)return 0.0f;
+  int pacote=choice>=2?choice-2:-1;
+  if(pacote<0 && selospacote_ativo()<0 && !selospacote_embutidos_ok())return 0.0f;
   if (!texto) texto = "";
   if (ultVer != selospacote_versao() || strcmp(ult, texto)) {
     const char *campos[1] = { ult };
     snprintf(ult, sizeof ult, "%s", texto);
     ultVer = selospacote_versao();
-    n = ult[0] ? selospacote_casar(campos, 1, ids, SELOS_MAX_CASADOS) : 0;
+    n = ult[0] ? selospacote_casar_pacote(pacote,campos,1,ids,SELOS_MAX_CASADOS) : 0;
   }
   if (!n) return 0.0f;
-  return selosDesenhar(ids, n, x, y, maxW, h, ajustes_selos_coloridos() ? a * 0.9f : a, tom, 0, medir);
+  return selosDesenharPacote(pacote,ids,n,x,y,maxW,h,
+                            ajustes_selos_coloridos()?a*.9f:a,tom,0,medir);
 }
 
 static float caixaAlta(const char *s, int r, int g, int b, float x, float y, float a) {
