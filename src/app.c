@@ -6015,9 +6015,8 @@ void app_atualizar(float dt, Uint32 agora) {
   // duas ficariam presas no mesmo pipeline.
   // A busca disparada por Reproduzir terminou: agora VERIFICA as fontes, em
   // ordem, ate achar uma que leve ao arquivo — e so entao liga o video.
-  // Initial source selection stays on the detail page. Addons are already
-  // prefetched there; open the sheet against that target without opening player.
-  // If the list is still being populated, the sheet will update as results arrive.
+  // Initial Play expands the Dynamic Clock right away; addon results arrive
+  // progressively and the selector shows skeletons until the first response.
   if (pedirFolhaNoPlay) {
     char alvoAtual[64];
     if (!detail_aberto()) {
@@ -6036,8 +6035,7 @@ void app_atualizar(float dt, Uint32 agora) {
     }
   }
 
-  if (pedirFolhaNoPlay && detail_aberto() && !player_aberto() &&
-      (stream_n() > 0 || addons_estado() != ADD_BUSCANDO)) {
+  if (pedirFolhaNoPlay && detail_aberto() && !player_aberto()) {
     char base[24];
     pedirFolhaNoPlay = 0;
     pedirFolhaAlvo[0] = 0;
