@@ -347,6 +347,8 @@ static int nPac;
 static int ativo = -1;
 static int escolhaExplicita;         // 0 = ainda nao escolheu: vale o ativo da conta
 static char escolhaUrl[512];         // "" = "Do Nuvio" escolhido de proposito
+static char playerUrl[512];          // Optional independent imported Player Badge source
+static int playerOff;                // Explicit player badge switch off
 static unsigned versao = 1;
 
 // O CASAMENTO RODA NUM FIO DE FUNDO (streams.c): sao centenas de regex por
@@ -578,6 +580,15 @@ static void selospacote_iniciar_i(void) {
     snprintf(escolhaUrl, sizeof escolhaUrl, "%s", strcmp(t, "-") ? t : "");
     free(t);
   }
+  playerUrl[0] = 0; playerOff = 0;
+  snprintf(nome,sizeof nome,"selos-player-p%d.txt",perfil);
+  if ((t = dados_ler(nome))) {
+    size_t n = strlen(t);
+    while(n && (t[n-1]=='\n'||t[n-1]=='\r'||t[n-1]==' '))t[--n]=0;
+    if(!strcmp(t,"-"))playerOff=1;
+    else snprintf(playerUrl,sizeof playerUrl,"%s",t);
+    free(t);
+  }
   reconstruir();
   printf("[selos] perfil %d: %d pacote(s)%s%s\n", perfil, nPac, ativo >= 0 ? ", ativo: " : ", ativo: Do Nuvio",
          ativo >= 0 ? pac[ativo].nome : "");
@@ -620,6 +631,26 @@ int selospacote_da_tv(int i) { selospacote_iniciar(); return i >= 0 && i < nPac 
 int selospacote_n_filtros(int i) { selospacote_iniciar(); return i >= 0 && i < nPac ? pac[i].nc : 0; }
 int selospacote_ativo(void) { selospacote_iniciar(); return ativo; }
 unsigned selospacote_versao(void) { return versao; }
+// Choices: 0 = same as stream cards, 1 = off, 2.. = imported source URL.
+int selospacote_player_fonte(void) {
+  int result=0;
+  travar(); selospacote_iniciar();
+  if(playerOff) result=1;
+  else if(playerUrl[0]) for(int i=0;i<nPac;i++)
+    if(!strcasecmp(playerUrl,pac[i].raw->url)) {result=i+2;break;}
+  soltar(); return result;
+}
+void selospacote_player_escolher(int v) {
+  char nome[48];
+  travar(); selospacote_iniciar();
+  playerOff=v==1; playerUrl[0]=0;
+  if(v>=2 && v-2<nPac) snprintf(playerUrl,sizeof playerUrl,"%s",pac[v-2].raw->url);
+  snprintf(nome,sizeof nome,"selos-player-p%d.txt",perfilLido);
+  if(playerOff) dados_gravar(nome,"-");
+  else if(playerUrl[0]) dados_gravar(nome,playerUrl);
+  else dados_apagar(nome);
+  versao++; soltar();
+}
 
 static void selospacote_escolher_i(int i) {
   selospacote_iniciar();
@@ -884,7 +915,7 @@ static int casarEmbutido(char *const *cand, const size_t *lens, int ncand, const
   return n;
 }
 
-static int selospacote_casar_i(const char *const *campos, int nc, unsigned short *ids, int max) {
+static int selospacote_casar_i(const char *const *campos, int nc, unsigned short *ids, int max, int pacote) {
   char *arena, *cand[CAND_MAX + 1];
   size_t lens[CAND_MAX + 1];
   int ncand = 0, i, n = 0, ci;
@@ -893,8 +924,10 @@ static int selospacote_casar_i(const char *const *campos, int nc, unsigned short
   size_t jn = 0, jcap = 0;
   selospacote_iniciar();
   if (max <= 0) return 0;
-  if (ativo < 0 && !embCarregar()) return 0;
-  p = ativo >= 0 ? &pac[ativo] : NULL;
+  int escolhido=pacote>=0?pacote:ativo;
+  if(escolhido>=nPac) return 0;
+  if(escolhido<0 && !embCarregar()) return 0;
+  p = escolhido >= 0 ? &pac[escolhido] : NULL;
   arena = malloc((size_t)(CAND_MAX + 1) * CAND_BYTES);
   if (!arena) return 0;
   for (i = 0; i < nc && ncand < CAND_MAX; i++) {
@@ -939,15 +972,25 @@ static int selospacote_casar_i(const char *const *campos, int nc, unsigned short
   free(junto); free(arena);
   return n;
 }
-int selospacote_casar(const char *const *campos, int nc, unsigned short *ids, int max) { int r; travar(); r = selospacote_casar_i(campos, nc, ids, max); soltar(); return r; }
+int selospacote_casar(const char *const *campos, int nc, unsigned short *ids, int max) {
+  int r; travar(); r=selospacote_casar_i(campos,nc,ids,max,-1); soltar(); return r;
+}
+int selospacote_casar_pacote(int pacote,const char *const *campos,int nc,
+                            unsigned short *ids,int max) {
+  int r; travar(); r=selospacote_casar_i(campos,nc,ids,max,pacote); soltar(); return r;
+}
 
-const SeloFiltro *selospacote_filtro(unsigned short id) {
-  if (ativo < 0) {
+const SeloFiltro *selospacote_filtro_pacote(int pacote,unsigned short id) {
+  int escolhido=pacote>=0?pacote:ativo;
+  if (escolhido < 0) {
     int nd = embPac[0].nc;
     if (!embOk) return NULL;
     if (id < nd) return &embPac[0].c[id].pub;
     return id - nd < embPac[1].nc ? &embPac[1].c[id - nd].pub : NULL;
   }
-  if (id >= pac[ativo].nc) return NULL;
-  return &pac[ativo].c[id].pub;
+  if (escolhido>=nPac || id >= pac[escolhido].nc) return NULL;
+  return &pac[escolhido].c[id].pub;
+}
+const SeloFiltro *selospacote_filtro(unsigned short id) {
+  return selospacote_filtro_pacote(-1,id);
 }

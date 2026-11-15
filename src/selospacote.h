@@ -71,6 +71,8 @@ const char *selospacote_url(int i);
 int  selospacote_da_tv(int i);                  // 1 = adicionado nesta TV (removivel)
 int  selospacote_n_filtros(int i);              // filtros validos e ativos
 int  selospacote_ativo(void);                   // -1 = "Do Nuvio" (o embutido)
+int  selospacote_player_fonte(void);            // 0 same, 1 off, >=2 imported URL
+void selospacote_player_escolher(int choice);   // persisted separately by profile
 void selospacote_escolher(int i);               // -1 ou 0..n-1, guarda no perfil
 unsigned selospacote_versao(void);              // sobe a cada mudanca de lista/escolha
 
@@ -88,4 +90,7 @@ int  selospacote_remover(int i);
 int  selospacote_casar(const char *const *campos, int nc, unsigned short *ids, int max);
 // O filtro `id` do pacote ativo; NULL se o id nao vale mais.
 const SeloFiltro *selospacote_filtro(unsigned short id);
+int selospacote_casar_pacote(int pacote,const char *const *campos,int nc,
+                            unsigned short *ids,int max);
+const SeloFiltro *selospacote_filtro_pacote(int pacote,unsigned short id);
 #endif

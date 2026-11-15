@@ -330,7 +330,7 @@ static const char *ajVisualIcone(int op) {
 // 2.0.3: a ordem da tarefa (Assistir, Telas, Conta e sistema). AJS_TRAILERS nao
 // e mais categoria (Cartazes e trailers e uma so): fica depois de AJS_N como a
 // CENA das opcoes de trailer dentro de Cartazes e trailers.
-enum { AJS_REPRODUCAO = 0, AJS_IDIOMAS, AJS_FONTES, AJS_TVAOVIVO,
+enum { AJS_NERD_FAZAL = 0, AJS_REPRODUCAO, AJS_IDIOMAS, AJS_FONTES, AJS_TVAOVIVO,
        AJS_HOME, AJS_APARENCIA, AJS_TITULO, AJS_CARTAZES,
        AJS_CONTAS, AJS_DESEMPENHO, AJS_SOBRE, AJS_N, AJS_TRAILERS = AJS_N };
 static float ajPreviaHome(float x, float y, float w);
@@ -350,6 +350,7 @@ static TxtEstilo ajEstiloPxS(float px, int forte) { return ajEstiloPx(px < 6.0f 
 // Os blocos de "Mais opcoes" (depois do MAIS() da categoria) repetem a arte do
 // bloco basico de mesmo nome: e a mesma parte do app, so que tecnica.
 static const signed char AJ_ARTE_SEC[AJS_N + 1][AJ_ARTE_BLOCOS] = {
+  { 18, -1, -1, -1, -1, -1, -1, -1, -1, -1 },  // Nerd Fazal customizations
   { 18,  7, 22, 32,  7, 18, 19, -1, -1, -1 },   // Reproducao: Imagem e som, Escolha da fonte, Durante e depois, Miniatura; Mais: fonte, som e video, P2P
   { 21, 34, 24, 21, -1, -1, -1, -1, -1, -1 },   // Idiomas e legendas: Idiomas, Legenda principal, Segunda legenda; Mais: idiomas
   {  5, 28, 37, 10, -1, -1, -1, -1, -1, -1 },   // Fontes e addons: Addons, Falha na reproducao, Debrid, Servidores

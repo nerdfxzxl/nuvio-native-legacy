@@ -15,7 +15,7 @@
   // toda atualizacao desfaria escolha de usuario.
   LING_OPC_ORIGINAL, /* idioma de audio: Original do titulo */
   0,                /* painel ao pausar: ligado (o default do web) */
-  1,                /* escolher a fonte ao reproduzir: DESLIGADO (V_LIGA: 1 = Desligado) */
+  0,                /* escolher a fonte ao reproduzir: LIGADO por padrao, somente novas instalacoes */
   0,                /* fonte automatica: melhor fonte (a regra de sempre) */
   2,                /* outra fonte se falhar: ate 2 (eram 7 fixas ate a 1.4.3) */
   0,                /* texto das fontes: do Nuvio */
@@ -354,3 +354,4 @@
   0, /* hero logo and information size: Normal */
   0, /* folder hero details: On (V_LIGA 0) */
   0, /* stream selector: Official Nuvio, device-local */
+  0, /* player badges: same badge source as stream cards; per-profile URL in selospacote.c */

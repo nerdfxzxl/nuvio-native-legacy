@@ -113,7 +113,8 @@ static void medirCabecalho(void);
 #define FOLHA_SEC_H     64.0f  // cabecalho "4K  ULTRA HD ... 3 fontes"
 #define FOLHA_SEC_GAP   26.0f
 #define FOLHA_RAIO      22.0f
-#define FOLHA_SELO_H    24.0f  // logos menores (dono, 02/10: "ficaram muito grande")
+#define FOLHA_SELO_H    24.0f
+#define FOLHA_SELO_NUVIO_H  30.0f  // logos menores (dono, 02/10: "ficaram muito grande")
 #define FOLHA_AUDIO_W  60.0f
 #define FOLHA_AUDIO_N   8
 #define FOLHA_AUDIO_BAR 4.0f
@@ -779,6 +780,7 @@ static void abrirBuscaFolha(void);
 static void filtroSelecionar(int novo);
 static int aberta, foco, grupo;
 static float rolagem, velRol;
+static int folhaNavegou; // The first configured addon wins until the user navigates.
 // Native stream search. The query is applied during the existing list build,
 // so drawing and navigation still visit only visible rows.
 static char folhaBusca[TECLADO_MAX + 1];
@@ -803,7 +805,7 @@ void stream_lista_acrescentar(const Stream *l, int qtd, int ordemAddon) {
   for (i = 0; i < k; i++) { nova[i].selosPacoteVer = 0; filtroCompletar(&nova[i]); filtroEscopo(&nova[i]); }
   // O CARTAO EM FOCO E O QUE FICA PARADO. Guardado pelo indice da lista (que
   // nao muda), e nao pela linha (que muda quando entra coisa acima).
-  if (aberta && grupo == 1 && n > 0) {
+  if (aberta && grupo == 1 && n > 0 && folhaNavegou) {
     linhaAntes = foco;
     focoIdx = filtrado(foco);
     if (focoIdx < 0) linhaAntes = -1;
@@ -843,7 +845,14 @@ void stream_lista_acrescentar(const Stream *l, int qtd, int ordemAddon) {
   if (aberta) atualizarProvedores();
   // A linha em foco muda de lugar quando entra fonte acima dela (os grupos tem
   // altura variavel): guardada aqui e reposta no proximo montar().
-  if (focoIdx >= 0) { focoFixo = focoIdx; focoFixoY = linhaAntes < nOrdem ? linhaTopo(linhaAntes) : 0; }
+  if (aberta && !folhaNavegou) {
+    // Keep the logical first row at the top as earlier configured addons arrive.
+    foco=0; focoVisto=0; linhaAnt=-1; abreFoco=1.0f; abreAnt=0.0f;
+    focoFixo=-1; rolagem=0.0f; velRol=0.0f;
+  } else if(focoIdx>=0) {
+    focoFixo=focoIdx;
+    focoFixoY=linhaAntes<nOrdem?linhaTopo(linhaAntes):0;
+  }
 }
 
 int stream_ordem_addon(int i) {
@@ -3924,7 +3933,7 @@ static int linhaAnt = -1, focoVisto = -1;
 // linhas em todas as fontes a lista caberia em 3 telas; assim ela continua
 // densa e a que se esta lendo abre inteira.
 #define FOLHA_ADDON_FECHADA 2
-#define FOLHA_ADDON_LD     23.0f
+#define FOLHA_ADDON_LD     26.0f
 static void linhaLimpa(char *d, size_t tam, const char *ini, size_t n) {
   size_t k = 0;
   while (n && (*ini == ' ' || *ini == '\t')) { ini++; n--; }
@@ -3955,7 +3964,7 @@ static void tituloAddon(const Stream *s, char *buf, size_t tam) {
 typedef struct {
   char titulo[192];
   int descLinhas, descMedida;
-  float descHFechada, descHCompleta;
+  float descHFechada, descHCompleta, arquivoH;
 } TextoAddon;
 static TextoAddon *textoAddon;
 static int textoAddonN, textoAddonCap;
@@ -3969,7 +3978,7 @@ static void textoAddonPreparar(TextoAddon *t, const Stream *s) {
   t->descHFechada = FOLHA_ADDON_FECHADA * FOLHA_ADDON_LD;
   t->descHCompleta = t->descHFechada;
   t->descLinhas = FOLHA_ADDON_FECHADA;
-  t->descMedida = 0;
+  t->descMedida = 0; t->arquivoH=0.0f;
   tituloAddon(s, t->titulo, sizeof t->titulo);
 }
 static void textoAddonMedirCompleto(TextoAddon *t, const Stream *s) {
@@ -3977,13 +3986,17 @@ static void textoAddonMedirCompleto(TextoAddon *t, const Stream *s) {
   {
     const char *desc = descricaoAddon(s);
     const float largura = FOLHA_W - FOLHA_PAD_E - FOLHA_PAD_D - 2.0f * FOLHA_TXT;
-    float h = txt_bloco(TXT_PG_FIM, desc, 170, 170, 170, 0, 0,
-                        largura, FOLHA_ADDON_LD, 0.0f, FOLHA_ADDON_LINHAS);
-    if (h < t->descHFechada) h = t->descHFechada;
-    t->descHCompleta = h;
-    t->descLinhas = (int)ceilf(h / FOLHA_ADDON_LD);
-    if (t->descLinhas > FOLHA_ADDON_LINHAS) t->descLinhas = FOLHA_ADDON_LINHAS;
-    t->descMedida = 1;
+    float h = txt_bloco(TXT_PG_FIM, desc, 170,170,170,0,0,
+                        largura,FOLHA_ADDON_LD,0.0f,0);
+    if(h<t->descHFechada) h=t->descHFechada;
+    t->descHCompleta=h;
+    t->descLinhas=(int)ceilf(h/FOLHA_ADDON_LD);
+    if(s->arquivo[0]&&!strstr(desc,s->arquivo)) {
+      t->arquivoH=txt_bloco(TXT_PG_FIM,s->arquivo,170,170,170,0,0,
+                            largura,FOLHA_ADDON_LD,0.0f,0);
+      if(t->arquivoH<FOLHA_ADDON_LD)t->arquivoH=FOLHA_ADDON_LD;
+    }
+    t->descMedida=1;
   }
 }
 static TextoAddon *textoAddonDa(int i) {
@@ -4494,9 +4507,12 @@ static float alturaLinha(int i, int automatica, float abertura, int cabProv) {
     TextoAddon *t = textoAddonDa(i);
     if (abertura > 0.001f) textoAddonMedirCompleto(t, &lista[i]);
     float descH = t->descHFechada + (t->descHCompleta-t->descHFechada)*abertura;
-    float fileH = lista[i].arquivo[0] ? FOLHA_ADDON_LD : 0.0f;
-    return provH + 14.0f + FOLHA_SELO_H + 8.0f + 34.0f +
-           descH + 6.0f + fileH + 14.0f;
+    const char *desc=descricaoAddon(&lista[i]);
+    int separate=lista[i].arquivo[0]&&!strstr(desc,lista[i].arquivo);
+    float fileH=separate? FOLHA_ADDON_LD+
+      (t->arquivoH-FOLHA_ADDON_LD)*abertura:0.0f;
+    return provH+14.0f+FOLHA_SELO_NUVIO_H+8.0f+34.0f+
+           descH+6.0f+fileH+14.0f;
   }
   float h = FOLHA_LINHA_H + provH + (temMarca(i, automatica) ? FOLHA_MARCA_H : 0);
   if (ajustes_fonte_texto_addon()) {
@@ -4847,6 +4863,7 @@ void stream_folha_abrir(void) {
   fitAbrir();
   aberta=1; escolha=-1; grupo=1; filtro=0; filtroVisto=-2; pillW=-1.0f; trocaDesde=0; soMp4=0; soCache=0; soDub=0; recarregar=0;
   selosAnimFoco = -1; // A fresh selector opening gets one badge-strip pass.
+  folhaNavegou = 0;
   folhaBusca[0] = 0;
   buscaAnim = 0.0f;
   provChipOffset = provChipVel = provChipTarget = 0.0f;
@@ -5274,6 +5291,8 @@ void stream_folha_evento(const SDL_Event *e) {
 #endif
   if(!aberta || e->type!=SDL_KEYDOWN) return;
   SDL_Keycode k=e->key.keysym.sym;
+  if(k==SDLK_UP||k==SDLK_DOWN||k==SDLK_LEFT||k==SDLK_RIGHT)
+    folhaNavegou=1;
   if (recarregarFonteConfirmacao && k != recarregarFonteConfirmacao)
     recarregarFonteConfirmacao = 0;
   if(k==SDLK_ESCAPE || k==SDLK_AC_BACK || k==SDLK_BACKSPACE || k==SDLK_DELETE) {aberta=0;return;}
@@ -5310,7 +5329,8 @@ void stream_folha_evento(const SDL_Event *e) {
   if (grupo==1 && k==SDLK_RIGHT) { grupo=0; filtroSelecionar(0); foco=0; }
   else if (grupo==1 && k==SDLK_LEFT) { grupo=-2; filtroSelecionar(0); foco=0; rolagem=0; velRol=0; }
   else if (grupo==-2 && k==SDLK_RIGHT) { grupo=1; foco=0; }
-  else if (grupo==0 && k==SDLK_LEFT && filtro==0) { grupo=-1; foco=0; }
+  else if (grupo==0 && k==SDLK_LEFT && filtro==0) { grupo=-2; foco=0; }
+  else if (grupo==-1 && k==SDLK_LEFT && foco==0) { grupo=-2; foco=0; }
   else if (grupo==-1 && k==SDLK_RIGHT) { grupo=0; filtroSelecionar(0); foco=0; }
   else if (grupo>=0 && (k==SDLK_LEFT || k==SDLK_RIGHT)) {
     int novo=filtro+(k==SDLK_RIGHT?1:-1);
@@ -5532,7 +5552,7 @@ static void ponteiroFolhaBusca(int i, int b) {
   grupo = -2;
 }
 static void ponteiroFolhaDica(int i, int b) { (void)i; (void)b; grupo = 2; }
-static void ponteiroFolhaLinha(int row, int b) { (void)b; grupo = 1; foco = row; }
+static void ponteiroFolhaLinha(int row, int b) { (void)b; folhaNavegou=1; grupo = 1; foco = row; }
 static void filtroSelecionar(int novo) {
   if (novo != filtro) {
     trocaDesde = SDL_GetTicks();
@@ -5546,7 +5566,7 @@ static void ponteiroFolhaFiltro(int i, int b) {
 #endif
   (void)b;
   if (i < 0 || i >= nProvedores) return;
-  filtroSelecionar(i); foco = 0; rolagem = 0; grupo = 1;
+  folhaNavegou=1; filtroSelecionar(i); foco = 0; rolagem = 0; grupo = 1;
 }
 static void ponteiroFolhaFora(int a, int b) { (void)a; (void)b; aberta = 0; }
 
@@ -6436,29 +6456,29 @@ static void corpoFolha(float x, float w, float anim, Uint32 agora, int ilha) {
       int lines=FOLHA_ADDON_FECHADA+
                 (int)floorf((t->descLinhas-FOLHA_ADDON_FECHADA)*open);
       if(lines<1) lines=1;
-      if(lines>FOLHA_ADDON_LINHAS) lines=FOLHA_ADDON_LINHAS;
+      // No hard cap when focused: the user must be able to read all addon text.
       if(selosPacoteVisiveis((Stream *)s)) {
         float tone=sel?.98f:.78f;
         float total=sel?selosDesenhar(s->selosPacote,(int)s->nSelosPacote,
-                                     tx,ty,100000.0f,FOLHA_SELO_H,1.0f,tone,0,1):0.0f;
+                                     tx,ty,100000.0f,FOLHA_SELO_NUVIO_H,1.0f,tone,0,1):0.0f;
         if(sel&&total>avail) {
           float shift=selosDeslocamento(i,total,avail,agora);
-          gfx_recorte(tx,ty-2.0f,avail,FOLHA_SELO_H+4.0f);
+          gfx_recorte(tx,ty-2.0f,avail,FOLHA_SELO_NUVIO_H+4.0f);
           selosDesenhar(s->selosPacote,(int)s->nSelosPacote,tx-shift,ty,
-                        100000.0f,FOLHA_SELO_H,anim,tone,0,0);
+                        100000.0f,FOLHA_SELO_NUVIO_H,anim,tone,0,0);
           float clipY=FOLHA_TOPO-(rolagem>1.0f?0.0f:8.0f);
           gfx_recorte(x,clipY,w,folhaBase-clipY);
-        } else desenharSelosPacote(s,tx,ty,avail,FOLHA_SELO_H,anim,tone,0);
+        } else desenharSelosPacote(s,tx,ty,avail,FOLHA_SELO_NUVIO_H,anim,tone,0);
       } else if(selospacote_ativo()<0) {
         uint64_t fallback=logosDa(s,0);
         float tone=sel?.98f:.78f;
         if(fallback) {
           if(ajustes_selos_coloridos())
-            badges_desenhar_selos(fallback,tx,ty,avail,FOLHA_SELO_H,anim);
-          else badges_desenhar_tom(fallback,tx,ty,avail,FOLHA_SELO_H,tone,tone,tone,anim);
+            badges_desenhar_selos(fallback,tx,ty,avail,FOLHA_SELO_NUVIO_H,anim);
+          else badges_desenhar_tom(fallback,tx,ty,avail,FOLHA_SELO_NUVIO_H,tone,tone,tone,anim);
         }
       }
-      ty+=FOLHA_SELO_H+8.0f;
+      ty+=FOLHA_SELO_NUVIO_H+8.0f;
       {
         int c=sel?255:232;
         TxtLinha title=txt_linha_corta(TXT_CALLOUT,t->titulo,c,c,c-2,255,avail);
@@ -6470,9 +6490,14 @@ static void corpoFolha(float x, float w, float anim, Uint32 agora, int ilha) {
         txt_bloco_corta(TXT_PG_FIM,desc,c,c,c,tx,ty,avail,FOLHA_ADDON_LD,anim,lines);
       }
       ty+=t->descHFechada+(t->descHCompleta-t->descHFechada)*open+6.0f;
-      if(s->arquivo[0])
-        txt_desenhar_alpha(txt_linha_corta(TXT_PG_FIM,s->arquivo,
-                                          150,150,148,255,avail),tx,ty,anim);
+      if(s->arquivo[0]&&!strstr(desc,s->arquivo)) {
+        if(open>.02f)
+          txt_bloco(TXT_PG_FIM,s->arquivo,185,185,182,tx,ty,
+                    avail,FOLHA_ADDON_LD,anim*open,0);
+        else
+          txt_desenhar_alpha(txt_linha_corta(TXT_PG_FIM,s->arquivo,
+                                            160,160,158,255,avail),tx,ty,anim);
+      }
       continue;
     }
     // Official cards keep the add-on identity in the right column. File size

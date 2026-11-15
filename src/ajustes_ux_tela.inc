@@ -11,6 +11,11 @@
 // o OK abre no lugar (sem terceira tela). A pilula "Avancadas" do indice abre
 // todas de uma vez. uxAvancada() le esta tabela; nao ha outra lista.
 static const Item TELA[] = {
+  // Personal settings are the first category, not buried behind Playback.
+  SEC("Nerd Fazal Settings", "Personal customizations and Fusion badges", "aj_sparkles"),
+    ROT("Fusion badges"),
+      OPC(AJ_SELOS_PACOTE_ADD), OPC(AJ_PLAYER_BADGES),
+
   // ---- ASSISTIR ------------------------------------------------------------------
   SEC("Reprodução", "Qualidade, som e o que o player faz", "aj_circle-play"),
     ROT("Imagem e som"),
@@ -42,7 +47,7 @@ static const Item TELA[] = {
       OPC(AJ_FONTE_PRECARREGAR),   // so o Android tem o preload do player
 #endif
       OPC(AJ_TAM_MIN), OPC(AJ_FONTE_TEXTO), OPC(AJ_FONTE_ORDEM_ADDON), OPC(AJ_SELOS_CORES),
-      OPC(AJ_SELOS_PACOTE), OPC(AJ_SELOS_PACOTE_ADD), OPC(AJ_SELOS_PACOTE_REM),
+      OPC(AJ_SELOS_PACOTE), OPC(AJ_SELOS_PACOTE_REM),
     ROT("Som e vídeo desta TV"),
       OPC(AJ_DTS_AC3),
 #ifdef NV_ANDROID
@@ -278,6 +283,7 @@ OPC(AJ_RESOLUCAO), OPC(AJ_GPU_EFEITOS), OPC(AJ_AMPLIAR_UI), OPC(AJ_AMPLIACAO_ALG
 
 // Texto exibido no painel ao selecionar uma categoria. Mesma ordem dos SECs.
 static const char *SECAO_AJUDA[] = {
+  "Personalize the stream and player badge sources without altering playback.",
   "Qualidade máxima, Dolby Vision e Atmos, e o que acontece durante e depois do vídeo.",
   "Idioma da interface, preferências de áudio e legenda e idioma dos metadados.",
   "Addons e plugins, debrid e servidores pessoais.",

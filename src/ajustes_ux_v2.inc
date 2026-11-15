@@ -681,7 +681,8 @@ static float aj2GradeCabY(void) { return aj2GradeDescY() + AJ2_G_DESC + 22.0f; }
 static float aj2GradeCartaoH(void) {
   GfxRect g = aj2GradeR();
   float util = g.y + g.h - 57.0f - (aj2GradeCabY() + AJ2_G_CAB), h;
-  h = (util - 3 * AJ2_G_VAO_V) / 4.0f;
+  // Personal settings adds a fifth category to the first group.
+  h = (util - 4 * AJ2_G_VAO_V) / 5.0f;
   return h > AJ2_G_MAXH ? AJ2_G_MAXH : h;
 }
 static GfxRect aj2GradeCartao(int s) {
