@@ -22,21 +22,23 @@ tmp="$(mktemp -d "${RUNNER_TEMP:-/tmp}/nuvio-c-preflight.XXXXXX")"
 trap 'rm -rf "$tmp"' EXIT
 mkdir -p "$tmp/SDL2"
 cp -L /usr/include/SDL2/*.h "$tmp/SDL2/"
-# Do NOT use Ubuntu's x86_64 SDL_config.h. It advertises x86 SIMD
-# intrinsics which the Android ARM64 compiler cannot compile.
-# SDL explicitly provides SDL_config_minimal.h for cross-platform builds;
-# it is enough to type-check SDL APIs without compiling SDL itself.
-if [[ ! -f "$tmp/SDL2/SDL_config_minimal.h" ]]; then
-  echo "::error::SDL_config_minimal.h missing from libsdl2-dev" >&2
+# Ubuntu's generated SDL_config.h describes the x86 runner and includes
+# x86 intrinsics. Instead use the upstream SDL 2.30.0 Android config, checked
+# into this repo with its original license. No network needed at test time.
+# This avoids both the Ubuntu multiarch header and missing minimal.h.
+android_config="tools/android/preflight/SDL_config_android.h"
+if [[ ! -f "$android_config" ]]; then
+  echo "::error::Missing vendored Android SDL configuration: $android_config" >&2
   exit 1
 fi
+cp "$android_config" "$tmp/SDL2/SDL_config_android.h"
 cat > "$tmp/SDL2/SDL_config.h" <<'SDL_CONFIG'
 #ifndef SDL_config_h_
 #define SDL_config_h_
-#include "SDL_config_minimal.h"
+#include "SDL_config_android.h"
 #endif
 SDL_CONFIG
-echo "SDL2 config: portable minimal (no Ubuntu/x86-specific intrinsics)"
+echo "SDL2 config: upstream Android ARM configuration (not host x86)"
 
 flags=(
   --target=aarch64-none-linux-android24

@@ -14,8 +14,41 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Pushes run ONLY this lightweight job. Full APK packaging must be explicitly
+  # dispatched, and cannot start before this validation succeeds.
+  preflight:
+    name: Early Android C compilation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Check out selected branch
+        uses: actions/checkout@v4
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+
+      - name: Install Android NDK and SDL development headers
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager --install "ndk;27.2.12479018"
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            libsdl2-dev libsdl2-image-dev libsdl2-ttf-dev
+
+      - name: Compile-check updated native UI files (ARM64)
+        shell: bash
+        run: |
+          set -euo pipefail
+          export ANDROID_NDK_HOME="${ANDROID_HOME:-$ANDROID_SDK_ROOT}/ndk/27.2.12479018"
+          bash tools/android/preflight-c.sh
+
   build:
     name: Build full Android debug APK
+    needs: preflight
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     timeout-minutes: 360
 
@@ -40,18 +73,7 @@ jobs:
           set -euo pipefail
           sdkmanager --install "platforms;android-35" "build-tools;35.0.0" "ndk;27.2.12479018" "cmake;3.22.1"
           sudo apt-get update
-          sudo apt-get install -y cmake ninja-build ffmpeg perl python3 \
-             libsdl2-dev libsdl2-image-dev libsdl2-ttf-dev
-
-      # Compile the two UI C files before spending minutes building native
-      # curl/WebP/JPEG, Rust/P2P and finally packaging the APK.
-      # This catches missing braces and undeclared identifiers at the start.
-      - name: Early Android C compiler check (before native dependencies)
-        shell: bash
-        run: |
-          set -euo pipefail
-          export ANDROID_NDK_HOME="${ANDROID_HOME:-$ANDROID_SDK_ROOT}/ndk/27.2.12479018"
-          bash tools/android/preflight-c.sh
+          sudo apt-get install -y cmake ninja-build ffmpeg perl python3
 
       - name: Install Rust and Android targets
         uses: dtolnay/rust-toolchain@stable
