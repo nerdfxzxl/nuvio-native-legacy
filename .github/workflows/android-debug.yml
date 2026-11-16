@@ -40,7 +40,19 @@ jobs:
           set -euo pipefail
           sdkmanager --install "platforms;android-35" "build-tools;35.0.0" "ndk;27.2.12479018" "cmake;3.22.1"
           sudo apt-get update
-          sudo apt-get install -y cmake ninja-build ffmpeg perl python3
+          sudo apt-get install -y cmake ninja-build ffmpeg perl python3 \
+             libsdl2-dev libsdl2-image-dev libsdl2-ttf-dev
+
+      # Compile the two UI C files before spending minutes building native
+      # curl/WebP/JPEG, Rust/P2P and finally packaging the APK.
+      # This catches missing braces and undeclared identifiers at the start.
+      - name: Early Android C compiler check (before native dependencies)
+        shell: bash
+        env:
+          ANDROID_NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/27.2.12479018
+        run: |
+          set -euo pipefail
+          bash tools/android/preflight-c.sh
 
       - name: Install Rust and Android targets
         uses: dtolnay/rust-toolchain@stable

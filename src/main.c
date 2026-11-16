@@ -109,6 +109,7 @@
 #include "trailer.h"
 #include "ponteiro.h"
 #include "entrada_texto.h"
+#include "sistexto.h" // st_dono() / ST_BUSCA: Android system search IME
 #include "gif.h"
 #include "idioma.h"
 #include "idiomaauto.h"
