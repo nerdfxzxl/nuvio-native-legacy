@@ -55,7 +55,9 @@ done
 
 echo "[2/5] arte e fontes -> $EST/assets"
 rm -rf "$EST/assets"; mkdir -p "$EST/assets"
-NUVIO_ARTE_ESTAGIO="build/android/assets/art" bash tools/tizen-art.sh >/dev/null
+# Android keeps 192px badges (original webp artwork is about 194px tall).
+# Other TV packaging targets still stage compact 64px badges.
+NUVIO_BADGE_PNG_HEIGHT=192 NUVIO_ARTE_ESTAGIO="build/android/assets/art" bash tools/tizen-art.sh >/dev/null
 mkdir -p "$EST/assets/fonts"
 cp deploy/app/fonts/* "$EST/assets/fonts/"
 mkdir -p "$EST/assets/licencas"

@@ -70,7 +70,16 @@ android {
     // Assinatura de release so existe com keystore no ambiente; sem ela o
     // assembleRelease nem e chamado (tools/android.sh).
     val ks = System.getenv("NUVIO_KEYSTORE")
+    // Only CI test APKs use this long-lived debug identity, supplied via
+    // GitHub Actions secret, never committed as a key in the source tree.
+    val ciDebugKey = System.getenv("NUVIO_DEBUG_KEYSTORE")?.takeIf { it.isNotBlank() }
     signingConfigs {
+        if (ciDebugKey != null) create("ciDebug") {
+            storeFile = file(ciDebugKey)
+            storePassword = "android"
+            keyAlias = "nuvio-debug"
+            keyPassword = "android"
+        }
         if (ks != null) create("release") {
             storeFile = file(ks)
             storePassword = System.getenv("NUVIO_KEYSTORE_PASS")
@@ -83,6 +92,7 @@ android {
             // Nunca substituir a instalacao de producao durante diagnosticos.
             applicationIdSuffix = ".strictdebug"
             versionNameSuffix = "-strictdebug"
+            if (ciDebugKey != null) signingConfig = signingConfigs.getByName("ciDebug")
         }
         release {
             isMinifyEnabled = false

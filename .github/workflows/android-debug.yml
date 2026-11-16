@@ -44,6 +44,7 @@ jobs:
           set -euo pipefail
           export ANDROID_NDK_HOME="${ANDROID_HOME:-$ANDROID_SDK_ROOT}/ndk/27.2.12479018"
           bash tools/android/preflight-c.sh
+          bash -n tools/tizen-art.sh tools/android.sh
 
   build:
     name: Build full Android debug APK
@@ -74,6 +75,23 @@ jobs:
           sdkmanager --install "platforms;android-35" "build-tools;35.0.0" "ndk;27.2.12479018" "cmake;3.22.1"
           sudo apt-get update
           sudo apt-get install -y cmake ninja-build ffmpeg perl python3
+
+      - name: Restore persistent debug signing identity (optional)
+        shell: bash
+        env:
+          NUVIO_DEBUG_KEYSTORE_BASE64: ${{ secrets.NUVIO_DEBUG_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          if [[ -n "$NUVIO_DEBUG_KEYSTORE_BASE64" ]]; then
+            target="$RUNNER_TEMP/nuvio-debug.jks"
+            printf '%s' "$NUVIO_DEBUG_KEYSTORE_BASE64" | base64 --decode > "$target"
+            chmod 600 "$target"
+            keytool -list -keystore "$target" -storepass android -alias nuvio-debug >/dev/null
+            echo "NUVIO_DEBUG_KEYSTORE=$target" >> "$GITHUB_ENV"
+            echo "Using persistent CI debug signing identity"
+          else
+            echo "::warning::No NUVIO_DEBUG_KEYSTORE_BASE64 configured; Gradle uses an ephemeral debug key"
+          fi
 
       - name: Install Rust and Android targets
         uses: dtolnay/rust-toolchain@stable

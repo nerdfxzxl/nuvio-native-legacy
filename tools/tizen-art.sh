@@ -64,6 +64,12 @@ cp "$ORIGEM"/*.jpg "$DESTINO"/ 2>/dev/null || true
 # para os alvos LG e Mac, que leem webp sem problema. O nome do arquivo sai do
 # campo "image" de badges/index.json, entao trocar a extensao la fecha o
 # circuito sem mexer em uma linha de C (ver src/badges.c:63).
+# Android preserves original badge artwork detail; older TV platforms keep 64px.
+BADGE_PNG_HEIGHT="${NUVIO_BADGE_PNG_HEIGHT:-64}"
+case "$BADGE_PNG_HEIGHT" in
+  64|96|128|160|192) ;;
+  *) echo "tizen-art.sh: invalid NUVIO_BADGE_PNG_HEIGHT=$BADGE_PNG_HEIGHT" >&2; exit 1 ;;
+esac
 if find "$DESTINO" -name '*.webp' | grep -q .; then
   # CONVERTER: sips on macOS, ffmpeg on Linux — the test bench (galaxy) has no
   # sips and the whole build used to stop here. ffmpeg is already required by
@@ -85,12 +91,12 @@ if find "$DESTINO" -name '*.webp' | grep -q .; then
     # 3595-3632) right when the source sheet opens. 64 px is ~2.3x the drawn
     # height: still sharp and decodes ~9x fewer pixels.
     RED=""
-    case "$w" in */badges/*|*/selos/*) RED="--resampleHeight 64" ;; esac
+    case "$w" in */badges/*|*/selos/*) RED="--resampleHeight $BADGE_PNG_HEIGHT" ;; esac
     if [ "$CONV" = sips ]; then
       sips -s format png $RED "$w" --out "${w%.webp}.png" >/dev/null 2>&1 || {
         echo "tizen-art.sh: failed converting $w" >&2; exit 1; }
     elif [ -n "$RED" ]; then
-      if ! ffmpeg -v error -i "$w" -vf "scale=-1:64:flags=lanczos" -y "${w%.webp}.png" 2>/dev/null; then
+      if ! ffmpeg -v error -i "$w" -vf "scale=-1:$BADGE_PNG_HEIGHT:flags=lanczos" -y "${w%.webp}.png" 2>/dev/null; then
         echo "tizen-art.sh: failed converting $w" >&2; exit 1; fi
     else
       if ! ffmpeg -v error -i "$w" -y "${w%.webp}.png" 2>/dev/null; then
