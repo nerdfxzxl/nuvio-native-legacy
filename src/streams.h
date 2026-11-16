@@ -21,7 +21,16 @@
 
 // A lista cresce conforme a resposta dos addons; a UI virtualiza as linhas.
 
+#if defined(NV_ANDROID) || defined(NV_TEST_STREAM_DISPLAY)
+#include "stream_display.h"
+#ifdef NV_ANDROID
+void stream_card_gl_clear(void);
+#endif
+#endif
 typedef struct Stream {
+#if defined(NV_ANDROID) || defined(NV_TEST_STREAM_DISPLAY)
+  StreamDisplay display;
+#endif
   char rotulo[512];     // Original addon name, including multiline formatting
   char provedor[96];
   // Origem real da instancia do addon, sem URL/token nem inferencia pelo nome.

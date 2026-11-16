@@ -47,6 +47,10 @@ static const char *valorRaiz(const char *p, const char *fim, const char *nome) {
   return propriedadeRaiz(p, fim, nome, NULL);
 }
 
+#if defined(NV_ANDROID) || defined(NV_TEST_STREAM_DISPLAY)
+#include "stream_display.inc"
+#endif
+
 // strstr LIMITADO a [ini,fim). O strstr comum varre ate o NUL do documento e a
 // guarda `q < fim` so descarta o achado DEPOIS da varredura: cada chave ausente
 // num stream (sources, proxyHeaders...) era uma leitura do resto inteiro da
@@ -1203,6 +1207,9 @@ int stream_extrair(const char *json, const char *provedor, Stream **saida) {
         if (!tmp) { free(v); return -1; }
         v = tmp; cap = nova;
       }
+#if defined(NV_ANDROID) || defined(NV_TEST_STREAM_DISPLAY)
+      captureDisplay(p, fim, &s.display);
+#endif
       v[n++] = s;
     }
     p = js_prox(fim);

@@ -2744,6 +2744,9 @@ int main(int argc, char **argv) {
   ajustes_log_vazar_tudo();
   corviva_gravar_se_preciso(1);
   tex_encerrar();
+#ifdef NV_ANDROID
+  stream_card_gl_clear();
+#endif
   txt_encerrar();
   gfx_encerrar();
   SDL_GL_DeleteContext(ctx);

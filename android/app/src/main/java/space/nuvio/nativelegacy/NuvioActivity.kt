@@ -67,6 +67,11 @@ class NuvioActivity : SDLActivity() {
     // SDL2 e compartilhada; SDL2_image e SDL2_ttf entram estaticas na libmain.
     override fun getLibraries(): Array<String> = arrayOf("SDL2", "main")
 
+    private val streamCardText by lazy { StreamCardText(this) }
+
+    fun layoutStreamCard(generation: Int, index: Int, width: Int, fields: ByteArray?) =
+        streamCardText.layout(generation, index, width, fields)
+
     // Bounds pass allocates no pixels; subsampling happens inside the codec.
     fun decodeArtwork(bytes: ByteArray, width: Int, original: IntArray): android.graphics.Bitmap? {
         val options = android.graphics.BitmapFactory.Options()

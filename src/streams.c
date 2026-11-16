@@ -3965,6 +3965,9 @@ static void tituloAddon(const Stream *s, char *buf, size_t tam) {
 }
 typedef struct {
   char titulo[512];
+#ifdef NV_ANDROID
+  int cardHeight, cardWidth;
+#endif
   float tituloH;
   int descLinhas, descMedida;
   float descHFechada, descHCompleta, arquivoH;
@@ -3978,6 +3981,9 @@ static void textoAddonPreparar(TextoAddon *t, const Stream *s) {
   // Most rows need only the compact two-line height. Do not measure every
   // addon description while building a large list; measure full wrapping only
   // when that particular row receives focus.
+#ifdef NV_ANDROID
+  t->cardHeight = t->cardWidth = 0;
+#endif
   t->descHFechada = FOLHA_ADDON_FECHADA * FOLHA_ADDON_LD;
   t->descHCompleta = t->descHFechada;
   t->descLinhas = FOLHA_ADDON_FECHADA;
@@ -4506,6 +4512,13 @@ static float alturaArquivoDa(const Stream *s) {
                 FOLHA_W - FOLHA_PAD_E - FOLHA_PAD_D - 2.0f * FOLHA_TXT, 28.0f, 0, 0);
   return h > FOLHA_ARQ_H ? h : FOLHA_ARQ_H;
 }
+#ifdef NV_ANDROID
+#include "stream_card_android.inc"
+static float cardChromeHeight(void) {
+  // Top and bottom 16dp, plus the top badge row and spacing.
+  return 2 * FOLHA_TXT + FOLHA_SELO_NUVIO_H + 8.0f;
+}
+#endif
 static int melhorFolha = -1;   // stream_automatico() do quadro, posto antes de montar()
 static int temMarca(int i, int automatica) {
   (void)automatica;
@@ -4521,6 +4534,10 @@ static float alturaLinha(int i, int automatica, float abertura, int cabProv) {
   if (folhaRelogio && !canalFolha) {
     // Unlike Legacy's expandable rows, every stream displays the full addon text.
     TextoAddon *t = textoAddonDa(i);
+#ifdef NV_ANDROID
+    if (lista[i].display.length && t->cardHeight >= 0)
+      return provH + cardChromeHeight() + (t->cardHeight ? t->cardHeight : 150.0f);
+#endif
     textoAddonMedirCompleto(t, &lista[i]);
     const char *desc = descricaoAddon(&lista[i]);
     float descH = desc[0] ? t->descHCompleta : 0.0f;
@@ -4558,7 +4575,7 @@ static void porLinha(int i, float *y, int automatica) {
   ordem[nOrdem] = i;
   linhaY[nOrdem] = *y;
   linhaH[nOrdem] = h;
-  *y += h + FOLHA_LINHA_GAP;
+  *y += h + (folhaRelogio && !canalFolha ? 32.0f : FOLHA_LINHA_GAP);
   nOrdem++;
 }
 // Tamanho para ordenar: desconhecido (0) vai para o fim do grupo.
@@ -4784,6 +4801,35 @@ static void montar(int automatica) {
     base = alturaTotal;
     versao = folhaDadosVersao;
   }
+#ifdef NV_ANDROID
+  if (folhaRelogio && !canalFolha && filtro >= 0) {
+    expansaoFoco = expansaoAnt = 0;
+    // Refine only the viewport and a small overscan. Once a row is measured
+    // its real height survives tab/search changes and no JNI call is needed.
+    const int width = (int)(FOLHA_W - FOLHA_PAD_E - FOLHA_PAD_D - 2 * FOLHA_TXT);
+    float delta = 0;
+    int row = primeiraVisivel(rolagem - 100);
+    for (; row < nOrdem && linhaY[row] + delta < rolagem + NV_TELA_H + 100; ++row) {
+      linhaY[row] += delta;
+      int i = ordem[row];
+      if (i < 0 || !lista[i].display.length || width <= 0) continue;
+      TextoAddon *t = textoAddonDa(i);
+      if (t->cardWidth == width) continue;
+      t->cardWidth = width;
+      t->cardHeight = cardMeasure(i, width);
+      if (!t->cardHeight) t->cardHeight = -1;
+      float h = alturaLinha(i, automatica, 0, linhaCabProv[row]);
+      delta += h - linhaH[row];
+      linhaH[row] = h;
+    }
+    if (delta) {
+      for (; row < nOrdem; ++row) linhaY[row] += delta;
+      base += delta;
+    }
+    alturaTotal = base;
+    return;
+  }
+#endif
   expansaoFoco = grupo == 1 ? expansaoLinha(foco, abreFoco, automatica) : 0;
   expansaoAnt = linhaAnt != (grupo == 1 ? foco : -1) ? expansaoLinha(linhaAnt, abreAnt, automatica) : 0;
   alturaTotal = base + expansaoFoco + expansaoAnt;
@@ -6529,7 +6575,12 @@ static void corpoFolha(float x, float w, float anim, Uint32 agora, int ilha) {
       const char *desc=descricaoAddon(s);
       float ty=cardY+14.0f, avail=tr-tx;
       // Render all lines even on unfocused rows; no expanding card animation.
-      textoAddonMedirCompleto(t,s);
+#ifdef NV_ANDROID
+      int nativeText = t->cardHeight > 0 && s->display.length;
+      if (nativeText) ty = cardY + FOLHA_TXT;
+      if (!nativeText)
+#endif
+        textoAddonMedirCompleto(t,s);
       if(selosPacoteVisiveis((Stream *)s)) {
         float tone=sel?.98f:.78f;
         float total=sel?selosDesenhar(s->selosPacote,(int)s->nSelosPacote,
@@ -6552,6 +6603,12 @@ static void corpoFolha(float x, float w, float anim, Uint32 agora, int ilha) {
         }
       }
       ty+=FOLHA_SELO_NUVIO_H+8.0f;
+#ifdef NV_ANDROID
+      if (nativeText) {
+        if (drawCardText(i,t->cardWidth,t->cardHeight,tx,ty,anim)) continue;
+        textoAddonMedirCompleto(t,s);
+      }
+#endif
       {
         int c=sel?255:232;
         txt_bloco_longas(TXT_CALLOUT,t->titulo,c,c,c-2,tx,ty,avail,34.0f,anim,0);

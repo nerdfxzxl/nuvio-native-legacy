@@ -45,6 +45,12 @@ jobs:
           export ANDROID_NDK_HOME="${ANDROID_HOME:-$ANDROID_SDK_ROOT}/ndk/27.2.12479018"
           bash tools/android/preflight-c.sh
           bash -n tools/tizen-art.sh tools/android.sh
+          bash tests/stream_parser.sh
+
+      - name: Check stream-card wrapping and color emoji with Android graphics
+        run: |
+          sdkmanager --install "platforms;android-35" "build-tools;35.0.0"
+          android/gradlew -p tests/android-card -Pandroid.useAndroidX=true testDebugUnitTest
 
   build:
     name: Build full Android debug APK

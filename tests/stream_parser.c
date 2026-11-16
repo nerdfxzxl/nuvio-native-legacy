@@ -36,6 +36,36 @@ static void regression(int fresh) {
 int main(int argc, char **argv) {
   if (argc > 1) { regression(!strcmp(argv[1], "fresh")); return 0; }
   regression(0); regression(1);
+#ifdef NV_TEST_STREAM_DISPLAY
+  {
+    // Inline and spill records must survive a value copy and releasing the
+    // HTTP response and parser array. JSON spelling is deliberately preserved.
+    const char *fields = "\"[TB⚡] 👩🏽‍💻\",null,\"  📁\\r\\n\\nമലയാളം\\t🔥 \\uD83D\\uDD25  \"";
+    char json[12000], expected[10000], filename[5000];
+    memset(filename, 'x', sizeof filename - 1);
+    filename[sizeof filename - 1] = 0;
+    snprintf(json, sizeof json, "{\"streams\":["
+        "{\"url\":\"https://example.invalid/a\",\"name\":\"[TB⚡] 👩🏽‍💻\","
+        "\"description\":\"  📁\\r\\n\\nമലയാളം\\t🔥 \\uD83D\\uDD25  \"},"
+        "{\"url\":\"https://example.invalid/b\",\"name\":\"\",\"title\":\"other\","
+        "\"description\":\"📁\\n%s.mkv\",\"behaviorHints\":{\"filename\":\"do-not-append\"}},"
+        "{\"url\":\"https://example.invalid/c\",\"behaviorHints\":{\"name\":\"nested\"}}]}", filename);
+    Stream *rows;
+    assert(stream_extrair(json, "Fixture", &rows) == 3);
+    StreamDisplay copy[] = {rows[0].display, rows[1].display, rows[2].display};
+    free(rows);
+    memset(json, 0, sizeof json);
+    for (int i = 2; i >= 0; --i) {
+      char *raw = stream_display_read(&copy[i]);
+      if (i == 0) snprintf(expected, sizeof expected, "[%s]", fields);
+      if (i == 1) snprintf(expected, sizeof expected, "[\"\",\"other\",\"📁\\n%s.mkv\"]", filename);
+      if (i == 2) strcpy(expected, "[null,null,null]");
+      assert(raw && !strcmp(raw, expected));
+      free(raw);
+    }
+    puts("PASS: exact addon display fields, multiline emoji and long filename");
+  }
+#endif
   // The documented per-source bound is exact, with no truncation on rejection.
   { char url[NV_MEDIA_URL_MAX + 1], copy[NV_MEDIA_URL_MAX];
     memset(url, 'x', sizeof url); url[NV_MEDIA_URL_MAX - 1] = 0;
@@ -121,9 +151,9 @@ int main(int argc, char **argv) {
     "\"title\":\"HDHub4u 1080p\"}]}","CNCVerse Bridge",&v);
   assert(count==2);
   assert(!strcmp(v[0].rotulo,"4K"));
-  assert(!strcmp(v[0].descricao,"CastleTVProvider HDR10 DDP 5.1\n2.1 GB"));
+  assert(!strcmp(v[0].descricao,"2.1 GB"));
   assert(v[0].altura==2160 && v[0].tamanhoMB>2000);
-  assert(!strcmp(v[1].rotulo,"CNCVerse Bridge"));
+  assert(!strcmp(v[1].rotulo,"HDHub4u 1080p"));
   assert(!strcmp(v[1].descricao,"HDHub4u 1080p"));
   free(v);
   // #499: only explicit add-on signals claim cache; negatives win conflicts.
