@@ -48,10 +48,9 @@ jobs:
       # This catches missing braces and undeclared identifiers at the start.
       - name: Early Android C compiler check (before native dependencies)
         shell: bash
-        env:
-          ANDROID_NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/27.2.12479018
         run: |
           set -euo pipefail
+          export ANDROID_NDK_HOME="${ANDROID_HOME:-$ANDROID_SDK_ROOT}/ndk/27.2.12479018"
           bash tools/android/preflight-c.sh
 
       - name: Install Rust and Android targets
