@@ -5620,7 +5620,7 @@ static void desenharOnde(GfxRect r, float tx, float tr, const OndeVer *o, int se
 // `medir` = so a conta da largura, sem desenhar (quem ancora pela direita).
 static float selosDesenharPacote(int pacote,const unsigned short *ids,int n,float x,float y,float maxW,float h,
                                  float a,float tom,int semResolucao,int medir) {
-  const float gap = 8.0f, padX = 9.0f, imgMaxW = 220.0f;
+  const float gap = 8.0f, padX = 9.0f;
   float x0 = x;
   int k, colorido = ajustes_selos_coloridos();
   for (k = 0; k < n; k++) {
@@ -5634,7 +5634,7 @@ static float selosDesenharPacote(int pacote,const unsigned short *ids,int n,floa
       // Request higher resolution for TV-sized pack art.
       GLuint t = tex_obter_larg(f->imagem, 320);
       float asp = t ? tex_aspecto(f->imagem) : 0.0f;
-      if (t && asp > 0.01f && f->arte != SELO_ARTE_PACOTE) {
+      if (t && asp > 0.01f && f->arte == SELO_ARTE_BRANCA) {
         // PACOTES EMBUTIDOS (selospacote.h). Padrao: a arte e branca e a forma
         // mora no alfa, entao tinge no cinza da linha como os logos de sempre.
         // Colorido: cada selo numa PECA de base escura (a arte colorida e feita
@@ -5651,11 +5651,7 @@ static float selosDesenharPacote(int pacote,const unsigned short *ids,int n,floa
             if (ajustes_vidro()) gfx_vidro_chip(p, raio, 0.88f, a);
             else { gfx_cor(p, raio, 0.10f, 0.11f, 0.13f, 0.88f * a);
                    gfx_anel(p, raio, 1.5f, 1.0f, 1.0f, 1.0f, 0.20f * a); }
-            if (f->arte == SELO_ARTE_COR) {
-              gfx_tex_aspect_atual = 0.0f;
-              gfx_rect((GfxRect){x + pad, y + (h - ih) * .5f, w, ih}, t, GFX_TEXTO, 0, 0, 0, 0.0f, 1, 1, 1, a);
-            } else
-              gfx_rect((GfxRect){x + pad, y + (h - ih) * .5f, w, ih}, t, GFX_MARCA, 0, 0, 0, 0.0f, 1, 1, 1, a);
+            gfx_rect((GfxRect){x + pad, y + (h - ih) * .5f, w, ih}, t, GFX_MARCA, 0, 0, 0, 0.0f, 1, 1, 1, a);
           }
           x += w + pad * 2.0f + gap;
         } else {
@@ -5670,23 +5666,40 @@ static float selosDesenharPacote(int pacote,const unsigned short *ids,int n,floa
         continue;
       }
       if (t && asp > 0.01f) {
-        // Fusion-imported image badges may define a colored tag behind dark
-        // artwork. Render that declared tagColor, rather than dark-on-dark
-        // transparent artwork as in the previous build.
-        float ih=h, pad=f->temTag?6.0f:0.0f;
-        w=ih*asp;
-        if(w>imgMaxW) {w=imgMaxW;ih=w/asp;}
-        if(x+w+2*pad>x0+maxW)break;
-        if(!medir) {
-          if(f->temTag && f->tag[3]>.01f) {
-            GfxRect bg={x,y-3.0f,w+2*pad,h+6.0f};
-            gfx_cor(bg,6.0f/bg.h,f->tag[0],f->tag[1],f->tag[2],f->tag[3]*a);
-          }
-          gfx_tex_aspect_atual=0.0f;
-          gfx_rect((GfxRect){x+pad,y+(h-ih)*.5f,w,ih},t,GFX_TEXTO,
-                   0,0,0,0.0f,1,1,1,a);
+        // Match official NuvioTV StreamImportedBadgeChip for Xperience and
+        // other full-color badge images, NOT a hand-sized "4K" special case:
+        // 20dp outer height, horizontal padding 3dp, vertical padding 2dp,
+        // image box 34..92dp wide, fit without distorting its intrinsic ratio,
+        // rounded image corners 6dp, provider-defined fill/border colors.
+        // Our TV scene is virtual 1080p; h (32 here) scales the dp geometry.
+        const float kdp = h / 20.0f;
+        const float px = 3.0f * kdp, py = 2.0f * kdp;
+        const float imageBoxH = h - 2.0f * py;
+        const float naturalW = imageBoxH * asp;
+        const float imageBoxW = fminf(92.0f * kdp, fmaxf(34.0f * kdp, naturalW));
+        const float drawW = fminf(naturalW, imageBoxW);
+        const float drawH = drawW / asp;
+        const float chipW = imageBoxW + 2.0f * px;
+        const float radiusPx = 6.0f * kdp;
+        GfxRect chip = {x, y, chipW, h};
+        GfxRect img = {x + px + (imageBoxW - drawW) * .5f,
+                       y + (h - drawH) * .5f, drawW, drawH};
+        float imgRadius = fminf(radiusPx, fminf(drawW, drawH) * .5f) / drawH;
+        if (x + chipW > x0 + maxW) break;
+        if (!medir) {
+          // Official NuvioTV fills only on tagStyle == "filled"; simply
+          // having a tagColor does not authorize painting an opaque chip.
+          if (f->tagPreenchida && f->temTag && f->tag[3] > .01f)
+            gfx_cor(chip, radiusPx / h, f->tag[0], f->tag[1],
+                    f->tag[2], f->tag[3] * a);
+          if (f->temBorda && f->borda[3] > .01f)
+            gfx_anel(chip, radiusPx / h, 1.0f, f->borda[0],
+                     f->borda[1], f->borda[2], f->borda[3] * a);
+          gfx_tex_aspect_atual = 0.0f;
+          gfx_rect(img, t, GFX_TEXTO, 0, 0, 0, imgRadius, 1, 1, 1, a);
         }
-        x+=w+2*pad+gap;continue;
+        x += chipW + gap;
+        continue;
       }
       // Ainda baixando: guarda o lugar (a fileira nao pula quando chega) e nao
       // desenha. Se falhou, mostra o nome.

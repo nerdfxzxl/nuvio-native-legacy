@@ -44,6 +44,7 @@ typedef struct {
   const char *nome;        // texto da pilula quando nao ha imagem
   const char *imagem;      // URL (ou caminho) da imagem; "" = sem
   int   temTag, temTexto, temBorda;   // 0 = o pacote nao define
+  int   tagPreenchida;                // NuvioTV: tagStyle == "filled" only
   float tag[4], texto[4], borda[4];   // RGBA 0..1
   int   arte;              // SeloArte
   int   resolucao;         // 1 = do grupo de resolucao (a folha de fontes a tira da fileira)

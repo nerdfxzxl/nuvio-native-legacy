@@ -683,6 +683,9 @@ static const char *FS_CORPO[GFX_NMODOS] = {
   "  }\n"
   // uPar.x liga o tint RGB do texto em cache; logos mantem a cor original.
   "  vec3 tint = uPar.x > 0.5 ? uCor.rgb : vec3(1.0);\n"
+  // For imported badge artwork only, uRaio adds the official 6dp image clip.
+  // Other text/image calls pass uRaio=0 and remain pixel-identical.
+  "  if (uRaio > 0.001) g.a *= borda(sdf(vUv, uRaio, uAspect));\n"
   "  gl_FragColor = vec4(g.rgb * tint * (1.0 - uFoco), g.a * uCor.a);\n"
   "}\n",
 

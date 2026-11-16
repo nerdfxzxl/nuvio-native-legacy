@@ -442,6 +442,7 @@ static void compilaPacote(Pacote *p) {
     parseCor(f->tag, &c->pub.temTag, c->pub.tag);
     parseCor(f->texto, &c->pub.temTexto, c->pub.texto);
     parseCor(f->borda, &c->pub.temBorda, c->pub.borda);
+    c->pub.tagPreenchida = f->estilo && !strcasecmp(f->estilo, "filled");
     c->chave = strdup(f->imagem[0] ? f->imagem : f->nome);
     if (!c->chave) { regexjs_liberar(c->re); continue; }
     for (j = 0; c->chave[j]; j++) c->chave[j] = (char)tolower((unsigned char)c->chave[j]);
