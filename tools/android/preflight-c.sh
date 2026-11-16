@@ -22,6 +22,16 @@ tmp="$(mktemp -d "${RUNNER_TEMP:-/tmp}/nuvio-c-preflight.XXXXXX")"
 trap 'rm -rf "$tmp"' EXIT
 mkdir -p "$tmp/SDL2"
 cp -L /usr/include/SDL2/*.h "$tmp/SDL2/"
+# Ubuntu's SDL_config.h delegates to an architecture-specific config file.
+# Copy its REAL config beside the public headers: -I /usr/include/x86_64-
+# linux-gnu would leak glibc headers into Android's NDK compilation.
+real_sdl_config="$(find /usr/include -maxdepth 4 -type f -name _real_SDL_config.h -print -quit)"
+if [[ -z "$real_sdl_config" ]]; then
+  echo "::error::Ubuntu SDL2 architecture config (_real_SDL_config.h) not found" >&2
+  exit 1
+fi
+cp -L "$real_sdl_config" "$tmp/SDL2/_real_SDL_config.h"
+echo "SDL2 config: $(basename "$(dirname "$real_sdl_config")") (copied for Android headers)"
 
 flags=(
   --target=aarch64-none-linux-android24
