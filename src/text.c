@@ -2372,6 +2372,9 @@ static float txt_bloco_impl(TxtEstilo estilo, const char *s, int r, int g, int b
                          (u[bytes] & 0xF0) == 0xE0 ? 3 :
                          (u[bytes] & 0xF8) == 0xF0 ? 4 : 1;
           if (bytes + passo > np) passo = 1;
+          // Keep each measured candidate inside the 512-byte buffer,
+          // including its trailing NUL, even for 4-byte UTF-8 codepoints.
+          if (bytes + passo >= 512) break;
           bytes += passo;
           limites[nLimites++] = (unsigned short)bytes;
         }
