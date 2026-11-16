@@ -5,7 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.util.LruCache
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asComposeCanvas
+import androidx.compose.ui.graphics.Canvas as ComposeCanvas
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextMeasurer
@@ -93,10 +93,11 @@ class StreamCardParagraphs internal constructor(
         try {
             val canvas = Canvas(bitmap)
             canvas.translate(0f, -top.toFloat())
-            title.multiParagraph.paint(canvas.asComposeCanvas(), Color.White)
+            val composeCanvas = ComposeCanvas(canvas)
+            title.multiParagraph.paint(composeCanvas, Color.White)
             description?.let {
                 canvas.translate(0f, (title.size.height + gap).toFloat())
-                it.multiParagraph.paint(canvas.asComposeCanvas(), Color(0xffb3b3b3))
+                it.multiParagraph.paint(composeCanvas, Color(0xffb3b3b3))
             }
             val pixels = IntArray(width * rows)
             bitmap.getPixels(pixels, 0, width, 0, 0, width, rows)
