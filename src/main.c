@@ -34,6 +34,7 @@
 #include <locale.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 #include <sys/stat.h>
 // SIGTERM tratado pelo app: webOS e desktop (Mac/Linux). No .tpk o host .NET e
 // dono do sinal, no Android o sistema mata sem SIGTERM util e no Tizen/WASM nao
@@ -580,6 +581,67 @@ static void teclasInjetadas(void (*entregar)(const SDL_Event *)) {
   fclose(f);
   consomeOuBloqueia("/tmp/nuvio-key", &bloqueadoKey);
 }
+
+#if defined(NV_ANDROID) && defined(NV_TOUCH_UI)
+// Phone-only selector testing: swipe is a directional D-pad press, double-tap
+// is OK. All other screens keep native touch for login and navigation.
+static int selectorPhoneRemote(const SDL_Event *event) {
+  static SDL_FingerID finger;
+  static int pressed;
+  static float x0, y0, tapX, tapY;
+  static Uint32 lastTap;
+  SDL_Keycode keycode = SDLK_UNKNOWN;
+  if (!layout_modo_mobile() || !stream_folha_aberta() || st_dono() == ST_BUSCA) {
+    pressed = 0; lastTap = 0; return 0;
+  }
+  if (event->type == SDL_MOUSEBUTTONDOWN || event->type == SDL_MOUSEBUTTONUP ||
+      event->type == SDL_MOUSEMOTION) {
+    return event->type == SDL_MOUSEMOTION ?
+      event->motion.which == SDL_TOUCH_MOUSEID :
+      event->button.which == SDL_TOUCH_MOUSEID;
+  }
+  if (event->type != SDL_FINGERDOWN && event->type != SDL_FINGERMOTION &&
+      event->type != SDL_FINGERUP) return 0;
+  if (event->tfinger.touchId == SDL_MOUSE_TOUCHID) return 1;
+  if (event->type == SDL_FINGERDOWN) {
+    finger = event->tfinger.fingerId;
+    pressed = 1;
+    x0 = event->tfinger.x; y0 = event->tfinger.y;
+    return 1;
+  }
+  if (!pressed || event->tfinger.fingerId != finger) return 1;
+  if (event->type == SDL_FINGERMOTION) return 1;
+  pressed = 0;
+  float dx = event->tfinger.x - x0;
+  float dy = event->tfinger.y - y0;
+  Uint32 now = SDL_GetTicks();
+  if (fabsf(dx) > 0.055f || fabsf(dy) > 0.055f) {
+    keycode = fabsf(dx) > fabsf(dy) ?
+      (dx > 0 ? SDLK_RIGHT : SDLK_LEFT) :
+      (dy > 0 ? SDLK_DOWN : SDLK_UP);
+    lastTap = 0;
+  } else if (lastTap && now - lastTap < 430u &&
+             fabsf(x0 - tapX) < 0.07f && fabsf(y0 - tapY) < 0.07f) {
+    keycode = SDLK_RETURN;
+    lastTap = 0;
+  } else {
+    lastTap = now;
+    tapX = x0; tapY = y0;
+  }
+  if (keycode != SDLK_UNKNOWN) {
+    SDL_Event key; SDL_zero(key);
+    key.type = SDL_KEYDOWN;
+    key.key.state = SDL_PRESSED;
+    key.key.keysym.sym = keycode;
+    key.key.keysym.scancode = SDL_GetScancodeFromKey(keycode);
+    app_evento(&key);
+    key.type = SDL_KEYUP;
+    key.key.state = SDL_RELEASED;
+    app_evento(&key);
+  }
+  return 1;
+}
+#endif
 
 // Tamanho do buffer de onde a captura le. Definido no arranque, junto com o
 // viewport.
@@ -1975,6 +2037,9 @@ int main(int argc, char **argv) {
       // PONTEIRO (Magic Remote, issue #99): mouse, rodinha e os avisos 484/485
       // de cursor do webOS ficam la; o que ele traduz em tecla chega a
       // app_evento como se viesse do D-pad.
+#if defined(NV_ANDROID) && defined(NV_TOUCH_UI)
+      if (selectorPhoneRemote(&e)) continue;
+#endif
       if (ponteiro_evento(&e, app_evento)) continue;
       // webOS Back uses scancode 482, sym 0. Normalize both edges below so
       // the player Back guard sees the physical release too.

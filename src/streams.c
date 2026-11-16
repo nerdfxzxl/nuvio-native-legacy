@@ -114,7 +114,7 @@ static void medirCabecalho(void);
 #define FOLHA_SEC_GAP   26.0f
 #define FOLHA_RAIO      22.0f
 #define FOLHA_SELO_H    24.0f
-#define FOLHA_SELO_NUVIO_H  30.0f  // logos menores (dono, 02/10: "ficaram muito grande")
+#define FOLHA_SELO_NUVIO_H  32.0f  // logos menores (dono, 02/10: "ficaram muito grande")
 #define FOLHA_AUDIO_W  60.0f
 #define FOLHA_AUDIO_N   8
 #define FOLHA_AUDIO_BAR 4.0f
@@ -4506,15 +4506,15 @@ static float alturaLinha(int i, int automatica, float abertura, int cabProv) {
   float provH = cabProv ? FOLHA_PROV_H : 0.0f;
   // The new Dynamic Clock renderer sizes cards from the addon's real text.
   if (folhaRelogio && !canalFolha) {
+    // Unlike Legacy's expandable rows, every stream displays the full addon text.
     TextoAddon *t = textoAddonDa(i);
-    if (abertura > 0.001f) textoAddonMedirCompleto(t, &lista[i]);
-    float descH = t->descHFechada + (t->descHCompleta-t->descHFechada)*abertura;
-    const char *desc=descricaoAddon(&lista[i]);
-    int separate=lista[i].arquivo[0]&&!strstr(desc,lista[i].arquivo);
-    float fileH=separate? FOLHA_ADDON_LD+
-      (t->arquivoH-FOLHA_ADDON_LD)*abertura:0.0f;
-    return provH+14.0f+FOLHA_SELO_NUVIO_H+8.0f+34.0f+
-           descH+6.0f+fileH+14.0f;
+    textoAddonMedirCompleto(t, &lista[i]);
+    const char *desc = descricaoAddon(&lista[i]);
+    float descH = desc[0] ? t->descHCompleta : 0.0f;
+    int separate = lista[i].arquivo[0] && !strstr(desc, lista[i].arquivo);
+    float fileH = separate ? t->arquivoH : 0.0f;
+    return provH + 14.0f + FOLHA_SELO_NUVIO_H + 8.0f + 34.0f +
+           descH + (fileH > 0.0f ? 6.0f : 0.0f) + fileH + 14.0f;
   }
   float h = FOLHA_LINHA_H + provH + (temMarca(i, automatica) ? FOLHA_MARCA_H : 0);
   if (ajustes_fonte_texto_addon()) {
@@ -5331,7 +5331,7 @@ void stream_folha_evento(const SDL_Event *e) {
   if (grupo==1 && k==SDLK_RIGHT) { grupo=0; filtroSelecionar(0); foco=0; }
   else if (grupo==1 && k==SDLK_LEFT) { grupo=-2; filtroSelecionar(0); foco=0; rolagem=0; velRol=0; }
   else if (grupo==-2 && k==SDLK_RIGHT) { grupo=1; foco=0; }
-  else if (grupo==0 && k==SDLK_LEFT && filtro==0) { grupo=-2; foco=0; }
+  else if (grupo==0 && k==SDLK_LEFT && filtro==0) { grupo=-1; foco=0; }
   else if (grupo==-1 && k==SDLK_LEFT && foco==0) { grupo=-2; foco=0; }
   else if (grupo==-1 && k==SDLK_RIGHT) { grupo=0; filtroSelecionar(0); foco=0; }
   else if (grupo>=0 && (k==SDLK_LEFT || k==SDLK_RIGHT)) {
@@ -5631,7 +5631,8 @@ static float selosDesenharPacote(int pacote,const unsigned short *ids,int n,floa
     // A resolucao e o grupo da folha (e o titulo da fonte): fora da fileira.
     if (semResolucao && f->resolucao) continue;
     if (f->imagem[0]) {
-      GLuint t = tex_obter_larg(f->imagem, 128);
+      // Request higher resolution for TV-sized pack art.
+      GLuint t = tex_obter_larg(f->imagem, 320);
       float asp = t ? tex_aspecto(f->imagem) : 0.0f;
       if (t && asp > 0.01f && f->arte != SELO_ARTE_PACOTE) {
         // PACOTES EMBUTIDOS (selospacote.h). Padrao: a arte e branca e a forma
@@ -6500,12 +6501,8 @@ static void corpoFolha(float x, float w, float anim, Uint32 agora, int ilha) {
       TextoAddon *t=textoAddonDa(i);
       const char *desc=descricaoAddon(s);
       float ty=cardY+14.0f, avail=tr-tx;
-      float open=grupo==1&&row==foco?abreFoco:row==linhaAnt?abreAnt:0.0f;
-      if(open>.001f) textoAddonMedirCompleto(t,s);
-      int lines=FOLHA_ADDON_FECHADA+
-                (int)floorf((t->descLinhas-FOLHA_ADDON_FECHADA)*open);
-      if(lines<1) lines=1;
-      // No hard cap when focused: the user must be able to read all addon text.
+      // Render all lines even on unfocused rows; no expanding card animation.
+      textoAddonMedirCompleto(t,s);
       if(selosPacoteVisiveis((Stream *)s)) {
         float tone=sel?.98f:.78f;
         float total=sel?selosDesenhar(s->selosPacote,(int)s->nSelosPacote,
@@ -6535,17 +6532,14 @@ static void corpoFolha(float x, float w, float anim, Uint32 agora, int ilha) {
       }
       ty+=34.0f;
       if(desc[0]) {
-        int c=sel?204:180;
-        txt_bloco_corta(TXT_PG_FIM,desc,c,c,c,tx,ty,avail,FOLHA_ADDON_LD,anim,lines);
+        int c=sel?217:195;
+        txt_bloco(TXT_PG_FIM,desc,c,c,c,tx,ty,avail,FOLHA_ADDON_LD,anim,0);
+        ty+=t->descHCompleta;
       }
-      ty+=t->descHFechada+(t->descHCompleta-t->descHFechada)*open+6.0f;
       if(s->arquivo[0]&&!strstr(desc,s->arquivo)) {
-        if(open>.02f)
-          txt_bloco(TXT_PG_FIM,s->arquivo,185,185,182,tx,ty,
-                    avail,FOLHA_ADDON_LD,anim*open,0);
-        else
-          txt_desenhar_alpha(txt_linha_corta(TXT_PG_FIM,s->arquivo,
-                                            160,160,158,255,avail),tx,ty,anim);
+        ty+=6.0f;
+        txt_bloco(TXT_PG_FIM,s->arquivo,sel?207:187,sel?207:187,
+                  sel?205:185,tx,ty,avail,FOLHA_ADDON_LD,anim,0);
       }
       continue;
     }

@@ -157,7 +157,7 @@
   0, 0,             /* endereco, testar: acoes */
   0,                /* posteres personalizados: DESLIGADO (indice 0) */
   0, 0, 0, 0, 0, 0,/* endereco, token, parametros, chave, modelo, testar: acoes */
-  0,                /* layout da home: Moderna (a de sempre) */
+  2,                /* layout da home: Dinamica (new installations) */
   0, 0, 0, 0, 0, 0, 0, 0, /* chaves e testes de debrid: acoes */
   1,                /* usar sempre o Cinemeta: DESLIGADO (V_LIGA: 1 = Desligado) -> catalogo primeiro */
   // Notas na linha do titulo: de fabrica so o que a linha ja mostrava antes de
