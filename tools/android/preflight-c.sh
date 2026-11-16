@@ -22,16 +22,21 @@ tmp="$(mktemp -d "${RUNNER_TEMP:-/tmp}/nuvio-c-preflight.XXXXXX")"
 trap 'rm -rf "$tmp"' EXIT
 mkdir -p "$tmp/SDL2"
 cp -L /usr/include/SDL2/*.h "$tmp/SDL2/"
-# Ubuntu's SDL_config.h delegates to an architecture-specific config file.
-# Copy its REAL config beside the public headers: -I /usr/include/x86_64-
-# linux-gnu would leak glibc headers into Android's NDK compilation.
-real_sdl_config="$(find /usr/include -maxdepth 4 -type f -name _real_SDL_config.h -print -quit)"
-if [[ -z "$real_sdl_config" ]]; then
-  echo "::error::Ubuntu SDL2 architecture config (_real_SDL_config.h) not found" >&2
+# Do NOT use Ubuntu's x86_64 SDL_config.h. It advertises x86 SIMD
+# intrinsics which the Android ARM64 compiler cannot compile.
+# SDL explicitly provides SDL_config_minimal.h for cross-platform builds;
+# it is enough to type-check SDL APIs without compiling SDL itself.
+if [[ ! -f "$tmp/SDL2/SDL_config_minimal.h" ]]; then
+  echo "::error::SDL_config_minimal.h missing from libsdl2-dev" >&2
   exit 1
 fi
-cp -L "$real_sdl_config" "$tmp/SDL2/_real_SDL_config.h"
-echo "SDL2 config: $(basename "$(dirname "$real_sdl_config")") (copied for Android headers)"
+cat > "$tmp/SDL2/SDL_config.h" <<'SDL_CONFIG'
+#ifndef SDL_config_h_
+#define SDL_config_h_
+#include "SDL_config_minimal.h"
+#endif
+SDL_CONFIG
+echo "SDL2 config: portable minimal (no Ubuntu/x86-specific intrinsics)"
 
 flags=(
   --target=aarch64-none-linux-android24
