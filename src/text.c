@@ -2337,7 +2337,7 @@ size_t txt_token_tam(const char *s) {
 
 static float txt_bloco_impl(TxtEstilo estilo, const char *s, int r, int g, int b,
                             float x, float y, float larg, float leading,
-                            float alpha, int maxLinhas, int reticencias) {
+                            float alpha, int maxLinhas, int reticencias, int quebraLonga) {
   // Mesma razao do corte: a quebra de linha e feita no texto final.
   s = i18n(s);
   if (!s || !*s) return 0.0f;
@@ -2349,9 +2349,47 @@ static float txt_bloco_impl(TxtEstilo estilo, const char *s, int r, int g, int b
   while (*p && (maxLinhas <= 0 || nLinhas < maxLinhas)) {
     // pega o proximo token (palavra, ou um caractere CJK)
     const char *ini = p;
-    int quebra, espaco;
-    p += txt_token_tam(p);
+    int quebra, espaco, dividido = 0;
+    const char *fimToken = p + txt_token_tam(p);
+    p = fimToken;
     size_t np = (size_t)(p - ini);
+    // Filename-like tokens from addons contain no spaces. Split only when
+    // needed, at UTF-8 character boundaries, using bounded binary searches.
+    if (quebraLonga && np) {
+      int longo = np >= 512;
+      if (!longo) {
+        char teste[512];
+        memcpy(teste, ini, np); teste[np] = 0;
+        longo = txt_largura(estilo, teste) > larg;
+      }
+      if (longo) {
+        unsigned short limites[500];
+        size_t bytes = 0, nLimites = 0, low = 0, high;
+        const unsigned char *u = (const unsigned char *)ini;
+        while (bytes < np && nLimites < 500) {
+          size_t passo = u[bytes] < 0x80 ? 1 :
+                         (u[bytes] & 0xE0) == 0xC0 ? 2 :
+                         (u[bytes] & 0xF0) == 0xE0 ? 3 :
+                         (u[bytes] & 0xF8) == 0xF0 ? 4 : 1;
+          if (bytes + passo > np) passo = 1;
+          bytes += passo;
+          limites[nLimites++] = (unsigned short)bytes;
+        }
+        high = nLimites;
+        while (low < high) {
+          size_t mid = (low + high + 1) / 2;
+          size_t testN = limites[mid - 1];
+          char teste[512];
+          memcpy(teste, ini, testN); teste[testN] = 0;
+          if (txt_largura(estilo, teste) <= larg) low = mid;
+          else high = mid - 1;
+        }
+        if (nLimites) {
+          size_t fit = limites[low ? low - 1 : 0];
+          if (fit < np) { p = ini + fit; np = fit; dividido = 1; }
+        }
+      }
+    }
     // QUEBRA DURA NO \n, e isto e conserto de defeito visto em foto.
     //
     // Este laco separava palavras SO por espaco. Um \n no meio do texto virava
@@ -2361,9 +2399,10 @@ static float txt_bloco_impl(TxtEstilo estilo, const char *s, int r, int g, int b
     // codigo e uma linha corrida com dois quadrados na TV. O relator do issue
     // #12 fotografou exatamente isso e eu li a foto como texto sem traducao,
     // que era outra coisa: sao dois defeitos na mesma tela.
-    quebra = (*p == '\n');
-    espaco = (*p == ' ' || *p == '\n');
-    while (*p == ' ' || *p == '\n') { if (*p == '\n') quebra = 1; p++; }
+    quebra = !dividido && (*p == '\n');
+    espaco = !dividido && (*p == ' ' || *p == '\n');
+    if (!dividido)
+      while (*p == ' ' || *p == '\n') { if (*p == '\n') quebra = 1; p++; }
 
     char tentativa[512];
     size_t nl = strlen(linha);
@@ -2450,14 +2489,21 @@ float txt_bloco(TxtEstilo estilo, const char *s, int r, int g, int b,
                 float x, float y, float larg, float leading, float alpha,
                 int maxLinhas) {
   return txt_bloco_impl(estilo, s, r, g, b, x, y, larg, leading, alpha,
-                        maxLinhas, 0);
+                        maxLinhas, 0, 0);
+}
+
+float txt_bloco_longas(TxtEstilo estilo, const char *s, int r, int g, int b,
+                       float x, float y, float larg, float leading,
+                       float alpha, int maxLinhas) {
+  return txt_bloco_impl(estilo, s, r, g, b, x, y, larg, leading, alpha,
+                        maxLinhas, 0, 1);
 }
 
 float txt_bloco_corta(TxtEstilo estilo, const char *s, int r, int g, int b,
                       float x, float y, float larg, float leading,
                       float alpha, int maxLinhas) {
   return txt_bloco_impl(estilo, s, r, g, b, x, y, larg, leading, alpha,
-                        maxLinhas, 1);
+                        maxLinhas, 1, 0);
 }
 
 // Quebra igual a txt_bloco, mas posiciona cada linha pela BORDA DIREITA. A

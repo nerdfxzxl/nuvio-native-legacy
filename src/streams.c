@@ -3964,7 +3964,8 @@ static void tituloAddon(const Stream *s, char *buf, size_t tam) {
   snprintf(buf, tam, "%s", nome);
 }
 typedef struct {
-  char titulo[192];
+  char titulo[512];
+  float tituloH;
   int descLinhas, descMedida;
   float descHFechada, descHCompleta, arquivoH;
 } TextoAddon;
@@ -3980,7 +3981,7 @@ static void textoAddonPreparar(TextoAddon *t, const Stream *s) {
   t->descHFechada = FOLHA_ADDON_FECHADA * FOLHA_ADDON_LD;
   t->descHCompleta = t->descHFechada;
   t->descLinhas = FOLHA_ADDON_FECHADA;
-  t->descMedida = 0; t->arquivoH=0.0f;
+  t->descMedida = 0; t->arquivoH=0.0f; t->tituloH=34.0f;
   tituloAddon(s, t->titulo, sizeof t->titulo);
 }
 static void textoAddonMedirCompleto(TextoAddon *t, const Stream *s) {
@@ -3988,14 +3989,26 @@ static void textoAddonMedirCompleto(TextoAddon *t, const Stream *s) {
   {
     const char *desc = descricaoAddon(s);
     const float largura = FOLHA_W - FOLHA_PAD_E - FOLHA_PAD_D - 2.0f * FOLHA_TXT;
-    float h = txt_bloco(TXT_PG_FIM, desc, 170,170,170,0,0,
-                        largura,FOLHA_ADDON_LD,0.0f,0);
+    float h;
+    if (folhaRelogio && !canalFolha) {
+      t->tituloH=txt_bloco_longas(TXT_CALLOUT,t->titulo,235,235,235,0,0,
+                                  largura,34.0f,0.0f,0);
+      if (t->tituloH < 34.0f) t->tituloH=34.0f;
+      h=txt_bloco_longas(TXT_PG_FIM,desc,170,170,170,0,0,
+                         largura,FOLHA_ADDON_LD,0.0f,0);
+    } else {
+      h=txt_bloco(TXT_PG_FIM,desc,170,170,170,0,0,
+                  largura,FOLHA_ADDON_LD,0.0f,0);
+    }
     if(h<t->descHFechada) h=t->descHFechada;
     t->descHCompleta=h;
     t->descLinhas=(int)ceilf(h/FOLHA_ADDON_LD);
     if(s->arquivo[0]&&!strstr(desc,s->arquivo)) {
-      t->arquivoH=txt_bloco(TXT_PG_FIM,s->arquivo,170,170,170,0,0,
-                            largura,FOLHA_ADDON_LD,0.0f,0);
+      t->arquivoH=(folhaRelogio && !canalFolha)
+        ? txt_bloco_longas(TXT_PG_FIM,s->arquivo,170,170,170,0,0,
+                           largura,FOLHA_ADDON_LD,0.0f,0)
+        : txt_bloco(TXT_PG_FIM,s->arquivo,170,170,170,0,0,
+                    largura,FOLHA_ADDON_LD,0.0f,0);
       if(t->arquivoH<FOLHA_ADDON_LD)t->arquivoH=FOLHA_ADDON_LD;
     }
     t->descMedida=1;
@@ -4513,7 +4526,7 @@ static float alturaLinha(int i, int automatica, float abertura, int cabProv) {
     float descH = desc[0] ? t->descHCompleta : 0.0f;
     int separate = lista[i].arquivo[0] && !strstr(desc, lista[i].arquivo);
     float fileH = separate ? t->arquivoH : 0.0f;
-    return provH + 14.0f + FOLHA_SELO_NUVIO_H + 8.0f + 34.0f +
+    return provH + 14.0f + FOLHA_SELO_NUVIO_H + 8.0f + t->tituloH +
            descH + (fileH > 0.0f ? 6.0f : 0.0f) + fileH + 14.0f;
   }
   float h = FOLHA_LINHA_H + provH + (temMarca(i, automatica) ? FOLHA_MARCA_H : 0);
@@ -6540,19 +6553,18 @@ static void corpoFolha(float x, float w, float anim, Uint32 agora, int ilha) {
       ty+=FOLHA_SELO_NUVIO_H+8.0f;
       {
         int c=sel?255:232;
-        TxtLinha title=txt_linha_corta(TXT_CALLOUT,t->titulo,c,c,c-2,255,avail);
-        txt_desenhar_alpha(title,tx,ty,anim);
+        txt_bloco_longas(TXT_CALLOUT,t->titulo,c,c,c-2,tx,ty,avail,34.0f,anim,0);
       }
-      ty+=34.0f;
+      ty+=t->tituloH;
       if(desc[0]) {
         int c=sel?217:195;
-        txt_bloco(TXT_PG_FIM,desc,c,c,c,tx,ty,avail,FOLHA_ADDON_LD,anim,0);
+        txt_bloco_longas(TXT_PG_FIM,desc,c,c,c,tx,ty,avail,FOLHA_ADDON_LD,anim,0);
         ty+=t->descHCompleta;
       }
       if(s->arquivo[0]&&!strstr(desc,s->arquivo)) {
         ty+=6.0f;
-        txt_bloco(TXT_PG_FIM,s->arquivo,sel?207:187,sel?207:187,
-                  sel?205:185,tx,ty,avail,FOLHA_ADDON_LD,anim,0);
+        txt_bloco_longas(TXT_PG_FIM,s->arquivo,sel?207:187,sel?207:187,
+                         sel?205:185,tx,ty,avail,FOLHA_ADDON_LD,anim,0);
       }
       continue;
     }
