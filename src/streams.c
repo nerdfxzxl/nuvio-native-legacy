@@ -4524,10 +4524,11 @@ static float alturaLinha(int i, int automatica, float abertura, int cabProv) {
     textoAddonMedirCompleto(t, &lista[i]);
     const char *desc = descricaoAddon(&lista[i]);
     float descH = desc[0] ? t->descHCompleta : 0.0f;
-    int separate = lista[i].arquivo[0] && !strstr(desc, lista[i].arquivo);
-    float fileH = separate ? t->arquivoH : 0.0f;
+    // Official NuvioTV renders the addon's display name and description,
+    // not a separate legacy file-name row. Filenames already formatted into
+    // the description stay in place and wrap using txt_bloco_longas().
     return provH + 14.0f + FOLHA_SELO_NUVIO_H + 8.0f + t->tituloH +
-           descH + (fileH > 0.0f ? 6.0f : 0.0f) + fileH + 14.0f;
+           descH + 14.0f;
   }
   float h = FOLHA_LINHA_H + provH + (temMarca(i, automatica) ? FOLHA_MARCA_H : 0);
   if (ajustes_fonte_texto_addon()) {
@@ -6561,11 +6562,8 @@ static void corpoFolha(float x, float w, float anim, Uint32 agora, int ilha) {
         txt_bloco_longas(TXT_PG_FIM,desc,c,c,c,tx,ty,avail,FOLHA_ADDON_LD,anim,0);
         ty+=t->descHCompleta;
       }
-      if(s->arquivo[0]&&!strstr(desc,s->arquivo)) {
-        ty+=6.0f;
-        txt_bloco_longas(TXT_PG_FIM,s->arquivo,sel?207:187,sel?207:187,
-                         sel?205:185,tx,ty,avail,FOLHA_ADDON_LD,anim,0);
-      }
+      // No synthetic filename field: preserve the exact line structure
+      // the stream addon supplied to name/description, like NuvioTV.
       continue;
     }
     // Official cards keep the add-on identity in the right column. File size
