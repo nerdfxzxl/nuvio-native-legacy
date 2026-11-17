@@ -10729,6 +10729,11 @@ static void qrVinTex(const char *texto) {
   snprintf(qrVinDe, sizeof qrVinDe, "%s", texto);
 }
 
+// Declared below in the settings drawing includes; the standalone Fusion
+// overlay is rendered earlier in this translation unit.
+static void ajIlha(GfxRect r, float raioPx, float a, int modal);
+static float ajBotao(const char *rot, const char *icone, float x, float y, int foco, float a);
+static void ajCentraModal(GfxRect *m);
 static void spFusionFecharPonteiro(int a, int b) {
   (void)a; (void)b; spFusionFechar();
 }

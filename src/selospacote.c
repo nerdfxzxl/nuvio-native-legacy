@@ -684,6 +684,10 @@ void selospacote_player_escolher(int v) {
     if (playerUrl[0]) dados_gravar(nome, playerUrl);
     else dados_apagar(nome);
   }
+  // Persist visibility even when the user only changes packs. In particular,
+  // migrating a legacy "-" (Off) must not reenable badges on next launch.
+  snprintf(nome, sizeof nome, "selos-player-visible-p%d.txt", perfilLido);
+  dados_gravar(nome, playerShow ? "1" : "0");
   versao++; soltar();
 }
 
