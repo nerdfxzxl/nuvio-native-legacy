@@ -6089,6 +6089,9 @@ float stream_selos_player_titulo(const Stream *source, const char *medido,
   static PlayerTitleCache cache;
   int choice = selospacote_player_fonte();
   int pacote = choice >= 2 ? choice - 2 : -1;
+  // The embedded Xperience pack switches to its colored variant by settings.
+  // Update that selector BEFORE reading the cache version.
+  selospacote_colorido(ajustes_selos_coloridos());
   unsigned version = selospacote_versao();
   int rev = (int)atomic_load(&folhaRevisao);
   if (choice == 1 || (!source && (!medido || !medido[0]))) return 0.0f;
