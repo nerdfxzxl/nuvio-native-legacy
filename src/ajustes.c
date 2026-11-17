@@ -95,6 +95,8 @@
 #include "debrid.h"
 #include "seekr.h"
 #include "selospacote.h"
+#include "celular.h"
+#include "celbotao.h"
 #include "fonteregra.h"
 #include <dirent.h>
 #include "fontefalha.h"
@@ -1641,7 +1643,7 @@ static const Opcao OPCOES[AJ_N] = {
   ESC("Medidor de desempenho",           V_MEDIDOR, 4),       // local: medidorFormaLocal
   ACAO("Guia de uso"),
   ESC("Pacote de selos",                 V_SELOS_PACOTE, 4),   // por perfil: selospacote.c
-  ACAO("Add Fusion Badge"),
+  ACAO("Fusion badge URLs"),
   ACAO("Remover pacote"),
   ESC("Tamanho da interface",            V_TAMANHO_UI, 9),    // local: tamanhoUiLocal
   ESC("Fundo",                           V_FUNDO, 3),         // local: fundoLocal
@@ -4620,6 +4622,11 @@ static _Atomic int spEstado;
 static char spUrl[512];
 static char *spCorpo;
 static int spResultado = -1;      // -1 nada; SelosResultado; 100 sem resposta; 101 endereco invalido
+static int spEditarIndice = -1;   // -1 adds; >=0 is validated in-place edit.
+static int spFusionModal;
+static int spFusionAguardando;
+static unsigned spFusionVersao;
+static char spFusionStatus[180];
 static void *spBaixarFio(void *u) {
   (void)u;
   spCorpo = rede_baixar(spUrl, 20);
@@ -4655,7 +4662,10 @@ static void spRecolher(void) {
     pthread_join(spFio, NULL);
     spFioVivo = 0;
     if (!spCorpo || strlen(spCorpo) > 4u * 1024u * 1024u) spResultado = spCorpo ? SELOS_ERR_JSON : 100;
-    else spResultado = selospacote_adicionar(spCorpo, spUrl);
+    else spResultado = spEditarIndice >= 0
+      ? selospacote_substituir(spEditarIndice, spCorpo, spUrl)
+      : selospacote_adicionar(spCorpo, spUrl);
+    spEditarIndice = -1;
     free(spCorpo); spCorpo = NULL;
     atomic_store_explicit(&spEstado, 2, memory_order_release);
     if (spResultado == SELOS_OK) printf("[selos] pacote adicionado: %s\n", rede_url_publica(spUrl, (char[160]){0}, 160));
@@ -4676,6 +4686,90 @@ static const char *spAddTexto(void) {
     case 101:                 return i18n("o endereço precisa começar com http");
     default:                  return i18n("OK adiciona");
   }
+}
+// Snapshot the profile's imported packs without exposing their contents
+// to the HTTP thread. Account-managed packs are read-only in this TV manager.
+static int spFusionPacks(CelFusionPack *pacotes) {
+  int n = selospacote_n();
+  if (n > SELOS_MAX_PACOTES) n = SELOS_MAX_PACOTES;
+  for (int i = 0; i < n; i++) {
+    memset(&pacotes[i], 0, sizeof pacotes[i]);
+    snprintf(pacotes[i].nome, sizeof pacotes[i].nome, "%s", selospacote_nome(i));
+    snprintf(pacotes[i].url, sizeof pacotes[i].url, "%s", selospacote_url(i));
+    pacotes[i].daTv = selospacote_da_tv(i);
+    pacotes[i].filtros = selospacote_n_filtros(i);
+  }
+  return n;
+}
+static void spFusionPublicar(const char *msg) {
+  if (!spFusionModal) return;
+  CelFusionPack packs[SELOS_MAX_PACOTES];
+  int n = spFusionPacks(packs);
+  if (msg) snprintf(spFusionStatus, sizeof spFusionStatus, "%s", msg);
+  celular_fusion_publicar(packs, n, spFusionStatus);
+  spFusionVersao = selospacote_versao();
+}
+static void spFusionFechar(void) {
+  if (!spFusionModal) return;
+  spFusionModal = 0; spFusionAguardando = 0;
+  celular_fechar();
+}
+static void spFusionAbrir(void) {
+  CelFusionPack packs[SELOS_MAX_PACOTES];
+  int n = spFusionPacks(packs);
+  celb_fechar(); // Phone-entry fields and Fusion management never share a port.
+  spFusionModal = 1;
+  spFusionAguardando = 0;
+  spFusionStatus[0] = 0;
+  if (!celular_fusion_abrir(packs, n))
+    snprintf(spFusionStatus, sizeof spFusionStatus,
+             "No local network address. Connect the TV and phone to the same network.");
+  spFusionVersao = selospacote_versao();
+}
+static void spFusionAtualizar(void) {
+  int acao, indice;
+  char url[512];
+  if (!spFusionModal) return;
+  if (celular_fusion_pegar(&acao, &indice, url, sizeof url)) {
+    if (acao == CEL_FUSION_REMOVE) {
+      if (indice >= 0 && indice < selospacote_n() && selospacote_da_tv(indice) &&
+          selospacote_remover(indice)) spFusionPublicar("Pack removed from this TV.");
+      else spFusionPublicar("Could not remove this pack. Refresh the page and retry.");
+    } else if (acao == CEL_FUSION_ADD || acao == CEL_FUSION_EDIT) {
+      if (spFioVivo || spFusionAguardando) {
+        spFusionPublicar("A badge URL is being validated. Retry after it finishes.");
+      } else if (acao == CEL_FUSION_EDIT &&
+                 (indice < 0 || indice >= selospacote_n() || !selospacote_da_tv(indice))) {
+        spFusionPublicar("This badge pack is not editable here. Refresh the page.");
+      } else {
+        spEditarIndice = acao == CEL_FUSION_EDIT ? indice : -1;
+        spAdicionar(url);
+        if (spFioVivo) {
+          spFusionAguardando = 1;
+          spFusionPublicar("Downloading and validating the badge JSON...");
+        } else {
+          spEditarIndice = -1;
+          spFusionPublicar("The URL must begin with http:// or https://.");
+        }
+      }
+    }
+  }
+  if (spFusionAguardando && !spFioVivo &&
+      atomic_load_explicit(&spEstado, memory_order_acquire) == 2) {
+    const char *res;
+    switch (spResultado) {
+      case SELOS_OK:            res = "Badge pack saved and applied on this TV."; break;
+      case SELOS_ERR_LIMITE:    res = "Limit reached: up to 3 Fusion packs."; break;
+      case SELOS_ERR_DUPLICADO: res = "A pack with this URL already exists."; break;
+      case SELOS_ERR_VAZIO:     res = "No valid badge rules were found in the JSON."; break;
+      case SELOS_ERR_INDICE:    res = "Pack changed while editing. Refresh the page."; break;
+      case SELOS_ERR_JSON:      res = "Invalid Fusion badge JSON."; break;
+      default:                  res = "Could not download the badge pack."; break;
+    }
+    spFusionAguardando = 0;
+    spFusionPublicar(res);
+  }
+  if (spFusionVersao != selospacote_versao()) spFusionPublicar(NULL);
 }
 static const char *SP_ALFA_URL =
   "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789:/.-_?=&%#+~@!,;";
@@ -6906,6 +7000,7 @@ void ajustes_encerrar(void) {
   // Save file-backed and scalar preferences when leaving Settings as well as
   // during periodic sync; no editor-specific cloud hook is required.
   if (sessao_logada()) sync_iniciar();
+  spFusionFechar();
   ajIptvLimparForm(); teclado_esquecer();
   // One network cycle for all row changes made in this visit (low-end TVs).
   if (fileirasBusca) { fileirasBusca = 0; desc_repetir(); }
@@ -7206,7 +7301,14 @@ static const char *textoLeitura(int op) {
   if (op == AJ_FANART_CHAVE) return fanartMascarada();
   if (op == AJ_SEEKR_CHAVE) return seekrMascarada();
   if (op == AJ_SEEKR_TESTAR) return skTesteTexto();
-  if (op == AJ_SELOS_PACOTE_ADD) return spAddTexto();
+  if (op == AJ_SELOS_PACOTE_ADD) {
+    static char resumo[96];
+    int n = selospacote_n(), total = 0;
+    for (int i = 0; i < n; i++) total += selospacote_n_filtros(i);
+    snprintf(resumo, sizeof resumo, "%d/%d URLs, %d active Fusion badges",
+             n, SELOS_MAX_PACOTES, total);
+    return resumo;
+  }
   if (op == AJ_URL_M3U_ADD || op == AJ_URL_XMLTV_ADD) return urlAddTexto();
   if (op == AJ_URL_REM) return valor[AJ_URL_LISTA] > 0 ? i18n("OK remove") : i18n("nenhuma lista escolhida");
   if (op == AJ_SELOS_PACOTE_REM) {
@@ -7839,7 +7941,7 @@ static const char *ajudaOpcaoBase(int op) {
     case AJ_PLAYER_BADGES: return "Choose the badge pack used in the player. Same as stream badges follows the stream selection; a specific URL uses that pack independently.";
     case AJ_PLAYER_SHOW: return "Show video and audio badges beneath the player title. Use badge packs that match plain text such as 2160p or Atmos.";
     case AJ_SELOS_PACOTE: return "Qual pacote de selos desenha a lista de fontes. Do Nuvio é o pacote que vem no app; os outros são os pacotes da sua conta (importados no Nuvio web) e os que você adiciona aqui. Vale para este perfil. Se nenhum selo do pacote combinar com a fonte, ela usa os selos do app.";
-    case AJ_SELOS_PACOTE_ADD: return "Adiciona um pacote de selos pelo link do JSON dele (no máximo 3 no total, contando os da conta). O pacote entra já escolhido.";
+    case AJ_SELOS_PACOTE_ADD: return "Scan the QR code with your phone to view, add, edit, or remove Fusion badge URLs. Both devices must be on the same local network.";
     case AJ_URL_LISTA: return "Listas M3U e guias XMLTV deste perfil. Cada lista M3U vira uma fonte do Guia; cada guia XMLTV serve a programação de todas. Aqui aparece só o servidor; a URL inteira fica só nesta TV.";
     case AJ_URL_M3U_ADD: return "Adiciona uma lista de canais M3U pela URL. Digite no teclado da TV ou pelo celular.";
     case AJ_URL_XMLTV_ADD: return "Adiciona um guia de programação XMLTV pela URL (pode ser .gz).";
@@ -9740,6 +9842,15 @@ void ajustes_evento(const SDL_Event *e) {
   if (e->type == SDL_KEYDOWN) ajToqueLimpar();
 #endif
   AJ_ESCALA_INI();
+  if (spFusionModal) {
+    if (e->type == SDL_KEYDOWN && !e->key.repeat) {
+      SDL_Keycode k = e->key.keysym.sym;
+      if (k == SDLK_ESCAPE || k == SDLK_AC_BACK || k == SDLK_BACKSPACE ||
+          k == SDLK_DELETE || k == SDLK_RETURN || k == SDLK_KP_ENTER)
+        spFusionFechar();
+    }
+    AJ_ESCALA_FIM(); return;
+  }
   if (guiaAberto) { guiaEvento(e); AJ_ESCALA_FIM(); return; }
   if (apoioAberto) { apoioEvento(e); AJ_ESCALA_FIM(); return; }
   eventoTela(e);
@@ -9952,10 +10063,17 @@ static void eventoTela(const SDL_Event *e) {
     }
     if (focoOp == AJ_SEEKR_TESTAR) { skTesteIniciar(); return; }
     if (focoOp == AJ_SELOS_PACOTE_ADD) {
-      if (spFioVivo) return;
-      stCampo = focoOp;
-      teclado_abrir_com("Endereço do pacote de selos", "O link do JSON do pacote (https://…). Vazio cancela.",
-                        200, SP_ALFA_URL, NULL);
+      if (celular_disponivel()) {
+        spFusionAbrir();
+      } else {
+        // A browser cannot host a LAN listener (.wgt); retain the previous
+        // direct-entry fallback on that platform.
+        if (spFioVivo) return;
+        stCampo = focoOp;
+        teclado_abrir_com("Fusion badge JSON URL",
+                          "Enter the badge pack JSON URL (https://…).",
+                          200, SP_ALFA_URL, NULL);
+      }
       return;
     }
     if (focoOp == AJ_URL_M3U_ADD || focoOp == AJ_URL_XMLTV_ADD) {
@@ -10075,6 +10193,7 @@ void ajustes_atualizar(float dt, Uint32 agora) {
   adTesteRecolher();
   skTesteRecolher();
   spRecolher();
+  spFusionAtualizar();
   urlEspelhar();
   // "Procurar atualização" achou versao nova: abre o cartao por cima dos
   // Ajustes, como o OK em "Atualizar o aplicativo" ja fazia.
@@ -10610,6 +10729,50 @@ static void qrVinTex(const char *texto) {
   snprintf(qrVinDe, sizeof qrVinDe, "%s", texto);
 }
 
+static void spFusionFecharPonteiro(int a, int b) {
+  (void)a; (void)b; spFusionFechar();
+}
+static void spFusionDesenhar(void) {
+  if (!spFusionModal) return;
+  const char *url = celular_url();
+  GfxRect m = { 554.0f, 170.0f, 812.0f, 740.0f };
+  float x, y;
+  ajCentraModal(&m);
+  x = m.x + 56.0f; y = m.y + 46.0f;
+  ponteiro_camada();
+  gfx_cor((GfxRect){0, 0, NV_VTELA_W, NV_VTELA_H}, 0, 0, 0, 0, 0.66f);
+  ajIlha(m, 34.0f, 1, 1);
+  { TxtLinha t = txt_linha_corta(TXT_ILHA_TITULO, "Fusion badge URLs", 255,255,255,255,m.w-112.0f);
+    txt_desenhar_alpha(t, x, y, 1.0f); }
+  y += 76.0f;
+  txt_bloco(TXT_BODY, "Scan this QR code on your phone to manage Fusion badge URLs.",
+            225,225,230,x,y,m.w-112.0f,30.0f,1.0f,3);
+  y += 96.0f;
+  if (url[0]) {
+    const float qrSide = 320.0f;
+    GfxRect tile = { m.x + (m.w - qrSide - 24.0f) * 0.5f,
+                     y, qrSide + 24.0f, qrSide + 24.0f };
+    qrVinTex(url);
+    gfx_cor(tile, 14.0f / tile.h, 1,1,1,1);
+    if (texQrVin) {
+      gfx_tex_aspect_atual = 0;
+      gfx_rect((GfxRect){tile.x+12,tile.y+12,qrSide,qrSide},
+               texQrVin,GFX_SNAP,0,0,0,0,0,0,0,1);
+    }
+    y += 360.0f;
+    { TxtLinha addr = txt_linha_corta(TXT_CAPTION,url,220,225,235,255,m.w-112.0f);
+      txt_desenhar_alpha(addr,m.x+(m.w-addr.w)*0.5f,y,1.0f); }
+  } else {
+    txt_bloco(TXT_BODY, spFusionStatus[0] ? spFusionStatus :
+              "The local QR address expired. Close and reopen to generate a new code.",
+              215,210,205,x,y,m.w-112.0f,34.0f,1.0f,5);
+    y += 350.0f;
+  }
+  y = m.y + m.h - 92.0f;
+  { float bw = ajBotao("Close",NULL,m.x+(m.w-148.0f)*0.5f,y,1,1);
+    ponteiro_alvo(m.x+(m.w-148.0f)*0.5f,y,bw,60.0f,
+                 NULL,spFusionFecharPonteiro,0,0); }
+}
 static void desenhaVinculo(const char *servico, const char *codigo,
                            const char *endereco, const char *falha, int esperando);
 
@@ -10953,6 +11116,7 @@ static void ajDesenharTudo(Uint32 agora) {
   // tela, e tem de ficar por cima ate do cartao de vinculo.
   if (apoioAberto) apoioDesenhar();
   if (teclado_aberto()) teclado_desenhar(agora);
+  if (spFusionModal) spFusionDesenhar();
 }
 
 float ajustes_ilha_x(void) { return aj2X0() * ajustes_tamanho_ajustes(); }
@@ -10968,7 +11132,7 @@ int ajustes_relogio_cabe(void) {
 
 int ajustes_relogio_navegavel(void) {
   DisEstado da = discord_estado();
-  return ajustes_relogio_cabe() && !filAberta && !frAberta && !uxEditor &&
+  return ajustes_relogio_cabe() && !spFusionModal && !filAberta && !frAberta && !uxEditor &&
          !guiaAberto && !apoioAberto && !riscoFolha &&
          da != DIS_PEDINDO && da != DIS_AGUARDANDO && da != DIS_ERRO;
 }
