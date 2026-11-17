@@ -62,10 +62,10 @@ int  celular_porta(void);
 
 // Fusion badge manager reuses the same expiring, token-protected LAN server,
 // but allows multiple authenticated changes while its Settings dialog is open.
-enum { CEL_FUSION_NADA = 0, CEL_FUSION_ADD, CEL_FUSION_EDIT, CEL_FUSION_REMOVE };
+enum { CEL_FUSION_NADA = 0, CEL_FUSION_ADD, CEL_FUSION_EDIT, CEL_FUSION_REMOVE, CEL_FUSION_ACTIVATE };
 typedef struct {
   char nome[96], url[512];
-  int daTv, filtros;
+  int daTv, filtros, ativo;
 } CelFusionPack;
 int  celular_fusion_abrir(const CelFusionPack *packs, int n);
 void celular_fusion_publicar(const CelFusionPack *packs, int n, const char *status);

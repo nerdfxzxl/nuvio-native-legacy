@@ -296,7 +296,17 @@ static void montarFusion(const CelFusionPack *packs, int count, const char *stat
     "Up to 3 URLs are supported. Changes appear on the TV after validation.</p>",
     cor);
   if (nota[0]) fusionJuntar(pagina, sizeof pagina, &u, "<p class=note>%s</p>", nota);
-  if (!count) fusionJuntar(pagina, sizeof pagina, &u, "<p>No badge URLs configured yet.</p>");
+  {
+    int builtin = 1;
+    for (i = 0; i < count; i++) if (packs[i].ativo) builtin = 0;
+    fusionJuntar(pagina, sizeof pagina, &u,
+      "<div class=pack><h2>Built-in stream badges%s</h2>"
+      "<form method=post action='/%s'><input type=hidden name=op value=activate>"
+      "<input type=hidden name=i value=-1>"
+      "<button class=sec>Use built-in badges for streams</button></form></div>",
+      builtin ? " · Active" : "", token);
+  }
+  if (!count) fusionJuntar(pagina, sizeof pagina, &u, "<p>No imported badge URLs configured yet.</p>");
   for (i = 0; i < count; i++) {
     char nome[768], urlEsc[4096];
     escapar(nome, sizeof nome, packs[i].nome);
@@ -304,6 +314,11 @@ static void montarFusion(const CelFusionPack *packs, int count, const char *stat
     fusionJuntar(pagina, sizeof pagina, &u,
       "<div class=pack><h2>%s</h2><small>%s</small><p>%d active badges · %s</p>",
       nome, urlEsc, packs[i].filtros, packs[i].daTv ? "Managed on this TV" : "Managed by your account");
+    if (packs[i].ativo) fusionJuntar(pagina, sizeof pagina, &u, "<p>Active for stream cards</p>");
+    else fusionJuntar(pagina, sizeof pagina, &u,
+      "<form method=post action='/%s'><input type=hidden name=op value=activate>"
+      "<input type=hidden name=i value=%d>"
+      "<button class=sec>Use for stream cards</button></form>", token, i);
     if (packs[i].daTv) {
       fusionJuntar(pagina, sizeof pagina, &u,
         "<form method=post action='/%s'><input type=hidden name=op value=edit>"
@@ -560,10 +575,13 @@ static int atender(int c, int *erros) {
     aparar(novo);
     operacao = !strcmp(acao, "add") ? CEL_FUSION_ADD :
                !strcmp(acao, "edit") ? CEL_FUSION_EDIT :
-               !strcmp(acao, "remove") ? CEL_FUSION_REMOVE : CEL_FUSION_NADA;
+               !strcmp(acao, "remove") ? CEL_FUSION_REMOVE :
+               !strcmp(acao, "activate") ? CEL_FUSION_ACTIVATE : CEL_FUSION_NADA;
     indice = ix[0] ? strtol(ix, &fim, 10) : -1;
-    if (!operacao || ((operacao == CEL_FUSION_EDIT || operacao == CEL_FUSION_REMOVE) &&
-        (!ix[0] || !fim || *fim || indice < 0 || indice >= 3)) ||
+    if (!operacao || ((operacao == CEL_FUSION_EDIT || operacao == CEL_FUSION_REMOVE ||
+                        operacao == CEL_FUSION_ACTIVATE) &&
+        (!ix[0] || !fim || *fim || indice < (operacao == CEL_FUSION_ACTIVATE ? -1 : 0) ||
+         indice >= 3)) ||
         (operacao != CEL_FUSION_REMOVE &&
          ((!strncasecmp(novo, "http://", 7) && !novo[7]) ||
           (!strncasecmp(novo, "https://", 8) && !novo[8]) ||

@@ -4698,6 +4698,7 @@ static int spFusionPacks(CelFusionPack *pacotes) {
     snprintf(pacotes[i].url, sizeof pacotes[i].url, "%s", selospacote_url(i));
     pacotes[i].daTv = selospacote_da_tv(i);
     pacotes[i].filtros = selospacote_n_filtros(i);
+    pacotes[i].ativo = i == selospacote_ativo();
   }
   return n;
 }
@@ -4731,7 +4732,15 @@ static void spFusionAtualizar(void) {
   char url[512];
   if (!spFusionModal) return;
   if (celular_fusion_pegar(&acao, &indice, url, sizeof url)) {
-    if (acao == CEL_FUSION_REMOVE) {
+    if (acao == CEL_FUSION_ACTIVATE) {
+      if (indice >= -1 && indice < selospacote_n() &&
+          (indice == -1 || selospacote_n_filtros(indice) > 0)) {
+        selospacote_escolher(indice);
+        spEspelhar();
+        spFusionPublicar(indice == -1 ? "Built-in badge pack selected." :
+                                       "Stream badge pack selected.");
+      } else spFusionPublicar("The selected pack is no longer available.");
+    } else if (acao == CEL_FUSION_REMOVE) {
       if (indice >= 0 && indice < selospacote_n() && selospacote_da_tv(indice) &&
           selospacote_remover(indice)) spFusionPublicar("Pack removed from this TV.");
       else spFusionPublicar("Could not remove this pack. Refresh the page and retry.");

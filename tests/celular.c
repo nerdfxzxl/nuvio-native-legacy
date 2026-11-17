@@ -147,7 +147,7 @@ int main(void) {
   // A Fusion manager is a short-lived MULTI-action session, unlike one-shot
   // text entry. It never mutates pack state on the HTTP thread.
   CelFusionPack packs[1] = {
-    { "Pack <script>unsafe</script>", "https://packs.invalid/a?x=1&y=2", 1, 11 }
+    { "Pack <script>unsafe</script>", "https://packs.invalid/a?x=1&y=2", 1, 11, 1 }
   };
   int action, index;
   assert(celular_fusion_abrir(packs, 1));
@@ -159,6 +159,12 @@ int main(void) {
   assert(strstr(saida, "&lt;script&gt;unsafe&lt;/script&gt;"));
   assert(strstr(saida, "?x=1&amp;y=2"));
   assert(!celular_fusion_pegar(&action, &index, txt, sizeof txt));
+  assert(strstr(saida, "Active for stream cards"));
+  snprintf(a, sizeof a, "--data-urlencode 'op=activate' "
+           "--data-urlencode 'i=-1' '%s'", local);
+  assert(curl(a) == 200);
+  assert(celular_fusion_pegar(&action, &index, txt, sizeof txt));
+  assert(action == CEL_FUSION_ACTIVATE && index == -1);
 
   snprintf(a, sizeof a, "--data-urlencode 'op=edit' --data-urlencode 'i=0' "
            "--data-urlencode 't=https://new.invalid/badge.json' '%s'", local);
