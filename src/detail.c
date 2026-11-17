@@ -1558,7 +1558,13 @@ static void auditoriaEpisodios(void) {
   fflush(stdout);
 }
 
+#include "detail_episodes_netflix.inc"
+
 static void abrirInterno(const HomeItem *it) {
+  // A reused detail page must never inherit the previous show's episode list.
+  detEpAberto = 0;
+  trailerManual = 0;
+  trailerControlFocus = -1;
   musicaui_fechar();
   pediuRelogio = 0;
   sinopse_fechar();
@@ -1720,6 +1726,8 @@ static void abrirInterno(const HomeItem *it) {
 }
 
 void detail_fechar(void) {
+  detEpAberto = 0;
+  trailerManual = 0; trailerControlFocus = -1;
   musicaui_fechar();
   pessoaBuscaCancelar();
   pediuRelogio = 0;
@@ -1733,6 +1741,8 @@ void detail_fechar(void) {
 // SECO: o proximo detail_atualizar ja a encerra (o mesmo fim da mola de
 // saida, com o logo restaurado), sem a pagina recolher por cima da home.
 void detail_fechar_seco(void) {
+  detEpAberto = 0;
+  trailerManual = 0; trailerControlFocus = -1;
   musicaui_fechar();
   pessoaBuscaCancelar();
   pediuRelogio = 0;
@@ -2846,8 +2856,6 @@ static void executarMais(int dm) {
     if (ci) recenviar_abrir(ci);
   }
 }
-
-#include "detail_episodes_netflix.inc"
 
 static void detail_evento_(const SDL_Event *e) {
   if (detEpEvento(e)) return;
@@ -4901,14 +4909,12 @@ static void heroWeb(float a, float desloc) {
   char rot[48];
   int retomando = 0;
   { int t = 0, e = 0, de = 0;
-    if (ehSerie() && episodioAlvo(&t, &e, &de) && t >= 0 && e > 0 && de >= 2)
-      // i18n NO FORMATO E NA PALAVRA. A frase montada nunca casa com uma chave
-      // (ver idioma.h), entao traduzir so no desenho deixava "Retomar T1E1" em
-      // portugues com a interface em ingles — o issue #12. O T/E tambem muda:
-      // em ingles a abreviacao e S/E.
-      { snprintf(rot, sizeof rot, i18n("%s T%dE%d"),
-                 i18n(de == 2 ? "Retomar" : "Próximo"), t, e);
-        retomando = de == 2; }
+    if (ehSerie() && episodioAlvo(&t, &e, &de) && t >= 0 && e > 0 && de == 2) {
+      // Resume only when this precise episode has an unfinished checkpoint.
+      // Otherwise the primary action is Play, not a misleading "Next".
+      snprintf(rot, sizeof rot, i18n("%s T%dE%d"), i18n("Retomar"), t, e);
+      retomando = 1;
+    }
     else { snprintf(rot, sizeof rot, "%s",
                     det_rotulo_primario(ci ? ci->progresso : 0, ajustes_cw_concluido()));
            retomando = !ehSerie(); } }
@@ -7864,38 +7870,10 @@ static float epLinhaAlfa(void) {
 }
 
 static int epFuros(GfxRect *holes) {
-  // Old carousel never paints: do not cut its ghost thumbnail holes.
+  // The old episode carousel is gone, so nothing in this screen creates
+  // a GPU occlusion hole for an episode thumbnail.
   (void)holes;
   return 0;
-#if 0
-  int n = 0;
-  // Only the opaque thumbnail occludes; the panel needs the page beneath it.
-  if (epLinhaAlfa() * gfx_opacidade_grupo < .999f) return 0;
-  // Glass captures this backdrop before thumbnails repaint, including the
-  // 68 px sampling fringe. Keep the complete source intact while frost is on.
-  if (ajustes_vidro() && ajustes_vidro_fosco()) return 0;
-  if (!epModerna() || corpoSobArte() || corpoOculto(ehSerie()) ||
-      fase2() < .999f || trocaarte_visivel() > .001f ||
-      trailercinema_t(&trailerCinema) > .001f || ajustes_desfocar_nao_assistidos()) return 0;
-  for (int c = 0; c < epVisiveis() && c < N_ITENS && c < DET_REV_EP; c++) {
-    const CatEp *ep = cat_episodio(idx, epAbsoluto(c));
-    float x = xItem(SEC_EPISODIOS, c) - scrollSec[SEC_EPISODIOS];
-    if (x > NV_TELA_W || x + epCardW() < 0 || !ep || !ep->thumb[0]) continue;
-    if (!tex_obter_larg(ep->thumb, epCardW())) continue;
-    // Translucent/absent panels need the existing page background beneath them.
-    GfxRect th = {x, epRowY()-scrollY, epCardW(), epThumbH()};
-    // Match the complete card's focus transform without adding backdrop fill.
-    float ft=anim_clamp(animFoco[SEC_EPISODIOS][c],0,1), scale=1+.035f*ft;
-    th.x-=epCardW()*(scale-1)*.5f;
-    th.y-=epCardH()*(scale-1)*.5f+8*ft;
-    th.w*=scale; th.h*=scale;
-    // Keep corners and their antialias fringe; only the solid interior occludes.
-    float inset = (NV_DETP_EP_RAIO + 2)*scale;
-    holes[n++] = (GfxRect){th.x+inset, th.y+2, th.w-2*inset, th.h-4};
-    holes[n++] = (GfxRect){th.x+2, th.y+inset, th.w-4, th.h-2*inset};
-  }
-  return n;
-#endif
 }
 
 static void detalheFundo(float s) {
