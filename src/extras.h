@@ -206,6 +206,7 @@ const char *extras_ficha_paises(void);          // "United States of America, Ca
 const char *extras_ficha_classificacao(void);   // "R", "PG-13", "14"
 const char *extras_ficha_digital(void);         // earliest announced digital release, ISO or empty
 const char *extras_ficha_lancamento(void);      // "2026-01-15"
+const char *extras_ficha_produtores(void);      // credited producer names, if present
 
 // TRAILERS. O id do YouTube, nome e miniatura saem do /movie/<id> ou /tv/<id>
 // do TMDB (append_to_response=videos, include_video_language=<ui>,en,null);

@@ -462,7 +462,7 @@ int ajustes_det_espaco(void);
 #define NV_DETF_DET_LINHA      68.0f   // passo vertical de uma linha
 #define NV_DETF_DET_W        1040.0f   // largura da tabela e da divisoria
 #define NV_DETF_DET_CHAVE_W   254.0f   // 24,4% de NV_DETF_DET_W (proporcao do Mac)
-#define NV_DETF_DET_MAXL         10    // Status, Lancamento, Duracao, Classif., Pais + Wikidata
+#define NV_DETF_DET_MAXL         18    // Status, Lancamento, Duracao, Classif., Pais + Wikidata
 
 void detail_evento(const SDL_Event *e);
 void detail_atualizar(float dt, Uint32 agora);

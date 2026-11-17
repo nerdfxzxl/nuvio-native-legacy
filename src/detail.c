@@ -2218,6 +2218,20 @@ static int montarDetalhes(LinhaDet *o, int max) {
   // relying on the hero field for accessibility.
   if (ci && ci->direcao[0])
     DET_POE(ehSerie() ? "Criação e direção" : "Direção", ci->direcao);
+  DET_POE("Produção", extras_ficha_produtores());
+  // Production companies and networks are not individual producers.
+  { char company[168] = "", network[168] = "";
+    for (int i = 0; i < extras_n_estudios(); i++) {
+      const char *nm = extras_estudio_nome(i);
+      char *list = extras_estudio_rede(i) ? network : company;
+      size_t cap = extras_estudio_rede(i) ? sizeof network : sizeof company;
+      size_t used = strlen(list), needed = strlen(nm) + (used ? 2 : 0) + 1;
+      if (nm[0] && used + needed <= cap)
+        snprintf(list + used, cap - used, "%s%s", used ? ", " : "", nm);
+    }
+    DET_POE("Produtoras", company);
+    if (ehSerie()) DET_POE("Redes", network);
+  }
   // Budget, box office and other verified Wikidata facts remain optional.
   { int i, nf = seriefrases_n_fatos();
     for (i = 0; i < nf; i++) DET_POE(seriefrases_fato_rotulo(i), seriefrases_fato_valor(i)); }
@@ -3990,8 +4004,9 @@ static void detail_atualizar_(float dt, Uint32 agora) {
   // No filme a linha Colecao | Frases aparece com a pagina rolando ate ela:
   // a consulta sai quando o foco chega a "Mais como este" ou abaixo.
   if (nivel >= 1 && (foco.fileira == SEC_FRASES ||
+      foco.fileira == SEC_DETALHES ||
       (!ehSerie() && (foco.fileira == SEC_RELACIONADOS || foco.fileira == SEC_COLECAO ||
-                      foco.fileira == SEC_DETALHES || foco.fileira == SEC_ESTUDIOS)))) {
+                      foco.fileira == SEC_ESTUDIOS)))) {
     const CatItem *ci = cat_item(idx);
     if (ci && ci->imdb[0]) { seriefrases_abrir(ci->imdb); frasesAberta = 1; }
   }

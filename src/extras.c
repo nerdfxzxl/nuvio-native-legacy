@@ -246,6 +246,7 @@ static char colNome[80];
 static char colCapa[160], colFundo[160], colSinopse[600];
 // Ficha tecnica e trailers: mesma viagem /movie/<id> da colecao.
 static char fichaStatus[32], fichaPaises[160], fichaCert[12], fichaLanc[16], fichaDigital[16];
+static char fichaProdutores[168];
 // IDIOMA ORIGINAL do titulo, do `original_language` do TMDB. Vem no MESMO
 // corpo de /movie/<id> e /tv/<id> que este arquivo ja baixa — nenhuma viagem a
 // mais. Vazio quando o TMDB nao responde, e vazio e um estado a tratar, nao um
@@ -457,6 +458,13 @@ static void urlFicha(char *dst, size_t cap, int serie, long idT,
                      int datas, int trailers, int mais, const char *original) {
   char append[80] = "", langs[24] = "", extra[48] = "";
   if (!serie && datas) snprintf(append, sizeof append, "release_dates");
+  if (serie && datas)
+    snprintf(append, sizeof append, "content_ratings");
+  // Credits are included in this EXISTING metadata request, never fetched
+  // synchronously by the detail-page renderer.
+  if (ajustes_tmdb_ficha())
+    snprintf(append + strlen(append), sizeof append - strlen(append),
+             "%scredits", append[0] ? "," : "");
   if (trailers) {
     snprintf(append + strlen(append), sizeof append - strlen(append), "%svideos", append[0] ? "," : "");
     idiomasDeVideo(idioma, original, langs, sizeof langs);
@@ -1206,15 +1214,20 @@ static void *buscar(void *arg) {
           }
         }
 
-        // --- ficha tecnica (so filme: a serie nao tem secao de Detalhes) ---
-        if (!serie && ajustes_tmdb_ficha()) {
+        // Technical Details are now first-class for series and movies.
+        if (ajustes_tmdb_ficha()) {
         js_texto(corpo, fimC, "status", fichaStatus, sizeof fichaStatus);
-        js_texto(corpo, fimC, "release_date", fichaLanc, sizeof fichaLanc);
-        fichaDur = (int)js_num(corpo, fimC, "runtime", 0.0);
+        js_texto_raiz_em(corpo, fimC, serie ? "first_air_date" : "release_date",
+                         fichaLanc, sizeof fichaLanc);
+        if (serie) {
+          const char *rt = js_array(corpo, fimC, "episode_run_time");
+          fichaDur = rt ? (int)strtol(rt, NULL, 10) : 0;
+        } else fichaDur = (int)js_num(corpo, fimC, "runtime", 0.0);
         // StreamFit (F03): TMDB's movie runtime for THIS id (still under the
         // trava and the idPedido check above). The movie's stream target is
         // its imdb id, the same string. Zero/absent says nothing.
-        if (fichaDur > 0 && fichaDur < 1440) stream_fit_duracao(id, fichaDur * 60.0, SF_DUR_METADATA);
+        if (!serie && fichaDur > 0 && fichaDur < 1440)
+          stream_fit_duracao(id, fichaDur * 60.0, SF_DUR_METADATA);
 
         // production_countries e um array de objetos; junta os nomes com
         // virgula, como a referencia mostra ("United States of America,
@@ -1264,6 +1277,49 @@ static void *buscar(void *arg) {
           }
           snprintf(fichaCert, sizeof fichaCert, "%s",
                    br[0] ? br : us[0] ? us : qq); }
+
+        // Series: TMDB appends content_ratings.results, not movie release_dates.
+        // Prefer BR, then US, then another verified territory.
+        if (serie && ajustes_tmdb_datas()) {
+          const char *ratingObj = strstr(corpo, "\"content_ratings\"");
+          const char *obj = ratingObj ? strchr(ratingObj, '{') : NULL;
+          const char *res = obj ? js_array(obj, js_fim(obj), "results") : NULL;
+          char br[12] = "", us[12] = "", other[12] = "";
+          while (res) {
+            const char *end = js_fim(res);
+            char country[8]="", value[12]="";
+            js_texto(res,end,"iso_3166_1",country,sizeof country);
+            js_texto(res,end,"rating",value,sizeof value);
+            if (value[0]) {
+              if (!strcmp(country,"BR")) snprintf(br,sizeof br,"%s",value);
+              else if (!strcmp(country,"US")) snprintf(us,sizeof us,"%s",value);
+              else if (!other[0]) snprintf(other,sizeof other,"%s",value);
+            }
+            res = js_prox(end);
+          }
+          snprintf(fichaCert,sizeof fichaCert,"%s",br[0]?br:us[0]?us:other);
+        }
+        // An exact Producer credit is not the same thing as a production
+        // company or TV network. Show the named credited people separately.
+        fichaProdutores[0] = 0;
+        { const char *b = strstr(corpo, "\"credits\"");
+          const char *obj = b ? strchr(b,'{') : NULL;
+          const char *crew = obj ? js_array(obj, js_fim(obj), "crew") : NULL;
+          for (int k=0; crew && k<220; ++k) {
+            const char *end=js_fim(crew);
+            char job[48]="", name[100]="";
+            js_texto(crew,end,"job",job,sizeof job);
+            if (!strcmp(job,"Producer") || !strcmp(job,"Executive Producer")) {
+              js_texto(crew,end,"name",name,sizeof name);
+              size_t used=strlen(fichaProdutores);
+              size_t needed=strlen(name)+(used?2:0)+1;
+              if (name[0] && used+needed<=sizeof fichaProdutores)
+                snprintf(fichaProdutores+used,sizeof fichaProdutores-used,
+                         "%s%s",used?", ":"",name);
+            }
+            crew=js_prox(end);
+          }
+        }
 
         // Trailers: videos.results[] (trailersDaFicha).
         if (ajustes_tmdb_trailers())
@@ -1700,6 +1756,7 @@ static void zerarPublicado(void) {
   colNome[0] = colCapa[0] = colFundo[0] = colSinopse[0] = 0;
   nTrailer = fichaDur = nEstudio = 0;
   fichaStatus[0] = fichaPaises[0] = fichaCert[0] = fichaLanc[0] = fichaDigital[0] = 0;
+  fichaProdutores[0] = 0;
   fichaIdiomaOrig[0] = 0;
   agStatus[0] = agDataProx[0] = agDataUlt[0] = agNomeEp[0] = 0;
   agTemp = agEp = 0;
@@ -2078,6 +2135,7 @@ int         extras_ficha_duracao(void)       { return fichaDur; }
 const char *extras_ficha_paises(void)        { return fichaPaises; }
 const char *extras_ficha_classificacao(void) { return fichaCert; }
 const char *extras_ficha_lancamento(void)    { return fichaLanc; }
+const char *extras_ficha_produtores(void)    { return fichaProdutores; }
 const char *extras_ficha_digital(void)       { return fichaDigital; }
 
 int extras_n_trailers(void) { return nTrailer; }
