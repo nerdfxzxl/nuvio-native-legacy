@@ -108,6 +108,11 @@ jobs:
           NUVIO_SUPABASE_URL: ${{ secrets.NUVIO_SUPABASE_URL }}
           NUVIO_SUPABASE_ANON_KEY: ${{ secrets.NUVIO_SUPABASE_ANON_KEY }}
           TV_LOGIN_WEB_BASE_URL: ${{ secrets.TV_LOGIN_WEB_BASE_URL }}
+          # Optional metadata integrations: absent secrets yield explicit
+          # unavailable states, not fatal builds or fabricated ratings/reviews.
+          TRAKT_CLIENT_ID: ${{ secrets.TRAKT_CLIENT_ID }}
+          TRAKT_CLIENT_SECRET: ${{ secrets.TRAKT_CLIENT_SECRET }}
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
         shell: bash
         run: |
           set -euo pipefail
@@ -124,7 +129,16 @@ jobs:
             printf 'NUVIO_SUPABASE_URL=%s\n' "$NUVIO_SUPABASE_URL"
             printf 'NUVIO_SUPABASE_ANON_KEY=%s\n' "$NUVIO_SUPABASE_ANON_KEY"
             printf 'TV_LOGIN_WEB_BASE_URL=%s\n' "$TV_LOGIN_WEB_BASE_URL"
+            printf 'TRAKT_CLIENT_ID=%s\n' "$TRAKT_CLIENT_ID"
+            printf 'TRAKT_CLIENT_SECRET=%s\n' "$TRAKT_CLIENT_SECRET"
+            printf 'TMDB_API_KEY=%s\n' "$TMDB_API_KEY"
           } > local.properties
+          if [[ -z "$TRAKT_CLIENT_ID" ]]; then
+            echo "::warning::TRAKT_CLIENT_ID not configured: public Trakt title reviews and season ratings may be unavailable"
+          fi
+          if [[ -z "$TMDB_API_KEY" ]]; then
+            echo "::warning::TMDB_API_KEY not configured: richer Details and episode metadata may be incomplete"
+          fi
           chmod 600 local.properties
 
       - name: Build native curl, JPEG and WebP libraries
