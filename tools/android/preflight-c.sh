@@ -51,7 +51,7 @@ flags=(
   -Werror=incompatible-pointer-types
 )
 
-for source in src/main.c src/streams.c src/gfx.c src/selospacote.c src/text.c src/stream_parse.c; do
+for source in src/main.c src/streams.c src/gfx.c src/selospacote.c src/ajustes.c src/player.c src/celular.c src/text.c src/stream_parse.c; do
   echo "::group::Early C compile: $source"
   "$cc" "${flags[@]}" "$source"
   echo "::endgroup::"
