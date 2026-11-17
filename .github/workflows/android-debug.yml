@@ -46,6 +46,7 @@ jobs:
           bash tests/stream_parser.sh
           bash tests/selospacote.sh
           bash tests/celular.sh
+          bash tests/detail_acoes_gap.sh
 
       - name: Check stream-card wrapping and color emoji with Android graphics
         run: |
