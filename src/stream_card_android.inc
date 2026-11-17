@@ -1,5 +1,6 @@
 // SDL render thread only. Tiles bound GPU usage even for very tall filenames.
 #include <jni.h>
+#include "perftv.h"
 enum { CARD_TILE_H = 256, CARD_TILE_COUNT = 24, CARD_UPLOADS_PER_FRAME = 2 };
 static int cardUploadsThisFrame;
 typedef struct {
@@ -108,6 +109,7 @@ static GLuint cardTile(int index, int width, int top, int rows) {
         gfx_tex_esquecer(0);
         *slot = (CardTile){texture, listaGeracao, index, width, top, rows, ++cardTileUse};
         cardUploadsThisFrame++;
+        if (perftv_enabled) perftv_uploads++;
         result = texture;
       }
     }

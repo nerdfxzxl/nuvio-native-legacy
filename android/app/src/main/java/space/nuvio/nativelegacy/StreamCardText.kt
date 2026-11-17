@@ -53,8 +53,14 @@ internal class StreamCardText(private val context: Context) {
     // and shaping infrastructure for every freshly visible stream.
     private val density = Density(1.6f, context.resources.configuration.fontScale)
     private val measurer = TextMeasurer(resolver, density, LayoutDirection.Ltr, cacheSize = 24)
-    private val cache = LruCache<Key, StreamCardParagraphs>(24)
+    private val cache = object : LruCache<Key, StreamCardParagraphs>(24) {
+        override fun entryRemoved(evicted: Boolean, key: Key,
+                                  oldValue: StreamCardParagraphs, newValue: StreamCardParagraphs?) {
+            if (evicted) oldValue.cancelPendingTiles()
+        }
+    }
     private val queuedLayouts = ConcurrentHashMap<Key, Future<StreamCardParagraphs?>>()
+    private var activeGeneration = Int.MIN_VALUE
 
     fun layout(generation: Int, index: Int, width: Int, payload: ByteArray?): StreamCardParagraphs? {
         val key = Key(generation, index, width)
@@ -86,6 +92,14 @@ internal class StreamCardText(private val context: Context) {
     // read only completed results. The synchronous layout() is retained for
     // unit tests and never used from the production SDL frame loop.
     fun layoutAsync(generation: Int, index: Int, width: Int, payload: ByteArray?): StreamCardParagraphs? {
+        // A new provider response creates a new generation. Old queued work
+        // must not retain abandoned source text or pixel arrays.
+        if (activeGeneration != generation) {
+            activeGeneration = generation
+            queuedLayouts.values.forEach { it.cancel(false) }
+            queuedLayouts.clear()
+            cache.evictAll()
+        }
         val key = Key(generation, index, width)
         // Consume completed futures even if the worker already populated the
         // LRU. Otherwise each prepared row retains a Future indefinitely.
@@ -132,6 +146,10 @@ class StreamCardParagraphs internal constructor(
     private val gap: Int
 ) {
     private val queuedTiles = ConcurrentHashMap<Long, Future<IntArray>>()
+    fun cancelPendingTiles() {
+        queuedTiles.values.forEach { it.cancel(false) }
+        queuedTiles.clear()
+    }
     val height: Int = title.size.height + (description?.let { gap + it.size.height } ?: 0)
 
     // Preparing the bitmap is CPU work and must not block VSync. The first
