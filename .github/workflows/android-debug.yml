@@ -44,6 +44,8 @@ jobs:
           bash tools/android/preflight-c.sh
           bash -n tools/tizen-art.sh tools/android.sh
           bash tests/stream_parser.sh
+          bash tests/selospacote.sh
+          bash tests/celular.sh
 
       - name: Check stream-card wrapping and color emoji with Android graphics
         run: |
