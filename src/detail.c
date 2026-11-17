@@ -848,7 +848,7 @@ static const char *cabecalhoDe(int r) {
     // empilhados dizendo a mesma coisa.
     case SEC_COMENTARIOS:  return NULL;
     case SEC_ESTUDIOS:     return "Estúdios";
-    case SEC_DETALHES:     return "Detalhes do Filme";
+    case SEC_DETALHES:     return "Details";
     // As duas abaixo trazem o proprio titulo DENTRO do painel (os modulos
     // desenham "Arco de qualidade"/"Frases" com a linha de procedencia logo
     // abaixo, que e a parte que nao pode ser separada do titulo). Um cabecalho
@@ -2202,12 +2202,19 @@ static int montarDetalhes(LinhaDet *o, int max) {
   if (!v || !v[0]) v = (ci && ci->pais[0]) ? ci->pais : NULL;
   { char pais[168]; desc_pais_txt(v, pais, sizeof pais);   // nomes em ingles -> idioma da UI
     DET_POE("País de Origem", pais); }
-  // A direcao ja esta no hero ("Direção David Frankel"), como no mockup.
-  // Os campos do Wikidata (orcamento, bilheteria...) entram na ficha quando a
-  // consulta das frases ja voltou: no mockup e a mesma tabela.
+  // Include director/creator in the dedicated Details block, rather than
+  // relying on the hero field for accessibility.
+  if (ci && ci->direcao[0])
+    DET_POE(ehSerie() ? "Criação e direção" : "Direção", ci->direcao);
+  // Budget, box office and other verified Wikidata facts remain optional.
   { int i, nf = seriefrases_n_fatos();
     for (i = 0; i < nf; i++) DET_POE(seriefrases_fato_rotulo(i), seriefrases_fato_valor(i)); }
 
+  if (n == 0 && max > 0) {
+    o[n].chave = "Informação";
+    snprintf(o[n].valor, sizeof o[n].valor, "%s", i18n("Informações indisponíveis"));
+    n++;
+  }
   #undef DET_POE
   return n;
 }
@@ -2255,7 +2262,9 @@ static float epAppleExtra(void) { return epCardH() - ANC(414.0f); }
 // Topo do cabecalho: fundo dos cartoes de episodio + o vao antes das notas (60,
 // o mesmo de vaoAntes).
 // O GRAFICO DE TEMPORADAS ("Seu progresso") vem antes das Notas e as empurra.
-static float progTopoSerie(void) { return epRowY() + epCardH() + ANC(60.0f + 16.0f * NV_DETP_ESP); }
+// No old episode carousel: start rich lower series sections directly below
+// the hero instead of reserving 480+ px for vanished thumbnails.
+static float progTopoSerie(void) { return NV_TELA_H + ANC(55.0f + 16.0f * NV_DETP_ESP); }
 static float progBloco(void) {
   return secaoN(SEC_PROGTEMP) > 0 ? alturaSecao(SEC_PROGTEMP) + ANC(60.0f + 16.0f * NV_DETP_ESP) : 0.0f;
 }
@@ -2270,8 +2279,8 @@ static float numerosTopoSerie(void) {
 // Notas + Numeros da temporada empurram abas e elenco juntos.
 static float notasBloco(void) {
   float fim;
-  if (!ehSerie() || (secaoN(SEC_NOTAS) <= 0 && secaoN(SEC_NUMEROS) <= 0 &&
-                     secaoN(SEC_PROGTEMP) <= 0)) return 0.0f;
+  if (!ehSerie()) return 0.0f;
+  // Even when ratings/progress are empty, collapse the old episode space.
   fim = numerosTopoSerie();
   if (secaoN(SEC_NUMEROS) > 0) fim += alturaSecao(SEC_NUMEROS) + NV_DETF_SEC_GAP;
   return fim - ANC(NV_DETP_G_ABAS) - epAppleExtra();
@@ -2343,16 +2352,11 @@ static int posTemp(int c)   { return c - 1; }
 static int secaoN(int r) {
   const CatItem *ci = cat_item(idx);
   switch (r) {
+    // Episode navigation now lives exclusively in the new full-screen view.
+    // Returning zero also removes the old sections from D-pad focus/layout.
     case SEC_TEMPORADAS:
-      // Filme nao tem temporada: a fileira SOME em vez de mostrar abas que nao
-      // levam a lugar nenhum. E o que o web faz — a `.series-season-row` so
-      // existe no layout de serie.
-      return nTemps() > 0 ? nTemps() + 1 : 0;
-    case SEC_EPISODIOS: {
-      int q = epVisiveis();
-      if (q <= 0) return 0;
-      return q < N_ITENS ? q : N_ITENS;
-    }
+    case SEC_EPISODIOS:
+      return 0;
     // Uma aba so = barra escondida, como o `tabItems.length > 1` do web.
     // FILME NAO TEM ABAS: a pagina de filme empilha as secoes com cabecalho
     // proprio, entao a barra de abas nao entra. Sem esta guarda o filme ficava
@@ -2451,8 +2455,8 @@ static int secaoN(int r) {
     // ela rola para a tela e pronto. Zero colunas faria focus_mover PULA-LA
     // (focus.c:25) e a secao viraria inalcancavel — logo, tambem irrolavel.
     case SEC_DETALHES:
-      if (ehSerie()) return 0;
-      return nLinhasDetalhe() > 0 ? 1 : 0;
+      // The technical Details panel is useful for movies AND series.
+      return 1;
     // NUMEROS DA TEMPORADA: UMA COLUNA POR EPISODIO da temporada escolhida
     // (ate o teto de pedidos do modulo, SA_EP_MAX). Esquerda/direita anda pelos
     // episodios e o mesmo episodio fica em foco nos tres cartoes
@@ -7826,6 +7830,10 @@ static float epLinhaAlfa(void) {
 }
 
 static int epFuros(GfxRect *holes) {
+  // Old carousel never paints: do not cut its ghost thumbnail holes.
+  (void)holes;
+  return 0;
+#if 0
   int n = 0;
   // Only the opaque thumbnail occludes; the panel needs the page beneath it.
   if (epLinhaAlfa() * gfx_opacidade_grupo < .999f) return 0;
@@ -7853,6 +7861,7 @@ static int epFuros(GfxRect *holes) {
     holes[n++] = (GfxRect){th.x+2, th.y+inset, th.w-4, th.h-2*inset};
   }
   return n;
+#endif
 }
 
 static void detalheFundo(float s) {
@@ -8040,7 +8049,8 @@ static void detail_desenhar_(Uint32 agora) {
   if (sinopse_aberta()) sinopse_desenhar();
     return;
   }
-  desenhaEsqueletoEpisodios(a2 > pg ? a2 : pg);
+  // The old episode carousel is gone; only the Netflix-style selector
+  // owns thumbnails and season focus now.
   desenhaEsqueletoElenco(corpoAlpha(a2));
   // As duas fileiras da primeira tela da serie entram com o heroi, e nao com
   // a rolagem (pg fica em 0 com o foco nelas).
