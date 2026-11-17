@@ -6029,25 +6029,45 @@ float stream_selos_fileira(const Stream *s,float x,float y,float maxW,float h,fl
 // casamento roda so quando o texto ou o pacote mudam (regex, nunca por quadro).
 float stream_selos_medidos(const char *texto, float x, float y, float maxW, float h, float tom,
                            float a, int medir) {
-  static char ult[160];
-  static unsigned ultVer;
-  static unsigned short ids[SELOS_MAX_CASADOS];
-  static int n;
+  // The OSD can draw both its format row and an independent Fusion title row.
+  // A one-entry cache constantly evicts one with the other, executing dozens
+  // of badge regexes four times per frame. Cache by (text, pack, version).
+  typedef struct {
+    char texto[160];
+    unsigned versao;
+    int pacote, valid, n;
+    unsigned short ids[SELOS_MAX_CASADOS];
+  } MedidosCache;
+  static MedidosCache slots[4];
+  static unsigned replaceNext;
+  MedidosCache *slot = NULL;
+  int choice = selospacote_player_fonte();
+  int pacote = choice >= 2 ? choice - 2 : -1;
+  unsigned versao;
+  if (choice == 1 || !texto || !texto[0]) return 0.0f;
+  if (pacote < 0 && selospacote_ativo() < 0 && !selospacote_embutidos_ok()) return 0.0f;
   selospacote_colorido(ajustes_selos_coloridos());
-  int choice=selospacote_player_fonte();
-  if(choice==1)return 0.0f;
-  int pacote=choice>=2?choice-2:-1;
-  if(pacote<0 && selospacote_ativo()<0 && !selospacote_embutidos_ok())return 0.0f;
-  if (!texto) texto = "";
-  if (ultVer != selospacote_versao() || strcmp(ult, texto)) {
-    const char *campos[1] = { ult };
-    snprintf(ult, sizeof ult, "%s", texto);
-    ultVer = selospacote_versao();
-    n = ult[0] ? selospacote_casar_pacote(pacote,campos,1,ids,SELOS_MAX_CASADOS) : 0;
+  versao = selospacote_versao();
+  for (int i = 0; i < 4; i++) {
+    if (slots[i].valid && slots[i].versao == versao &&
+        slots[i].pacote == pacote && !strcmp(slots[i].texto, texto)) {
+      slot = &slots[i]; break;
+    }
   }
-  if (!n) return 0.0f;
-  return selosDesenharPacote(pacote,ids,n,x,y,maxW,h,
-                            ajustes_selos_coloridos()?a*.9f:a,tom,0,medir);
+  if (!slot) {
+    slot = &slots[replaceNext++ % 4];
+    slot->valid = 0;
+    snprintf(slot->texto, sizeof slot->texto, "%s", texto);
+    slot->versao = versao;
+    slot->pacote = pacote;
+    const char *campos[] = {slot->texto};
+    slot->n = selospacote_casar_pacote(pacote, campos, 1,
+                                      slot->ids, SELOS_MAX_CASADOS);
+    slot->valid = 1;
+  }
+  if (!slot->n) return 0.0f;
+  return selosDesenharPacote(pacote, slot->ids, slot->n, x, y, maxW, h,
+                            ajustes_selos_coloridos() ? a * .9f : a, tom, 0, medir);
 }
 
 static float caixaAlta(const char *s, int r, int g, int b, float x, float y, float a) {
