@@ -6,7 +6,7 @@
 
 static int detEpAberto, detEpSzn, detEpRow, detEpCol;
 static int detEpSeasons[CAT_TEMP_MAX], detEpCounts[CAT_TEMP_MAX], detEpNSeasons;
-static int detEpRowIndexes[2048], detEpRows;
+static int detEpRowIndexes[2600], detEpRows;
 static unsigned detEpCatalogVersion;
 static float detEpScroll, detEpVel, detEpSeasonScroll, detEpSeasonVel;
 static int detEpShowDesc = 1, detEpShowRating = 1;
@@ -149,7 +149,7 @@ static int detEpEvento(const SDL_Event *ev) {
   if (key == SDLK_RETURN || key == SDLK_KP_ENTER) {
     if (detEpCol == 0) { detEpCol = 1; return 1; }
     const CatEp *ep = detEpAt(detEpRow);
-    if (ep && ep->temporada > 0 && ep->episodio > 0) {
+    if (ep && ep->temporada > 0 && ep->episodio > 0 && !epNaoExibido(ep)) {
       // Capture the exact selected episode before Dynamic Clock steals focus.
       pedFontesT = ep->temporada; pedFontesE = ep->episodio;
       pedFontes = 1;
@@ -214,6 +214,14 @@ static void detEpDesenhar(Uint32 agora) {
     const char *art=ep->thumb[0] ? ep->thumb
       : ci && ci->backdrop[0] ? ci->backdrop : NULL;
     GLuint tex=art?tex_obter_larg(art,300.0f):0;
+    const int watched = ci && ci->imdb[0] &&
+      vistoep_estado(ci->imdb,ep->temporada,ep->episodio)==1;
+    // Match Legacy's spoiler setting. Never briefly flash a sharp thumbnail
+    // while the GPU blur texture is still being prepared.
+    if (tex && ajustes_desfocar_nao_assistidos() && !watched) {
+      GLuint blurred = gfx_desfocado(tex,art);
+      tex = blurred ? blurred : 0;
+    }
     if (tex) {
       gfx_tex_aspect_atual=tex_aspecto(art);
       gfx_rect(thumb,tex,GFX_CARD,0,0,0,0.08f,1,1,1,1);
@@ -223,6 +231,12 @@ static void detEpDesenhar(Uint32 agora) {
     GfxRect epBadge={thumb.x+11.0f,thumb.y+10.0f,94.0f,34.0f};
     if (focused) gfx_vidro_painel(epBadge,.44f,.55f,1.0f);
     else gfx_cor(epBadge,.44f,.015f,.018f,.025f,.88f);
+    if (watched) {
+      GfxRect marker={thumb.x+thumb.w-48.0f,thumb.y+10.0f,34.0f,34.0f};
+      gfx_cor(marker,.5f,.015f,.018f,.025f,.9f);
+      gfx_icone((GfxRect){marker.x+6,marker.y+6,22,22},
+                 "aj_check",1,1,1,1);
+    }
     char id[40]; snprintf(id,sizeof id,"S%dE%d",ep->temporada,ep->episodio);
     txt_desenhar_alpha(txt_linha(TXT_CAPTION2,id,251,253,255,255),
                        epBadge.x+12.0f,epBadge.y+8.0f,1.0f);
@@ -237,7 +251,8 @@ static void detEpDesenhar(Uint32 agora) {
     float tx=thumb.x+thumb.w+28.0f;
     float maxW=card.x+card.w-tx-16.0f;
     char title[280];
-    snprintf(title,sizeof title,"%s",ep->nome[0]?ep->nome:"Episode");
+    if (ep->nome[0]) snprintf(title,sizeof title,"%s",ep->nome);
+    else snprintf(title,sizeof title,"Episode %d",ep->episodio);
     txt_desenhar_alpha(txt_linha_corta(TXT_CALLOUT,title,250,251,253,255,maxW),
                        tx,y+17.0f,1.0f);
     char meta[180]="";
@@ -257,6 +272,9 @@ static void detEpDesenhar(Uint32 agora) {
     if (detEpShowDesc && ep->sinopse[0])
       txt_bloco(TXT_PG_FIM,ep->sinopse,191,197,209,
                 tx,y+113.0f,maxW,26.0f,1.0f,2);
+    if (epNaoExibido(ep))
+      txt_desenhar_alpha(txt_linha(TXT_CAPTION2,"Not yet aired",
+                              247,208,111,255),tx,y+159.0f,1.0f);
   }
   gfx_sem_recorte();
 }
