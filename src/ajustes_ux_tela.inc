@@ -14,7 +14,7 @@ static const Item TELA[] = {
   // Personal settings are the first category, not buried behind Playback.
   SEC("Nerd Fazal Settings", "Personal customizations and Fusion badges", "aj_sparkles"),
     ROT("Fusion badges"),
-      OPC(AJ_SELOS_PACOTE_ADD), OPC(AJ_PLAYER_BADGES),
+      OPC(AJ_SELOS_PACOTE_ADD), OPC(AJ_PLAYER_SHOW), OPC(AJ_PLAYER_BADGES),
 
   // ---- ASSISTIR ------------------------------------------------------------------
   SEC("Reprodução", "Qualidade, som e o que o player faz", "aj_circle-play"),

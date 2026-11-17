@@ -727,6 +727,7 @@ typedef enum {
   AJ_HERO_PASTA_DETALHES, // Device-local folder hero details, append-only; on by default.
   AJ_STREAM_SELECTOR, // Retired selector-mode slot; keep its persisted index stable.
   AJ_PLAYER_BADGES,  // Append-only: independent player badge source by imported URL.
+  AJ_PLAYER_SHOW,    // Append-only: independent player badge visibility.
   AJ_N
 } OpcaoId;
 _Static_assert(DEBRID_RD == 0 && DEBRID_TB == 1 && DEBRID_PM == 2 && DEBRID_AD == 3,
@@ -1866,7 +1867,8 @@ static const Opcao OPCOES[AJ_N] = {
   ESC("Tamanho do destaque", V_HERO_TAMANHO, 3),       // local: heroSizeLocal
   ESC("Mostrar detalhes da pasta no destaque", V_LIGA, 2),
   LER("Seletor anterior (reservado)"), // Keep retired AJ_STREAM_SELECTOR slot.
-  ESC("Player Badge", V_SELOS_PACOTE, 4),
+  ESC("Player badges", V_SELOS_PACOTE, 4),
+  ESC("Show in player", V_LIGA, 2),
   };
 
 // Nome de cada opcao no arquivo. O formato era POSICIONAL — uma linha por
@@ -2202,6 +2204,7 @@ static const char *CHAVE[] = {
   "heroFolderDetailsLocal",
   "streamSelectorUiLocal",
   "-playerBadgeSourceLocal", // Selected URL saved in selos-player-pN.txt
+  "-playerBadgeShowLocal", // Visibility stored in selos-player-visible-pN.txt
 };
 // QUATRO VETORES PARALELOS indexados pelo mesmo enum AJ_*: OPCOES, CHAVE,
 // valor e as secoes. OPCOES ja e declarado [AJ_N], e `valor` aceita inicializacao
@@ -4644,7 +4647,8 @@ static void spAdicionar(const char *url) {
 // Espelho da escolha: o valor da linha e selospacote_ativo() + 1.
 static void spEspelhar(void) {
   valor[AJ_SELOS_PACOTE] = selospacote_ativo() + 1;
-  valor[AJ_PLAYER_BADGES] = selospacote_player_fonte();
+  valor[AJ_PLAYER_BADGES] = selospacote_player_preferencia();
+  valor[AJ_PLAYER_SHOW] = selospacote_player_mostrar() ? 0 : 1;
 }
 static void spRecolher(void) {
   if (spFioVivo && atomic_load_explicit(&spEstado, memory_order_acquire) == 3) {
@@ -7832,7 +7836,8 @@ static const char *ajudaOpcaoBase(int op) {
     case AJ_LIVETV_MODO: return "Teste para TVs em que o canal chega mas não aparece. A é o modo de sempre; B não escolhe a faixa de vídeo antes de o canal abrir; C também manda o pedido no formato de transmissão ao vivo. O diagnóstico da Live TV testa os três.";
     case AJ_LIVETV_DIAG: return "Mede a rede até o provedor, lê a conta Xtream e testa vários canais: se tocam, em que formato, com que resolução e em quanto tempo. No fim sugere ajustes da Live TV e pode aplicá-los.";
     case AJ_SELOS_CORES: return "Na lista de fontes, cada selo (4K, HDR, Dolby, codec, serviço) ganha a cor do seu tipo, como no pacote de selos do Nuvio. Desligado, os selos ficam brancos.";
-    case AJ_PLAYER_BADGES: return "No player, use os mesmos selos da lista, desligue ou escolha a URL de um pacote Fusion importado. A escolha do player não muda os selos da lista.";
+    case AJ_PLAYER_BADGES: return "Choose the badge pack used in the player. Same as stream badges follows the stream selection; a specific URL uses that pack independently.";
+    case AJ_PLAYER_SHOW: return "Show video and audio badges beneath the player title. Use badge packs that match plain text such as 2160p or Atmos.";
     case AJ_SELOS_PACOTE: return "Qual pacote de selos desenha a lista de fontes. Do Nuvio é o pacote que vem no app; os outros são os pacotes da sua conta (importados no Nuvio web) e os que você adiciona aqui. Vale para este perfil. Se nenhum selo do pacote combinar com a fonte, ela usa os selos do app.";
     case AJ_SELOS_PACOTE_ADD: return "Adiciona um pacote de selos pelo link do JSON dele (no máximo 3 no total, contando os da conta). O pacote entra já escolhido.";
     case AJ_URL_LISTA: return "Listas M3U e guias XMLTV deste perfil. Cada lista M3U vira uma fonte do Guia; cada guia XMLTV serve a programação de todas. Aqui aparece só o servidor; a URL inteira fica só nesta TV.";
@@ -9683,7 +9688,8 @@ static int definirValorDireto(int op, int novo) {
   if (op == AJ_ENQUETES) enquete_definir_optout(novo != 0);
   if (op == AJ_ADDONS_PRINCIPAL) sync_iniciar();
   if (op == AJ_SELOS_PACOTE) { selospacote_escolher(novo - 1); spEspelhar(); }
-  if (op == AJ_PLAYER_BADGES) { selospacote_player_escolher(novo); spEspelhar(); }
+  if (op == AJ_PLAYER_BADGES) { selospacote_player_escolher(novo ? novo + 1 : 0); spEspelhar(); }
+  if (op == AJ_PLAYER_SHOW) { selospacote_player_definir_mostrar(novo == 0); spEspelhar(); }
   if (op == AJ_PLAYER_EXTERNO || op == AJ_PLAYER_ANIME) {
     int b = novo - ppBase(op) - 3, k = op == AJ_PLAYER_ANIME;
     ppPkg[k][0] = 0;
@@ -10262,7 +10268,7 @@ static int nValores(int op) {
   if (op == AJ_LEG_LINGUA || op == AJ_LEG_LINGUA2 || op == AJ_AUD_LINGUA || op == AJ_AUD_LINGUA2) return nLingua > 0 ? nLingua : 1;
   if (op == AJ_TRAILER_AUDIO) return nTrAud > 0 ? nTrAud : 1;
   if (op == AJ_SELOS_PACOTE) return 1 + selospacote_n();
-  if (op == AJ_PLAYER_BADGES) return 2 + selospacote_n();
+  if (op == AJ_PLAYER_BADGES) return 1 + selospacote_n();
   if (op == AJ_PLAYER_EXTERNO) return 3 + ppN();
   if (op == AJ_PLAYER_ANIME) return 4 + ppN();
   if (op == AJ_URL_LISTA) return 1 + urlN;
@@ -10337,9 +10343,8 @@ static const char *textoValor(int op) {
     return v > 0 && v <= selospacote_n() ? selospacote_nome(v - 1) : "Do Nuvio";
   }
   if (op == AJ_PLAYER_BADGES) {
-    int v=selospacote_player_fonte();
-    return v==0 ? "Same as stream cards" : v==1 ? "Off" :
-           v-2<selospacote_n() ? selospacote_url(v-2) : "Same as stream cards";
+    int v = selospacote_player_preferencia();
+    return v > 0 && v <= selospacote_n() ? selospacote_url(v - 1) : "Same as stream badges";
   }
   if (op == AJ_URL_LISTA) return urlNomeValor(valor[op]);
   // FORA DO INTERVALO NAO LE FORA DO VETOR.
