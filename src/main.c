@@ -122,6 +122,15 @@
 // idioma novo: i18n le ajustes_idioma().
 static PerfTv perfTv;
 static char perfScreen[64];
+// Android logcat captures SDL_Log. Plain stdout may not be forwarded by the
+// SDL bootstrap, so report profiler samples through SDL on Android only.
+static void perfTvReport(const char *line) {
+#ifdef NV_ANDROID
+  SDL_Log("%s", line);
+#else
+  puts(line); fflush(stdout);
+#endif
+}
 static void perfTvFrame(Uint32 now, double ms) {
   static Uint32 checked;
   static int ready;
@@ -130,7 +139,7 @@ static void perfTvFrame(Uint32 now, double ms) {
   if (perftv_enabled && ready && perfScreen[0] &&
       perftv_frame(&perfTv, perfScreen, ms, perftv_uploads, txt_rasterizadas,
                    perftv_blur, perftv_glass, line, sizeof line)) {
-    puts(line); fflush(stdout);
+    perfTvReport(line);
   }
   if (now - checked >= 1000u) {
     char path[1024];
@@ -138,9 +147,12 @@ static void perfTvFrame(Uint32 now, double ms) {
 #ifdef NV_ANDROID
     char value[PROP_VALUE_MAX];
     enabled |= __system_property_get("debug.nuvio.perf", value) > 0 && !strcmp(value, "1");
+    // Auto-profile only the expanded selector; no root or debug properties
+    // required. One compact sample per ~3 seconds, never every frame.
+    enabled |= stream_folha_relogio_expandido();
 #endif
     if (!enabled && perftv_enabled && perftv_flush(&perfTv, line, sizeof line)) {
-      puts(line); fflush(stdout);
+      perfTvReport(line);
     }
     perftv_enabled = enabled;
     checked = now;
