@@ -518,10 +518,17 @@ static int atender(int c, int *erros) {
   if (!strcmp(metodo, "GET") || !strcmp(metodo, "HEAD")) {
     // Sem IP de quem pediu: so que a pagina chegou ao celular. E esta linha
     // que diz, no log de uma LG/Samsung, se a rede da TV deixa entrar.
-    if (metodo[0] == 'G') puts("[celular] pagina aberta");
-    pthread_mutex_lock(&trava);
-    responder(c, 200, metodo[0] == 'G' ? pagina : NULL);
-    pthread_mutex_unlock(&trava);
+    if (metodo[0] == 'G') {
+      // Do not keep the UI snapshot mutex held while sending over slow Wi-Fi:
+      // a stalled phone must not freeze the TV's settings render thread.
+      char paginaAtual[sizeof pagina];
+      puts("[celular] pagina aberta");
+      pthread_mutex_lock(&trava);
+      memcpy(paginaAtual, pagina, sizeof paginaAtual);
+      pthread_mutex_unlock(&trava);
+      paginaAtual[sizeof paginaAtual - 1] = 0;
+      responder(c, 200, paginaAtual);
+    } else responder(c, 200, NULL);
     return 0;
   }
   if (strcmp(metodo, "POST")) { responder(c, 405, NULL); return 0; }
