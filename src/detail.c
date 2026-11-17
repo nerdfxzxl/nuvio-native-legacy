@@ -835,6 +835,7 @@ static const char *cabecalhoDe(int r) {
   if (r == SEC_RELACIONADOS) return "Recomendações";
   if (r == SEC_ELENCO && nAbasInfo() <= 1) return "Elenco";
   if (r == SEC_MUSICAS) return "Músicas";
+  if (r == SEC_DETALHES) return "Details";
   if (ehSerie()) {
     if (r == SEC_TRAILERS) return "Trailers";
     if (r == SEC_ESTUDIOS) return "Redes e estúdios";
@@ -1186,7 +1187,19 @@ static void recalcularLayout(void) {
     }
     topoSec[SEC_FRASES] = conteudoSec[SEC_FRASES] = y;
     if (secaoN(SEC_FRASES) > 0) {
-      float fim = y + alturaSecao(SEC_FRASES) + NV_DETF_PAD_FIM;
+      y += alturaSecao(SEC_FRASES) + NV_DETF_SEC_GAP;
+      float fim = y + NV_DETF_PAD_FIM - NV_DETF_SEC_GAP;
+      if (fim > docFim) docFim = fim;
+    }
+    // Series no longer hide technical Details behind the now-removed episode
+    // carousel. Stack them AFTER the Wikiquote/Wikidata panel, not at the
+    // uninitialized (0,0) series origin.
+    topoSec[SEC_DETALHES] = conteudoSec[SEC_DETALHES] = y;
+    alvoSec[SEC_DETALHES] = NV_DETP_ALVO_FILEIRA;
+    if (secaoN(SEC_DETALHES) > 0) {
+      conteudoSec[SEC_DETALHES] += NV_DETF_CAB_H + NV_DETF_CAB_GAP;
+      y = conteudoSec[SEC_DETALHES] + alturaSecao(SEC_DETALHES) + NV_DETF_SEC_GAP;
+      float fim = y + NV_DETF_PAD_FIM - NV_DETF_SEC_GAP;
       if (fim > docFim) docFim = fim;
     }
     return;
