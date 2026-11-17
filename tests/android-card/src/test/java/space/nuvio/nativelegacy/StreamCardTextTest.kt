@@ -54,7 +54,7 @@ class StreamCardTextTest {
             Thread.sleep(10)
             prepared = renderer.layoutAsync(94, 301, 370, null)
         }
-        val ready = prepared ?: fail("background layout never completed")
+        val ready = requireNotNull(prepared) { "background layout never completed" }
         assertTrue(ready.height > 0)
         val pixelsExpected = ready.tile(0, ready.height)
         assertTrue(pixelsExpected.any { it ushr 24 != 0 })

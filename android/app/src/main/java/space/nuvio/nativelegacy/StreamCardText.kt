@@ -34,7 +34,7 @@ import kotlin.math.roundToInt
 // thread. Bounded queue prevents long scrolls from hoarding old card jobs.
 private object StreamCardRenderWorker {
     val executor = ThreadPoolExecutor(
-        1, 1, 0L, TimeUnit.MILLISECONDS, ArrayBlockingQueue(24),
+        1, 1, 0L, TimeUnit.MILLISECONDS, ArrayBlockingQueue<Runnable>(24),
         ThreadFactory { task -> Thread(task, "nuvio-card-paint").apply { isDaemon = true } },
         ThreadPoolExecutor.AbortPolicy()
     )
