@@ -46,6 +46,9 @@ RETIRADAS = {
     # in "Ordem dos provedores", size/groups in "Filtros de fontes".
     "AJ_FALHA_RD_LIMITE", "AJ_FALHA_TB_LIMITE", "AJ_FALHA_PM_LIMITE", "AJ_FALHA_AD_LIMITE",
     "AJ_FILTRO_TAM_MAX", "AJ_FILTRO_GRUPOS",
+    # Retired stream selector toggle: Legacy now uses the Dynamic Clock
+    # selector exclusively. Keep its saved enum slot but not its UX row.
+    "AJ_STREAM_SELECTOR",
 }
 opcoes = [op for op in opcoes if op not in RETIRADAS]
 
@@ -90,8 +93,10 @@ for t, v in itens + [("SEC", "<fim>")]:
             abertos[tipo][1] += 1
 
 n_sec = sum(1 for t, _ in itens if t == "SEC")
-if n_sec != 11:
-    falhas.append("esperadas 11 categorias, encontradas %d" % n_sec)
+# The fork has a dedicated "Nerd Fazal Settings" category above Legacy's
+# eleven original categories. Do not remove it to satisfy the old test.
+if n_sec != 12:
+    falhas.append("esperadas 12 categorias (11 do Legacy + personalizações), encontradas %d" % n_sec)
 
 ajuda = re.search(r"static const char \*SECAO_AJUDA\[\] = \{(.*?)\n\};", catalogo, re.S)
 if not ajuda:
