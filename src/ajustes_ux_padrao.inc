@@ -70,7 +70,7 @@
   0,                /* metadados externos: ligado */
   0,                /* data completa: ligada */
   100,              /* escurecimento do fundo do titulo: vinheta inteira */
-  0,                /* trailer automatico na pagina de titulo: ligado */
+  1,                /* trailer automatico na pagina de titulo: DESLIGADO por padrao (V_LIGA: 1 = off); escolha salva nao muda */
   0,                /* qualidade do trailer: maxima */
   0,                /* proporcao do trailer: zoom cinema */
   0,                /* fonte do trailer: automatico (Apple -> IMDb -> YouTube) */

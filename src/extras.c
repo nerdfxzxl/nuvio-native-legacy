@@ -1734,7 +1734,13 @@ void extras_pedir(const char *imdb, int serie, long tmdbId) {
   // produtoras e "Mais como este"; o MDBList alimenta as notas por fonte.
   // Antes o teste era so trakt_ativo — e uma conta sem Trakt perdia ate o
   // que nao depende dele.
-  if (!trakt_ativo() && !desc_chave_tmdb()[0] &&
+  // Public Trakt comments and episode ratings need only the configured
+  // application key, not a linked Trakt user account. Without this check,
+  // the caller could abort before the already-public comments request ran.
+  const char *cabPublicos[3];
+  char chavePublica[140];
+  int traktPublico = trakt_cabecalhos_publicos(cabPublicos, chavePublica, sizeof chavePublica);
+  if (!trakt_ativo() && !traktPublico && !desc_chave_tmdb()[0] &&
       !(mdbChave[0] && ajustes_mdblist_ligado())) { esquecerPedido(); return; }
   // O campo do catalogo pode vir com episodio ("tt9737326:2:1"), que e o
   // formato que os addons de fonte usam. O Trakt so conhece o id do TITULO —

@@ -2305,7 +2305,8 @@ static float alturaSecao(int r) {
     case SEC_COLECAO:      return COL_CARD_H;
     // + o cabecalho: sem ele a secao seguinte ("Detalhes do Filme") era
     // empilhada usando so a altura dos cartoes e saia POR CIMA deles.
-    case SEC_COMENTARIOS:  return alturaCabComentarios() + COM_CARD_H;
+    case SEC_COMENTARIOS:  return alturaCabComentarios() +
+                                     (nCartoesCom() > 0 ? COM_CARD_H : 96.0f);
     case SEC_ESTUDIOS:     return EST_CARD_H;
     case SEC_DETALHES:     return nLinhasDetalhe() * NV_DETF_DET_LINHA;
     // As duas sob demanda: a CHAMADA enquanto ninguem entrou (titulo +
@@ -2430,9 +2431,14 @@ static int secaoN(int r) {
     // Colunas: as duas pilulas do seletor "Série | Episódio" na serie; em filme
     // nao ha episodio, entao sobra uma coluna so para o foco pousar.
     case SEC_COMENTARIOS: {
+      // Do not make the entire section vanish before the Trakt reply arrives
+      // or when it is empty/unavailable. The existing renderer already has
+      // a loading/empty placeholder but previously could never reach it.
+      if (!ci || strncmp(ci->imdb, "tt", 2)) return 0;
       int nc = nCartoesCom();
-      if (nc <= 0 && extras_n_comentarios() <= 0) return 0;
-      return nPilulasCom() + nc;
+      // Movies need one focus target for their explanatory empty state.
+      // Series have their own Series/Episode pill targets.
+      return nPilulasCom() + (nc > 0 ? nc : (ehSerie() ? 0 : 1));
     }
     // Produtoras (filme) e redes+produtoras (serie) vindos do TMDB. Cada logo
     // e uma coluna focavel que abre o browse da entidade — o mesmo caminho das
@@ -2627,7 +2633,10 @@ static int temMais(void) {
   return 0;
 }
 static int nBotoesTodos(void) {
-  return (ehSerie() ? 3 : 4) + (temInicio() ? 1 : 0) + (temLembrar() ? 1 : 0)
+  // The standalone Sources/cloud action duplicates Play on an unwatched title
+  // and long-press Play/Resume on a resumed title. Leave the saved-list,
+  // watched, reminder and More actions intact.
+  return (ehSerie() ? 2 : 3) + (temInicio() ? 1 : 0) + (temLembrar() ? 1 : 0)
          + (temMais() ? 1 : 0);
 }
 
@@ -2671,11 +2680,12 @@ static int acaoEm(int n) {
     n--;
   }
   if (acoesAgrupadas() && n > 0) n++; // skip the list action already used as group anchor
-  // O "..." E O ULTIMO DA LINHA e a conferencia vem ANTES do salto da serie:
-  // com 3 circulares numa serie, a ultima posicao e n == 3, e a regra de
-  // baixo devolveria 4 — que e ACAO_INICIO, o botao de texto.
-  if (temMais() && n == (ehSerie() ? 3 : 4)) return ACAO_MAIS;
-  if (n >= 2 && ehSerie()) return n + 1;   // serie pula o olho
+  // Skip the retired Sources/cloud position without shifting the
+  // persisted action identities. Series also skip the watched (eye) button.
+  // More remains the final circle: movie + / eye / ..., series + / ...
+  if (temMais() && n == (ehSerie() ? 2 : 3)) return ACAO_MAIS;
+  if (n >= 2 && ehSerie()) return n + 2;  // skip watched and Sources
+  if (n >= 3) return n + 1;               // skip Sources
   return n;
 }
 
@@ -3091,10 +3101,8 @@ static void detail_evento_(const SDL_Event *e) {
         amtui_abrir(&at, ut, ue, tituloDe(idx));
       }
     } else if (nivel == 0) {
-      // Ordem FIXA: primario, adicionar a lista, marcar como visto, fontes.
-      //
-      // O botao do olho caia no `else` e abria a folha de FONTES — ele nunca
-      // marcou nada, apesar do icone. Agora tem pedido proprio.
+      // Primary Play and its long-press cover source selection. The
+      // independent Sources/cloud button is no longer part of this action row.
       int acao = acaoEm(botao);
       if (acao == ACAO_PRIMARIO) {
         pedReproduzir = 1;
@@ -7136,9 +7144,10 @@ static void desenhaComentarios(float x, float y, float a) {
   // Carregando e "nao ha" sao a MESMA lista vazia; sem separar os dois o
   // episodio parecia nunca ter comentario nenhum.
   if (n == 0) {
-    const char *msg = (!daSerie && extras_comentarios_ep_carregando())
+    const char *msg = ((!daSerie && extras_comentarios_ep_carregando()) ||
+                       (daSerie && extras_carregando()))
                     ? "Carregando comentários…"
-                    : "Nenhum comentário ainda.";
+                    : "Nenhum comentário disponível.";
     TxtLinha l = txt_linha(TXT_DET_META2, msg, 150, 154, 163, 255);
     txt_desenhar_alpha(l, x, y, a * 0.9f);
     return;
