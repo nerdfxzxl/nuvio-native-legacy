@@ -26,7 +26,7 @@ need("Five actions in correct order", all(
     key in detail for key in ("return ACAO_PRIMARIO", "return ACAO_EPISODIOS",
                                "return ACAO_TRAILER", "return ACAO_ASSISTIDO",
                                "return temMais() && n == 0 ? ACAO_MAIS")))
-need("Hero scroll independent of page", "float target=(float)first*step;" in detail
+need("Hero scroll independent of page", "scroll=anim_mola2(&velocity,scroll,(float)first*step,dt,NV_MOLA2_SCROLL);" in detail
      and "if (botao + 1 < nBotoes())" in detail)
 need("Rows rendered inside viewport", "gfx_recorte(x-9,yTop-8,stackW+18,totalH+16)" in detail)
 need("Watch progress preserved", "primarioPct = retomando" in detail)
