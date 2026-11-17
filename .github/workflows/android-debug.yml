@@ -5,6 +5,9 @@ on:
   push:
     branches:
       - feature/official-stream-selector
+  pull_request:
+    branches:
+      - feature/official-stream-selector
 
 permissions:
   contents: read
@@ -36,7 +39,10 @@ jobs:
           sdkmanager --install "ndk;27.2.12479018"
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends \
-            libsdl2-dev libsdl2-image-dev libsdl2-ttf-dev
+            libsdl2-dev libsdl2-image-dev libsdl2-ttf-dev glslang-tools
+
+      - name: Compile and validate GLES fragment shaders
+        run: python3 tests/validate_gles_shaders.py
 
       - name: Compile-check updated native UI files (ARM64)
         shell: bash
