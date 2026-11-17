@@ -31,7 +31,11 @@ internal class StreamCardText(private val context: Context) {
         Font(R.font.selector_inter, FontWeight.Medium)
     )
     private data class Key(val generation: Int, val index: Int, val width: Int)
-    private val cache = LruCache<Key, StreamCardParagraphs>(12)
+    // Reuse the Compose text measurer instead of recreating font resolution
+    // and shaping infrastructure for every freshly visible stream.
+    private val density = Density(1.6f, context.resources.configuration.fontScale)
+    private val measurer = TextMeasurer(resolver, density, LayoutDirection.Ltr, cacheSize = 24)
+    private val cache = LruCache<Key, StreamCardParagraphs>(24)
 
     fun layout(generation: Int, index: Int, width: Int, payload: ByteArray?): StreamCardParagraphs? {
         val key = Key(generation, index, width)
@@ -42,8 +46,6 @@ internal class StreamCardText(private val context: Context) {
         val title = field(0) ?: field(1) ?: field(2) ?: context.getString(R.string.stream_unknown)
         val description = (field(2) ?: field(1))?.takeIf { it.isNotBlank() && it != title }
         // The SDL clock uses 32 scene units for an official 20dp badge.
-        val density = Density(1.6f, context.resources.configuration.fontScale)
-        val measurer = TextMeasurer(resolver, density, LayoutDirection.Ltr, cacheSize = 0)
         fun measure(value: String, heading: Boolean): TextLayoutResult {
             val style = TextStyle(
                 fontFamily = family,

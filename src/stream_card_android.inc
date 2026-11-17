@@ -4,7 +4,7 @@ enum { CARD_TILE_H = 256, CARD_TILE_COUNT = 24 };
 typedef struct {
   GLuint texture;
   unsigned generation;
-  int index, width, top;
+  int index, width, top, rows;
   uint64_t used;
 } CardTile;
 static CardTile cardTiles[CARD_TILE_COUNT];
@@ -94,10 +94,17 @@ static GLuint cardTile(int index, int width, int top, int rows) {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, rows, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+        // Same-size replacements only change pixels; avoid reallocating GPU
+        // storage on every LRU cache miss while scrolling long stream lists.
+        if (slot->texture && slot->width == width && slot->rows == rows)
+          glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, rows, GL_RGBA,
+                          GL_UNSIGNED_BYTE, pixels);
+        else
+          glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, rows, 0, GL_RGBA,
+                       GL_UNSIGNED_BYTE, pixels);
         (*env)->ReleaseIntArrayElements(env, rgba, pixels, JNI_ABORT);
         gfx_tex_esquecer(0);
-        *slot = (CardTile){texture, listaGeracao, index, width, top, ++cardTileUse};
+        *slot = (CardTile){texture, listaGeracao, index, width, top, rows, ++cardTileUse};
         result = texture;
       }
     }
