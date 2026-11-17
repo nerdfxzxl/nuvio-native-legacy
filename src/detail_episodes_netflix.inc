@@ -42,6 +42,14 @@ static void detEpRebuild(int targetSeason, int targetEpisode) {
     }
     detEpSeasons[j] = current;
   }
+  // Season counts are metadata; cache them once, not O(seasons × episodes)
+  // every 60 Hz frame, especially for very long anime series.
+  for (int i = 0; i < n; i++) {
+    const CatEp *ep = cat_episodio(idx, i);
+    if (!ep) continue;
+    for (int j = 0; j < detEpNSeasons; j++)
+      if (detEpSeasons[j] == ep->temporada) { detEpCounts[j]++; break; }
+  }
   if (!detEpNSeasons) { detEpSzn = detEpRows = detEpRow = 0; return; }
   detEpSzn = 0;
   for (int j = 0; j < detEpNSeasons; j++)
@@ -181,12 +189,8 @@ static void detEpDesenhar(Uint32 agora) {
     char title[60]; snprintf(title,sizeof title,"Season %d",detEpSeasons[s]);
     txt_desenhar_alpha(txt_linha(TXT_CALLOUT,title,247,247,249,255),
                        chip.x+20,chip.y+12.0f,focused?1.0f:.85f);
-    int count = 0;
-    for (int i = 0; i < cat_n_episodios(idx); i++) {
-      const CatEp *ep = cat_episodio(idx,i);
-      if (ep && ep->temporada == detEpSeasons[s]) count++;
-    }
-    char epCount[32];snprintf(epCount,sizeof epCount,"%d episodes",count);
+    char epCount[32];
+    snprintf(epCount,sizeof epCount,"%d episodes",detEpCounts[s]);
     txt_desenhar_alpha(txt_linha(TXT_CAPTION2,epCount,177,184,195,255),
                        chip.x+20,chip.y+46.0f,.86f);
   }

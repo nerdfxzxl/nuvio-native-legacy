@@ -244,9 +244,21 @@ EM_JS(void, trailer_js_cmd, (const char *cmd), {
   var T = Module.nvTrailer;
   if (!T || !T.f) return;
   var c = UTF8ToString(cmd);
-  if (T.ehVideo) { try { if (c === 'pauseVideo') T.f.pause(); else if (c === 'playVideo') T.f.play(); } catch (e) {} return; }
+  if (T.ehVideo) {
+    try {
+      if (c === 'pauseVideo') T.f.pause();
+      else if (c === 'playVideo') T.f.play();
+      else if (c === 'restartVideo') { T.f.currentTime = 0; T.f.play(); }
+    } catch (e) {}
+    return;
+  }
   if (!T.f.contentWindow) return;
-  try { T.f.contentWindow.postMessage(JSON.stringify({ event: 'command', func: c, args: [] }), '*'); } catch (e) {}
+  try {
+    if (c === 'restartVideo') {
+      T.f.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'seekTo', args: [0, true] }), '*');
+      T.f.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'playVideo', args: [] }), '*');
+    } else T.f.contentWindow.postMessage(JSON.stringify({ event: 'command', func: c, args: [] }), '*');
+  } catch (e) {}
 });
 EM_JS(void, trailer_js_fechar, (), {
   var T = Module.nvTrailer;
