@@ -1095,6 +1095,12 @@ static void aj2EditorEscolha(GfxRect m) {
   int n = nValores(uxOp), i, primeiro, vis;
   float y, lx, lw, pw = 520.0f, y0;
   float passo=100.0f;
+  if (uxOp == AJ_PLAYER_BADGES) {
+    // Let URLs wrap over multiple lines without pushing the selected badge
+    // source into an unreadable single-line ellipsis.
+    passo = 136.0f;
+    pw = 0.0f;
+  }
   if(uxOp==AJ_GUIA_CATEGORIAS) {
     passo=fmaxf(passo,(float)ajTxt(TXT_V2_ROT,"Mg").h+ajTxt(TXT_V2_24,"Mg").h+36.0f);
     pw=0;
@@ -1125,7 +1131,7 @@ static void aj2EditorEscolha(GfxRect m) {
     // Servico desligado nao e oferta, e so linha de ponteiro: como o valor nao
     // aparece na lista do editor, clicar nele nao pode dar passo algum.
     if (uxOp == AJ_SALVOS_DEST && !ajustes_fonte_oferecida(i, trakt_ativo(), simkl_ativo())) { y += 100; continue; }
-    char t[160];
+    char t[512];
     int foco = !uxRodape && i == uxPendente;
     GfxRect r = { lx, y, lw, passo-4.0f };
     int fv;
@@ -1173,8 +1179,16 @@ static void aj2EditorEscolha(GfxRect m) {
         textoX = r.x + 110;
       }
       int indisp = uxOp == AJ_TEX_MB && texAcima(i);
-      TxtLinha l = ajTxtC(TXT_V2_ROT, t, lw - 210 - (textoX - r.x));
-      txt_desenhar_alpha(l, textoX, r.y + (96 - l.h) * 0.5f, indisp ? 0.4f : foco ? 1.0f : 0.88f);
+      TxtLinha l = {0};
+      if (uxOp == AJ_PLAYER_BADGES) {
+        int shade = foco ? 255 : 208;
+        float maxW = lw - 120.0f - (textoX - r.x);
+        txt_bloco_longas(TXT_V2_24, t, shade, shade, shade,
+                         textoX, r.y + 20.0f, maxW, 30.0f, 1.0f, 3);
+      } else {
+        l = ajTxtC(TXT_V2_ROT, t, lw - 210 - (textoX - r.x));
+        txt_desenhar_alpha(l, textoX, r.y + (96 - l.h) * 0.5f, indisp ? 0.4f : foco ? 1.0f : 0.88f);
+      }
       if (indisp) {
         char mot[96];
         TxtLinha m;
@@ -1186,10 +1200,16 @@ static void aj2EditorEscolha(GfxRect m) {
       }
     }
     if (uxOp!=AJ_GUIA_CATEGORIAS && i == uxOriginal && uxOp!=AJ_IPTV_ACOES && uxOp!=AJ_IPTV_EXCLUIR && (!ajIptvGerenciador(uxOp) || ajIptvDoTipo(ajIptvTipo(uxOp),i)==iptv_conta_indice())) {
-      TxtLinha s = ajTxt(TXT_V2_28, "Salvo");
-      float sx = r.x + r.w - 30 - s.w;
-      txt_desenhar_alpha(s, sx, r.y + (96 - s.h) * 0.5f, 0.55f);
-      ajIcone("aj_check", sx - 12 - 26, r.y + 35, 26, 0.55f);
+      if (uxOp == AJ_PLAYER_BADGES) {
+        // Nuvio-style selected check, separate from the keyboard focus halo.
+        ajIcone("aj_check", r.x + r.w - 56.0f,
+                r.y + (r.h - 26.0f) * 0.5f, 26.0f, 0.95f);
+      } else {
+        TxtLinha s = ajTxt(TXT_V2_28, "Salvo");
+        float sx = r.x + r.w - 30 - s.w;
+        txt_desenhar_alpha(s, sx, r.y + (96 - s.h) * 0.5f, 0.55f);
+        ajIcone("aj_check", sx - 12 - 26, r.y + 35, 26, 0.55f);
+      }
     }
     y += passo;
   }
