@@ -1817,23 +1817,11 @@ void detail_abrir(const HomeItem *it) {
   int replacing = aberto && !saindo;
   if (!replacing) { nVolta = 0; voltando = 0; }
   maisAcoes = 0;
-  int pos = -1, n = 0;
-  // CARROSSEL: so quando a pagina NASCE de um cartaz de fileira da Dinamica
-  // (o item aberto e o focado na home). Trocar de titulo por dentro (credito,
-  // "Mais como este") e os outros caminhos de abertura seguem como sempre.
+  // The home poster opens the regular detail page directly. The separate
+  // Dynamic Home carousel preview intercepted Play, Back and episode focus.
+  // Keep normal detail/episode handlers; leave the unused carousel code
+  // intact rather than rewriting its unrelated rendering routines.
   carro = 0;
-  if (!detalheRetrato() && !(aberto && !saindo) && it && ajustes_home_layout() == HOME_LAYOUT_DINAMICA)
-    n = home_fileira_titulos(carIdx, CAR_MAX, &pos);
-  if (n > 0 && pos >= 0 && carIdx[pos] == it->indice) {
-    carro = 1; carN = n; carPos = carAplicado = pos; carBotaoFim = 0; carFocou = 0; carEsperaRect = 0;
-    carOff = (float)pos; carVel = 0.0f; cartao = 1.0f; cartaoVel = 0.0f;
-    memset(carPre, 0, sizeof carPre);
-    carCheia = 0; carTxt = 1.0f; carTxtVel = 0.0f;
-    carOrigem = it->rect;
-    if (carOrigem.w < 8.0f || carOrigem.h < 8.0f)
-      carOrigem = (GfxRect){ NV_TELA_W * 0.5f - 124.0f, NV_TELA_H * 0.5f - 186.0f, 248.0f, 372.0f };
-    printf("[carrossel] abre %d/%d da fileira\n", pos + 1, n); fflush(stdout);
-  }
   abrirInterno(it);
   // Quem abre o detalhe por fora do roteador de app.c (ilha, player, pos-play)
   // tambem fica sem a lista de episodios; pedir aqui e idempotente.
