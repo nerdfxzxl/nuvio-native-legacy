@@ -481,6 +481,8 @@ static float heroDx;                // deslocamento horizontal do bloco do heroi
 // A conta (borda de subida, mola, medidas do logo) e de trailercinema.h, que a
 // home divide (mesmo modo cinema no destaque).
 static TrailerCinema trailerCinema;
+static int trailerManual;           // explicit hero trailer; Back restores artwork
+static int trailerControlFocus = -1; // -1 action stack, 0 pause, 1 restart
 // A FONTE do trailer `k` desta pagina, no formato que trailer_abrir espera:
 // URL (Apple HLS nos dois alvos, MP4 do IMDb na LG) ou id do YouTube (Samsung,
 // lista do TMDB). NULL quando ainda nao ha — ou quando nao vai haver, e ai
@@ -2669,12 +2671,14 @@ static void tocarTrailerCheio(int k) {
   if (u) {
     GfxRect tela = { 0, 0, NV_TELA_W, NV_TELA_H };
     trailerEtapa = 0; trailerPrazo = 0;   // tela cheia: so o teclado fecha
-    trailer_abrir(u, tela, ajustes_trailer_som(), 1);
+    trailer_abrir(u, tela, ajustes_trailer_som(), 0);
+    trailerManual = 1;
+    trailerControlFocus = -1;
 #ifdef __EMSCRIPTEN__
     // Same deadline/fallback ladder as autoplay (trailerEscada), fullscreen.
     trailerEtapa = qual;
     trailerDublado = qual == TRF_YOUTUBE;
-    trailerEtapaCheia = 1;
+    trailerEtapaCheia = 0;
     trailerPrazo = SDL_GetTicks() + NV_TRAILER_PREPARA_MS;
 #endif
   }
@@ -2688,7 +2692,9 @@ static void tocarTrailerCheio(int k) {
            extras_trailer_yt(k)[0]) {
     GfxRect tela = { 0, 0, NV_TELA_W, NV_TELA_H };
     trailerEtapa = 0; trailerPrazo = 0;
-    trailer_abrir(extras_trailer_yt(k), tela, ajustes_trailer_som(), 1);
+    trailer_abrir(extras_trailer_yt(k), tela, ajustes_trailer_som(), 0);
+    trailerManual = 1;
+    trailerControlFocus = -1;
   }
 #else
   else extras_trailer_abrir(k);
@@ -2845,6 +2851,30 @@ static void executarMais(int dm) {
 
 static void detail_evento_(const SDL_Event *e) {
   if (detEpEvento(e)) return;
+  if (trailerControlFocus >= 0 && trailerManual && trailer_aberto()) {
+    if (e->type == SDL_KEYDOWN || e->type == SDL_KEYUP) {
+      SDL_Keycode key = e->key.keysym.sym;
+      if (e->type == SDL_KEYDOWN) {
+        if (key == SDLK_ESCAPE || key == SDLK_AC_BACK ||
+            key == SDLK_BACKSPACE || key == SDLK_DELETE ||
+            e->key.keysym.scancode == NV_SCANCODE_BACK) {
+          trailer_fechar(); trailerManual = 0;
+          trailerControlFocus = -1; return;
+        }
+        if (key == SDLK_UP || key == SDLK_LEFT) {
+          if (key == SDLK_LEFT && trailerControlFocus > 0) trailerControlFocus--;
+          else trailerControlFocus = -1;
+        } else if (key == SDLK_RIGHT && trailerControlFocus < 1)
+          trailerControlFocus++;
+        return;
+      }
+      if (key == SDLK_RETURN || key == SDLK_KP_ENTER) {
+        if (trailerControlFocus == 0) trailer_alternar_pausa();
+        else trailer_recomecar();
+      }
+    }
+    return;
+  }
   if (musicaui_aberta()) { musicaui_evento(e); return; }
   pediuRelogio = 0;
   if (sinopse_aberta()) {
@@ -3292,7 +3322,7 @@ static void detail_evento_(const SDL_Event *e) {
     pessoaBuscaCancelar();
     if (comPicando) comentariosVoltar();
     else if (acoesAgrupadas() && maisAcoes && nivel == 0) { maisAcoes = 0; botao = temInicio() ? 1 : 0; }
-    else if (trailer_aberto()) trailer_fechar();
+    else if (trailer_aberto()) { trailer_fechar(); trailerManual = 0; trailerControlFocus = -1; }
     else if (nivel > 0) nivel = 0;
     else if (carro && carCheia) carCheia = 0;   // tela cheia no topo -> cartao
     else if (nVolta > 0) { pedAbrir = voltaPilha[--nVolta]; voltando = 1; }   // volta ao titulo de onde veio
@@ -3318,7 +3348,7 @@ static void detail_evento_(const SDL_Event *e) {
       if (acaoEm(botao) == ACAO_MAIS && !detmais_aberto()) {
         int available[DMAIS_N]; maisDisponiveis(available);
         detmais_abrir(available);
-      }
+      } else if (trailerManual && trailer_aberto()) trailerControlFocus = 0;
       return;
     }
     if (k == SDLK_DOWN) {
@@ -3742,7 +3772,10 @@ static void detail_atualizar_(float dt, Uint32 agora) {
                !(carro && cartao > 0.01f && ajustes_animacoes_reduzidas());
     if (!detail_assentado() || !topo) { if (!trailer_cheia()) trailerDesde = 0; }
     else if (!trailerDesde) trailerDesde = agora;
-    if (trailer_aberto() && !trailer_cheia() && !topo) trailer_fechar();
+    if (trailer_aberto() && !trailer_cheia() && !topo && !trailerManual) trailer_fechar();
+    if (trailerManual && !trailer_aberto()) {
+      trailerManual = 0; trailerControlFocus = -1;
+    }
     if (saindo && trailer_aberto()) trailer_fechar();
     if (!trailer_aberto() && !trailerTentado && trailerDesde && topo &&
         agora - trailerDesde >= NV_TRAILER_ESPERA_MS &&
@@ -3770,7 +3803,8 @@ static void detail_atualizar_(float dt, Uint32 agora) {
     // assentar (#178); na LG e no .wgt e sempre 1.
     { float alvo = (trailer_aberto() && trailer_tocando() && trailer_mostra_video()) ? 1.0f : 0.0f;
       // No cartao o bloco de texto fica: o modo cinema e da tela cheia.
-      int toca = alvo > 0.5f && !trailer_cheia() && !(carro && cartao > 0.01f);
+      int toca = alvo > 0.5f && !trailerManual &&
+                 !trailer_cheia() && !(carro && cartao > 0.01f);
       trailerFade = anim_mola(trailerFade, alvo, dt, NV_MOLA_SCROLL);
       trailercinema_passo(&trailerCinema, toca, dt, ajustes_animacoes_reduzidas()); }
   }
@@ -8037,6 +8071,25 @@ static void detail_desenhar_(Uint32 agora) {
     if (c > 0.005f) logoCinema(c * a2);
     if (ta > 0.005f) trocaarte_desenhar(logoDe(idx)); }
 
+  // Only visible while a manual trailer is active. Controls live in the
+  // unused bottom-right image space, away from the left metadata column.
+  if (trailerManual && trailer_aberto() && nivel == 0) {
+    float x = NV_TELA_W - 500.0f, y = NV_TELA_H - 116.0f;
+    for (int control = 0; control < 2; control++) {
+      GfxRect box = {x + control * 232.0f, y, 219.0f, 65.0f};
+      int focused = trailerControlFocus == control;
+      gfx_cor(box,.34f,.018f,.022f,.033f,focused?.97f:.80f);
+      if (focused) foco_anel(box,.34f,1.0f,1.0f);
+      const char *label = control == 0 ?
+        (trailer_pausado() ? i18n("Continuar") : i18n("Pausar")) :
+        i18n("Recomeçar");
+      const char *glyph = control == 0 ?
+        (trailer_pausado() ? "aj_play" : "aj_pause") : "aj_rotate-ccw-clock";
+      gfx_icone((GfxRect){box.x+15,box.y+19,27,27},glyph,1,1,1,1);
+      TxtLinha line = txt_linha_corta(TXT_PG_ROTULO,label,250,250,251,255,153);
+      txt_desenhar_alpha(line,box.x+52,box.y+(box.h-line.h)*.5f,1);
+    }
+  }
 
   if (corpoSobArte()) return;
   if (corpoOculto(ehSerie())) {

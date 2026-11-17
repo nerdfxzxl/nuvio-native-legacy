@@ -49,6 +49,9 @@ void trailer_no_cartao(int sim);
 void trailer_recorte(int vw, int vh, float z, float dw, float dh,
                      int *sx, int *sy, int *sw, int *sh);
 void trailer_fechar(void);
+// Manual hero-trailer controls; no full-screen player UI required.
+void trailer_alternar_pausa(void);
+void trailer_recomecar(void);
 // Music page owns the shared media backend, including between previews.
 void trailer_bloquear_musica(int sim);
 int  trailer_aberto(void);

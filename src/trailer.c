@@ -601,6 +601,24 @@ int trailer_estado(void) {
 #endif
 }
 
+void trailer_alternar_pausa(void) {
+  if (!aberto) return;
+#ifdef __EMSCRIPTEN__
+  trailer_js_cmd(trailer_js_pausado() ? "playVideo" : "pauseVideo");
+#else
+  pausado = !pausado;
+  video_pausar(pausado);
+#endif
+}
+void trailer_recomecar(void) {
+  if (!aberto) return;
+#ifdef __EMSCRIPTEN__
+  trailer_js_cmd("restartVideo");
+#else
+  video_buscar(0.0);
+  if (pausado) { pausado = 0; video_pausar(0); }
+#endif
+}
 int trailer_evento(const SDL_Event *e) {
   SDL_Keycode k;
   if (!aberto || !cheia || e->type != SDL_KEYDOWN) return 0;
@@ -609,11 +627,7 @@ int trailer_evento(const SDL_Event *e) {
       e->key.keysym.scancode == NV_SCANCODE_BACK) { trailer_fechar(); return 1; }
   if (k == SDLK_RETURN || k == SDLK_KP_ENTER || k == SDLK_SPACE) {
 #ifdef __EMSCRIPTEN__
-    trailer_js_cmd(trailer_js_pausado() ? "playVideo" : "pauseVideo");
-#else
-    pausado = !pausado;
-    video_pausar(pausado);
-#endif
+    trailer_alternar_pausa();
     return 1;
   }
   return 1;   // em tela cheia o resto do teclado nao vai a pagina de tras
@@ -664,9 +678,9 @@ int trailer_falhou(void) { return falhouUltima; }
 // cheia (detail.c) chama isto por cima do furo.
 int trailer_pausado(void) {
 #ifdef __EMSCRIPTEN__
-  return aberto && cheia && trailer_js_pausado();
+  return aberto && trailer_js_pausado();
 #else
-  return aberto && cheia && pausado;
+  return aberto && pausado;
 #endif
 }
 // MEDIDOR DE DESEMPENHO (#338, revisao do job 205): main chama isto por quadro
