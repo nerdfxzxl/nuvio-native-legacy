@@ -7000,8 +7000,11 @@ static float playerFusionTitulo(float x, float y, float alpha, int medir) {
   if (alpha <= 0.001f || ehCanal()) return 0.0f;
   playerFusionCaracteristicas(metadata, sizeof metadata);
   if (!metadata[0]) return 0.0f;
-  return stream_selos_medidos(metadata, x, y, 680.0f, 30.0f,
-                             0.953f, alpha, medir);
+  // Match the real source filename/name and measured playback info separately.
+  // A filename can identify Atmos-in-MKV or an HDR profile missing from the
+  // decoder, while resolution always comes from the active video pipeline.
+  return stream_selos_player_titulo(stream_item(stream_atual()), metadata,
+                                   x, y, 680.0f, 30.0f, 0.953f, alpha, medir);
 }
 
 // FILEIRA DE FORMATO ("4K · Dolby Vision · Atmos · Inglês 5.1", como no pedido

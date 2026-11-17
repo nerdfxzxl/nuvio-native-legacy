@@ -6070,6 +6070,74 @@ float stream_selos_medidos(const char *texto, float x, float y, float maxW, floa
                             ajustes_selos_coloridos() ? a * .9f : a, tom, 0, medir);
 }
 
+// Official NuvioTV's player badges consider BOTH live decoder properties and
+// original stream filename/name metadata. Some properties (Atmos-in-MKV,
+// HDR10+, DTS-HD) are not reliably reported by the video decoder alone.
+// Match each source independently to avoid cross-field regex lookahead leaks.
+// Do not regex-match again on each video frame; invalidate when source,
+// playback data, selected pack, or imported badge rules change.
+float stream_selos_player_titulo(const Stream *source, const char *medido,
+                                float x, float y, float maxW, float h,
+                                float tom, float alpha, int medir) {
+  typedef struct {
+    char playback[256];
+    const Stream *source;
+    unsigned listGeneration, version;
+    int revision, choice, count, valid;
+    unsigned short ids[SELOS_MAX_CASADOS];
+  } PlayerTitleCache;
+  static PlayerTitleCache cache;
+  int choice = selospacote_player_fonte();
+  int pacote = choice >= 2 ? choice - 2 : -1;
+  unsigned version = selospacote_versao();
+  int rev = (int)atomic_load(&folhaRevisao);
+  if (choice == 1 || (!source && (!medido || !medido[0]))) return 0.0f;
+  if (pacote < 0 && selospacote_ativo() < 0 && !selospacote_embutidos_ok())
+    return 0.0f;
+  if (!medido) medido = "";
+  if (!cache.valid || cache.source != source || cache.choice != choice ||
+      cache.version != version || cache.revision != rev ||
+      cache.listGeneration != listaGeracao || strcmp(cache.playback, medido)) {
+    unsigned short fromPlayback[SELOS_MAX_CASADOS];
+    unsigned short fromSource[SELOS_MAX_CASADOS];
+    int nPlay = 0, nSource = 0;
+    const char *live[] = {medido};
+    cache.valid = 0;
+    cache.count = 0;
+    if (medido[0])
+      nPlay = selospacote_casar_pacote(pacote, live, 1,
+                                      fromPlayback, SELOS_MAX_CASADOS);
+    if (source) {
+      const char *sourceText[] = {
+        source->arquivo, source->rotulo, source->descricao, source->provedor
+      };
+      nSource = selospacote_casar_pacote(pacote, sourceText, 4,
+                                        fromSource, SELOS_MAX_CASADOS);
+    }
+    // Preserve the package's native order, and remove duplicated badges.
+    for (int pass = 0; pass < 2; pass++) {
+      const unsigned short *matched = pass ? fromSource : fromPlayback;
+      int count = pass ? nSource : nPlay;
+      for (int j = 0; j < count && cache.count < SELOS_MAX_CASADOS; j++) {
+        int duplicate = 0;
+        for (int k = 0; k < cache.count; k++)
+          if (cache.ids[k] == matched[j]) { duplicate = 1; break; }
+        if (!duplicate) cache.ids[cache.count++] = matched[j];
+      }
+    }
+    snprintf(cache.playback, sizeof cache.playback, "%s", medido);
+    cache.source = source;
+    cache.listGeneration = listaGeracao;
+    cache.version = version;
+    cache.revision = rev;
+    cache.choice = choice;
+    cache.valid = 1;
+  }
+  if (!cache.count) return 0.0f;
+  return selosDesenharPacote(pacote, cache.ids, cache.count, x, y,
+                            maxW, h, alpha, tom, 0, medir);
+}
+
 static float caixaAlta(const char *s, int r, int g, int b, float x, float y, float a) {
   char up[160];
   size_t k;

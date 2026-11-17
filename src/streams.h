@@ -261,6 +261,9 @@ float stream_selos_fileira(const Stream *s, float x, float y, float maxW, float 
 // `medir` = so a largura. 0 = o pacote nao casou nada.
 float stream_selos_medidos(const char *texto, float x, float y, float maxW, float h, float tom,
                            float a, int medir);
+float stream_selos_player_titulo(const Stream *source, const char *medido,
+                                float x, float y, float maxW, float h,
+                                float tom, float alpha, int medir);
 
 // Indice do stream que o modo automatico escolhe, ou -1 se a lista esta vazia.
 int  stream_automatico(void);
