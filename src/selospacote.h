@@ -55,7 +55,8 @@ typedef enum {
   SELOS_ERR_JSON,      // nao e JSON, ou nao tem a forma de um pacote
   SELOS_ERR_VAZIO,     // JSON de pacote, mas nenhum filtro valido
   SELOS_ERR_LIMITE,    // ja ha 3 pacotes
-  SELOS_ERR_DUPLICADO  // a conta ja tem um pacote com esta URL
+  SELOS_ERR_DUPLICADO, // a conta ja tem um pacote com esta URL
+  SELOS_ERR_INDICE     // source absent or managed by cloud account
 } SelosResultado;
 
 // Recarrega do disco se o perfil mudou. Chamada sozinha pelas funcoes abaixo.
@@ -72,8 +73,11 @@ const char *selospacote_url(int i);
 int  selospacote_da_tv(int i);                  // 1 = adicionado nesta TV (removivel)
 int  selospacote_n_filtros(int i);              // filtros validos e ativos
 int  selospacote_ativo(void);                   // -1 = "Do Nuvio" (o embutido)
-int  selospacote_player_fonte(void);            // 0 same, 1 off, >=2 imported URL
-void selospacote_player_escolher(int choice);   // persisted separately by profile
+int  selospacote_player_fonte(void);            // renderer: 0 same, 1 hidden, >=2 pack
+int  selospacote_player_preferencia(void);      // picker: 0 same, 1.. selected URL
+int  selospacote_player_mostrar(void);          // independent display toggle
+void selospacote_player_definir_mostrar(int mostrar);
+void selospacote_player_escolher(int choice);   // 0 same, 1 legacy off, >=2 pack
 void selospacote_escolher(int i);               // -1 ou 0..n-1, guarda no perfil
 unsigned selospacote_versao(void);              // sobe a cada mudanca de lista/escolha
 
@@ -83,6 +87,8 @@ unsigned selospacote_versao(void);              // sobe a cada mudanca de lista/
 int  selospacote_adicionar(const char *json, const char *origem);
 // Remove o pacote `i` se for da TV; 0 se nao e (a conta remove no web).
 int  selospacote_remover(int i);
+// Replace one TV-owned URL only after validating the replacement JSON.
+int  selospacote_substituir(int i, const char *json, const char *origem);
 
 // Casa a fonte com o pacote ATIVO: ids dos filtros casados, na ordem do
 // pacote, sem repetir imagem/nome (como o web). `campos` = arquivo, nome,

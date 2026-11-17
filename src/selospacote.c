@@ -348,7 +348,8 @@ static int ativo = -1;
 static int escolhaExplicita;         // 0 = ainda nao escolheu: vale o ativo da conta
 static char escolhaUrl[512];         // "" = "Do Nuvio" escolhido de proposito
 static char playerUrl[512];          // Optional independent imported Player Badge source
-static int playerOff;                // Explicit player badge switch off
+static int playerOff;                // Legacy player flag (migration only)
+static int playerShow = 1;           // Independent visibility of player badges
 static unsigned versao = 1;
 
 // O CASAMENTO RODA NUM FIO DE FUNDO (streams.c): sao centenas de regex por
@@ -581,7 +582,7 @@ static void selospacote_iniciar_i(void) {
     snprintf(escolhaUrl, sizeof escolhaUrl, "%s", strcmp(t, "-") ? t : "");
     free(t);
   }
-  playerUrl[0] = 0; playerOff = 0;
+  playerUrl[0] = 0; playerOff = 0; playerShow = 1;
   snprintf(nome,sizeof nome,"selos-player-p%d.txt",perfil);
   if ((t = dados_ler(nome))) {
     size_t n = strlen(t);
@@ -590,6 +591,10 @@ static void selospacote_iniciar_i(void) {
     else snprintf(playerUrl,sizeof playerUrl,"%s",t);
     free(t);
   }
+  // Import the old Off setting, then load the new independent visibility flag.
+  playerShow = !playerOff;
+  snprintf(nome, sizeof nome, "selos-player-visible-p%d.txt", perfil);
+  if ((t = dados_ler(nome))) { playerShow = t[0] != '0'; free(t); }
   reconstruir();
   printf("[selos] perfil %d: %d pacote(s)%s%s\n", perfil, nPac, ativo >= 0 ? ", ativo: " : ", ativo: Do Nuvio",
          ativo >= 0 ? pac[ativo].nome : "");
@@ -632,24 +637,53 @@ int selospacote_da_tv(int i) { selospacote_iniciar(); return i >= 0 && i < nPac 
 int selospacote_n_filtros(int i) { selospacote_iniciar(); return i >= 0 && i < nPac ? pac[i].nc : 0; }
 int selospacote_ativo(void) { selospacote_iniciar(); return ativo; }
 unsigned selospacote_versao(void) { return versao; }
-// Choices: 0 = same as stream cards, 1 = off, 2.. = imported source URL.
+// Renderer contract remains: 0 = same as stream, 1 = hidden, >=2 = pack.
 int selospacote_player_fonte(void) {
-  int result=0;
+  int result = 0;
   travar(); selospacote_iniciar();
-  if(playerOff) result=1;
-  else if(playerUrl[0]) for(int i=0;i<nPac;i++)
-    if(!strcasecmp(playerUrl,pac[i].raw->url)) {result=i+2;break;}
+  if (!playerShow) result = 1;
+  else if (playerUrl[0]) for (int i = 0; i < nPac; i++)
+    if (!strcasecmp(playerUrl, pac[i].raw->url)) { result = i + 2; break; }
   soltar(); return result;
+}
+int selospacote_player_preferencia(void) {
+  int result = 0;
+  travar(); selospacote_iniciar();
+  if (playerUrl[0]) for (int i = 0; i < nPac; i++)
+    if (!strcasecmp(playerUrl, pac[i].raw->url)) { result = i + 1; break; }
+  soltar(); return result;
+}
+int selospacote_player_mostrar(void) {
+  int result; travar(); selospacote_iniciar();
+  result = playerShow; soltar(); return result;
+}
+void selospacote_player_definir_mostrar(int mostrar) {
+  char nome[48];
+  travar(); selospacote_iniciar();
+  if (playerShow != !!mostrar) {
+    playerShow = !!mostrar;
+    snprintf(nome, sizeof nome, "selos-player-visible-p%d.txt", perfilLido);
+    dados_gravar(nome, playerShow ? "1" : "0");
+    versao++;
+  }
+  soltar();
 }
 void selospacote_player_escolher(int v) {
   char nome[48];
   travar(); selospacote_iniciar();
-  playerOff=v==1; playerUrl[0]=0;
-  if(v>=2 && v-2<nPac) snprintf(playerUrl,sizeof playerUrl,"%s",pac[v-2].raw->url);
-  snprintf(nome,sizeof nome,"selos-player-p%d.txt",perfilLido);
-  if(playerOff) dados_gravar(nome,"-");
-  else if(playerUrl[0]) dados_gravar(nome,playerUrl);
-  else dados_apagar(nome);
+  if (v == 1) {
+    // Old Off callers now hide without clearing the chosen source.
+    playerShow = 0;
+    snprintf(nome, sizeof nome, "selos-player-visible-p%d.txt", perfilLido);
+    dados_gravar(nome, "0");
+  } else {
+    playerUrl[0] = 0;
+    if (v >= 2 && v - 2 < nPac)
+      snprintf(playerUrl, sizeof playerUrl, "%s", pac[v - 2].raw->url);
+    snprintf(nome, sizeof nome, "selos-player-p%d.txt", perfilLido);
+    if (playerUrl[0]) dados_gravar(nome, playerUrl);
+    else dados_apagar(nome);
+  }
   versao++; soltar();
 }
 
@@ -724,6 +758,53 @@ static int selospacote_remover_i(int i) {
   return 1;
 }
 int selospacote_remover(int i) { int r; travar(); r = selospacote_remover_i(i); soltar(); return r; }
+
+// Validate the replacement before mutating the active TV pack. The old
+// badge pack remains intact on errors, including invalid JSON and duplicates.
+int selospacote_substituir(int i, const char *json, const char *origem) {
+  J *raiz;
+  Lote novo;
+  int k, duplicado = 0;
+  char antiga[512], nome[48];
+  if (!json) return SELOS_ERR_JSON;
+  travar(); selospacote_iniciar();
+  if (i < 0 || i >= nPac || !pac[i].daTv) { soltar(); return SELOS_ERR_INDICE; }
+  for (k = 0; k < tv.n; k++) if (&tv.p[k] == pac[i].raw) break;
+  if (k >= tv.n) { soltar(); return SELOS_ERR_INDICE; }
+  raiz = jParse(json, strlen(json));
+  if (!raiz || (raiz->t != J_OBJ && raiz->t != J_STR)) {
+    jLiberar(raiz); soltar(); return SELOS_ERR_JSON;
+  }
+  memset(&novo, 0, sizeof novo);
+  loteDoValor(&novo, raiz, origem ? origem : "", 0);
+  jLiberar(raiz);
+  if (novo.n != 1) { loteLiberar(&novo); soltar(); return SELOS_ERR_VAZIO; }
+  for (int c = 0; c < conta.n; c++)
+    if (!strcasecmp(conta.p[c].url, novo.p[0].url)) duplicado = 1;
+  for (int c = 0; c < tv.n; c++)
+    if (c != k && !strcasecmp(tv.p[c].url, novo.p[0].url)) duplicado = 1;
+  if (duplicado) {
+    loteLiberar(&novo); soltar(); return SELOS_ERR_DUPLICADO;
+  }
+  snprintf(antiga, sizeof antiga, "%s", tv.p[k].url);
+  if (escolhaExplicita && !strcasecmp(escolhaUrl, antiga)) {
+    snprintf(escolhaUrl, sizeof escolhaUrl, "%s", novo.p[0].url);
+    gravarEscolha(perfilLido);
+  }
+  if (playerUrl[0] && !strcasecmp(playerUrl, antiga)) {
+    snprintf(playerUrl, sizeof playerUrl, "%s", novo.p[0].url);
+    snprintf(nome, sizeof nome, "selos-player-p%d.txt", perfilLido);
+    dados_gravar(nome, playerUrl);
+  }
+  pacoteLiberar(&tv.p[k]);
+  tv.p[k] = novo.p[0];
+  memset(&novo.p[0], 0, sizeof novo.p[0]);
+  loteLiberar(&novo);
+  gravarTv(perfilLido);
+  reconstruir();
+  soltar();
+  return SELOS_OK;
+}
 
 // ---- casamento ---------------------------------------------------------------
 // badgeMatchCandidates: cada campo quebrado em linhas, espacos colapsados, sem
