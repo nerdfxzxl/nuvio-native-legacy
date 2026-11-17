@@ -758,6 +758,21 @@ static int selospacote_remover_i(int i) {
   tv.n--;
   gravarTv(perfilLido);
   if (era) { escolhaExplicita = 1; escolhaUrl[0] = 0; gravarEscolha(perfilLido); }
+  // Removing the pack used in the player should clear that explicit source,
+  // not silently reactivate it if the same URL is imported again later.
+  if (playerUrl[0]) {
+    int stillPresent = 0;
+    for (int z = 0; z < tv.n; z++)
+      if (!strcasecmp(tv.p[z].url, playerUrl)) stillPresent = 1;
+    for (int z = 0; z < conta.n; z++)
+      if (!strcasecmp(conta.p[z].url, playerUrl)) stillPresent = 1;
+    if (!stillPresent) {
+      char filename[48];
+      playerUrl[0] = 0;
+      snprintf(filename, sizeof filename, "selos-player-p%d.txt", perfilLido);
+      dados_apagar(filename);
+    }
+  }
   reconstruir();
   return 1;
 }

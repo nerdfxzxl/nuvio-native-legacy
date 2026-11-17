@@ -173,7 +173,8 @@ int main(void) {
   selospacote_player_escolher(0);
   assert(!selospacote_player_mostrar() && selospacote_player_preferencia() == 0);
   selospacote_player_escolher(3);
-  reiniciarPerfil(4); reiniciarPerfil(3); // New session reloads both separately.
+  reiniciarPerfil(4); assert(selospacote_n() == 0);
+  reiniciarPerfil(3); // New session reloads both separately.
   assert(!selospacote_player_mostrar() && selospacote_player_preferencia() == 2);
   selospacote_player_definir_mostrar(1);
   assert(selospacote_player_fonte() == 3);
@@ -194,9 +195,13 @@ int main(void) {
   assert(!strcmp(selospacote_url(1), "https://new.invalid/rules"));
   assert(selospacote_player_preferencia() == 2 &&
          selospacote_player_fonte() == 3);
-  reiniciarPerfil(4); reiniciarPerfil(3);
+  reiniciarPerfil(4); assert(selospacote_n() == 0);
+  reiniciarPerfil(3);
   assert(!strcmp(selospacote_url(1), "https://new.invalid/rules"));
   assert(selospacote_player_preferencia() == 2);
+  assert(selospacote_remover(1) == 1);
+  assert(selospacote_player_preferencia() == 0);
+  assert(selospacote_player_fonte() == 0);
 
   // Legacy "-" means hidden. Migrating it must never silently turn badges on.
   dados_gravar("selos-player-p5.txt", "-");
@@ -204,7 +209,8 @@ int main(void) {
   assert(!selospacote_player_mostrar() && selospacote_player_fonte() == 1);
   selospacote_player_escolher(0);
   assert(!selospacote_player_mostrar());
-  reiniciarPerfil(3); reiniciarPerfil(5);
+  reiniciarPerfil(3); assert(selospacote_n() == 2);
+  reiniciarPerfil(5);
   assert(!selospacote_player_mostrar());
   selospacote_player_definir_mostrar(1);
   assert(selospacote_player_mostrar() && selospacote_player_fonte() == 0);
