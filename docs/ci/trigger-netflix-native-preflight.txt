@@ -1,0 +1,2 @@
+Stand-alone ARM64 native preflight for integrated detail redesign.
+Compiles modified C files and checks settings without building Rust/P2P/APK.
