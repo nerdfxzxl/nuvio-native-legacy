@@ -2820,8 +2820,6 @@ static void executarMais(int dm) {
   } else if (dm == DMAIS_SINOPSE) {
     const CatItem *ci = cat_item(idx);
     sinopse_abrir(ci ? ci->titulo : "", sinopseDe(idx));
-  } else if (dm == DMAIS_TRAILER) {
-    tocarTrailerCheio(0);
   } else if (dm == DMAIS_EXPLORAR) {
     // O roteador (app.c) fecha a pagina e abre a toca neste titulo.
     trailer_fechar();
@@ -2839,7 +2837,10 @@ static void executarMais(int dm) {
   }
 }
 
+#include "detail_episodes_netflix.inc"
+
 static void detail_evento_(const SDL_Event *e) {
+  if (detEpEvento(e)) return;
   if (musicaui_aberta()) { musicaui_evento(e); return; }
   pediuRelogio = 0;
   if (sinopse_aberta()) {
@@ -3084,6 +3085,10 @@ static void detail_evento_(const SDL_Event *e) {
         pedEscolherFonteInicial = dur >= NV_HOLD_MS || !temInicio();
         pedRetomarDireto = !pedEscolherFonteInicial;
 
+      } else if (acao == ACAO_EPISODIOS) {
+        detEpAbrir();
+      } else if (acao == ACAO_TRAILER) {
+        tocarTrailerCheio(0);
       } else if (acao == ACAO_INICIO) {
         // "Assistir do comeco" (issue #46): mesmo caminho do primario, mas o
         // roteador zera a retomada DESTA sessao depois de armar o episodio.
@@ -3283,6 +3288,7 @@ static void detail_evento_(const SDL_Event *e) {
     pessoaBuscaCancelar();
     if (comPicando) comentariosVoltar();
     else if (acoesAgrupadas() && maisAcoes && nivel == 0) { maisAcoes = 0; botao = temInicio() ? 1 : 0; }
+    else if (trailer_aberto()) trailer_fechar();
     else if (nivel > 0) nivel = 0;
     else if (carro && carCheia) carCheia = 0;   // tela cheia no topo -> cartao
     else if (nVolta > 0) { pedAbrir = voltaPilha[--nVolta]; voltando = 1; }   // volta ao titulo de onde veio
@@ -3290,61 +3296,40 @@ static void detail_evento_(const SDL_Event *e) {
     return;
   }
   if (nivel == 0) {
-    // Up opens the existing rating card; rated titles can edit their stars.
-    // CIMA na ilha de amigos volta ao botao em que estava; BAIXO entra nas secoes;
-    // ESQUERDA pede o menu lateral como o primeiro botao.
+    // Navigate only the hero action viewport; never scroll the detail page
+    // until DOWN is pressed past its final action.
     if (focoAmigos) {
       if (k == SDLK_UP) { focoAmigos = 0; return; }
       if (k == SDLK_LEFT) { pediuMenu = 1; return; }
       if (k != SDLK_DOWN) return;
       focoAmigos = 0;
-    } else if (k == SDLK_DOWN && !(carro && !carCheia)) {
-      AmigosTitulo at;
-      if (amigosDoTitulo(&at)) { focoAmigos = 1; return; }
     }
-    if (k == SDLK_UP && reacao_detalhe_abrir(cat_item(idx))) return;
-    // #407: Up focuses the clock; only OK opens its panel.
-    if (k == SDLK_UP && !e->key.repeat) { pediuRelogio = 1; return; }
-    // CARROSSEL: a primeira seta para baixo so estica o cartao (ver carCheia).
-    if (k == SDLK_DOWN && carro && !carCheia) { carCheia = 1; return; }
+    if (k == SDLK_UP) {
+      if (botao > 0) { botao--; return; }
+      if (!e->key.repeat) pediuRelogio = 1;
+      return;
+    }
+    if (k == SDLK_LEFT) { if (botao == 0) pediuMenu = 1; return; }
+    if (k == SDLK_RIGHT) {
+      if (acaoEm(botao) == ACAO_MAIS && !detmais_aberto()) {
+        int available[DMAIS_N]; maisDisponiveis(available);
+        detmais_abrir(available);
+      }
+      return;
+    }
     if (k == SDLK_DOWN) {
-      sincronizarEpisodioPadrao();
-      epEscolhido = 1;
-      // Descer do hero cai na primeira fileira FOCAVEL. Num filme nao ha
-      // temporadas nem episodios, e parar numa fileira vazia deixava o D-pad
-      // sem resposta. Tem de ser secaoColunas e nao secaoN: os trailers sao
-      // DESENHADOS mas nao aceitam foco, e um filme sem elenco pousaria neles.
-      //
-      // A COLUNA VEM DA MEMORIA, nao de zero. Issue #43: cravar 0 aqui jogava
-      // fora a temporada e o episodio que detail_abrir semeou em
-      // colunaLembrada — a fileira de temporadas abria sempre na primeira aba,
-      // e ela e quem trocaria a lista de episodios para a temporada errada no
-      // proximo quadro (ver o sincronizador em detail_atualizar).
+      if (botao + 1 < nBotoes()) { botao++; return; }
+      sincronizarEpisodioPadrao(); epEscolhido = 1;
       for (int o = 0; o < N_ORDEM; o++) {
         int r = ordemSecoes()[o];
         if (secaoColunas(r) > 0) {
-          int alvo = foco.colunaLembrada[r];
-          if (alvo >= secaoColunas(r)) alvo = secaoColunas(r) - 1;
-          if (alvo < 0) alvo = 0;
-          foco.fileira = r; foco.coluna = alvo; nivel = 1;
-          break;
-        } }
+          int target = foco.colunaLembrada[r];
+          if (target >= secaoColunas(r)) target = secaoColunas(r)-1;
+          if (target < 0) target = 0;
+          foco.fileira = r; foco.coluna = target; nivel = 1; return;
+        }
+      }
     }
-    else if (k == SDLK_RIGHT) {
-      // Carrossel: mais um direita na ponta da linha de botoes e o PROXIMO
-      // titulo da fileira (o mesmo gesto do app da Apple).
-      if (botao < nBotoes() - 1) botao++;
-      else if (carro && !carCheia) carPasso(1);
-    }
-    else if (k == SDLK_LEFT)  {
-      // ESQUERDA no primeiro botao pede a barra lateral, que abre POR CIMA
-      // da pagina (app.c). Um toque so. No carrossel ela e o titulo
-      // ANTERIOR; so no primeiro da fileira pede a barra.
-      if (botao > 0) botao--;
-      else if (carro && !carCheia && carPos > 0) carPasso(-1);
-      else if (!(carro && carCheia)) pediuMenu = 1;
-    }
-    if (acoesAgrupadas()) maisAcoes = nivel == 0 && botao >= 1 + (temInicio() ? 1 : 0);
     return;
   }
   // A guarda que existia aqui bloqueava DESCER das abas sempre que a aba
@@ -3690,6 +3675,7 @@ static void detail_atualizar_(float dt, Uint32 agora) {
     }
   }
   if (!aberto) { blocoAnt[0] = blocoAnt[1] = blocoAnt[2] = -1.0f; return; }
+  if (detEpAberto) { detEpAtualizar(dt); return; }
   if (pessoaAberta && pessoa_falhou()) {
     pessoaAberta = 0;
     ilha_avisar("det-elenco-sem-pagina", ILHA_INFO, NULL,
@@ -4792,8 +4778,9 @@ static void heroWeb(float a, float desloc) {
   // pedindo a largura real, aparece na hora e troca pela nitida em seguida.
   titulo_tempo_logo(&detalheTempo, "detalhe", arqLogo, texLogo, 0);
   if (a > 0.05f) titulo_tempo_info(&detalheTempo, "detalhe", ci, 0);
+  // Make space above the three action chips without shifting lower metadata.
   float baseLogo = ((temRetom > 0.0f || agLinha[0]) ? yEstado : yAcoes)
-                   - NV_DETW_LOGO_GAP;
+                   - NV_DETW_LOGO_GAP - 116.0f;
   float espacoLogo = baseLogo - 110.0f - (!nomeAbaixo ? hNome : 0);
   if (espacoLogo < 0) espacoLogo = 0;
   static char  logoVisto[600];
@@ -4887,156 +4874,64 @@ static void heroWeb(float a, float desloc) {
     else { snprintf(rot, sizeof rot, "%s",
                     det_rotulo_primario(ci ? ci->progresso : 0, ajustes_cw_concluido()));
            retomando = !ehSerie(); } }
-  // Retomando com progresso: trilho no botao e, no lugar de "Retomar", o tempo
-  // que falta, como o app da Apple TV ("1 h 51 min"). Serie mantem o TxEy na
-  // frente. Sem duracao conhecida o rotulo fica como estava.
-  primarioPct = -1;
-  if (retomando && ci && ci->progresso > 0 && ci->progresso < 100) {
-    int total = durMin;   // serie: a duracao do episodio que a ficha traz ("54 min")
-    primarioPct = ci->progresso;
-    if (total > 0) {
-      int falta = (total * (100 - ci->progresso) + 99) / 100;
-      char tf[32];
-      desc_duracao_min(falta > 0 ? falta : 1, tf, sizeof tf);
-      if (ehSerie()) {
-        int t = 0, e = 0, de = 0;
-        if (episodioAlvo(&t, &e, &de) && t >= 0 && e > 0) {
-          char ep[16];
-          snprintf(ep, sizeof ep, i18n("T%dE%d"), t, e);
-          snprintf(rot, sizeof rot, "%s · %s", ep, tf);
-        }
-      } else snprintf(rot, sizeof rot, "%s", tf);
-    }
-  }
+  // Progress is inside the focused action, but never replaces "Resume S1E5"
+  // with an unexplained remaining-time label.
+  primarioPct = retomando && ci && ci->progresso>0 && ci->progresso<100
+              ? ci->progresso : -1;
 
-  { float cyBtn = yAcoes + NV_DETW2_BTN_H * 0.5f;
-    if (acoesAgrupadas()) {
-      int grupo = 1 + (temInicio() ? 1 : 0);
-      maisAcoes = nivel == 0 && botao >= grupo;
+  { // Three visible Netflix-style action chips. The page does not scroll.
+    const float rowH=62.0f, step=70.0f, stackW=378.0f, totalH=202.0f;
+    float x=NV_DETW2_X,yTop=yAcoes+NV_DETW2_BTN_H-totalH;
+    static float scroll,velocity,focusSpring[6];
+    static Uint32 lastTick; static int previousTitle=-1;
+    Uint32 now=SDL_GetTicks();
+    float dt=lastTick?(float)(Uint32)(now-lastTick)*.001f:.016f;
+    if(dt>.05f)dt=.05f;
+    lastTick=now;
+    int n=nBotoes(); if(botao>=n)botao=n-1; if(botao<0)botao=0;
+    if(previousTitle!=idx) {
+      scroll=velocity=0; memset(focusSpring,0,sizeof focusSpring);
+      previousTitle=idx;
     }
-    int nb = 0, n = nBotoes();
-    // Trocar de titulo com o foco no ultimo circular de um FILME e cair numa
-    // serie deixaria `botao` = 3 numa linha de 3 botoes: nenhum apareceria
-    // focado e o OK nao acharia acao. Fixa aqui, no desenho, que e por onde
-    // todo quadro passa.
-    if (botao >= n) botao = n - 1;
-    float bx = NV_DETW2_X;
-    GfxRect rp = heroAcaoRect(&bx, &cyBtn, larguraPrimario(rot), NV_DETW2_BTN_H);
-    desenhaBotao(rp, rot, 0, nivel == 0 && botao == nb, a);
-    player_morph_de(morphLogo, rp);   // A3: o morph da abertura parte daqui
-    primarioPct = -1;   // os outros botoes nao tem trilho
-    if (a > 0.3f) ponteiro_alvo(rp.x, rp.y, rp.w, rp.h, ponteiroDetalhe, NULL, -1, nb);
-    bx += det_avanco(rp.w, nivel == 0 && botao == nb, NV_DETW2_FOCO_SX, NV_DETW2_BTN_GAP); nb++;
-    if (temInicio()) {
-      // "Assistir do comeco" entre o primario e os circulares (issue #46).
-      const char *rotIni = i18n("Assistir do começo");
-      int selIni = nivel == 0 && botao == nb;
-      static float inicioExp;   // largura da pilula (0..1)
-      static float inicioRot;   // alpha do rotulo (0..1)
-      static Uint32 inicioTick;
-      static int inicioIdx = -1;
-      Uint32 tick = SDL_GetTicks();
-      float dtIni = inicioTick ? (float)(Uint32)(tick - inicioTick) : 0;
-      if (dtIni > 80) dtIni = 80;
-      if (inicioIdx != idx) { inicioExp = inicioRot = 0; inicioIdx = idx; }
-      inicioTick = tick;
-      // A LARGURA ABRE PRIMEIRO e o ROTULO entra DEPOIS, inteiro (anim_expande).
-      // Antes o rotulo era cortado pela largura em crescimento
-      // (txt_linha_corta com rs.w): cada palavra aparecia conforme a pilula
-      // crescia, como se o texto estivesse sendo digitado na hora — "a
-      // animacao dessa play from beginning nao ta legal, o texto ta meio
-      // que escrevendo". Ordenado, o rotulo so existe com a pilula aberta.
-      anim_expande(&inicioExp, &inicioRot, selIni ? 1.0f : 0.0f,
-                   dtIni * 0.001f, 160.0f, 120.0f);
-      float fechado = acoesAgrupadas() ? NV_DETW2_CIRC : larguraSecundario(rotIni);
-      float abertoIni = larguraSecundario(rotIni) + 44.0f;
-      GfxRect rs = { bx, cyBtn-fechado*.5f,
-        acoesAgrupadas() ? fechado+(abertoIni-fechado)*anim_suave(inicioExp) : fechado,
-        acoesAgrupadas() ? NV_DETW2_CIRC : NV_DETW2_BTN_H };
-      rs.y = cyBtn - rs.h*.5f;
-      if (detalheRetrato()) rs = heroAcaoRect(&bx, &cyBtn, rs.w, rs.h);
-      if (acoesAgrupadas()) {
-        botao_pilula(rs, "", NULL, selIni ? 1.0f : 0.0f, 0, 0, a);
-        float tinta = selIni ? ajustes_acento_tinta(NULL,NULL,NULL) : 235.0f/255.0f;
-        gfx_icone((GfxRect){rs.x+22,rs.y+(rs.h-28)*.5f,28,28},
-                  "aj_rotate-ccw-clock", tinta,tinta,tinta,a);
-        // Rotulo INTEIRO, sem corte: inicioRot so existe com a largura no
-        // fim (anim_expande), e o texto cabe sem encostar na borda da pilula
-        // (abertoIni = rotulo + 100 de folga contra os 64 do inicio dele).
-        if (inicioRot > 0.003f) {
-          int cor = (int)(tinta*255);
-          TxtLinha label = txt_linha(TXT_DET_BOTAO,rotIni,cor,cor,cor,255);
-          txt_desenhar_alpha(label,rs.x+64,rs.y+(rs.h-label.h)*.5f,a*inicioRot);
-        }
-      } else desenhaSecundario(rs, rotIni, selIni, a);
-      if (a > 0.3f) ponteiro_alvo(rs.x, rs.y, rs.w, rs.h, ponteiroDetalhe, NULL, -1, nb);
-      bx += rs.w + NV_DETW2_BTN_GAP; nb++;
-    }
-    if (temLembrar() && !acoesAgrupadas()) {
-      const CatItem *ciL = cat_item(idx);
-      int foc = nivel == 0 && botao == nb;
-      float ext = foc ? det_foco_extra(NV_DETW2_CIRC, NV_DETW2_FOCO_SY) : 0.0f;
-      bx += ext;
-      GfxRect rs = { bx, cyBtn - NV_DETW2_CIRC * 0.5f,
-                     NV_DETW2_CIRC, NV_DETW2_CIRC };
-      if (detalheRetrato()) rs = heroAcaoRect(&bx, &cyBtn, rs.w, rs.h);
-      desenhaLembrete(rs, ciL && agenda_lembrete(ciL->imdb),
-                      nivel == 0 && botao == nb, a);
-      if (a > 0.3f) ponteiro_alvo(rs.x, rs.y, rs.w, rs.h, ponteiroDetalhe, NULL, -1, nb);
-      bx += det_avanco(NV_DETW2_CIRC, nivel == 0 && botao == nb, NV_DETW2_FOCO_SY, NV_DETW2_BTN_GAP); nb++;
-    }
-    if (acoesAgrupadas()) {
-      static float reveal, revealVelocity;
-      static Uint32 revealTick;
-      static int revealIdx = -1;
-      Uint32 now = SDL_GetTicks();
-      float elapsed = revealTick ? (float)(Uint32)(now-revealTick) : 0;
-      if (elapsed > 80) elapsed = 80;
-      if (revealIdx != idx) { reveal = revealVelocity = 0; revealIdx = idx; }
-      revealTick = now;
-      reveal = ajustes_animacoes_reduzidas() ? (float)maisAcoes :
-        anim_mola2(&revealVelocity,reveal,maisAcoes ? 1.0f : 0.0f,elapsed*.001f,16.0f);
-      float progress = anim_clamp(reveal,0,1);
-      int first = nb;
-      float ext = nivel == 0 && botao == first ? det_foco_extra(NV_DETW2_CIRC, NV_DETW2_FOCO_SY) : 0.0f;
-      bx += ext;   // focused Add grows left: keep the gap to the previous button
-      GfxRect anchor = {bx,cyBtn-NV_DETW2_CIRC*.5f,NV_DETW2_CIRC,NV_DETW2_CIRC};
-      // Draw outgoing circles behind Add, then keep the anchor in front.
-      for (int j=nBotoesTodos()-1; j>first; j--) {
-        float stagger = anim_clamp((progress-(j-first-1)*.045f)/.78f,0,1);
-        if (stagger < .005f) continue;
-        // A focused circle grows around its center: its left half is inside
-        // the stagger distance; every circle at or past it shifts right —
-        // the focused one by one half, the ones beyond by two — so the gaps
-        // stay 18.
-        float jext = nivel == 0 && botao > first && botao <= j
-          ? det_foco_extra(NV_DETW2_CIRC, NV_DETW2_FOCO_SY) * (1.0f + (botao < j)) *
-            anim_clamp((progress-(botao-first-1)*.045f)/.78f,0,1) : 0.0f;
-        int selected = nivel == 0 && botao == j;
-        GfxRect rc = {bx+((j-first)*(NV_DETW2_CIRC+NV_DETW2_BTN_GAP)+ext)*stagger+jext,
-          anchor.y,NV_DETW2_CIRC,NV_DETW2_CIRC};
-        int action = acaoEm(j);
-        if (action == ACAO_LEMBRAR)
-          desenhaLembrete(rc,ci && agenda_lembrete(ci->imdb),selected,a*stagger);
-        else desenhaBotao(rc,NULL,action,selected,a*stagger);
-        if (action == ACAO_MAIS) maisAncora = rc;
-        if (maisAcoes && a > .3f && stagger > .85f)
-          ponteiro_alvo(rc.x,rc.y,rc.w,rc.h,ponteiroDetalhe,NULL,-1,j);
+    int first=botao>0?botao-1:0;
+    if(first>n-3)first=n-3; if(first<0)first=0;
+    scroll=anim_mola2(&velocity,scroll,(float)first*step,dt,NV_MOLA2_SCROLL);
+    gfx_recorte(x-9,yTop-8,stackW+18,totalH+16);
+    for(int i=0;i<n;i++) {
+      float y=yTop+(float)i*step-scroll;
+      if(y+rowH<yTop-8||y>yTop+totalH+8)continue;
+      int action=acaoEm(i),focused=nivel==0&&!focoAmigos&&botao==i;
+      focusSpring[i]=anim_mola(focusSpring[i],focused?1:0,dt,NV_MOLA_FOCO);
+      float k=anim_clamp(focusSpring[i],0,1);
+      GfxRect row={x,y,stackW,rowH};
+      if(k>.005f) {
+        float ar,ag,ab;ajustes_acento(&ar,&ag,&ab);
+        gfx_cor(row,.22f,.18f+ar*.11f,.19f+ag*.11f,.23f+ab*.11f,a*(.68f+.31f*k));
+      } else gfx_cor(row,.22f,.11f,.12f,.14f,a*.77f);
+      const char *label=NULL,*ico="aj_play";
+      if(action==ACAO_PRIMARIO)label=rot;
+      else if(action==ACAO_EPISODIOS){label=i18n("Episódios");ico="aj_list-video";}
+      else if(action==ACAO_TRAILER){label=i18n("Assistir trailer");ico="aj_clapperboard";}
+      else if(action==ACAO_ASSISTIDO) {
+        label=i18n(cat_visto(ci)?"Marcar como não assistido":"Marcar como assistido");
+        ico=cat_visto(ci)?"aj_circle-check":"aj_check";
+      } else if(action==ACAO_MAIS){label=i18n("Mais");ico="aj_ellipsis";}
+      if(!label)continue;
+      float lum=.62f+.38f*k;
+      gfx_icone((GfxRect){row.x+20,row.y+17,28,28},ico,lum,lum,lum,a);
+      TxtLinha line=txt_linha_corta(TXT_DET_BOTAO,label,242,245,248,255,stackW-92);
+      txt_desenhar_alpha(line,row.x+65,row.y+(row.h-line.h)*.5f,a*(.58f+.42f*k));
+      if(action==ACAO_PRIMARIO&&primarioPct>0) {
+        GfxRect rail={row.x+65,row.y+rowH-8,stackW-86,3};
+        gfx_cor(rail,.5f,1,1,1,a*.22f);
+        rail.w*=(float)primarioPct/100.0f;
+        gfx_cor(rail,.5f,1,1,1,a*.92f);
       }
-      desenhaBotao(anchor,NULL,ACAO_LISTA,nivel == 0 && botao == first,a);
-      if (a > .3f) ponteiro_alvo(anchor.x,anchor.y,anchor.w,anchor.h,ponteiroDetalhe,NULL,-1,first);
-    } else for (; nb < n; nb++) {
-      int foc = nivel == 0 && botao == nb;
-      float ext = foc ? det_foco_extra(NV_DETW2_CIRC, NV_DETW2_FOCO_SY) : 0.0f;
-      bx += ext;   // the focused circle grows both ways: keep the gap on its left too
-      GfxRect rc = { bx, cyBtn - NV_DETW2_CIRC * 0.5f,
-                     NV_DETW2_CIRC, NV_DETW2_CIRC };
-      if (detalheRetrato()) rc = heroAcaoRect(&bx, &cyBtn, rc.w, rc.h);
-      desenhaBotao(rc, NULL, acaoEm(nb), foc, a);
-      if (acaoEm(nb) == ACAO_MAIS) maisAncora = rc;
-      if (a > 0.3f) ponteiro_alvo(rc.x, rc.y, rc.w, rc.h, ponteiroDetalhe, NULL, -1, nb);
-      bx += NV_DETW2_CIRC + ext + NV_DETW2_BTN_GAP;
+      if(action==ACAO_PRIMARIO)player_morph_de(morphLogo,row);
+      if(action==ACAO_MAIS)maisAncora=row;
+      if(a>.3f)ponteiro_alvo(row.x,row.y,row.w,row.h,ponteiroDetalhe,NULL,-1,i);
     }
+    gfx_sem_recorte();
   }
 
   // --- ILHA DE AMIGOS, logo abaixo dos botoes ----------------------------------
@@ -8048,6 +7943,7 @@ static void detail_desenhar_(Uint32 agora) {
   toqueDetalheSincronizarModo();
 #endif
   if (!aberto) return;
+  if (detEpAberto) { detEpDesenhar(agora); return; }
   amigostitulo_atualizar();   // barato: so remonta quando o feed social mudou
   // COR VIVA: a pagina do titulo manda na cor, acima da home que pode estar
   // desenhada por baixo (a prioridade resolve o mesmo quadro). A chave e a
