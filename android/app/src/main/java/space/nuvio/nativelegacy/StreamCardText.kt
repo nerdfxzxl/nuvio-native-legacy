@@ -87,12 +87,14 @@ internal class StreamCardText(private val context: Context) {
     // unit tests and never used from the production SDL frame loop.
     fun layoutAsync(generation: Int, index: Int, width: Int, payload: ByteArray?): StreamCardParagraphs? {
         val key = Key(generation, index, width)
-        cache.get(key)?.let { return it }
+        // Consume completed futures even if the worker already populated the
+        // LRU. Otherwise each prepared row retains a Future indefinitely.
         queuedLayouts[key]?.let { task ->
             if (!task.isDone) return null
             queuedLayouts.remove(key, task)
             return try { task.get() } catch (_: Exception) { null }
         }
+        cache.get(key)?.let { return it }
         if (payload == null || width <= 0) return null
         try {
             val copy = payload.copyOf()
