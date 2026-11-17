@@ -41,6 +41,36 @@ class StreamCardTextTest {
         })
     }
 
+    @Test fun backgroundLayoutAndTileAreNonblockingAndPixelIdentical() {
+        val fields = JSONArray(listOf(
+            "[TB⚡] Addon", null, "🎬 UHD Dolby Vision\\nMalayalam.2160p.mkv"
+        )).toString().toByteArray(Charsets.UTF_8)
+        // Different generation/index guarantees this is not a warm sync cache.
+        val first = renderer.layoutAsync(94, 301, 370, fields)
+        assertNull("raster work should be queued instead of running on GL", first)
+        var prepared: StreamCardParagraphs? = null
+        var attempts = 0
+        while (prepared == null && attempts++ < 300) {
+            Thread.sleep(10)
+            prepared = renderer.layoutAsync(94, 301, 370, null)
+        }
+        val ready = prepared ?: fail("background layout never completed")
+        assertTrue(ready.height > 0)
+        val pixelsExpected = ready.tile(0, ready.height)
+        assertTrue(pixelsExpected.any { it ushr 24 != 0 })
+        assertNull("tile painting should also start asynchronously",
+            ready.tileAsync(0, ready.height))
+        var actual: IntArray? = null
+        attempts = 0
+        while (actual == null && attempts++ < 300) {
+            Thread.sleep(10)
+            actual = ready.tileAsync(0, ready.height)
+        }
+        assertNotNull("background painting never completed", actual)
+        assertArrayEquals("background painting must preserve emoji and exact pixels",
+            pixelsExpected, actual)
+    }
+
     @Test fun multilineAndTiledRenderingMatchAtBothWidths() {
         val filename = "Bullet.Train." + "2160p.".repeat(42) + "മലയാളം.mkv"
         fun payload(separator: String) = JSONArray(listOf("[TB⚡] ElfCache", "unused",
