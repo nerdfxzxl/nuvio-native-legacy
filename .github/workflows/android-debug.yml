@@ -1,9 +1,15 @@
 name: Android APK (debug)
 
 on:
-  # Manually dispatch ONCE after all planned selector/badge changes are ready.
-  # This keeps incremental commits from burning Actions minutes on APK preflights.
+  # Temporary, tightly scoped one-time build trigger for the completed feature
+  # branch. Remove immediately after the run is confirmed; ordinary source
+  # commits cannot trigger an Android build.
   workflow_dispatch:
+  push:
+    branches:
+      - feature/official-stream-selector
+    paths:
+      - .github/workflows/android-debug.yml
 
 permissions:
   contents: read
