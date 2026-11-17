@@ -144,6 +144,51 @@ int main(void) {
   assert(celular_pegar(txt, sizeof txt) && !strcmp(txt, "ação"));
   celular_fechar();
 
+  // A Fusion manager is a short-lived MULTI-action session, unlike one-shot
+  // text entry. It never mutates pack state on the HTTP thread.
+  CelFusionPack packs[1] = {
+    { "Pack <script>unsafe</script>", "https://packs.invalid/a?x=1&y=2", 1, 11 }
+  };
+  int action, index;
+  assert(celular_fusion_abrir(packs, 1));
+  p = celular_porta();
+  snprintf(local, sizeof local, "http://127.0.0.1:%d%s",
+           p, strrchr(celular_url(), '/'));
+  snprintf(a, sizeof a, "'%s'", local);
+  assert(curl(a) == 200 && strstr(saida, "Fusion badge URLs"));
+  assert(strstr(saida, "&lt;script&gt;unsafe&lt;/script&gt;"));
+  assert(strstr(saida, "?x=1&amp;y=2"));
+  assert(!celular_fusion_pegar(&action, &index, txt, sizeof txt));
+
+  snprintf(a, sizeof a, "--data-urlencode 'op=edit' --data-urlencode 'i=0' "
+           "--data-urlencode 't=https://new.invalid/badge.json' '%s'", local);
+  assert(curl(a) == 200 && strstr(saida, "Request received"));
+  assert(celular_fusion_pegar(&action, &index, txt, sizeof txt));
+  assert(action == CEL_FUSION_EDIT && index == 0 &&
+         !strcmp(txt, "https://new.invalid/badge.json"));
+  assert(!celular_fusion_pegar(&action, &index, txt, sizeof txt));
+  celular_fusion_publicar(packs, 1, "Saved & applied");
+  snprintf(a, sizeof a, "'%s'", local);
+  assert(curl(a) == 200 && strstr(saida, "Saved &amp; applied"));
+
+  snprintf(a, sizeof a, "--data-urlencode 'op=add' "
+           "--data-urlencode 't=https://new.invalid/add.json' '%s'", local);
+  assert(curl(a) == 200);
+  assert(celular_fusion_pegar(&action, &index, txt, sizeof txt));
+  assert(action == CEL_FUSION_ADD && !strcmp(txt, "https://new.invalid/add.json"));
+
+  snprintf(a, sizeof a, "--data-urlencode 'op=remove' "
+           "--data-urlencode 'i=0' '%s'", local);
+  assert(curl(a) == 200);
+  assert(celular_fusion_pegar(&action, &index, txt, sizeof txt));
+  assert(action == CEL_FUSION_REMOVE && index == 0);
+  snprintf(a, sizeof a, "--data-urlencode 'op=edit' "
+           "--data-urlencode 'i=8' --data-urlencode 't=https://foo.invalid' '%s'", local);
+  assert(curl(a) == 400);
+  assert(celular_estado() == CEL_ESPERANDO); // Bad request does not end session.
+  celular_fechar();
+  assert(celular_estado() == CEL_PARADO && !celular_url()[0]);
+
   puts("PASS: celular (servidor, token, Host/Origin, metodo, teto, uso unico, bloqueio)");
   return 0;
 }

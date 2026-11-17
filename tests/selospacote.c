@@ -159,6 +159,56 @@ int main(void) {
     assert(selospacote_adicionar("{\"filters\":[{\"name\":\"A\",\"pattern\":\"a\"}],\"sourceUrl\":\"HTTPS://CONTA.invalid/pack\"}", "x") == SELOS_ERR_DUPLICADO);
   }
 
+  // ---- independent player visibility, imported URL and safe in-place edit ----
+  // On this profile the account pack is 0 (read-only), TV pack is 1.
+  assert(selospacote_n() == 2 && !selospacote_da_tv(0) && selospacote_da_tv(1));
+  assert(selospacote_player_mostrar() && selospacote_player_preferencia() == 0);
+  assert(selospacote_substituir(0, PACOTE_BARE, "https://ignored.invalid") == SELOS_ERR_INDICE);
+  selospacote_player_escolher(3); // Renderer's slot 3 = imported pack at index 1.
+  assert(selospacote_player_preferencia() == 2);
+  assert(selospacote_player_fonte() == 3);
+  selospacote_player_definir_mostrar(0);
+  assert(!selospacote_player_mostrar() && selospacote_player_fonte() == 1);
+  assert(selospacote_player_preferencia() == 2); // Hiding did NOT erase the URL.
+  selospacote_player_escolher(0);
+  assert(!selospacote_player_mostrar() && selospacote_player_preferencia() == 0);
+  selospacote_player_escolher(3);
+  reiniciarPerfil(4); reiniciarPerfil(3); // New session reloads both separately.
+  assert(!selospacote_player_mostrar() && selospacote_player_preferencia() == 2);
+  selospacote_player_definir_mostrar(1);
+  assert(selospacote_player_fonte() == 3);
+
+  const char *oldUrl = "https://packs.invalid/um.json";
+  assert(!strcmp(selospacote_url(1), oldUrl));
+  assert(selospacote_substituir(1, "invalid-json", "https://new.invalid/rules") == SELOS_ERR_JSON);
+  assert(!strcmp(selospacote_url(1), oldUrl));
+  assert(selospacote_substituir(1,
+    "{\"filters\":[{\"name\":\"HD\",\"pattern\":\"1080p\"}],"
+    "\"sourceUrl\":\"https://conta.invalid/pack\"}",
+    "https://conta.invalid/pack") == SELOS_ERR_DUPLICADO);
+  assert(!strcmp(selospacote_url(1), oldUrl));
+  assert(selospacote_substituir(1,
+    "{\"filters\":[{\"name\":\"HD\",\"pattern\":\"1080p\"}],"
+    "\"sourceUrl\":\"https://new.invalid/rules\"}",
+    "https://new.invalid/rules") == SELOS_OK);
+  assert(!strcmp(selospacote_url(1), "https://new.invalid/rules"));
+  assert(selospacote_player_preferencia() == 2 &&
+         selospacote_player_fonte() == 3);
+  reiniciarPerfil(4); reiniciarPerfil(3);
+  assert(!strcmp(selospacote_url(1), "https://new.invalid/rules"));
+  assert(selospacote_player_preferencia() == 2);
+
+  // Legacy "-" means hidden. Migrating it must never silently turn badges on.
+  dados_gravar("selos-player-p5.txt", "-");
+  reiniciarPerfil(5);
+  assert(!selospacote_player_mostrar() && selospacote_player_fonte() == 1);
+  selospacote_player_escolher(0);
+  assert(!selospacote_player_mostrar());
+  reiniciarPerfil(3); reiniciarPerfil(5);
+  assert(!selospacote_player_mostrar());
+  selospacote_player_definir_mostrar(1);
+  assert(selospacote_player_mostrar() && selospacote_player_fonte() == 0);
+
   // ---- o motor de regex ----
   { RegexJs *r;
     assert(!regexjs_compilar_web("(a", e, sizeof e) && e[0]);
