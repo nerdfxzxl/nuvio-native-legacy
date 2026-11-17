@@ -1,10 +1,9 @@
 name: Android APK (debug)
 
 on:
+  # Manually dispatch ONCE after all planned selector/badge changes are ready.
+  # This keeps incremental commits from burning Actions minutes on APK preflights.
   workflow_dispatch:
-  push:
-    branches:
-      - feature/official-stream-selector
 
 permissions:
   contents: read
@@ -14,8 +13,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Pushes run ONLY this lightweight job. Full APK packaging must be explicitly
-  # dispatched, and cannot start before this validation succeeds.
+  # Manual full builds first run this validation gate. No push-triggered CI.
   preflight:
     name: Early Android C compilation
     runs-on: ubuntu-24.04
@@ -55,7 +53,6 @@ jobs:
   build:
     name: Build full Android debug APK
     needs: preflight
-    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     timeout-minutes: 360
 
