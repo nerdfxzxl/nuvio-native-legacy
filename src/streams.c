@@ -22,6 +22,7 @@
 #include <strings.h>
 #include <pthread.h>
 #include <stdatomic.h>
+#include <stdint.h>
 #include "rede.h"
 #include "gfx.h"
 #include "text.h"
@@ -790,6 +791,19 @@ static char folhaBusca[TECLADO_MAX + 1];
 static float buscaAnim;
 // TV addon strip: All stays pinned while provider chips glide underneath it.
 static float provChipOffset, provChipVel, provChipTarget;
+// A highlighted addon chip is not necessarily the active addon filter.
+// A provider's remembered stream follows its identity when tabs reorder.
+static int abaFoco;
+typedef struct {
+  char nome[96], chave[FONTEFALHA_CHAVE];
+  uint64_t fonteId;
+  float offset;
+  int usado, valido, indice, linha;
+} FolhaMemoria;
+static FolhaMemoria memoriasAba[13];
+static void memoriaFolhaGuardar(void);
+static void memoriaFolhaRestaurar(void);
+static void memoriaFolhaPrimeiro(void);
 
 void stream_lista_acrescentar(const Stream *l, int qtd, int ordemAddon) {
   int i, k = 0, focoIdx = -1, linhaAntes = -1, total;
@@ -3752,12 +3766,15 @@ typedef struct { char nome[96]; char chave[FONTEFALHA_CHAVE]; int ordem, estado;
 
 static void atualizarProvedores(void) {
   char escolhido[96], chave[FONTEFALHA_CHAVE];
+  char destacado[96], destacadoChave[FONTEFALHA_CHAVE];
   ProvAba abas[13];
   AddonAba parcial[ADDONS_MAX + 160];
   int nParcial = addons_parcial_abas(parcial, (int)(sizeof parcial / sizeof *parcial));
   int nAbas = 0;
   snprintf(escolhido, sizeof escolhido, "%s", filtro > 0 && filtro < nProvedores ? provedores[filtro] : "");
   snprintf(chave, sizeof chave, "%s", filtro > 0 && filtro < nProvedores ? provChaves[filtro] : "");
+  snprintf(destacado, sizeof destacado, "%s", abaFoco > 0 && abaFoco < nProvedores ? provedores[abaFoco] : "");
+  snprintf(destacadoChave, sizeof destacadoChave, "%s", abaFoco > 0 && abaFoco < nProvedores ? provChaves[abaFoco] : "");
   for (int k = 0; k < n; k++) {
     int i = ORD(k), j;
     for (j = 0; j < nAbas; j++)
@@ -3821,6 +3838,13 @@ static void atualizarProvedores(void) {
     filtro = j < nProvedores ? j : 0;
   }
   if (filtro >= nProvedores) filtro = 0;
+  if (destacado[0] || destacadoChave[0]) {
+    int j;
+    for (j = 1; j < nProvedores; j++)
+      if (destacadoChave[0] ? !strcmp(provChaves[j], destacadoChave) :
+          (!provChaves[j][0] && !strcmp(provedores[j], destacado))) break;
+    abaFoco = j < nProvedores ? j : filtro;
+  } else abaFoco = 0;
   pthread_mutex_unlock(&provTrava);
   if (mudouProvedores) atomic_fetch_add(&folhaRevisao, 1);
 }
@@ -4842,6 +4866,84 @@ static int linhaDe(int indice) {
   for (int r = 0; r < nOrdem; r++) if (ordem[r] == indice) return r;
   return -1;
 }
+// A compact source fingerprint survives list-index changes within a session.
+static uint64_t memoriaFolhaTexto(uint64_t h, const char *texto) {
+  for (const unsigned char *p = (const unsigned char *)texto; *p; ++p) {
+    h ^= (uint64_t)*p;
+    h *= UINT64_C(1099511628211);
+  }
+  return (h ^ UINT64_C(255)) * UINT64_C(1099511628211);
+}
+static uint64_t memoriaFolhaId(const Stream *s) {
+  uint64_t h = UINT64_C(14695981039346656037);
+  char indice[32];
+  snprintf(indice, sizeof indice, "%d", s->fileIdx);
+  h = memoriaFolhaTexto(h, s->addonChave);
+  h = memoriaFolhaTexto(h, s->url);
+  h = memoriaFolhaTexto(h, s->infoHash);
+  h = memoriaFolhaTexto(h, s->rotulo);
+  return memoriaFolhaTexto(h, indice);
+}
+static FolhaMemoria *memoriaFolhaDaAba(int aba) {
+  if (aba == 0) return &memoriasAba[0];
+  if (aba <= 0 || aba >= nProvedores) return NULL;
+  for (int i = 1; i < 13; i++) {
+    FolhaMemoria *m = &memoriasAba[i];
+    if (!m->usado) continue;
+    if (provChaves[aba][0] ? !strcmp(m->chave, provChaves[aba]) :
+        (!m->chave[0] && !strcmp(m->nome, provedores[aba]))) return m;
+  }
+  for (int i = 1; i < 13; i++) {
+    FolhaMemoria *m = &memoriasAba[i];
+    if (m->usado) continue;
+    m->usado = 1;
+    snprintf(m->chave, sizeof m->chave, "%s", provChaves[aba]);
+    snprintf(m->nome, sizeof m->nome, "%s", provedores[aba]);
+    return m;
+  }
+  return NULL;
+}
+static void memoriaFolhaGuardar(void) {
+  if (!folhaRelogio || canalFolha || grupo != 1) return;
+  FolhaMemoria *m = memoriaFolhaDaAba(filtro);
+  if (!m) return;
+  int indice = filtrado(foco);
+  if (indice >= 0 && indice < n) {
+    m->valido = 1;
+    m->indice = indice;
+    m->linha = foco;
+    m->fonteId = memoriaFolhaId(&lista[indice]);
+  } else m->valido = 0;
+  m->offset = rolagem;
+}
+static float areaLista(void);
+static void memoriaFolhaRestaurar(void) {
+  FolhaMemoria *m = memoriaFolhaDaAba(filtro);
+  int linha = -1;
+  montar(automaticaDaFolha());
+  if (m && m->valido && m->indice >= 0 && m->indice < n &&
+      memoriaFolhaId(&lista[m->indice]) == m->fonteId)
+    linha = linhaDe(m->indice);
+  if (linha < 0 && m && m->valido) {
+    for (int r = 0; r < nOrdem; r++) {
+      int i = filtrado(r);
+      if (i >= 0 && memoriaFolhaId(&lista[i]) == m->fonteId) { linha = r; break; }
+    }
+  }
+  if (linha < 0) linha = 0;
+  foco = linha;
+  // A vanished source must not resurrect an invalid offset.
+  rolagem = linha > 0 && m ? fmaxf(0.0f, fminf(m->offset,
+      fmaxf(0.0f, alturaTotal - areaLista() + 40.0f))) : 0.0f;
+  velRol = 0.0f;
+  focoFixo = -1;
+  linhaAnt = -1; focoVisto = foco; abreFoco = 1.0f; abreAnt = 0.0f;
+}
+static void memoriaFolhaPrimeiro(void) {
+  FolhaMemoria *m = memoriaFolhaDaAba(filtro);
+  if (m) { m->valido = 0; m->offset = 0.0f; m->linha = 0; }
+  memoriaFolhaRestaurar();
+}
 static int folhaIlha(void) {
   // Playback hosts the selector in the player island. On the title detail page,
   // folhaRelogio routes the same body through the main Dynamic Clock instead.
@@ -4923,7 +5025,8 @@ void stream_folha_abrir(void) {
 #endif
   int excl, aut;
   fitAbrir();
-  aberta=1; escolha=-1; grupo=1; filtro=0; filtroVisto=-2; pillW=-1.0f; trocaDesde=0; soMp4=0; soCache=0; soDub=0; recarregar=0;
+  aberta=1; escolha=-1; grupo=1; filtro=0; abaFoco=0; filtroVisto=-2; pillW=-1.0f; trocaDesde=0; soMp4=0; soCache=0; soDub=0; recarregar=0;
+  memset(memoriasAba, 0, sizeof memoriasAba);
   selosAnimFoco = -1; // A fresh selector opening gets one badge-strip pass.
   folhaNavegou = 0;
   folhaBusca[0] = 0;
@@ -5366,6 +5469,47 @@ void stream_folha_evento(const SDL_Event *e) {
     if(i>=0) detalheAbrir(&lista[i]);
     return;
   }
+  // Dynamic Clock: moving focus NEVER activates a different provider.
+  // Down from Search, Reload or chips restores the active provider's last row.
+  if (folhaRelogio && !canalFolha) {
+    if (k == SDLK_UP) {
+      if (grupo == 1 && foco > 0) foco--;
+      else if (grupo == 1) { memoriaFolhaGuardar(); grupo = 0; abaFoco = filtro; }
+      else if (grupo == 2) { grupo = 0; abaFoco = filtro; }
+      else if (grupo == 0) { grupo = -1; foco = 0; }
+    } else if (k == SDLK_DOWN) {
+      if (grupo == 1) { if (foco < nf - 1) foco++; }
+      else if (grupo == -2 || grupo == -1 || grupo == 0 || grupo == 2) {
+        grupo = 1; memoriaFolhaRestaurar();
+      }
+    } else if (k == SDLK_LEFT || k == SDLK_RIGHT) {
+      if (grupo == 1) {
+        memoriaFolhaGuardar();
+        if (k == SDLK_LEFT) grupo = -2;
+        else { grupo = 0; abaFoco = 0; }
+      } else if (grupo == -2 && k == SDLK_RIGHT) { grupo = -1; foco = 0; }
+      else if (grupo == -1) {
+        if (k == SDLK_LEFT) grupo = -2;
+        else { grupo = 0; abaFoco = 0; }
+      } else if (grupo == 0) {
+        if (k == SDLK_LEFT && abaFoco == 0) { grupo = -1; foco = 0; }
+        else if (k == SDLK_LEFT && abaFoco > 0) abaFoco--;
+        else if (k == SDLK_RIGHT && abaFoco + 1 < nProvedores) abaFoco++;
+      }
+    } else if (k == SDLK_RETURN || k == SDLK_KP_ENTER) {
+      if (grupo == -2) {
+        if (!e->key.repeat && buscaAnim >= 0.98f) abrirBuscaFolha();
+      } else if (grupo == -1) recarregar = 1;
+      else if (grupo == 0 && !e->key.repeat) {
+        if (abaFoco < 0 || abaFoco >= nProvedores) abaFoco = 0;
+        if (abaFoco == filtro) memoriaFolhaPrimeiro();
+        else { filtroSelecionar(abaFoco); memoriaFolhaRestaurar(); }
+        grupo = 1;
+      } else if (grupo == 2) limparChips();
+      else if (grupo == 1) okNaLinha();
+    }
+    return;
+  }
   // ORDEM DO FOCO, de cima: fileira de botoes (grupo -1) -> abas de addon
   // (grupo 0) -> lista (grupo 1). CIMA na primeira linha vai as abas; CIMA
   // nas abas vai ao ultimo botao (Fechar, o mais perto do canto); BAIXO desce
@@ -5555,6 +5699,7 @@ void stream_folha_atualizar(float dt, Uint32 agora) {
   else
 #endif
   rolagem=anim_mola2(&velRol,rolagem,alvoRolagem(),dt,NV_MOLA2_SCROLL);
+  memoriaFolhaGuardar();
 }
 int stream_folha_escolher_externo(int indice, unsigned geracao) {
   int valido = 0;
@@ -5628,6 +5773,14 @@ static void ponteiroFolhaFiltro(int i, int b) {
 #endif
   (void)b;
   if (i < 0 || i >= nProvedores) return;
+  if (folhaRelogio && !canalFolha) {
+    memoriaFolhaGuardar();
+    abaFoco = i;
+    if (i == filtro) memoriaFolhaPrimeiro();
+    else { filtroSelecionar(i); memoriaFolhaRestaurar(); }
+    grupo = 1; folhaNavegou = 1;
+    return;
+  }
   folhaNavegou=1; filtroSelecionar(i); foco = 0; rolagem = 0; grupo = 1;
 }
 static void ponteiroFolhaFora(int a, int b) { (void)a; (void)b; aberta = 0; }
@@ -6414,7 +6567,8 @@ static void corpoFolha(float x, float w, float anim, Uint32 agora, int ilha) {
     if (providerW < 0.0f) providerW=0.0f;
     for(int i=1;i<nProvedores;i++) providerTotal+=iw[i]+6.0f;
     if(ptr) ponteiro_alvo(allR.x,allR.y,allR.w,allR.h,NULL,ponteiroFolhaFiltro,0,0);
-    chipFolha(allR,rot[0],(float)nome[0].w,NULL,grupo==0&&filtro==0,filtro==0,anim);
+    const int chipEmFoco = folhaRelogio && !canalFolha ? abaFoco : filtro;
+    chipFolha(allR,rot[0],(float)nome[0].w,NULL,grupo==0&&chipEmFoco==0,filtro==0,anim);
 #ifdef NV_TOUCH_UI
     if(layout_modo_mobile()) {
       if(!toquerol_livre(&toqueFontesAbas)) toqueFontesAbasOffset=0.0f;
@@ -6425,9 +6579,9 @@ static void corpoFolha(float x, float w, float anim, Uint32 agora, int ilha) {
 #endif
     {
       float start=0.0f, end=0.0f, maxOffset=fmaxf(0.0f,providerTotal-6.0f-providerW);
-      if(filtro>0 && filtro<nProvedores) {
-        for(int i=1;i<filtro;i++) start+=iw[i]+6.0f;
-        end=start+iw[filtro]-6.0f;
+      if(chipEmFoco>0 && chipEmFoco<nProvedores) {
+        for(int i=1;i<chipEmFoco;i++) start+=iw[i]+6.0f;
+        end=start+iw[chipEmFoco]-6.0f;
         if(end-provChipOffset>providerW) provChipTarget=end-providerW;
         else if(start<provChipOffset) provChipTarget=start;
       } else provChipTarget=0.0f;
@@ -6446,7 +6600,7 @@ static void corpoFolha(float x, float w, float anim, Uint32 agora, int ilha) {
             float l=fmaxf(r.x,providerX), d=fminf(r.x+r.w,providerX+providerW);
             if(d>l) ponteiro_alvo(l,r.y,d-l,r.h,NULL,ponteiroFolhaFiltro,i,0);
           }
-          chipFolha(r,rot[i],(float)nome[i].w,NULL,grupo==0&&sel,sel,anim);
+          chipFolha(r,rot[i],(float)nome[i].w,NULL,grupo==0&&chipEmFoco==i,sel,anim);
           if(provEstado[i]==ADDON_ABA_BUSCANDO && !ajustes_animacoes_reduzidas()) {
             float phase=fmodf((float)agora*.00085f+(float)i*.12f,1.0f);
             float wx=r.x-42.0f+phase*(r.w+84.0f);
