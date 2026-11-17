@@ -5870,7 +5870,28 @@ void app_atualizar(float dt, Uint32 agora) {
     // unica diferenca e a trava de retomada, armada depois de o episodio ficar
     // definitivo — player_do_inicio sobrevive as re-chamadas tardias de
     // player_definir_episodio.
+    // Episode long-press options are rendered by the actual Dynamic Clock.
+    // The target is captured once, so focus changes cannot select another ep.
+    { static int optionsT, optionsE;
+      int episodeT=0,episodeE=0,choice=-1;
+      if(detail_pediu_opcoes_ep(&episodeT,&episodeE)) {
+        optionsT=episodeT;optionsE=episodeE;
+        stream_folha_abrir_opcoes_ep();
+      }
+      if(stream_folha_opcoes_escolheu(&choice)) {
+        if(choice==0)detail_pedir_fontes_ep(optionsT,optionsE);
+        else if(choice==1)detail_pedir_inicio_ep(optionsT,optionsE);
+        else if(choice==2)episodios_marcar_um(detail_indice(),optionsT,optionsE);
+        optionsT=optionsE=0;
+      }
+    }
     int doInicio = detail_pediu_do_inicio();
+    if(doInicio) {
+      int tInicio=0,eInicio=0;
+      if(detail_pediu_inicio_ep(&tInicio,&eInicio)) {
+        cwTocarT=tInicio;cwTocarE=eInicio;
+      }
+    }
     int escolherFonteInicial = detail_pediu_escolher_fonte_inicial();
     int pediuReproduzir = detail_pediu_reproduzir();
     int retomarDireto = pediuReproduzir ? detail_pediu_retomar_direto() : 0;

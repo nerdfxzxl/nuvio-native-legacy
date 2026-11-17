@@ -12,6 +12,9 @@ static int detEpRowIndexes[2600], detEpRows;
 static unsigned detEpCatalogVersion, detEpItemRevision;
 static float detEpScroll, detEpVel, detEpSeasonScroll, detEpSeasonVel;
 static int detEpShowDesc = 1, detEpShowRating = 1;
+static Uint32 detEpOkSince;
+#define DET_EP_STEP 278.0f
+#define DET_SEASON_STEP 86.0f
 
 static void detEpRebuild(int targetSeason, int targetEpisode) {
   const CatItem *ci = cat_item(idx);
@@ -91,10 +94,11 @@ static void detEpAbrir(void) {
   detEpCol = 1; // Focus on currently watching/next, not the season list.
   detEpShowDesc = ajustes_det_ep_descricao();
   detEpShowRating = ajustes_det_ep_imdb();
-  detEpScroll = fmaxf(0.0f, (float)(detEpRow - 1) * 207.0f);
+  detEpScroll = fmaxf(0.0f, (float)(detEpRow - 1) * DET_EP_STEP);
   detEpVel = 0;
-  detEpSeasonScroll = fmaxf(0.0f, (float)(detEpSzn - 3) * 88.0f);
+  detEpSeasonScroll = fmaxf(0.0f, (float)(detEpSzn - 3) * DET_SEASON_STEP);
   detEpSeasonVel = 0;
+  detEpOkSince = 0;
   detEpAberto = 1;
   // A full-screen episode view must never continue an autoplay trailer.
   if (trailer_aberto()) trailer_fechar();
@@ -112,12 +116,12 @@ static void detEpAtualizar(float dt) {
     int episode = detEpAt(detEpRow) ? detEpAt(detEpRow)->episodio : 1;
     detEpRebuild(season, episode);
   }
-  const float step = 207.0f, seasonStep = 88.0f;
-  float maxScroll = fmaxf(0.0f, (float)detEpRows * step - 850.0f);
+  const float step = DET_EP_STEP, seasonStep = DET_SEASON_STEP;
+  float maxScroll = fmaxf(0.0f, (float)detEpRows * step - (NV_TELA_H-142.0f));
   float target = fmaxf(0.0f, ((float)detEpRow - 1.0f) * step);
   if (target > maxScroll) target = maxScroll;
   detEpScroll = anim_mola2(&detEpVel, detEpScroll, target, dt, NV_MOLA2_SCROLL);
-  float maxSeason = fmaxf(0.0f, (float)detEpNSeasons * seasonStep - 785.0f);
+  float maxSeason = fmaxf(0.0f, (float)detEpNSeasons * seasonStep - (NV_TELA_H-317.0f));
   float targetSeason = fmaxf(0.0f, ((float)detEpSzn - 3.0f) * seasonStep);
   if (targetSeason > maxSeason) targetSeason = maxSeason;
   detEpSeasonScroll = anim_mola2(&detEpSeasonVel, detEpSeasonScroll,
@@ -126,38 +130,52 @@ static void detEpAtualizar(float dt) {
 
 static int detEpEvento(const SDL_Event *ev) {
   if (!detEpAberto) return 0;
-  if (ev->type != SDL_KEYDOWN) return 1;
-  if (ev->key.repeat && ev->key.keysym.sym == SDLK_RETURN) return 1;
-  SDL_Keycode key = ev->key.keysym.sym;
-  if (key == SDLK_ESCAPE || key == SDLK_AC_BACK ||
-      key == SDLK_BACKSPACE || key == SDLK_DELETE ||
-      ev->key.keysym.scancode == NV_SCANCODE_BACK) {
-    detEpAberto = 0;
+  if (ev->type != SDL_KEYDOWN && ev->type != SDL_KEYUP) return 1;
+  SDL_Keycode key=ev->key.keysym.sym;
+  int ok=(key==SDLK_RETURN || key==SDLK_KP_ENTER);
+  // Trigger exactly once on KEYUP; never auto-play when OK is held.
+  if (ev->type==SDL_KEYUP) {
+    if (!ok || !detEpOkSince) return 1;
+    Uint32 held=SDL_GetTicks()-detEpOkSince;
+    detEpOkSince=0;
+    if(detEpCol==0) {detEpCol=1;return 1;}
+    const CatEp *ep=detEpAt(detEpRow);
+    if(ep && ep->temporada>=0 && ep->episodio>0 && !epNaoExibido(ep)) {
+      if(held>=NV_HOLD_MS) {
+        // Episode action menu belongs to the actual expanded Dynamic Clock.
+        pedOpcoesT=ep->temporada;pedOpcoesE=ep->episodio;pedOpcoesEp=1;
+      } else {
+        pedFontesT=ep->temporada;pedFontesE=ep->episodio;
+        pedFontes=1;
+        // The stream Dynamic Clock overlays this view rather than closing it.
+      }
+    }
     return 1;
   }
-  if (key == SDLK_LEFT) detEpCol = 0;
-  if (key == SDLK_RIGHT) detEpCol = 1;
-  if (key == SDLK_UP || key == SDLK_DOWN) {
-    int direction = key == SDLK_DOWN ? 1 : -1;
-    if (detEpCol == 0) {
-      int next = detEpSzn + direction;
-      if (next >= 0 && next < detEpNSeasons) {
-        detEpRebuild(detEpSeasons[next], 1);
-        detEpScroll = detEpVel = 0;
+  if(key==SDLK_ESCAPE || key==SDLK_AC_BACK ||
+     key==SDLK_BACKSPACE || key==SDLK_DELETE ||
+     ev->key.keysym.scancode==NV_SCANCODE_BACK) {
+    detEpAberto=0;
+    detEpOkSince=0;
+    return 1;
+  }
+  if(ok) {
+    if(!ev->key.repeat && !detEpOkSince)detEpOkSince=SDL_GetTicks();
+    return 1;
+  }
+  if(key==SDLK_LEFT)detEpCol=0;
+  if(key==SDLK_RIGHT)detEpCol=1;
+  if(key==SDLK_UP || key==SDLK_DOWN) {
+    int dir=key==SDLK_DOWN?1:-1;
+    if(detEpCol==0) {
+      int next=detEpSzn+dir;
+      if(next>=0 && next<detEpNSeasons) {
+        detEpRebuild(detEpSeasons[next],1);
+        detEpScroll=detEpVel=0;
       }
     } else {
-      int next = detEpRow + direction;
-      if (next >= 0 && next < detEpRows) detEpRow = next;
-    }
-  }
-  if (key == SDLK_RETURN || key == SDLK_KP_ENTER) {
-    if (detEpCol == 0) { detEpCol = 1; return 1; }
-    const CatEp *ep = detEpAt(detEpRow);
-    if (ep && ep->temporada > 0 && ep->episodio > 0 && !epNaoExibido(ep)) {
-      // Capture the exact selected episode before Dynamic Clock steals focus.
-      pedFontesT = ep->temporada; pedFontesE = ep->episodio;
-      pedFontes = 1;
-      detEpAberto = 0;
+      int next=detEpRow+dir;
+      if(next>=0 && next<detEpRows)detEpRow=next;
     }
   }
   return 1;
@@ -167,57 +185,47 @@ static void detEpDesenhar(Uint32 agora) {
   (void)agora;
   const CatItem *ci = cat_item(idx);
   const float screenW = NV_TELA_W, screenH = NV_TELA_H;
-  const float leftW = 405.0f, startX = 485.0f, rowsTop = 160.0f;
+  const float leftW = screenW * .40f, startX = leftW + 23.0f, rowsTop = 108.0f;
   gfx_sem_recorte();
-  gfx_cor((GfxRect){0,0,screenW,screenH},0.0f,.024f,.027f,.034f,1.0f);
-  gfx_cor((GfxRect){0,0,leftW,screenH},0.0f,.041f,.045f,.055f,1.0f);
+  // True AMOLED-black columns, without a colour halo or grey panel.
+  gfx_cor((GfxRect){0,0,screenW,screenH},0,0,0,0,1);
   const char *seriesName = ci && ci->titulo[0] ? ci->titulo : "Episodes";
-  txt_desenhar_alpha(txt_linha_corta(TXT_HEADLINE,seriesName,253,253,254,255,
-                      screenW - 140.0f),60.0f,48.0f,1.0f);
-  txt_desenhar_alpha(txt_linha(TXT_CAPTION2,"SEASONS",175,184,197,255),
-                     60.0f,132.0f,1.0f);
-  txt_desenhar_alpha(txt_linha(TXT_CAPTION2,"EPISODES",175,184,197,255),
-                     startX,132.0f,1.0f);
-  gfx_recorte(36.0f,180.0f,leftW-48.0f,screenH-225.0f);
+  logotitulo_desenhar(ci,seriesName,TXT_HEADLINE,107.0f,94.0f,
+                     leftW-188.0f,162.0f,leftW-188.0f,1.0f);
+  gfx_recorte(38.0f,306.0f,leftW-76.0f,screenH-337.0f);
   for (int s = 0; s < detEpNSeasons; s++) {
-    float y = 195.0f + (float)s * 88.0f - detEpSeasonScroll;
-    if (y + 76.0f < 180.0f || y > screenH - 40.0f) continue;
-    GfxRect chip = {48.0f,y,330.0f,76.0f};
-    int selected = s == detEpSzn, focused = selected && detEpCol == 0;
-    if (focused) {
-      gfx_vidro_painel(chip,0.23f,0.65f,1.0f);
-      gfx_cor(chip,0.23f,.25f,.29f,.36f,.35f);
-    } else
-      gfx_cor(chip,0.23f,selected ? .18f:.09f,selected ? .20f:.10f,
-              selected ? .25f:.12f,selected ? .96f:.75f);
-    char title[60]; snprintf(title,sizeof title,"Season %d",detEpSeasons[s]);
-    txt_desenhar_alpha(txt_linha(TXT_CALLOUT,title,247,247,249,255),
-                       chip.x+20,chip.y+12.0f,focused?1.0f:.85f);
-    char epCount[32];
-    snprintf(epCount,sizeof epCount,"%d episodes",detEpCounts[s]);
-    txt_desenhar_alpha(txt_linha(TXT_CAPTION2,epCount,177,184,195,255),
-                       chip.x+20,chip.y+46.0f,.86f);
+    float y = 326.0f + (float)s * DET_SEASON_STEP - detEpSeasonScroll;
+    if (y + 67.0f < 306.0f || y > screenH - 30.0f) continue;
+    int focused = s == detEpSzn && detEpCol == 0;
+    char label[100];
+    snprintf(label,sizeof label,"Season %d  ·  %d episodes",
+             detEpSeasons[s],detEpCounts[s]);
+    TxtLinha lt=txt_linha(TXT_CALLOUT,label,focused?18:220,
+                        focused?18:220,focused?18:220,255);
+    float pw=(float)lt.w+54.0f;
+    if(pw>leftW-110.0f)pw=leftW-110.0f;
+    GfxRect chip={(leftW-pw)*.5f,y,pw,67.0f};
+    if(focused)gfx_cor(chip,.5f,.975f,.975f,.975f,1);
+    txt_desenhar_alpha(lt,chip.x+(chip.w-lt.w)*.5f,
+                       chip.y+(chip.h-lt.h)*.5f,1);
   }
   gfx_sem_recorte();
-  gfx_recorte(startX,rowsTop,screenW-startX-38.0f,screenH-rowsTop-20.0f);
+  gfx_recorte(startX,rowsTop,screenW-startX-20.0f,screenH-rowsTop-15.0f);
   for (int r=0; r<detEpRows; r++) {
     const CatEp *ep = detEpAt(r);
     if (!ep) continue;
-    float y = rowsTop + (float)r * 207.0f - detEpScroll;
-    if (y > screenH || y + 197.0f < rowsTop) continue;
+    float y = rowsTop + (float)r * DET_EP_STEP - detEpScroll;
+    if (y > screenH || y + DET_EP_STEP < rowsTop) continue;
     int focused = detEpCol == 1 && r == detEpRow;
-    GfxRect card={startX,y,screenW-startX-55.0f,191.0f};
+    GfxRect card={startX,y,screenW-startX-51.0f,DET_EP_STEP-13.0f};
     if (focused) {
-      gfx_cor(card,0.10f,.12f,.15f,.20f,.98f);
-      gfx_luz_canto(card,0.10f,card.w*.25f,-20.0f,card.w*.7f,
-                    .38f,.45f,.56f,.08f);
-    } else {
-      gfx_cor(card,0.10f,.065f,.069f,.078f,.65f);
+      gfx_cor(card,.09f,.06f,.06f,.06f,.82f);
+      gfx_anel_fora(card,.09f,0,2.0f,1,1,1,.85f);
     }
-    GfxRect thumb={startX+12.0f,y+12.0f,300.0f,167.0f};
+    GfxRect thumb={startX+15.0f,y+18.0f,395.0f,222.0f};
     const char *art=ep->thumb[0] ? ep->thumb
       : ci && ci->backdrop[0] ? ci->backdrop : NULL;
-    GLuint tex=art?tex_obter_larg(art,300.0f):0;
+    GLuint tex=art?tex_obter_larg(art,thumb.w):0;
     const int watched = ci && ci->imdb[0] &&
       vistoep_estado(ci->imdb,ep->temporada,ep->episodio)==1;
     // Match Legacy's spoiler setting. Never briefly flash a sharp thumbnail
@@ -232,27 +240,28 @@ static void detEpDesenhar(Uint32 agora) {
       gfx_tex_aspect_atual=0;
     } else gfx_cor(thumb,.08f,.12f,.13f,.15f,1.0f);
     // Dark liquid-glass episode identifier; no white focus rectangle.
-    GfxRect epBadge={thumb.x+11.0f,thumb.y+10.0f,94.0f,34.0f};
-    if (focused) gfx_vidro_painel(epBadge,.44f,.55f,1.0f);
-    else gfx_cor(epBadge,.44f,.015f,.018f,.025f,.88f);
-    if (watched) {
-      GfxRect marker={thumb.x+thumb.w-48.0f,thumb.y+10.0f,34.0f,34.0f};
-      gfx_cor(marker,.5f,.015f,.018f,.025f,.9f);
-      gfx_icone((GfxRect){marker.x+6,marker.y+6,22,22},
-                 "aj_check",1,1,1,1);
-    }
     char id[40]; snprintf(id,sizeof id,"S%dE%d",ep->temporada,ep->episodio);
-    txt_desenhar_alpha(txt_linha(TXT_CAPTION2,id,251,253,255,255),
-                       epBadge.x+12.0f,epBadge.y+8.0f,1.0f);
+    TxtLinha idText=txt_linha(TXT_CAPTION2,id,251,253,255,255);
+    GfxRect epBadge={thumb.x+10,thumb.y+10,(float)idText.w+24.0f,28.0f};
+    gfx_cor(epBadge,.5f,0,0,0,.23f);
+    gfx_anel_fora(epBadge,.5f,0,1.0f,1,1,1,.15f);
+    if (watched) {
+      GfxRect marker={thumb.x+thumb.w-43,thumb.y+10,31,31};
+      gfx_cor(marker,.5f,1,1,1,1);
+      gfx_icone((GfxRect){marker.x+5,marker.y+5,21,21},
+                 "aj_check",.04f,.04f,.04f,1);
+    }
+    txt_desenhar_alpha(idText,epBadge.x+(epBadge.w-idText.w)*.5f,
+                       epBadge.y+(epBadge.h-idText.h)*.5f,1);
     // Selected row progress is shown separately from its episode information.
     if (ci && ci->temporada==ep->temporada && ci->episodio==ep->episodio
         && ci->progresso>0 && ci->progresso<100) {
       GfxRect track={thumb.x+8.0f,thumb.y+thumb.h-8.0f,thumb.w-16.0f,4.0f};
       gfx_cor(track,.5f,.85f,.85f,.87f,.30f);
       track.w *= ci->progresso / 100.0f;
-      gfx_cor(track,.5f,.93f,.94f,.97f,1.0f);
+      gfx_cor(track,.5f,.94f,.10f,.14f,1.0f);
     }
-    float tx=thumb.x+thumb.w+28.0f;
+    float tx=thumb.x+thumb.w+27.0f;
     float maxW=card.x+card.w-tx-16.0f;
     char title[280];
     if (ep->nome[0]) snprintf(title,sizeof title,"%s",ep->nome);
@@ -260,7 +269,11 @@ static void detEpDesenhar(Uint32 agora) {
     txt_desenhar_alpha(txt_linha_corta(TXT_CALLOUT,title,250,251,253,255,maxW),
                        tx,y+17.0f,1.0f);
     char meta[180]="";
-    if (ep->duracao[0]) snprintf(meta,sizeof meta,"%s",ep->duracao);
+    if (ep->duracao[0]) {
+      int mins=atoi(ep->duracao);
+      if(mins>=60)snprintf(meta,sizeof meta,"%dh %dm",mins/60,mins%60);
+      else snprintf(meta,sizeof meta,"%s",ep->duracao);
+    }
     if (ep->data[0]) {
       size_t used=strlen(meta);
       snprintf(meta+used,sizeof(meta)-used,"%s%s",used?"  ·  ":"",ep->data);
@@ -268,18 +281,20 @@ static void detEpDesenhar(Uint32 agora) {
     if (meta[0]) txt_desenhar_alpha(txt_linha_corta(TXT_CAPTION2,meta,
           190,197,208,255,maxW),tx,y+57.0f,.95f);
     if (detEpShowRating && ep->notaImdb>0) {
-      char score[48]; snprintf(score,sizeof score,"IMDb %d.%d",
-                                ep->notaImdb/10,ep->notaImdb%10);
-      txt_desenhar_alpha(txt_linha(TXT_CAPTION2,score,246,211,74,255),
-                         tx,y+84.0f,1.0f);
+      float mw=notasui_marca(EX_IMDB,tx,y+109.0f,29.0f,1);
+      char score[25];snprintf(score,sizeof score,"%d.%d",
+                             ep->notaImdb/10,ep->notaImdb%10);
+      txt_desenhar_alpha(txt_linha(TXT_CAPTION2,score,241,241,241,255),
+                         tx+mw+12.0f,y+96.0f,1);
     }
     if (detEpShowDesc && ep->sinopse[0])
-      txt_bloco(TXT_PG_FIM,ep->sinopse,191,197,209,
-                tx,y+113.0f,maxW,26.0f,1.0f,2);
+      txt_bloco(TXT_PG_FIM,ep->sinopse,210,210,210,
+                tx,y+134.0f,maxW,26.0f,1.0f,4);
     if (epNaoExibido(ep))
       txt_desenhar_alpha(txt_linha(TXT_CAPTION2,"Not yet aired",
-                              247,208,111,255),tx,y+159.0f,1.0f);
+                              247,208,111,255),tx,y+233.0f,1.0f);
   }
   gfx_sem_recorte();
+
 }
 #endif

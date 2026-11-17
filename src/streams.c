@@ -92,6 +92,7 @@ static int filtroVisto = -2, trocaDir;
 static Uint32 trocaDesde;
 static float pillX, pillW = -1.0f, pillDeX, pillDeW;   // x relative to the list column
 static int folhaRelogio; // Latched at opening, retained through closing.
+static int folhaOpcoesEp, folhaOpcoesFoco, folhaOpcoesEscolha = -1;
 #define FOLHA_ILHA_Y     48.0f   // plrilha.c: Y_TOPO
 #define FOLHA_ILHA_CAB   64.0f   // plrilha.c: CAB_H (a linha da hora)
 #define FOLHA_ILHA_BASE  48.0f   // margem de baixo = a de cima
@@ -4971,6 +4972,9 @@ static void folhaGeometria(void) {
     // Island body (ilha_corpo): its top strip is the clock, the list starts below.
     folhaOY = NV_ILHA_Y + NV_ILHA_H + FOLHA_ILHA_PAD - 74.0f;
     folhaBase = NV_TELA_H - FOLHA_ILHA_BASE - 16.0f;
+    // Options start as a compact clock island. Choosing Play manually
+    // expands the same island to the full-height stream selection panel.
+    if(folhaOpcoesEp)folhaBase=fminf(folhaBase,605.0f);
   } else if (folhaIlha()) {
     folhaOY = FOLHA_ILHA_Y + FOLHA_ILHA_CAB + FOLHA_ILHA_PAD - 74.0f;
     folhaBase = NV_TELA_H - FOLHA_ILHA_BASE - 16.0f;
@@ -5028,6 +5032,8 @@ static void desenharAudioBars(float x, float y, float alt, float alfa, Uint32 ag
 }
 
 void stream_folha_abrir(void) {
+  folhaOpcoesEp=0;
+  folhaOpcoesEscolha=-1;
   // A busca nova pode estar na fila enquanto a lista ainda e do episodio
   // anterior. A folha fica vazia ate chegarem fontes do alvo pedido (#513).
   if (alvoPedido[0] && n > 0 && !stream_lista_do_alvo(alvoPedido))
@@ -5090,6 +5096,22 @@ void stream_folha_abrir(void) {
          fitFoto.n, diag, pass, conhecidos, pesados,
          fitFotoOrigem == SF_DUR_MEDIA ? "media" : fitFotoOrigem == SF_DUR_METADATA ? "metadata" : "unknown");
   fflush(stdout);
+}
+// Present episode actions INSIDE the native Dynamic Clock island, using
+// exactly the same expansion and focus owner as the stream selection panel.
+void stream_folha_abrir_opcoes_ep(void) {
+  stream_folha_abrir();
+  folhaOpcoesEp=1;
+  folhaOpcoesFoco=0;
+  folhaOpcoesEscolha=-1;
+  folhaGeometria();
+}
+int stream_folha_opcoes_escolheu(int *escolha) {
+  int v=folhaOpcoesEscolha;
+  folhaOpcoesEscolha=-1;
+  if(v<0)return 0;
+  if(escolha)*escolha=v;
+  return 1;
 }
 // True only for the movie/episode stream picker expanding the Dynamic Clock.
 // Keep this side-effect-free: ilha.c calls it during rendering.
@@ -5434,6 +5456,19 @@ static void okNaLinha(void) {
 }
 
 void stream_folha_evento(const SDL_Event *e) {
+  if (folhaOpcoesEp) {
+    if(!aberta || e->type!=SDL_KEYDOWN)return;
+    SDL_Keycode k=e->key.keysym.sym;
+    if(k==SDLK_ESCAPE || k==SDLK_AC_BACK ||
+       k==SDLK_BACKSPACE || k==SDLK_DELETE) {aberta=0;return;}
+    if(k==SDLK_UP && folhaOpcoesFoco>0)folhaOpcoesFoco--;
+    if(k==SDLK_DOWN && folhaOpcoesFoco<2)folhaOpcoesFoco++;
+    if((k==SDLK_RETURN || k==SDLK_KP_ENTER) && !e->key.repeat) {
+      folhaOpcoesEscolha=folhaOpcoesFoco;
+      aberta=0;
+    }
+    return;
+  }
   // The Android IME owns text entry directly. Its full-value events are read
   // in stream_folha_atualizar; never open the app's separate keyboard modal.
   if (st_evento(e)) return;
@@ -5592,6 +5627,16 @@ void stream_folha_evento(const SDL_Event *e) {
 }
 void stream_folha_atualizar(float dt, Uint32 agora) {
   int nf;
+  if(folhaOpcoesEp) {
+    // The compact options island doesn't build/filter stream rows every frame.
+    if(aberta || anim>.001f)folhaGeometria();
+    anim=anim_mola(anim,aberta?1.0f:0.0f,dt,NV_MOLA_TELA);
+    if(!aberta && anim<.005f) {
+      folhaOpcoesEp=0;
+      folhaRelogio=0;
+    }
+    return;
+  }
   // ST_TEXTO is the complete current value from Android's system IME. Apply
   // every change immediately so filtering never waits for the keyboard's Done.
   if (aberta && st_dono() == ST_BUSCA) {
@@ -6626,6 +6671,33 @@ static float trocaEase(Uint32 agora) {
   t=1.0f-t; return 1.0f-t*t*t;
 }
 static void corpoFolha(float x, float w, float anim, Uint32 agora, int ilha) {
+  if(folhaOpcoesEp) {
+    // The first expansion of Dynamic Clock is a compact three-action menu.
+    // Everything remains attached to the clock, not a second overlay screen.
+    GfxRect surface={x,NV_ILHA_Y,w,folhaBase+16.0f-NV_ILHA_Y};
+    gfx_cor(surface,.035f,0,0,0,anim);
+    TxtLinha title=txt_linha(TXT_ILHA_TITULO,"Episode options",248,248,248,255);
+    float ty=folhaOY+42.0f;
+    txt_desenhar_alpha(title,x+44.0f,ty,anim);
+    static const char *names[3]={
+       "Play manually","Play from beginning","Mark as watched"};
+    static const char *icons[3]={
+       "aj_layers","aj_rotate-ccw-clock","aj_check"};
+    for(int i=0;i<3;i++) {
+      float y=ty+86.0f+i*90.0f;
+      GfxRect pill={x+40.0f,y,w-80.0f,72.0f};
+      int f=folhaOpcoesFoco==i;
+      if(f)gfx_cor(pill,.5f,.975f,.975f,.975f,anim);
+      float ink=f?.05f:1.0f;
+      gfx_icone((GfxRect){pill.x+22.0f,pill.y+20.0f,32,32},
+                icons[i],ink,ink,ink,anim);
+      TxtLinha t=txt_linha(TXT_CALLOUT,names[i],
+                           f?16:241,f?16:241,f?16:241,255);
+      txt_desenhar_alpha(t,pill.x+76.0f,
+                         pill.y+(pill.h-t.h)*.5f,anim);
+    }
+    return;
+  }
   float ar, ag, ab;
   int ai, nf, automatica, melhor;
   float lx=x+FOLHA_PAD_E, rw=w-FOLHA_PAD_E-FOLHA_PAD_D;

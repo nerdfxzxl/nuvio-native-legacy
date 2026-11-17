@@ -71,6 +71,7 @@ int  episodios_menu_modo_temporada(void);
 // O lote que "temporada inteira" aplica: catalogo + mapa, sem o que nao foi ao
 // ar. `saida` nula conta. Publico para o teste.
 int  episodios_lote(int idxCat, int temporada, VistoPar *saida, int max);
+int episodios_marcar_um(int idxCat,int temporada,int episodio);
 void episodios_fechar(void);
 // O titulo da folha, ja conferido pelo id. Para teste (#190).
 int  episodios_titulo(void);

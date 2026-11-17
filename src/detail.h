@@ -89,6 +89,10 @@ int  detail_pediu_explorar(void);     // circular "Explorar": abrir a toca (expl
 // progresso. Hoje ele tambem marca `detail_pediu_reproduzir`, porque o roteador
 // ainda nao sabe abrir o player ignorando o ponto salvo.
 int  detail_pediu_do_inicio(void);
+int  detail_pediu_inicio_ep(int *temporada,int *episodio);
+int  detail_pediu_opcoes_ep(int *temporada,int *episodio);
+void detail_pedir_fontes_ep(int temporada,int episodio);
+void detail_pedir_inicio_ep(int temporada,int episodio);
 // --- Pagina do titulo (abaixo da dobra) -------------------------------------
 // TUDO daqui para baixo foi medido no app web LOGADO, em 1920x1080, na serie
 // "Silo" (getBoundingClientRect / getComputedStyle), em 2026-08-31. Os numeros

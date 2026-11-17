@@ -1,4 +1,5 @@
 #include "badges.h"
+#include "notasui.h"
 #include "js.h"
 #include "gfx.h"
 #include "text.h"
@@ -426,9 +427,7 @@ static void notaTexto(char *dst, size_t n, int nota) {
   snprintf(dst, n, idioma_ponto_decimal(ajustes_idioma()) ? "%d.%d" : "%d,%d", nota / 10, nota % 10);
 }
 static float imdbMarcaLargura(void) {
-  TxtLinha l = txt_linha(TXT_MINI, "IMDb", 10, 10, 10, 255);
-  float w = (float)l.w + 16.0f;
-  return w > BADGE_IMDB_W ? w : BADGE_IMDB_W;
+  return notasui_marca_largura(EX_IMDB,BADGE_H);
 }
 float badge_imdb_largura(int nota) {
   char t[8]; TxtLinha l;
@@ -438,17 +437,14 @@ float badge_imdb_largura(int nota) {
   return imdbMarcaLargura() + BADGE_IMDB_GAP + (float)l.w;
 }
 float badge_imdb(float x, float y, int nota, int escuro, float a) {
-  char t[8]; TxtLinha l, lm; GfxRect m;
+  char t[8]; TxtLinha l; GfxRect m;
   int c = escuro ? ajustes_tinta_foco() : 235;
   if (nota <= 0) return 0.0f;
   notaTexto(t, sizeof t, nota);
   l = txt_linha(TXT_CAPTION2, t, c, c, c, 255);
   m.x = x; m.y = y; m.w = imdbMarcaLargura(); m.h = BADGE_H;
-  // #F5C518 e o amarelo da marca; o texto e preto porque e assim que ela
-  // existe — nao segue o realce nem a tinta da linha.
-  gfx_cor(m, BADGE_IMDB_R / BADGE_H, 0.961f, 0.773f, 0.094f, a);
-  lm = txt_linha(TXT_MINI, "IMDb", 10, 10, 10, 255);
-  txt_desenhar_alpha(lm, m.x + (m.w - (float)lm.w) * 0.5f, m.y + (m.h - (float)lm.h) * 0.5f, a);
+  // Use the actual IMDb PNG in art/marcas/imdb.png instead of a text logo.
+  notasui_marca(EX_IMDB,m.x,m.y+BADGE_H*.5f,BADGE_H,a);
   txt_desenhar_alpha(l, x + m.w + BADGE_IMDB_GAP, y + (BADGE_H - (float)l.h) * 0.5f, a);
   return m.w + BADGE_IMDB_GAP + (float)l.w;
 }

@@ -23,6 +23,8 @@
 #define NV_TXT_TELA   // NV_TELA_W/H = tela virtual da escala de texto (escala.h)
 #include "escala.h"
 #include "detail.h"
+#include "logotitulo.h"
+#include "progresso.h"
 #include "biblioteca.h"
 #include "detail_acoes.h"
 #include "focoprof.h"
@@ -82,6 +84,7 @@ static TituloTempo detalheTempo;
 #include "musicaui.h"
 #include "qrtex.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <strings.h>
 #include <math.h>
@@ -336,6 +339,8 @@ static int  pedFontesT = 0, pedFontesE = 0;
 // Marcar como ASSISTIDO. Separado de pedMarcar, que e "adicionar a lista".
 static int  pedAssistido = 0;
 static char pedAssistidoId[24];
+static int pedInicioT = 0, pedInicioE = 0;
+static int pedOpcoesEp, pedOpcoesT, pedOpcoesE;
 static int  pedDoInicio = 0;         // botao "Reproduzir desde o inicio"
 static Uint32 okDesceEm = 0;
 static float pg = 0.0f;              // 0..1: hero -> pagina rolada
@@ -699,18 +704,18 @@ typedef enum { SEC_TEMPORADAS, SEC_EPISODIOS, SEC_ABAS_INFO, SEC_ELENCO, SEC_REL
 // serie tem a propria tabela porque o enum (que a serie usava como ordem do
 // D-pad) mantem as Notas depois da audiencia.
 static const int ORDEM_FILME[] = {
-  SEC_NOTAS, SEC_TEMPORADAS, SEC_EPISODIOS, SEC_ABAS_INFO, SEC_ELENCO, SEC_RELACIONADOS,
+  SEC_NOTAS, SEC_TEMPORADAS, SEC_EPISODIOS, SEC_ABAS_INFO, SEC_ELENCO, SEC_RELACIONADOS, SEC_DETALHES,
   SEC_AUD_ARCO, SEC_AUD_RADAR, SEC_AUD_DIGITAL, SEC_NOTAS_EP,
   SEC_TRAILERS, SEC_COLECAO, SEC_MUSICAS, SEC_COMENTARIOS,
-  SEC_ESTUDIOS, SEC_FRASES, SEC_DETALHES, SEC_PROGTEMP };
+  SEC_ESTUDIOS, SEC_FRASES, SEC_PROGTEMP };
 // NUMEROS DA TEMPORADA (Glass UI 1.8, mockup "Notas e graficos"): os tres
 // graficos da serie viraram UM bloco logo depois das Notas. Ele usa a fileira
 // SEC_AUD_ARCO (SEC_NUMEROS); RADAR, DIGITAL e NOTAS_EP ficaram sem colunas.
 static const int ORDEM_SERIE[] = {
   SEC_TEMPORADAS, SEC_EPISODIOS, SEC_PROGTEMP, SEC_NOTAS, SEC_AUD_ARCO, SEC_ABAS_INFO, SEC_ELENCO,
-  SEC_RELACIONADOS, SEC_AUD_RADAR, SEC_AUD_DIGITAL, SEC_NOTAS_EP,
+  SEC_RELACIONADOS, SEC_DETALHES, SEC_AUD_RADAR, SEC_AUD_DIGITAL, SEC_NOTAS_EP,
   SEC_TRAILERS, SEC_COLECAO, SEC_MUSICAS, SEC_COMENTARIOS,
-  SEC_ESTUDIOS, SEC_FRASES, SEC_DETALHES };
+  SEC_ESTUDIOS, SEC_FRASES };
 #define N_ORDEM ((int)(sizeof ORDEM_FILME / sizeof ORDEM_FILME[0]))
 #define SEC_NUMEROS SEC_AUD_ARCO
 static int ehSerie(void);
@@ -1123,6 +1128,18 @@ static void recalcularLayout(void) {
       if (y + NV_DETF_PAD_FIM > docFim) docFim = y + NV_DETF_PAD_FIM;
     }
 
+    // Series no longer hide technical Details behind the now-removed episode
+    // carousel. Stack them AFTER the Wikiquote/Wikidata panel, not at the
+    // uninitialized (0,0) series origin.
+    topoSec[SEC_DETALHES] = conteudoSec[SEC_DETALHES] = y;
+    alvoSec[SEC_DETALHES] = NV_DETP_ALVO_FILEIRA;
+    if (secaoN(SEC_DETALHES) > 0) {
+      conteudoSec[SEC_DETALHES] += NV_DETF_CAB_H + NV_DETF_CAB_GAP;
+      y = conteudoSec[SEC_DETALHES] + alturaSecao(SEC_DETALHES) + NV_DETF_SEC_GAP;
+      float fim = y + NV_DETF_PAD_FIM - NV_DETF_SEC_GAP;
+      if (fim > docFim) docFim = fim;
+    }
+
     // AS TRES BANDAS DE AUDIENCIA vem antes dos comentarios, empilhadas pela
     // mesma regra: nascem onde a aba ativa termina e empurram o que vem depois.
     // Altura vinda do ultimo desenho (ver audAlt), porque cada grafico so diz
@@ -1188,17 +1205,6 @@ static void recalcularLayout(void) {
     topoSec[SEC_FRASES] = conteudoSec[SEC_FRASES] = y;
     if (secaoN(SEC_FRASES) > 0) {
       y += alturaSecao(SEC_FRASES) + NV_DETF_SEC_GAP;
-      float fim = y + NV_DETF_PAD_FIM - NV_DETF_SEC_GAP;
-      if (fim > docFim) docFim = fim;
-    }
-    // Series no longer hide technical Details behind the now-removed episode
-    // carousel. Stack them AFTER the Wikiquote/Wikidata panel, not at the
-    // uninitialized (0,0) series origin.
-    topoSec[SEC_DETALHES] = conteudoSec[SEC_DETALHES] = y;
-    alvoSec[SEC_DETALHES] = NV_DETP_ALVO_FILEIRA;
-    if (secaoN(SEC_DETALHES) > 0) {
-      conteudoSec[SEC_DETALHES] += NV_DETF_CAB_H + NV_DETF_CAB_GAP;
-      y = conteudoSec[SEC_DETALHES] + alturaSecao(SEC_DETALHES) + NV_DETF_SEC_GAP;
       float fim = y + NV_DETF_PAD_FIM - NV_DETF_SEC_GAP;
       if (fim > docFim) docFim = fim;
     }
@@ -2216,25 +2222,25 @@ static int montarDetalhes(LinhaDet *o, int max) {
     if (ehSerie() || !st || strcasecmp(st, "Released") != 0)
       DET_POE("Status", k ? i18n(k) : st); }
   { char dt[48]; desc_data_extenso(extras_ficha_lancamento(), dt, sizeof dt);
-    DET_POE("Lançamento", dt); }
+    DET_POE("Release date", dt); }
   { char d[32]; duracaoTexto(extras_ficha_duracao(), d, sizeof d);
-    DET_POE("Duração", d); }
+    DET_POE("Runtime", d); }
   // Classificacao: a da ficha do TMDB e a boa. A do catalogo serve de reserva,
   // e desde que o "14" cravado saiu de descoberta.c ela so tem valor quando
   // veio do arquivo de catalogo, que e dado de verdade.
   v = extras_ficha_classificacao();
   if (!v || !v[0]) v = (ci && ci->classificacao[0]) ? ci->classificacao : NULL;
-  DET_POE("Classificação", v);
+  DET_POE("Certification", v);
   // Pais: a lista completa do TMDB quando ha; senao o unico que o Cinemeta da.
   v = extras_ficha_paises();
   if (!v || !v[0]) v = (ci && ci->pais[0]) ? ci->pais : NULL;
   { char pais[168]; desc_pais_txt(v, pais, sizeof pais);   // nomes em ingles -> idioma da UI
-    DET_POE("País de Origem", pais); }
+    DET_POE("Country of origin", pais); }
   // Include director/creator in the dedicated Details block, rather than
   // relying on the hero field for accessibility.
   if (ci && ci->direcao[0])
-    DET_POE(ehSerie() ? "Criação e direção" : "Direção", ci->direcao);
-  DET_POE("Produção", extras_ficha_produtores());
+    DET_POE(ehSerie() ? "Created and directed by" : "Directed by", ci->direcao);
+  DET_POE("Production", extras_ficha_produtores());
   // Production companies and networks are not individual producers.
   { char company[168] = "", network[168] = "";
     for (int i = 0; i < extras_n_estudios(); i++) {
@@ -2245,16 +2251,16 @@ static int montarDetalhes(LinhaDet *o, int max) {
       if (nm[0] && used + needed <= cap)
         snprintf(list + used, cap - used, "%s%s", used ? ", " : "", nm);
     }
-    DET_POE("Produtoras", company);
-    if (ehSerie()) DET_POE("Redes", network);
+    DET_POE("Production companies", company);
+    if (ehSerie()) DET_POE("Networks", network);
   }
   // Budget, box office and other verified Wikidata facts remain optional.
   { int i, nf = seriefrases_n_fatos();
     for (i = 0; i < nf; i++) DET_POE(seriefrases_fato_rotulo(i), seriefrases_fato_valor(i)); }
 
   if (n == 0 && max > 0) {
-    o[n].chave = "Informação";
-    snprintf(o[n].valor, sizeof o[n].valor, "%s", i18n("Informações indisponíveis"));
+    o[n].chave = "Information";
+    snprintf(o[n].valor, sizeof o[n].valor, "%s", "Information unavailable");
     n++;
   }
   #undef DET_POE
@@ -3390,7 +3396,9 @@ static void detail_evento_(const SDL_Event *e) {
       return;
     }
     if (k == SDLK_DOWN) {
+      if(e->key.repeat && acaoEm(botao)!=ACAO_MAIS)return;
       if (botao + 1 < nBotoes()) { botao++; return; }
+      if(acaoEm(botao)!=ACAO_MAIS)return;
       sincronizarEpisodioPadrao(); epEscolhido = 1;
       for (int o = 0; o < N_ORDEM; o++) {
         int r = ordemSecoes()[o];
@@ -4817,31 +4825,25 @@ static void heroWeb(float a, float desloc) {
   if (!temAmg) focoAmigos = 0;
   float hAmg = temAmg ? NV_DETW_AMIGOS_H + NV_DETW_AMIGOS_GAP : 0.0f;
   float hAcoesExtra = detalheRetrato() ? NV_DETW2_CIRC + NV_DETW2_BTN_GAP : 0;
-  float yAcoes = ySin - NV_DETW2_GAP_ACOES - NV_DETW2_BTN_H - hAcoesExtra - hCaption - hAmg;
-  // BLOCO DE LINHAS DE ESTADO, empilhado de baixo para cima logo acima dos
-  // botoes. Sao duas, e a ordem tem razao: a retomada explica o BOTAO e fica
-  // colada nele; a agenda ("Próximo episódio T2E5 · em 3 dias") explica o
-  // TITULO e fica acima dela.
-  //
-  // A agenda so ocupa altura quando existe frase. Serie sem registro ainda, ou
-  // registro sem data e sem situacao conhecida, nao empurra nada — a linha
-  // some, e o hero fica exatamente como era.
-  char agLinha[200] = "";
-  { const CatItem *ciAg = cat_item(idx);
-    if (ehSerie() && ciAg && ciAg->imdb[0])
-      agenda_frase(ciAg->imdb, agLinha, sizeof agLinha);
-    else if (ciAg && !strcmp(ciAg->tipo, "movie") && temLembrar())
-      snprintf(agLinha, sizeof agLinha, "%s", rotuloLembrar()); }
-  float yEstado = yAcoes - NV_DETW_GAP_RETOM;
-  float yRetom = yEstado, yAgenda = yEstado;
-  if (temRetom > 0.0f) { yEstado -= NV_DETW_RETOM_H; yRetom = yEstado; }
-  if (agLinha[0]) { yEstado -= carro ? 46.0f : NV_DETW_RETOM_H; yAgenda = yEstado; }
+  // Reserve the 202px action stack before placing metadata. The ended/next
+  // status belongs BELOW the buttons, never above or on top of them.
+  char agLinha[200]="";
+  { const CatItem *ciAg=cat_item(idx);
+    if(ehSerie() && ciAg && ciAg->imdb[0])
+      agenda_frase(ciAg->imdb,agLinha,sizeof agLinha);
+    else if(ciAg && !strcmp(ciAg->tipo,"movie") && temLembrar())
+      snprintf(agLinha,sizeof agLinha,"%s",rotuloLembrar()); }
+  float actionHeight=202.0f, statusHeight=agLinha[0]?42.0f:0.0f;
+  float yAcoes=ySin-NV_DETW2_GAP_ACOES-actionHeight-statusHeight-
+               hAcoesExtra-hCaption-hAmg;
+  float yRetom=yAcoes;
+  float yAgenda=yAcoes+actionHeight+5.0f;
 
   // Sobe alguns pixels enquanto entra: continua o movimento da arte em vez de
   // aparecer pronto no lugar. `desloc` e a rolagem do documento.
   float sobe = (1.0f - a) * 26.0f + desloc;
   yMeta1 += sobe; ySin += sobe;
-  yRetom += sobe; yAgenda += sobe; yAcoes += sobe; yEstado += sobe;
+  yRetom += sobe; yAgenda += sobe; yAcoes += sobe;
 
   // --- logo -----------------------------------------------------------------
   // O logo e desenhado com 261 de largura mas a arte de origem costuma vir bem
@@ -4856,8 +4858,7 @@ static void heroWeb(float a, float desloc) {
   titulo_tempo_logo(&detalheTempo, "detalhe", arqLogo, texLogo, 0);
   if (a > 0.05f) titulo_tempo_info(&detalheTempo, "detalhe", ci, 0);
   // Make space above the three action chips without shifting lower metadata.
-  float baseLogo = ((temRetom > 0.0f || agLinha[0]) ? yEstado : yAcoes)
-                   - NV_DETW_LOGO_GAP - 116.0f;
+  float baseLogo = yAcoes - NV_DETW_LOGO_GAP - 116.0f;
   float espacoLogo = baseLogo - 110.0f - (!nomeAbaixo ? hNome : 0);
   if (espacoLogo < 0) espacoLogo = 0;
   static char  logoVisto[600];
@@ -4937,26 +4938,36 @@ static void heroWeb(float a, float desloc) {
   // TRES estados, como o web: "Retomar TxEy" (em andamento), "Próximo TxEy"
   // (primeiro nao assistido) e "Reproduzir" (nunca aberto). O terceiro estado
   // era dado como impossivel aqui; e possivel desde que extras_ep_visto existe.
-  char rot[48];
+  char rot[128];
   int retomando = 0;
   { int t = 0, e = 0, de = 0;
     if (ehSerie() && episodioAlvo(&t, &e, &de) && t >= 0 && e > 0 && de == 2) {
       // Resume only when this precise episode has an unfinished checkpoint.
       // Otherwise the primary action is Play, not a misleading "Next".
-      snprintf(rot, sizeof rot, i18n("%s T%dE%d"), i18n("Retomar"), t, e);
+      snprintf(rot, sizeof rot, "Resume S%dE%d", t, e);
       retomando = 1;
     }
     else { snprintf(rot, sizeof rot, "%s",
                     det_rotulo_primario(ci ? ci->progresso : 0, ajustes_cw_concluido()));
            retomando = !ehSerie(); } }
-  // Progress is inside the focused action, but never replaces "Resume S1E5"
-  // with an unexplained remaining-time label.
-  primarioPct = retomando && ci && ci->progresso>0 && ci->progresso<100
-              ? ci->progresso : -1;
+  // Use the active profile checkpoint for precise watched time if available.
+  if(retomando && ci && ci->imdb[0]) {
+    char key[48]; ProgRegistro checkpoint;
+    int st=ehSerie()?ci->temporada:0, ep=ehSerie()?ci->episodio:0;
+    prog_chave(key,sizeof key,ci->imdb,st,ep);
+    if(prog_por_chave(key,&checkpoint) && checkpoint.posSeg>=60.0) {
+      size_t n=strlen(rot);
+      snprintf(rot+n,sizeof rot-n," · %d min watched",(int)(checkpoint.posSeg/60.0));
+    } else if(ci->restanteMin>0) {
+      size_t n=strlen(rot);
+      snprintf(rot+n,sizeof rot-n," · %d min left",ci->restanteMin);
+    }
+  }
+  primarioPct=-1;
 
   { // Three visible Netflix-style action chips. The page does not scroll.
-    const float rowH=62.0f, step=70.0f, stackW=378.0f, totalH=202.0f;
-    float x=NV_DETW2_X,yTop=yAcoes+NV_DETW2_BTN_H-totalH;
+    const float rowH=62.0f, step=70.0f, stackW=530.0f, totalH=202.0f;
+    float x=NV_DETW2_X,yTop=yAcoes;
     static float scroll,velocity,focusSpring[6];
     static Uint32 lastTick; static int previousTitle=-1;
     Uint32 now=SDL_GetTicks();
@@ -4978,30 +4989,25 @@ static void heroWeb(float a, float desloc) {
       int action=acaoEm(i),focused=nivel==0&&!focoAmigos&&botao==i;
       focusSpring[i]=anim_mola(focusSpring[i],focused?1:0,dt,NV_MOLA_FOCO);
       float k=anim_clamp(focusSpring[i],0,1);
-      GfxRect row={x,y,stackW,rowH};
-      if(k>.005f) {
-        float ar,ag,ab;ajustes_acento(&ar,&ag,&ab);
-        gfx_cor(row,.22f,.18f+ar*.11f,.19f+ag*.11f,.23f+ab*.11f,a*(.68f+.31f*k));
-      } else gfx_cor(row,.22f,.11f,.12f,.14f,a*.77f);
       const char *label=NULL,*ico="aj_play";
       if(action==ACAO_PRIMARIO)label=rot;
-      else if(action==ACAO_EPISODIOS){label=i18n("Episódios");ico="aj_list-video";}
-      else if(action==ACAO_TRAILER){label=i18n("Assistir trailer");ico="aj_clapperboard";}
+      else if(action==ACAO_EPISODIOS){label="Episodes";ico="aj_layers";}
+      else if(action==ACAO_TRAILER){label="Watch trailer";ico="aj_clapperboard";}
       else if(action==ACAO_ASSISTIDO) {
-        label=i18n(cat_visto(ci)?"Marcar como não assistido":"Marcar como assistido");
+        label=cat_visto(ci)?"Mark as unwatched":"Mark as watched";
         ico=cat_visto(ci)?"aj_circle-check":"aj_check";
-      } else if(action==ACAO_MAIS){label=i18n("Mais");ico="aj_ellipsis";}
+      } else if(action==ACAO_MAIS){label="More";ico="aj_ellipsis";}
       if(!label)continue;
-      float lum=.62f+.38f*k;
-      gfx_icone((GfxRect){row.x+20,row.y+17,28,28},ico,lum,lum,lum,a);
-      TxtLinha line=txt_linha_corta(TXT_DET_BOTAO,label,242,245,248,255,stackW-92);
-      txt_desenhar_alpha(line,row.x+65,row.y+(row.h-line.h)*.5f,a*(.58f+.42f*k));
-      if(action==ACAO_PRIMARIO&&primarioPct>0) {
-        GfxRect rail={row.x+65,row.y+rowH-8,stackW-86,3};
-        gfx_cor(rail,.5f,1,1,1,a*.22f);
-        rail.w*=(float)primarioPct/100.0f;
-        gfx_cor(rail,.5f,1,1,1,a*.92f);
-      }
+      float chipWidth=(float)txt_largura(TXT_DET_BOTAO,label)+91.0f;
+      if(chipWidth>stackW)chipWidth=stackW;
+      GfxRect row={x,y,chipWidth,rowH};
+      if(k>.005f)gfx_cor(row,.5f,.975f,.975f,.975f,k*a);
+      float ink=1.0f-.94f*k;
+      gfx_icone((GfxRect){row.x+19,row.y+17,28,28},ico,ink,ink,ink,a);
+      TxtLinha line=txt_linha_corta(TXT_DET_BOTAO,label,
+                     (int)(ink*255),(int)(ink*255),(int)(ink*255),
+                     255,chipWidth-75.0f);
+      txt_desenhar_alpha(line,row.x+60,row.y+(row.h-line.h)*.5f,a);
       if(action==ACAO_PRIMARIO)player_morph_de(morphLogo,row);
       if(action==ACAO_MAIS)maisAncora=row;
       if(a>.3f)ponteiro_alvo(row.x,row.y,row.w,row.h,ponteiroDetalhe,NULL,-1,i);
@@ -6088,20 +6094,11 @@ static void desenhaElenco(float x, float y, int c, float f, float a) {
   // pula fileira vazia). Este `return` e a segunda tranca.
   if (!nome || !nome[0]) return;
 
-  if (!ajustes_vidro() && epApple() && f > .005f) {
-    float top = y + NV_DETP_EL_AVATAR + NV_DETP_EL_NOME_DY - 8;
-    GfxRect info = { x - 12, top, NV_DETP_EL_W + 24, 76 };
-    if (!gfx_foco_placa(info, 18.0f / info.h, f, a))
-      gfx_cor(info, 18.0f / info.h, .19f, .21f, .23f, .6f * f * a);
-  }
-  // B2: the tile edge sits on the side margin, flush with the row header.
-  cartaoVidro(elencoCartao(x, y), f, a);
-  GfxRect av = { x + (NV_DETP_EL_W-NV_DETP_EL_AVATAR)*.5f, y, NV_DETP_EL_AVATAR, NV_DETP_EL_AVATAR };
-  // Foco da Home (focoprof.h): anel so com o ajuste ligado, senao o avatar
-  // cresce; a profundidade segue o ajuste de Elenco.
-  if (epApple()) { if (ajustes_borda_foco() && f > 0.01f) gfx_anel(av,.5f,1.5f,1,1,1,.22f*f*a); }
-  else if (!ajustes_vidro()) foco_anel(av, 0.5f, f, a);   // B2: the ink tile is the focus
-  av = foco_zoom(av, f);
+  // Actor cards have no square material, only portraits and text.
+  GfxRect av={x+(NV_DETP_EL_W-NV_DETP_EL_AVATAR)*.5f,y,
+              NV_DETP_EL_AVATAR,NV_DETP_EL_AVATAR};
+  av=foco_zoom(av,f);
+  if(f>.005f)gfx_anel_fora(av,.5f,0,2.5f,1,1,1,.98f*f*a);
   GLuint t2 = foto ? tex_obter_larg(foto, NV_DETP_EL_AVATAR) : 0;
   if (t2) {
     gfx_tex_aspect_atual = tex_aspecto(foto);
@@ -6125,16 +6122,7 @@ static void desenhaElenco(float x, float y, int c, float f, float a) {
                        av.y + (av.h - li.h) * 0.5f, a * 0.9f);
   }
   float yn = y + NV_DETP_EL_AVATAR + NV_DETP_EL_NOME_DY;
-  if (ajustes_vidro()) {   // B2: light text, dark on the focused ink tile
-    int cn = (int)(240.0f - 222.0f * f), cp = (int)(196.0f - 150.0f * f);
-    TxtLinha ln = txt_linha_corta(TXT_CALLOUT, nome, cn, cn, cn, 255, NV_DETP_EL_W - 20.0f);
-    txt_desenhar_alpha(ln, x + (NV_DETP_EL_W-ln.w)*.5f, yn, a);
-    if (papel && papel[0]) {
-      TxtLinha lp = txt_linha_corta(TXT_CAPTION2, papel, cp, cp, cp, 255, NV_DETP_EL_W - 20.0f);
-      txt_desenhar_alpha(lp, x + (NV_DETP_EL_W-lp.w)*.5f, yn + NV_DETP_EL_PAPEL_DY, a);
-    }
-    return;
-  }
+  // Always light lettering: focus is communicated by the circular white ring.
   TxtLinha ln = txt_linha_corta(TXT_CALLOUT, nome, epApple()?238:179, epApple()?240:179, epApple()?244:179, 255, NV_DETP_EL_W);
   txt_desenhar_alpha(ln, x + (NV_DETP_EL_W-ln.w)*.5f, yn, a);
   if (papel && papel[0]) {
@@ -7811,7 +7799,7 @@ static void carFundo(void) {
       fundo_borrada_veu(-1.0f);
       if (pg > 0.005f) gfx_cor(tela, 0.0f, 0.043f, 0.047f, 0.055f, 0.55f * pg * expandida * a); // vidro-ok: full-screen scrim
       nv_ambiente_forca = 1.0f;
-    } else gfx_ambiente(expandida * a);
+    } else { /* No artwork-matched ambient halo. */ }
   }
   veuPag = especial ? 1.0f : (1.0f - pg) * ajustes_detalhe_veu();
   veu = veuPag + (CAR_VEU - veuPag) * cartao;
@@ -7878,11 +7866,8 @@ static void carFundo(void) {
 // inferior direito, so no topo da pagina e sem nada aberto por cima. CIMA na
 // linha de botoes abre o cartao (detail_evento); aberto, ele desenha aqui.
 static void reacaoPendente(float s) {
-  int livre = nivel == 0 && scrollY < 1.0f && !pessoaAberta && !colListaAberta && !amtui_aberta() &&
-              !detmais_aberto() &&
-              !episodios_menu_aberto() && trocaarte_visivel() < 0.005f;
-  if (!livre && !reacao_aberta()) return;
-  reacao_detalhe_dica(cat_item(idx), livre ? s : 0.0f);
+  // Remove the floating star-rating hint. It obscured the trailer controls.
+  (void)s;
 }
 
 // O FUNDO DA PAGINA DO TITULO, inteiro, numa funcao so.
@@ -7916,7 +7901,7 @@ static void detalheFundo(float s) {
     // Imersiva: a MESMA luz que main.c pinta depois do clear, subindo junto
     // com o fundo. Sem ela, no quadro em que o detalhe passa a cobrir a tela
     // (a home deixa de ser desenhada) a luz de baixo aparecia de uma vez.
-    gfx_ambiente(s);
+    /* No artwork-colour halo; display the backdrop itself. */
   }
   gfx_sem_recorte();
 
@@ -8082,23 +8067,19 @@ static void detail_desenhar_(Uint32 agora) {
     if (c > 0.005f) logoCinema(c * a2);
     if (ta > 0.005f) trocaarte_desenhar(logoDe(idx)); }
 
-  // Only visible while a manual trailer is active. Controls live in the
-  // unused bottom-right image space, away from the left metadata column.
-  if (trailerManual && trailer_aberto() && nivel == 0) {
-    float x = NV_TELA_W - 500.0f, y = NV_TELA_H - 116.0f;
-    for (int control = 0; control < 2; control++) {
-      GfxRect box = {x + control * 232.0f, y, 219.0f, 65.0f};
-      int focused = trailerControlFocus == control;
-      gfx_cor(box,.34f,.018f,.022f,.033f,focused?.97f:.80f);
-      if (focused) foco_anel(box,.34f,1.0f,1.0f);
-      const char *label = control == 0 ?
-        (trailer_pausado() ? i18n("Continuar") : i18n("Pausar")) :
-        i18n("Recomeçar");
-      const char *glyph = control == 0 ?
-        (trailer_pausado() ? "aj_play" : "aj_pause") : "aj_rotate-ccw-clock";
-      gfx_icone((GfxRect){box.x+15,box.y+19,27,27},glyph,1,1,1,1);
-      TxtLinha line = txt_linha_corta(TXT_CAPTION2,label,250,250,251,255,153);
-      txt_desenhar_alpha(line,box.x+52,box.y+(box.h-line.h)*.5f,1);
+  // Native icon-only trailer controls. No translated text and no tiny glyphs.
+  if(trailerManual && trailer_aberto() && nivel==0) {
+    float x=NV_TELA_W-207.0f,y=NV_TELA_H-115.0f;
+    for(int control=0;control<2;control++) {
+      GfxRect circle={x+control*91.0f,y,76.0f,76.0f};
+      int focused=trailerControlFocus==control;
+      if(focused)gfx_cor(circle,.5f,.975f,.975f,.975f,1);
+      else gfx_cor(circle,.5f,0,0,0,.52f);
+      const char *glyph=control==0?
+        (trailer_pausado()?"aj_play":"aj_pause"):"aj_rotate-ccw-clock";
+      float ink=focused?.06f:1;
+      gfx_icone((GfxRect){circle.x+19,circle.y+19,38,38},
+                glyph,ink,ink,ink,1);
     }
   }
 
@@ -8199,6 +8180,35 @@ int detail_pediu_explorar(void)   { int v = pedExplorar;   pedExplorar = 0;   re
 // roteador so sabe abrir o player no ponto salvo. Consumir o pedido aqui evita
 // que ele fique pendurado.
 int detail_pediu_do_inicio(void)  { int v = pedDoInicio;   pedDoInicio = 0;   return v; }
+// Pending long-press action menu: the router opens it inside Dynamic Clock.
+int detail_pediu_opcoes_ep(int *temporada, int *episodio) {
+  int pedido=pedOpcoesEp;
+  pedOpcoesEp=0;
+  if(pedido) {
+    if(temporada)*temporada=pedOpcoesT;
+    if(episodio)*episodio=pedOpcoesE;
+  }
+  return pedido;
+}
+void detail_pedir_fontes_ep(int temporada,int episodio) {
+  pedFontesT=temporada;
+  pedFontesE=episodio;
+  pedFontes=1;
+}
+void detail_pedir_inicio_ep(int temporada,int episodio) {
+  pedInicioT=temporada;
+  pedInicioE=episodio;
+  pedDoInicio=pedReproduzir=1;
+}
+int detail_pediu_inicio_ep(int *temporada, int *episodio) {
+  int existe=pedInicioE>0;
+  if(existe) {
+    if(temporada)*temporada=pedInicioT;
+    if(episodio)*episodio=pedInicioE;
+  }
+  pedInicioT=pedInicioE=0;
+  return existe;
+}
 
 // Uma vez por pedido: a pagina saiu por ESQUERDA e quer a barra lateral no
 // lugar. app.c le depois de detail_aberto() virar 0.
