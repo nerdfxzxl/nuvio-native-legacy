@@ -32,6 +32,12 @@ need("Rows rendered inside viewport", "gfx_recorte(x-9,yTop-8,stackW+18,totalH+1
 need("Watch progress preserved", "primarioPct = retomando" in detail)
 need("Season order ascending", "detEpSeasons[j - 1] > current" in episode)
 need("Season metadata cached", "detEpCounts[s]" in episode)
+need("Episode cache watches BOTH content and catalog metadata clocks",
+     "detEpCatalogVersion != cat_versao_episodios()" in episode and
+     "detEpItemRevision != cat_revisao_itens()" in episode)
+need("Early CI compiles the trailer, detail, extras, and More translation units",
+     all(unit in Path("tools/android/preflight-c.sh").read_text()
+         for unit in ("src/detail.c", "src/trailer.c", "src/extras.c", "src/detmais.c")))
 need("Episode selection anchored before source panel", "pedFontesT = ep->temporada; pedFontesE = ep->episodio" in episode)
 need("Unaired episodes blocked", "!epNaoExibido(ep)" in episode)
 need("Spoiler preferences preserved", "ajustes_desfocar_nao_assistidos()" in episode)
