@@ -7092,7 +7092,9 @@ static void desenhaComentarios(float x, float y, float a) {
     const char *msg = ((!daSerie && extras_comentarios_ep_carregando()) ||
                        (daSerie && extras_carregando()))
                     ? "Carregando comentários…"
-                    : "Nenhum comentário disponível.";
+                    : extras_falta_chave_trakt()
+                     ? "Comentários Trakt indisponíveis: chave do app não configurada."
+                     : "Nenhum comentário disponível.";
     TxtLinha l = txt_linha(TXT_DET_META2, msg, 150, 154, 163, 255);
     txt_desenhar_alpha(l, x, y, a * 0.9f);
     return;

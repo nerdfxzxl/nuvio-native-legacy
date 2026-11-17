@@ -67,6 +67,7 @@ const char *extras_caminho_marca_nome(const char *nome);
 
 // Comentarios: os mais curtidos primeiro, que e a ordem de `comments/likes`.
 int  extras_n_comentarios(void);
+int  extras_falta_chave_trakt(void);
 const char *extras_comentario_usuario(int i);
 const char *extras_comentario_texto(int i);
 int  extras_comentario_curtidas(int i);

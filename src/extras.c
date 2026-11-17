@@ -20,6 +20,7 @@
 #include "linguas.h"
 extern void cat_historico_definir_id(const char *imdb, const char *tipo, int visto);
 #include <pthread.h>
+#include <stdatomic.h>
 #include <stdint.h>
 #include <string.h>
 #include <strings.h>
@@ -214,6 +215,7 @@ static char epShow[24];
 static int  epPedTemp, epPedNum;
 static NvPerfilSessao epComentSessao;
 static int  nComent;
+static _Atomic int semChaveTraktPublica;
 static struct { char titulo[120], ano[8], imdb[16], poster[NV_ARTE_URL_MAX]; } rel[EX_REL_MAX];
 // Vistos: um bit por episodio, ate 40 episodios em 20 temporadas. Vetor fixo
 // porque a consulta acontece no DESENHO de cada card, a cada quadro — uma
@@ -748,6 +750,7 @@ static void *buscar(void *arg) {
   const char *cabPub[3];
   char chavePub[140];
   int temChave = trakt_cabecalhos_publicos(cabPub, chavePub, sizeof chavePub);
+  atomic_store(&semChaveTraktPublica, !temTrakt && !temChave);
 
   // O QUE JA FOI VISTO VEM PRIMEIRO.
   //
@@ -1850,6 +1853,7 @@ int extras_nota_trakt(void)  { return notaTrakt; }
 int extras_votos_trakt(void) { return votosTrakt; }
 
 int extras_n_comentarios(void) { return nComent; }
+int extras_falta_chave_trakt(void) { return atomic_load(&semChaveTraktPublica); }
 const char *extras_comentario_usuario(int i) {
   return (i >= 0 && i < nComent) ? coment[i].user : "";
 }
