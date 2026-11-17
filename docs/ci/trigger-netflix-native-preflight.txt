@@ -1,4 +1,4 @@
 Stand-alone ARM64 native preflight for integrated detail redesign.
 Compiles modified C files and checks settings without building Rust/P2P/APK.
 
-Retry after retiring selector in settings coverage test (no APK build).
+Run for Dynamic Clock episode-action integration, AMOLED episode selector and detail polish at 49098643502802c93d9c11031987be6414a39e33.
