@@ -7,7 +7,9 @@
 static int detEpAberto, detEpSzn, detEpRow, detEpCol;
 static int detEpSeasons[CAT_TEMP_MAX], detEpCounts[CAT_TEMP_MAX], detEpNSeasons;
 static int detEpRowIndexes[2600], detEpRows;
-static unsigned detEpCatalogVersion;
+// Episode bytes and catalog item metadata have separate atomic clocks.
+// Season metadata can arrive after the episode list without bumping epVersao.
+static unsigned detEpCatalogVersion, detEpItemRevision;
 static float detEpScroll, detEpVel, detEpSeasonScroll, detEpSeasonVel;
 static int detEpShowDesc = 1, detEpShowRating = 1;
 
@@ -78,6 +80,7 @@ static void detEpRebuild(int targetSeason, int targetEpisode) {
     if (ep && ep->episodio == targetEpisode) { detEpRow = j; break; }
   }
   detEpCatalogVersion = cat_versao_episodios();
+  detEpItemRevision = cat_revisao_itens();
 }
 
 static void detEpAbrir(void) {
@@ -103,7 +106,8 @@ static const CatEp *detEpAt(int row) {
 }
 static void detEpAtualizar(float dt) {
   if (!detEpAberto) return;
-  if (detEpCatalogVersion != cat_versao_episodios()) {
+  if (detEpCatalogVersion != cat_versao_episodios() ||
+      detEpItemRevision != cat_revisao_itens()) {
     int season = detEpNSeasons ? detEpSeasons[detEpSzn] : 1;
     int episode = detEpAt(detEpRow) ? detEpAt(detEpRow)->episodio : 1;
     detEpRebuild(season, episode);
