@@ -1708,7 +1708,7 @@ static const char *FS_CORPO[GFX_NMODOS] = {
 
 // Cada corpo declara o que usa; montar so o necessario mantem o shader enxuto.
 static const struct { int sdf, cover; } PRECISA[GFX_NMODOS] = {
-  {1,1}, {1,0}, {1,0}, {0,1}, {1,0}, {0,0}, {0,0}, {0,0}, {0,0}, {0,0}, {0,0},
+  {1,1}, {1,0}, {1,0}, {0,1}, {1,0}, {1,0}, {0,0}, {0,0}, {0,0}, {0,0}, {0,0},
   {0,1}, {0,1},
   {1,0},   /* GFX_ANEL */
   {0,0},   /* GFX_OLHO    — SDF proprio, nao o do retangulo */
