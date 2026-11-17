@@ -5690,7 +5690,16 @@ void stream_folha_atualizar(float dt, Uint32 agora) {
   abreFoco = anim_mola(abreFoco, 1, dt, NV_MOLA_TELA);
   abreAnt  = anim_mola(abreAnt, 0, dt, NV_MOLA_TELA);
   melhorFolha = automaticoDaFolhaModo();
-  montar(automaticaDaFolha());
+#ifdef NV_ANDROID
+  // In the Android Dynamic Clock selector, montar() deliberately disables
+  // row-expansion animations (expansaoFoco/expansaoAnt = 0). It already ran
+  // above this frame: repeating it here needlessly revisits all viewport
+  // rows and can run JNI layout measurements on an underpowered TV CPU.
+  // Keep the second pass in every other selector where focus expansion
+  // really does require recomputing row geometry after the spring update.
+  if (!folhaRelogio || canalFolha)
+#endif
+    montar(automaticaDaFolha());
   if (focoFixo >= 0) {
     int r = grupo == 1 ? linhaDe(focoFixo) : -1;
     if (r >= 0) {
