@@ -1560,6 +1560,9 @@ static void auditoriaEpisodios(void) {
 
 #include "detail_episodes_netflix.inc"
 
+// Used by Android's frame pacing diagnostics; does not allocate or render.
+int detail_episodios_netflix_aberto(void) { return detEpAberto; }
+
 static void abrirInterno(const HomeItem *it) {
   // A reused detail page must never inherit the previous show's episode list.
   detEpAberto = 0;

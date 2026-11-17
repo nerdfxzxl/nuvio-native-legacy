@@ -147,9 +147,10 @@ static void perfTvFrame(Uint32 now, double ms) {
 #ifdef NV_ANDROID
     char value[PROP_VALUE_MAX];
     enabled |= __system_property_get("debug.nuvio.perf", value) > 0 && !strcmp(value, "1");
-    // Auto-profile only the expanded selector; no root or debug properties
-    // required. One compact sample per ~3 seconds, never every frame.
-    enabled |= stream_folha_relogio_expandido();
+    // Profile either native scrolling selector on the physical TV, without
+    // requiring root or adb properties. One sample per ~3 seconds.
+    enabled |= stream_folha_relogio_expandido() ||
+               detail_episodios_netflix_aberto();
 #endif
     if (!enabled && perftv_enabled && perftv_flush(&perfTv, line, sizeof line)) {
       perfTvReport(line);
@@ -166,6 +167,7 @@ static const char *perfTvScreen(void) {
   // This is side-effect-free and lets Android's existing perf-TV instrumentation
   // distinguish selector frame pacing from unrelated detail rendering.
   if (stream_folha_relogio_expandido()) return "stream-selector";
+  if (detail_episodios_netflix_aberto()) return "episodes-netflix";
   if (ctx_aberto()) return "context-menu";
   if (player_aberto() && (estatvivo_aberto() || estatvivo_fixado())) return "stats-panel";
   if (!strcmp(screen, "menu")) return "menu";
