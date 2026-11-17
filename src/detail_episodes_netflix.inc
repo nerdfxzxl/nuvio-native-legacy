@@ -78,6 +78,8 @@ static void detEpAbrir(void) {
   episodioPadrao(&t, &e, &origin);
   detEpRebuild(t, e);
   detEpCol = 1; // Focus on currently watching/next, not the season list.
+  detEpShowDesc = ajustes_det_ep_descricao();
+  detEpShowRating = ajustes_det_ep_imdb();
   detEpScroll = fmaxf(0.0f, (float)(detEpRow - 1) * 207.0f);
   detEpVel = 0;
   detEpSeasonScroll = fmaxf(0.0f, (float)(detEpSzn - 3) * 88.0f);

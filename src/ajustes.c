@@ -730,6 +730,8 @@ typedef enum {
   AJ_STREAM_SELECTOR, // Retired selector-mode slot; keep its persisted index stable.
   AJ_PLAYER_BADGES,  // Append-only: independent player badge source by imported URL.
   AJ_PLAYER_SHOW,    // Append-only: independent player badge visibility.
+  AJ_DET_EP_DESCRICAO, // Netflix episodes: description visible, default On
+  AJ_DET_EP_IMDB,      // Netflix episodes: IMDb score visible, default On
   AJ_N
 } OpcaoId;
 _Static_assert(DEBRID_RD == 0 && DEBRID_TB == 1 && DEBRID_PM == 2 && DEBRID_AD == 3,
@@ -1871,6 +1873,8 @@ static const Opcao OPCOES[AJ_N] = {
   LER("Seletor anterior (reservado)"), // Keep retired AJ_STREAM_SELECTOR slot.
   ESC("Player badges", V_SELOS_PACOTE, 4),
   ESC("Show in player", V_LIGA, 2),
+  ESC("Descrição dos episódios", V_LIGA, 2),
+  ESC("IMDb por episódio", V_LIGA, 2),
   };
 
 // Nome de cada opcao no arquivo. O formato era POSICIONAL — uma linha por
@@ -2207,6 +2211,8 @@ static const char *CHAVE[] = {
   "streamSelectorUiLocal",
   "-playerBadgeSourceLocal", // Selected URL saved in selos-player-pN.txt
   "-playerBadgeShowLocal", // Visibility stored in selos-player-visible-pN.txt
+  "detEpDescricaoLocal",
+  "detEpImdbLocal",
 };
 // QUATRO VETORES PARALELOS indexados pelo mesmo enum AJ_*: OPCOES, CHAVE,
 // valor e as secoes. OPCOES ja e declarado [AJ_N], e `valor` aceita inicializacao
@@ -4031,6 +4037,8 @@ int ajustes_nota_episodio(int fonte) {
   return (fonte == EX_IMDB && (m == 1 || m == 3)) || (fonte == EX_TMDB && (m == 2 || m == 3));
 }
 int ajustes_teste_op_nota_ep(void) { return AJ_NT_EP; }
+int ajustes_det_ep_descricao(void) { return valor[AJ_DET_EP_DESCRICAO] == 0; }
+int ajustes_det_ep_imdb(void) { return valor[AJ_DET_EP_IMDB] == 0; }
 
 // Onde os ajustes ficam. Ate a versao anterior nada era gravado: mexer numa
 // opcao valia so enquanto o app estivesse aberto, e voltar depois mostrava tudo
@@ -8138,6 +8146,8 @@ static const char *ajudaOpcaoBase(int op) {
     case AJ_ADDONS_PRINCIPAL: return "Os outros perfis desta conta usam os addons do perfil principal. Desligado, cada perfil usa os seus — a não ser que a conta já diga para usar os do principal.";
     case AJ_VIDRO_CONTORNO: return "O contorno das linhas e dos cartões, inclusive o do foco. Desligado, o item em foco é marcado só por um fundo mais claro na cor de destaque.";
     case AJ_NT_EP: return "Qual nota aparece nos cartões de episódio. Como na linha do título segue os interruptores de Notas (IMDb, Trakt, TMDB). Só nesta TV.";
+    case AJ_DET_EP_DESCRICAO: return "Mostra a sinopse ao lado da imagem de cada episódio na nova lista Netflix. Só nesta TV.";
+    case AJ_DET_EP_IMDB: return "Mostra a nota IMDb por episódio quando há uma fonte IMDb válida. Notas TMDB/Trakt nunca se passam por IMDb. Só nesta TV.";
     case AJ_ARTE_TOM: return "Vívido mantém as cores da arte. Claro usa tons pastel da mesma cor, com texto contrastante. Só nesta TV.";
     case AJ_COR_LOGO: return "Com um tema dinâmico, a cor sai do logo do título em vez da arte de fundo. Logo branco ou preto usa a arte.";
     case AJ_MANTER_VIDEO: return "Mantém o player pausado pelo tempo escolhido. Usa memória e decoder; o trailer espera. Desligado por padrão.";

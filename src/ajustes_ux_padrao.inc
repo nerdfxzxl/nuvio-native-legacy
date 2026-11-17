@@ -356,3 +356,5 @@
   0, /* stream selector: Official Nuvio, device-local */
   0, /* player badges: same badge source as stream cards; per-profile URL in selospacote.c */
   0, /* Show in player: On; persisted in selos-player-visible-pN.txt */
+  0, /* Netflix episode descriptions: On */
+  0, /* Netflix episode IMDb scores: On */

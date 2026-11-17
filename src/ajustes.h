@@ -761,6 +761,8 @@ int         ajustes_mdblist_fonte(int fonte);   // mdblist_show_*
 int         ajustes_nota_titulo(int fonte);
 // A fonte aparece no cartao de EPISODIO? 0 = segue a linha do titulo; so IMDb/TMDB/Trakt tem nota por episodio.
 int         ajustes_nota_episodio(int fonte);
+int         ajustes_det_ep_descricao(void);
+int         ajustes_det_ep_imdb(void);
 // Source at each title-line position, including the saved custom order.
 int         ajustes_nota_fonte(int pos);
 
