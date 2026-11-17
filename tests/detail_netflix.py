@@ -29,7 +29,18 @@ need("Five actions in correct order", all(
 need("Hero scroll independent of page", "scroll=anim_mola2(&velocity,scroll,(float)first*step,dt,NV_MOLA2_SCROLL);" in detail
      and "if (botao + 1 < nBotoes())" in detail)
 need("Rows rendered inside viewport", "gfx_recorte(x-9,yTop-8,stackW+18,totalH+16)" in detail)
-need("Watch progress preserved", "primarioPct = retomando" in detail)
+need("Watched progress is red ONLY on episode thumbnails",
+     "primarioPct=-1;" in detail and
+     "gfx_cor(track,.5f,.94f,.10f,.14f,1.0f)" in episode)
+need("Actual artwork title, AMOLED episode split, and compact season pills",
+     "logotitulo_desenhar(" in episode and
+     "screenW * .40f" in episode and
+     "gfx_cor((GfxRect){0,0,screenW,screenH},0,0,0,0,1)" in episode and
+     '"Season %d  ·  %d episodes"' in episode)
+need("Focused hero action pill, no grey rectangular backgrounds",
+     "label=\"More\";ico=\"aj_ellipsis\";" in detail and
+     "gfx_cor(row,.5f,.975f,.975f,.975f,k*a)" in detail)
+
 need("Season order ascending", "detEpSeasons[j - 1] > current" in episode)
 need("Season metadata cached", "detEpCounts[s]" in episode)
 need("Episode cache watches BOTH content and catalog metadata clocks",
@@ -38,7 +49,15 @@ need("Episode cache watches BOTH content and catalog metadata clocks",
 need("Early CI compiles the trailer, detail, extras, and More translation units",
      all(unit in Path("tools/android/preflight-c.sh").read_text()
          for unit in ("src/detail.c", "src/trailer.c", "src/extras.c", "src/detmais.c")))
-need("Episode selection anchored before source panel", "pedFontesT = ep->temporada; pedFontesE = ep->episodio" in episode)
+need("Episode selection anchored before Dynamic Clock stream panel",
+     "pedFontesT=ep->temporada;pedFontesE=ep->episodio;" in episode and
+     "stream_folha_abrir_opcoes_ep()" in Path("src/app.c").read_text() and
+     "pedOpcoesT=ep->temporada;pedOpcoesE=ep->episodio" in episode)
+need("Episode actions use real clock, not a separate drawn overlay",
+     "void stream_folha_abrir_opcoes_ep(void)" in Path("src/streams.c").read_text()
+     and "if(folhaOpcoesEp)" in Path("src/streams.c").read_text()
+     and "detEpMenuOpen" not in episode)
+
 need("Unaired episodes blocked", "!epNaoExibido(ep)" in episode)
 need("Spoiler preferences preserved", "ajustes_desfocar_nao_assistidos()" in episode)
 need("Explicit IMDb provenance", "ep->notaImdb" in episode and
