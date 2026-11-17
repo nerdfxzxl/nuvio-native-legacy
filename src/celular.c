@@ -582,7 +582,7 @@ static int atender(int c, int *erros) {
                         operacao == CEL_FUSION_ACTIVATE) &&
         (!ix[0] || !fim || *fim || indice < (operacao == CEL_FUSION_ACTIVATE ? -1 : 0) ||
          indice >= 3)) ||
-        (operacao != CEL_FUSION_REMOVE &&
+        ((operacao == CEL_FUSION_ADD || operacao == CEL_FUSION_EDIT) &&
          ((!strncasecmp(novo, "http://", 7) && !novo[7]) ||
           (!strncasecmp(novo, "https://", 8) && !novo[8]) ||
           (strncmp(novo, "http://", 7) && strncmp(novo, "https://", 8))))) {
