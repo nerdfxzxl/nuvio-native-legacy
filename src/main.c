@@ -150,6 +150,10 @@ static void perfTvFrame(Uint32 now, double ms) {
 }
 static const char *perfTvScreen(void) {
   const char *screen = app_tela_nome();
+  // Track the expanding source picker independently of the detail screen.
+  // This is side-effect-free and lets Android's existing perf-TV instrumentation
+  // distinguish selector frame pacing from unrelated detail rendering.
+  if (stream_folha_relogio_expandido()) return "stream-selector";
   if (ctx_aberto()) return "context-menu";
   if (player_aberto() && (estatvivo_aberto() || estatvivo_fixado())) return "stats-panel";
   if (!strcmp(screen, "menu")) return "menu";
