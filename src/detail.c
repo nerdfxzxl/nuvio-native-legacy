@@ -8095,7 +8095,7 @@ static void detail_desenhar_(Uint32 agora) {
       const char *glyph = control == 0 ?
         (trailer_pausado() ? "aj_play" : "aj_pause") : "aj_rotate-ccw-clock";
       gfx_icone((GfxRect){box.x+15,box.y+19,27,27},glyph,1,1,1,1);
-      TxtLinha line = txt_linha_corta(TXT_PG_ROTULO,label,250,250,251,255,153);
+      TxtLinha line = txt_linha_corta(TXT_CAPTION2,label,250,250,251,255,153);
       txt_desenhar_alpha(line,box.x+52,box.y+(box.h-line.h)*.5f,1);
     }
   }
