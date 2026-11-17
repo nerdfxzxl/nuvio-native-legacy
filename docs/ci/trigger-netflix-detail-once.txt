@@ -1,0 +1,3 @@
+Netflix detail integration - single Android debug validation build
+Base: a8a3e401f94f5648bd0a7423af809c10d5eac4de
+Scope: native hero actions, episodes, trailer, IMDb/metadata, settings and regression tests
