@@ -6958,6 +6958,52 @@ static void desenharOsd(Uint32 agora, float a, float ac, const CatItem *c) {
   desenharOsdCorpo(agora, a, ac, c);
   ESCALA_FIM();
 }
+// The official "Show in player" control is distinct from Legacy's format
+// display style. Match verified video/audio characteristics using the player
+// Fusion pack. This places imported badges immediately beneath the title,
+// without altering the user's existing format-row position or style.
+static void playerFusionAcrescentar(char *dst, size_t cap, const char *value) {
+  size_t len = strlen(dst), left = cap > len ? cap - len : 0;
+  if (!value || !value[0] || left <= 1) return;
+  snprintf(dst + len, left, "%s%s", len ? " " : "", value);
+}
+static void playerFusionCaracteristicas(char *dst, size_t cap) {
+  int w = video_largura(), h = video_altura();
+  char resolucao[24];
+  const VideoFaixa *audio;
+  if (!cap) return;
+  dst[0] = 0;
+  if (w <= 0 || h <= 0) return;  // Never infer capabilities before the decoder reports them.
+  if (w >= 3200 || h >= 1800) playerFusionAcrescentar(dst, cap, "2160p 4K UHD");
+  else if (w >= 2400) playerFusionAcrescentar(dst, cap, "1440p");
+  else {
+    snprintf(resolucao, sizeof resolucao, "%dp", h);
+    playerFusionAcrescentar(dst, cap, resolucao);
+  }
+  if (video_tem_dolby_vision()) playerFusionAcrescentar(dst, cap, "Dolby Vision DV");
+  else if (video_hdr()[0]) playerFusionAcrescentar(dst, cap, video_hdr());
+  if (video_tem_atmos()) playerFusionAcrescentar(dst, cap, "Dolby Atmos Atmos");
+  if (marcaDtsAtual() >= 0) playerFusionAcrescentar(dst, cap, marca_formato_nome((FormatoMarca)marcaDtsAtual()));
+  audio = ehCanal() ? NULL : video_audio(video_audio_atual());
+  if (audio) {
+    const char *codec = audioinfo_codec(audio->codec);
+    playerFusionAcrescentar(dst, cap, codec);
+    if (audio->rotulo[0]) {
+      if (strstr(audio->rotulo, "Atmos")) playerFusionAcrescentar(dst, cap, "Atmos");
+      if (strstr(audio->rotulo, "5.1")) playerFusionAcrescentar(dst, cap, "5.1");
+      if (strstr(audio->rotulo, "7.1")) playerFusionAcrescentar(dst, cap, "7.1");
+    }
+  }
+}
+static float playerFusionTitulo(float x, float y, float alpha, int medir) {
+  char metadata[160];
+  if (alpha <= 0.001f || ehCanal()) return 0.0f;
+  playerFusionCaracteristicas(metadata, sizeof metadata);
+  if (!metadata[0]) return 0.0f;
+  return stream_selos_medidos(metadata, x, y, 680.0f, 30.0f,
+                             0.953f, alpha, medir);
+}
+
 // FILEIRA DE FORMATO ("4K · Dolby Vision · Atmos · Inglês 5.1", como no pedido
 // #4141 do NuvioTV). Vem do FLUXO, nao de constante: selo que mente e pior que
 // selo ausente, porque e nele que o dono confia para saber se pegou a versao
@@ -7230,6 +7276,13 @@ static void desenharOsdCorpo(Uint32 agora, float a, float ac, const CatItem *c) 
     // de cima, e desenhada la embaixo, junto da ilha.
     { float hfF = ajustes_plr_formato_pos() == PLR_POS_ABAIXO ? fileiraFormato(agora, cx, 0.0f, ac, 1, NULL) : 0.0f;
       if (hfF > 0.0f) { yBase -= hfF; fileiraFormato(agora, cx, yBase, ac, 0, NULL); yBase -= 14.0f; } }
+    // Independent Fusion player badges, always directly below the title.
+    // An empty/unmatched/disabled pack contributes zero space.
+    if (playerFusionTitulo(cx, 0.0f, ac, 1) > 0.0f) {
+      yBase -= 30.0f;
+      playerFusionTitulo(cx, yBase, ac, 0);
+      yBase -= 14.0f;
+    }
     if (logo) {
       float ar = tex_aspecto(marca), w = 480.0f, h = ar > 0.0f ? w / ar : 150.0f;
       if (h > 150.0f) { h = 150.0f; w = h * ar; }
