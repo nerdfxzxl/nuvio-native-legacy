@@ -11,6 +11,9 @@ int  celular_estado(void) { return CEL_PARADO; }
 const char *celular_url(void) { return ""; }
 int  celular_pegar(char *d, size_t n) { (void)d; (void)n; return 0; }
 int  celular_porta(void) { return 0; }
+int  celular_fusion_abrir(const CelFusionPack *p, int n) { (void)p; (void)n; return 0; }
+void celular_fusion_publicar(const CelFusionPack *p, int n, const char *s) { (void)p; (void)n; (void)s; }
+int  celular_fusion_pegar(int *a, int *i, char *u, size_t n) { (void)a; (void)i; if (u && n) u[0] = 0; return 0; }
 #else
 
 #include "idioma.h"
@@ -25,6 +28,7 @@ int ajustes_idioma(void);   // ajustes.h puxa SDL; so o idioma interessa aqui
 #include <netinet/in.h>
 #include <poll.h>
 #include <pthread.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <strings.h>
@@ -50,7 +54,11 @@ static char recebido[CEL_CORPO_MAX + 1];
 static int  temRecebido;
 static time_t expira;
 // Montadas na abertura (thread do app, por causa do i18n); o fio so le.
-static char pagina[12288], pagEnviado[8192], pagUsado[8192];
+static char pagina[32768], pagEnviado[8192], pagUsado[8192];
+// Only one short-lived server at a time. Fusion requests are queued for the
+// application's UI thread, never executed by the HTTP worker.
+static int fusionModo, fusionAcao, fusionIndice;
+static char fusionUrl[512];
 
 int celular_disponivel(void) { return 1; }
 int celular_estado(void) { return estado; }
@@ -68,6 +76,20 @@ int celular_pegar(char *dst, size_t n) {
   }
   pthread_mutex_unlock(&trava);
   return r;
+}
+int celular_fusion_pegar(int *acao, int *indice, char *urlDst, size_t tamanho) {
+  int result = 0;
+  pthread_mutex_lock(&trava);
+  if (fusionModo && fusionAcao != CEL_FUSION_NADA) {
+    if (acao) *acao = fusionAcao;
+    if (indice) *indice = fusionIndice;
+    if (urlDst && tamanho) snprintf(urlDst, tamanho, "%s", fusionUrl);
+    fusionAcao = CEL_FUSION_NADA;
+    fusionUrl[0] = 0;
+    result = 1;
+  }
+  pthread_mutex_unlock(&trava);
+  return result;
 }
 
 // --- IP da LAN ------------------------------------------------------------------
@@ -240,6 +262,82 @@ static void montarPaginas(const char *titulo) {
     idioma_iso(lang), cel, cv, usado);
 }
 
+// Rebuild the mobile manager only on the UI thread. The worker reads an
+// immutable snapshot under the same mutex when answering GET.
+static void fusionJuntar(char *dst, size_t cap, size_t *used, const char *fmt, ...) {
+  int n;
+  va_list args;
+  if (*used >= cap - 1) return;
+  va_start(args, fmt);
+  n = vsnprintf(dst + *used, cap - *used, fmt, args);
+  va_end(args);
+  if (n > 0) *used += (size_t)n < cap - *used ? (size_t)n : cap - *used - 1;
+}
+static void montarFusion(const CelFusionPack *packs, int count, const char *status) {
+  char cor[128], nota[1024];
+  size_t u = 0;
+  int i;
+  if (count < 0) count = 0;
+  if (count > 3) count = 3;
+  estiloAcento(cor, sizeof cor);
+  escapar(nota, sizeof nota, status ? status : "");
+  pagina[0] = 0;
+  fusionJuntar(pagina, sizeof pagina, &u,
+    "<!doctype html><html lang=en><head><meta charset=utf-8><title>Fusion badge URLs</title>"
+    CEL_ESTILO "%s"
+    "<style>h2{font-size:18px;margin:8px 0}small{display:block;opacity:.66;word-break:break-all}"
+    ".pack{background:rgba(255,255,255,.06);padding:18px;border-radius:16px;margin:14px 0}"
+    "input{width:100%%;background:#26272b;color:#fff;border:1px solid #555;border-radius:10px;"
+    "padding:12px;font:16px system-ui;word-break:break-all}"
+    "label{display:block;margin:15px 0 7px;color:#ccc}button{width:100%%;margin-top:8px}"
+    ".note{padding:12px;border-radius:9px;background:#203224;color:#bff5c7}"
+    "</style></head><body><main>" CEL_MARCA
+    "<h1>Fusion badge URLs</h1><p>Manage badge packs for this TV profile. "
+    "Up to 3 URLs are supported. Changes appear on the TV after validation.</p>",
+    cor);
+  if (nota[0]) fusionJuntar(pagina, sizeof pagina, &u, "<p class=note>%s</p>", nota);
+  if (!count) fusionJuntar(pagina, sizeof pagina, &u, "<p>No badge URLs configured yet.</p>");
+  for (i = 0; i < count; i++) {
+    char nome[768], urlEsc[4096];
+    escapar(nome, sizeof nome, packs[i].nome);
+    escapar(urlEsc, sizeof urlEsc, packs[i].url);
+    fusionJuntar(pagina, sizeof pagina, &u,
+      "<div class=pack><h2>%s</h2><small>%s</small><p>%d active badges · %s</p>",
+      nome, urlEsc, packs[i].filtros, packs[i].daTv ? "Managed on this TV" : "Managed by your account");
+    if (packs[i].daTv) {
+      fusionJuntar(pagina, sizeof pagina, &u,
+        "<form method=post action='/%s'><input type=hidden name=op value=edit>"
+        "<input type=hidden name=i value=%d><label>Replace this badge URL</label>"
+        "<input type=url name=t maxlength=511 required value=\"%s\">"
+        "<button class=ok>Save URL</button></form>"
+        "<form method=post action='/%s'><input type=hidden name=op value=remove>"
+        "<input type=hidden name=i value=%d><button class=sec>Remove this pack</button></form>",
+        token, i, urlEsc, token, i);
+    }
+    fusionJuntar(pagina, sizeof pagina, &u, "</div>");
+  }
+  if (count < 3) fusionJuntar(pagina, sizeof pagina, &u,
+    "<h2>Add Fusion badge pack</h2><form method=post action='/%s'>"
+    "<input type=hidden name=op value=add><label>Badge JSON URL</label>"
+    "<input type=url name=t maxlength=511 required placeholder='https://example.com/badges.json'>"
+    "<button class=ok>Add URL</button></form>", token);
+  else fusionJuntar(pagina, sizeof pagina, &u,
+    "<p>Maximum of 3 URLs reached. Remove a TV-managed pack to add another.</p>");
+  fusionJuntar(pagina, sizeof pagina, &u, "</main></body></html>");
+  snprintf(pagEnviado, sizeof pagEnviado,
+    "<!doctype html><html lang=en><head><meta charset=utf-8><title>Request received</title>"
+    CEL_ESTILO "%s</head><body><main>" CEL_MARCA
+    "<h1>Request received</h1><p>Your TV is processing the request. "
+    "Refresh the manager to see the updated pack list or any error.</p>"
+    "<p><a href='/%s' style='color:var(--a)'>Back to badge manager</a></p>"
+    "</main></body></html>", cor, token);
+}
+void celular_fusion_publicar(const CelFusionPack *packs, int n, const char *status) {
+  pthread_mutex_lock(&trava);
+  if (fusionModo && estado == CEL_ESPERANDO) montarFusion(packs, n, status);
+  pthread_mutex_unlock(&trava);
+}
+
 // --- HTTP -----------------------------------------------------------------------
 static long agoraMs(void) {
   struct timeval tv;
@@ -312,6 +410,28 @@ static int hex(int c) {
        : c >= 'A' && c <= 'F' ? c - 'A' + 10 : -1;
 }
 
+// Decode a selected form field without treating user data as markup.
+static void campoFusion(const char *form, const char *nome, char *dst, size_t cap) {
+  size_t len = strlen(nome), n = 0;
+  const char *p = form;
+  if (!dst || !cap) return;
+  dst[0] = 0;
+  while (p && *p) {
+    if (!strncmp(p, nome, len) && p[len] == '=') {
+      p += len + 1;
+      while (*p && *p != '&' && n + 1 < cap) {
+        if (*p == '+') { dst[n++] = ' '; p++; }
+        else if (*p == '%' && p[1] && p[2] && hex(p[1]) >= 0 && hex(p[2]) >= 0) {
+          dst[n++] = (char)(hex(p[1]) * 16 + hex(p[2])); p += 3;
+        } else dst[n++] = *p++;
+      }
+      dst[n] = 0;
+      return;
+    }
+    p = strchr(p, '&');
+    if (p) p++;
+  }
+}
 // Campo `t` de um corpo x-www-form-urlencoded, decodificado no lugar em dst.
 static void campoT(const char *corpo, char *dst, size_t n) {
   const char *p = corpo;
@@ -399,7 +519,9 @@ static int atender(int c, int *erros) {
     // Sem IP de quem pediu: so que a pagina chegou ao celular. E esta linha
     // que diz, no log de uma LG/Samsung, se a rede da TV deixa entrar.
     if (metodo[0] == 'G') puts("[celular] pagina aberta");
+    pthread_mutex_lock(&trava);
     responder(c, 200, metodo[0] == 'G' ? pagina : NULL);
+    pthread_mutex_unlock(&trava);
     return 0;
   }
   if (strcmp(metodo, "POST")) { responder(c, 405, NULL); return 0; }
@@ -421,6 +543,42 @@ static int atender(int c, int *erros) {
     temCorpo += (size_t)k;
   }
   corpo[temCorpo] = 0;
+  if (fusionModo) {
+    char acao[16], ix[16], novo[512], *fim = NULL;
+    long indice;
+    int operacao;
+    campoFusion(corpo, "op", acao, sizeof acao);
+    campoFusion(corpo, "i", ix, sizeof ix);
+    campoFusion(corpo, "t", novo, sizeof novo);
+    aparar(novo);
+    operacao = !strcmp(acao, "add") ? CEL_FUSION_ADD :
+               !strcmp(acao, "edit") ? CEL_FUSION_EDIT :
+               !strcmp(acao, "remove") ? CEL_FUSION_REMOVE : CEL_FUSION_NADA;
+    indice = ix[0] ? strtol(ix, &fim, 10) : -1;
+    if (!operacao || ((operacao == CEL_FUSION_EDIT || operacao == CEL_FUSION_REMOVE) &&
+        (!ix[0] || !fim || *fim || indice < 0 || indice >= 3)) ||
+        (operacao != CEL_FUSION_REMOVE &&
+         ((!strncasecmp(novo, "http://", 7) && !novo[7]) ||
+          (!strncasecmp(novo, "https://", 8) && !novo[8]) ||
+          (strncmp(novo, "http://", 7) && strncmp(novo, "https://", 8))))) {
+      memset(corpo, 0, temCorpo);
+      responder(c, 400, pagUsado);
+      return 0;
+    }
+    pthread_mutex_lock(&trava);
+    if (fusionAcao != CEL_FUSION_NADA) {
+      pthread_mutex_unlock(&trava);
+      memset(corpo, 0, temCorpo);
+      responder(c, 400, pagUsado);
+      return 0;
+    }
+    fusionAcao = operacao; fusionIndice = (int)indice;
+    snprintf(fusionUrl, sizeof fusionUrl, "%s", novo);
+    pthread_mutex_unlock(&trava);
+    memset(corpo, 0, temCorpo);
+    responder(c, 200, pagEnviado);
+    return 0;  // Multi-request session: the token expires only on close/timeout.
+  }
   pthread_mutex_lock(&trava);
   campoT(corpo, recebido, sizeof recebido);
   aparar(recebido);
@@ -478,12 +636,13 @@ void celular_fechar(void) {
   temRecebido = 0;
   pthread_mutex_unlock(&trava);
   memset(token, 0, sizeof token);
+  fusionModo = fusionAcao = CEL_FUSION_NADA; fusionUrl[0] = 0;
   url[0] = 0;
   porta = 0;
   estado = CEL_PARADO;
 }
 
-int celular_abrir(const char *titulo) {
+static int celular_abrir_modo(const char *titulo, int modo, const CelFusionPack *packs, int n) {
   struct sockaddr_in a;
   socklen_t tam = sizeof a;
   char ip[48];
@@ -509,7 +668,9 @@ int celular_abrir(const char *titulo) {
   snprintf(hostLocal, sizeof hostLocal, "127.0.0.1:%d", porta);
   snprintf(origem, sizeof origem, "http://%s", hostLan);
   snprintf(url, sizeof url, "http://%s/%s", hostLan, token);
-  montarPaginas(titulo);
+  fusionModo = modo;
+  if (modo) montarFusion(packs, n, NULL);
+  else montarPaginas(titulo);
   expira = time(NULL) + CEL_VALIDADE_S;
   estado = CEL_ESPERANDO;
   if (pthread_create(&fio, NULL, servir, NULL)) { celular_fechar(); return 0; }
@@ -517,5 +678,11 @@ int celular_abrir(const char *titulo) {
   // Sem IP nem token no log: so que subiu.
   printf("[celular] servidor no ar (porta %d)\n", porta);
   return 1;
+}
+int celular_abrir(const char *titulo) {
+  return celular_abrir_modo(titulo, 0, NULL, 0);
+}
+int celular_fusion_abrir(const CelFusionPack *packs, int n) {
+  return celular_abrir_modo("Fusion badge URLs", 1, packs, n);
 }
 #endif
