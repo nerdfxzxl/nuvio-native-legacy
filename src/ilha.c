@@ -12,6 +12,7 @@
 // troca seco. Saiu o estado (horaAnt/horaT) e as duas linhas extras por virada.
 #include "horafmt.h"
 #include "ilha.h"
+#include "streams.h"
 #include "ilha_voo.h"
 #include "ajustes.h"
 #include "anim.h"
@@ -2291,7 +2292,9 @@ static void ilha_desenharCorpo_(Uint32 agora) {
     }
     if (aMod > 0.0f && modalT > 0.0f) desenharModal(modalAlvo(r, dir), A * aMod);
     if (corpoT > 0.0f && corpoFn && modalT <= 0.0f) {
-      horaNoLugar(x, dir, y, A * aHora);
+      // The source selector alone replaces the clock header with stream chips.
+      // All other island expansions retain their current clock behavior.
+      if (!stream_folha_relogio_expandido()) horaNoLugar(x, dir, y, A * aHora);
       if (aMod > 0.0f) corpoFn((GfxRect){ dir ? x - corpoWa : x, y, corpoWa, corpoHa }, A * aMod, corpoU);
     }
     gfx_sem_recorte();

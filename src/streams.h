@@ -483,6 +483,8 @@ StreamfitClasse stream_fit_folha_estado(int indice, StreamfitResultado *saida);
 // 0 = sem medida: l1/l2 vazias.
 int stream_fit_abrindo(const Stream *s, char *l1, size_t n1, char *l2, size_t n2);
 int  stream_folha_aberta(void);
+// Hide the clock text only while this specific stream picker owns the island.
+int  stream_folha_relogio_expandido(void);
 // DETALHES DA FONTE (#355): modal sobre a folha com o texto inteiro do addon.
 // Abre com Info / AMARELA / I na linha em foco; enquanto aberta ela come o
 // teclado (Voltar/OK fecham so ela).

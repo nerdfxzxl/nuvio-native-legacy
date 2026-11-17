@@ -5079,6 +5079,11 @@ void stream_folha_abrir(void) {
          fitFotoOrigem == SF_DUR_MEDIA ? "media" : fitFotoOrigem == SF_DUR_METADATA ? "metadata" : "unknown");
   fflush(stdout);
 }
+// True only for the movie/episode stream picker expanding the Dynamic Clock.
+// Keep this side-effect-free: ilha.c calls it during rendering.
+int stream_folha_relogio_expandido(void) {
+  return folhaRelogio && !canalFolha && (aberta || anim > 0.005f);
+}
 int stream_folha_aberta(void) {
   if (atomic_exchange(&cancelarAndroid, 0)) {
     aberta = 0; escolha = -1;
