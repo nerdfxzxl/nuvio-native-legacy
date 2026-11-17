@@ -209,7 +209,7 @@ int main(void) {
   assert(!selospacote_player_mostrar() && selospacote_player_fonte() == 1);
   selospacote_player_escolher(0);
   assert(!selospacote_player_mostrar());
-  reiniciarPerfil(3); assert(selospacote_n() == 2);
+  reiniciarPerfil(3); assert(selospacote_n() == 1); // TV pack was just removed.
   reiniciarPerfil(5);
   assert(!selospacote_player_mostrar());
   selospacote_player_definir_mostrar(1);

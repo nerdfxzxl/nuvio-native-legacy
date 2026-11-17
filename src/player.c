@@ -6976,6 +6976,8 @@ static void playerFusionCaracteristicas(char *dst, size_t cap) {
   if (w <= 0 || h <= 0) return;  // Never infer capabilities before the decoder reports them.
   if (w >= 3200 || h >= 1800) playerFusionAcrescentar(dst, cap, "2160p 4K UHD");
   else if (w >= 2400) playerFusionAcrescentar(dst, cap, "1440p");
+  else if (w >= 1800 || h >= 1000) playerFusionAcrescentar(dst, cap, "1080p");
+  else if (w >= 1200 || h >= 700) playerFusionAcrescentar(dst, cap, "720p");
   else {
     snprintf(resolucao, sizeof resolucao, "%dp", h);
     playerFusionAcrescentar(dst, cap, resolucao);

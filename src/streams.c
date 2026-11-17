@@ -6117,15 +6117,23 @@ float stream_selos_player_titulo(const Stream *source, const char *medido,
       nSource = selospacote_casar_pacote(pacote, sourceText, 4,
                                         fromSource, SELOS_MAX_CASADOS);
     }
-    // Preserve the package's native order, and remove duplicated badges.
+    // Prefer the real decoder's resolution over a source-name claim.
+    // Do not show two conflicting resolution badges if the stream was
+    // transcoded or the filename reports a different format.
+    int haveResolution = 0;
     for (int pass = 0; pass < 2; pass++) {
       const unsigned short *matched = pass ? fromSource : fromPlayback;
       int count = pass ? nSource : nPlay;
       for (int j = 0; j < count && cache.count < SELOS_MAX_CASADOS; j++) {
         int duplicate = 0;
+        const SeloFiltro *badge = selospacote_filtro_pacote(pacote, matched[j]);
+        if (badge && badge->resolucao && haveResolution) continue;
         for (int k = 0; k < cache.count; k++)
           if (cache.ids[k] == matched[j]) { duplicate = 1; break; }
-        if (!duplicate) cache.ids[cache.count++] = matched[j];
+        if (!duplicate) {
+          cache.ids[cache.count++] = matched[j];
+          if (badge && badge->resolucao) haveResolution = 1;
+        }
       }
     }
     snprintf(cache.playback, sizeof cache.playback, "%s", medido);
