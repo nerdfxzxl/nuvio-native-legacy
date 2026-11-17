@@ -72,6 +72,11 @@ class NuvioActivity : SDLActivity() {
     fun layoutStreamCard(generation: Int, index: Int, width: Int, fields: ByteArray?) =
         streamCardText.layout(generation, index, width, fields)
 
+    // The native SDL render thread must never block waiting for a bitmap
+    // layout. The job runs on the bounded stream-card worker.
+    fun layoutStreamCardAsync(generation: Int, index: Int, width: Int, fields: ByteArray?) =
+        streamCardText.layoutAsync(generation, index, width, fields)
+
     // Bounds pass allocates no pixels; subsampling happens inside the codec.
     fun decodeArtwork(bytes: ByteArray, width: Int, original: IntArray): android.graphics.Bitmap? {
         val options = android.graphics.BitmapFactory.Options()

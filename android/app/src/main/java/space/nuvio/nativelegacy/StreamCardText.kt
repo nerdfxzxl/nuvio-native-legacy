@@ -20,9 +20,27 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.sp
 import org.json.JSONArray
+import java.util.concurrent.ArrayBlockingQueue
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Future
+import java.util.concurrent.RejectedExecutionException
+import java.util.concurrent.ThreadFactory
+import java.util.concurrent.ThreadPoolExecutor
+import java.util.concurrent.TimeUnit
 import kotlin.math.roundToInt
 
-// Called only by the SDL render thread. The same Compose paragraphs supply
+// One bounded background worker handles expensive paragraph shaping and
+// offscreen bitmap rasterization; no Bitmap/Compose painting on the SDL GL
+// thread. Bounded queue prevents long scrolls from hoarding old card jobs.
+private object StreamCardRenderWorker {
+    val executor = ThreadPoolExecutor(
+        1, 1, 0L, TimeUnit.MILLISECONDS, ArrayBlockingQueue(24),
+        ThreadFactory { task -> Thread(task, "nuvio-card-paint").apply { isDaemon = true } },
+        ThreadPoolExecutor.AbortPolicy()
+    )
+}
+
+// Called by the SDL render thread. The same Compose paragraphs supply
 // both row height and pixels. Native code continues to own clipping and focus.
 internal class StreamCardText(private val context: Context) {
     private val resolver = createFontFamilyResolver(context)
@@ -36,6 +54,7 @@ internal class StreamCardText(private val context: Context) {
     private val density = Density(1.6f, context.resources.configuration.fontScale)
     private val measurer = TextMeasurer(resolver, density, LayoutDirection.Ltr, cacheSize = 24)
     private val cache = LruCache<Key, StreamCardParagraphs>(24)
+    private val queuedLayouts = ConcurrentHashMap<Key, Future<StreamCardParagraphs?>>()
 
     fun layout(generation: Int, index: Int, width: Int, payload: ByteArray?): StreamCardParagraphs? {
         val key = Key(generation, index, width)
@@ -62,6 +81,30 @@ internal class StreamCardText(private val context: Context) {
             (4 * density.density).roundToInt()).also { cache.put(key, it) }
     }
 
+    // Nonblocking entry point for the native render thread. A layout request
+    // with payload starts one worker job. Further polls use a null payload and
+    // read only completed results. The synchronous layout() is retained for
+    // unit tests and never used from the production SDL frame loop.
+    fun layoutAsync(generation: Int, index: Int, width: Int, payload: ByteArray?): StreamCardParagraphs? {
+        val key = Key(generation, index, width)
+        cache.get(key)?.let { return it }
+        queuedLayouts[key]?.let { task ->
+            if (!task.isDone) return null
+            queuedLayouts.remove(key, task)
+            return try { task.get() } catch (_: Exception) { null }
+        }
+        if (payload == null || width <= 0) return null
+        try {
+            val copy = payload.copyOf()
+            queuedLayouts[key] = StreamCardRenderWorker.executor.submit<StreamCardParagraphs?> {
+                layout(generation, index, width, copy)
+            }
+        } catch (_: RejectedExecutionException) {
+            // Render thread retries with payload after a short timeout.
+        }
+        return null
+    }
+
     private fun contentDirection(text: String): TextDirection {
         var offset = 0
         while (offset < text.length) {
@@ -86,7 +129,27 @@ class StreamCardParagraphs internal constructor(
     private val description: TextLayoutResult?,
     private val gap: Int
 ) {
+    private val queuedTiles = ConcurrentHashMap<Long, Future<IntArray>>()
     val height: Int = title.size.height + (description?.let { gap + it.size.height } ?: 0)
+
+    // Preparing the bitmap is CPU work and must not block VSync. The first
+    // call schedules painting; the next completed call returns pixels for a
+    // bounded OpenGL texture upload. No Java array is retained after delivery.
+    fun tileAsync(top: Int, rows: Int): IntArray? {
+        if (rows <= 0 || top < 0 || top + rows > height) return null
+        val key = (top.toLong() shl 32) or rows.toLong()
+        queuedTiles[key]?.let { task ->
+            if (!task.isDone) return null
+            queuedTiles.remove(key, task)
+            return try { task.get() } catch (_: Exception) { null }
+        }
+        try {
+            queuedTiles[key] = StreamCardRenderWorker.executor.submit<IntArray> { tile(top, rows) }
+        } catch (_: RejectedExecutionException) {
+            // The worker is busy painting visible tiles; retry next frame.
+        }
+        return null
+    }
 
     // Return straight-alpha RGBA bytes for Legacy's GL_SRC_ALPHA blend.
     // Bitmap.getPixels unpremultiplies, unlike direct AndroidBitmap pixel access.

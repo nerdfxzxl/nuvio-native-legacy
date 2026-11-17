@@ -1,6 +1,7 @@
 // SDL render thread only. Tiles bound GPU usage even for very tall filenames.
 #include <jni.h>
-enum { CARD_TILE_H = 256, CARD_TILE_COUNT = 24 };
+enum { CARD_TILE_H = 256, CARD_TILE_COUNT = 24, CARD_UPLOADS_PER_FRAME = 2 };
+static int cardUploadsThisFrame;
 typedef struct {
   GLuint texture;
   unsigned generation;
@@ -28,17 +29,17 @@ static int cardException(JNIEnv *env) {
 }
 
 // All local references below belong to the caller's PushLocalFrame.
-static jobject cardLayout(JNIEnv *env, int index, int width) {
+static jobject cardLayout(JNIEnv *env, int index, int width, int sendPayload) {
   jobject activity = SDL_AndroidGetActivity();
   if (!activity) return NULL;
   jclass cls = (*env)->GetObjectClass(env, activity);
   if (!cls) return NULL;
-  jmethodID layout = (*env)->GetMethodID(env, cls, "layoutStreamCard",
+  jmethodID layout = (*env)->GetMethodID(env, cls, "layoutStreamCardAsync",
       "(III[B)Lspace/nuvio/nativelegacy/StreamCardParagraphs;");
   if (!layout) return NULL;
   jint generation = (jint)listaGeracao;
   jobject row = (*env)->CallObjectMethod(env, activity, layout, generation, index, width, NULL);
-  if (cardException(env) || row) return row;
+  if (cardException(env) || row || !sendPayload) return row;
   const StreamDisplay *source = &lista[index].display;
   char *json = stream_display_read(source);
   if (!json) return NULL;
@@ -49,10 +50,10 @@ static jobject cardLayout(JNIEnv *env, int index, int width) {
   return (*env)->CallObjectMethod(env, activity, layout, generation, index, width, payload);
 }
 
-static int cardMeasure(int index, int width) {
+static int cardMeasure(int index, int width, int sendPayload) {
   JNIEnv *env = SDL_AndroidGetJNIEnv();
   if (!env || (*env)->PushLocalFrame(env, 12) < 0) { if (env) cardException(env); return 0; }
-  jobject row = cardLayout(env, index, width);
+  jobject row = cardLayout(env, index, width, sendPayload);
   int height = 0;
   if (!cardException(env) && row) {
     jclass cls = (*env)->GetObjectClass(env, row);
@@ -75,13 +76,14 @@ static GLuint cardTile(int index, int width, int top, int rows) {
     }
     if (t->used < slot->used) slot = t;
   }
+  if (cardUploadsThisFrame >= CARD_UPLOADS_PER_FRAME) return 0;
   JNIEnv *env = SDL_AndroidGetJNIEnv();
   if (!env || (*env)->PushLocalFrame(env, 16) < 0) { if (env) cardException(env); return 0; }
-  jobject row = cardLayout(env, index, width);
+  jobject row = cardLayout(env, index, width, 0);
   GLuint result = 0;
   if (!cardException(env) && row) {
     jclass cls = (*env)->GetObjectClass(env, row);
-    jmethodID method = cls ? (*env)->GetMethodID(env, cls, "tile", "(II)[I") : NULL;
+    jmethodID method = cls ? (*env)->GetMethodID(env, cls, "tileAsync", "(II)[I") : NULL;
     jintArray rgba = method ? (*env)->CallObjectMethod(env, row, method, top, rows) : NULL;
     if (!cardException(env) && rgba && (*env)->GetArrayLength(env, rgba) == width * rows) {
       jint *pixels = (*env)->GetIntArrayElements(env, rgba, NULL);
@@ -105,6 +107,7 @@ static GLuint cardTile(int index, int width, int top, int rows) {
         (*env)->ReleaseIntArrayElements(env, rgba, pixels, JNI_ABORT);
         gfx_tex_esquecer(0);
         *slot = (CardTile){texture, listaGeracao, index, width, top, rows, ++cardTileUse};
+        cardUploadsThisFrame++;
         result = texture;
       }
     }

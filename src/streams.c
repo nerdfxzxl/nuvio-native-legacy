@@ -3991,6 +3991,7 @@ typedef struct {
   char titulo[512];
 #ifdef NV_ANDROID
   int cardHeight, cardWidth;
+  Uint32 cardRetryAt;  // Retry async layout submission if the worker was busy.
 #endif
   float tituloH;
   int descLinhas, descMedida;
@@ -4007,6 +4008,7 @@ static void textoAddonPreparar(TextoAddon *t, const Stream *s) {
   // when that particular row receives focus.
 #ifdef NV_ANDROID
   t->cardHeight = t->cardWidth = 0;
+  t->cardRetryAt = 0;
 #endif
   t->descHFechada = FOLHA_ADDON_FECHADA * FOLHA_ADDON_LD;
   t->descHCompleta = t->descHFechada;
@@ -4838,10 +4840,20 @@ static void montar(int automatica) {
       int i = ordem[row];
       if (i < 0 || !lista[i].display.length || width <= 0) continue;
       TextoAddon *t = textoAddonDa(i);
-      if (t->cardWidth == width) continue;
-      t->cardWidth = width;
-      t->cardHeight = cardMeasure(i, width);
-      if (!t->cardHeight) t->cardHeight = -1;
+      if (t->cardWidth == width && t->cardHeight > 0) continue;
+      Uint32 now = SDL_GetTicks();
+      if (t->cardWidth != width) {
+        t->cardWidth = width;
+        t->cardHeight = 0;
+        t->cardRetryAt = 0;
+      }
+      // Polling a queued layout is cheap: no bitmap, JSON or font shaping.
+      // Request a new payload only occasionally (e.g. a queue overflow).
+      int retry = !t->cardRetryAt || SDL_TICKS_PASSED(now, t->cardRetryAt);
+      int height = cardMeasure(i, width, retry);
+      if (retry) t->cardRetryAt = now + 750u;
+      if (height <= 0) continue;
+      t->cardHeight = height;
       float h = alturaLinha(i, automatica, 0, linhaCabProv[row]);
       delta += h - linhaH[row];
       linhaH[row] = h;
@@ -6563,6 +6575,10 @@ static void corpoIlhaFolha(GfxRect c, float a, void *u) {
   desenharBuscaExterna(c, a);
 }
 static void stream_folha_desenharCorpo_(Uint32 agora) {
+#ifdef NV_ANDROID
+  // Budget uploads across the whole selector frame, including the island.
+  cardUploadsThisFrame = 0;
+#endif
   if(anim<.005f) return;
   folhaGeometria();
   folhaAgora = agora;
