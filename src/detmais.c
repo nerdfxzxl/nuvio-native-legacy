@@ -44,7 +44,7 @@ int detmais_foco(void) { return foco; }
 
 const char *detmais_rotulo(int acao) {
   switch (acao) {
-    case DMAIS_TRAILER:    return "Assistir trailer";
+    case DMAIS_LEMBRAR:    return "Lembrar-me";
     case DMAIS_EXPLORAR:   return "Explorar a partir daqui";
     case DMAIS_ARTE:       return "Trocar arte";
     case DMAIS_RECOMENDAR: return "Recomendar a um amigo";
@@ -56,7 +56,7 @@ const char *detmais_rotulo(int acao) {
 // trailer pela claquete o acha pela claquete.
 const char *detmais_icone(int acao) {
   switch (acao) {
-    case DMAIS_TRAILER:    return "aj_clapperboard";
+    case DMAIS_LEMBRAR:    return "aj_bell";
     case DMAIS_EXPLORAR:   return "aj_compass";
     case DMAIS_ARTE:       return "arte";
     case DMAIS_RECOMENDAR: return "recomendar";
@@ -89,12 +89,16 @@ GfxRect detmais_caixa(GfxRect anc) {
   GfxRect r;
   float h = DM_PAD * 2.0f + (float)n * DM_LINHA + (float)(n > 0 ? n - 1 : 0) * DM_GAP;
   r.w = DM_W; r.h = h;
-  r.x = anc.x;
-  if (r.x + r.w > NV_TELA_W - DM_BORDA) r.x = NV_TELA_W - DM_BORDA - r.w;
-  // ABAIXO do circular, como um menu que desce do botao; perto do pe da tela
-  // (filme com as quatro acoes) sobe e cobre o logo, que nao e lido agora.
-  r.y = anc.y + anc.h + DM_VAO;
-  if (r.y + r.h > NV_TELA_H - DM_BORDA) r.y = anc.y - DM_VAO - r.h;
+  // Netflix-style actions stack: expand the menu to the right of More,
+  // without obscuring the episode/title metadata below the hero.
+  r.x = anc.x + anc.w + DM_VAO;
+  if (r.x + r.w > NV_TELA_W - DM_BORDA)
+    r.x = anc.x - DM_VAO - r.w;
+  if (r.x < DM_BORDA) r.x = DM_BORDA;
+  r.y = anc.y + anc.h * 0.5f - r.h * 0.5f;
+  if (r.y < DM_BORDA) r.y = DM_BORDA;
+  if (r.y + r.h > NV_TELA_H - DM_BORDA)
+    r.y = NV_TELA_H - DM_BORDA - r.h;
   return r;
 }
 

@@ -2619,7 +2619,7 @@ static int temExplorar(void) {
 // na ilha do circular "..." (detmais.h), o ULTIMO da linha. Ele so existe
 // quando ha ao menos uma delas — senao seria um botao que abre nada.
 static void maisDisponiveis(int d[DMAIS_N]) {
-  d[DMAIS_TRAILER] = temTrailer();
+  d[DMAIS_LEMBRAR] = temLembrar();
   d[DMAIS_EXPLORAR] = temExplorar();
   d[DMAIS_ARTE] = temArte();
   d[DMAIS_RECOMENDAR] = temRecomendar();
@@ -2632,61 +2632,28 @@ static int temMais(void) {
   for (i = 0; i < DMAIS_N; i++) if (d[i]) return 1;
   return 0;
 }
+// Five vertical Netflix-style actions (four for movies). No obsolete
+// Sources/cloud or extra "start over" pill, and no implicit grouped controls.
 static int nBotoesTodos(void) {
-  // The standalone Sources/cloud action duplicates Play on an unwatched title
-  // and long-press Play/Resume on a resumed title. Leave the saved-list,
-  // watched, reminder and More actions intact.
-  return (ehSerie() ? 2 : 3) + (temInicio() ? 1 : 0) + (temLembrar() ? 1 : 0)
-         + (temMais() ? 1 : 0);
+  return 1 + (ehSerie() ? 1 : 0) + (temTrailer() ? 1 : 0) + 1 +
+         (temMais() ? 1 : 0);
 }
-
-static int acoesAgrupadas(void) {
-  if (detalheRetrato()) return 0;
-  return carro || ajustes_home_layout() == HOME_LAYOUT_DINAMICA ||
-         ajustes_home_layout() == HOME_LAYOUT_MODERNA;
-}
-
-static int nBotoes(void) {
-  return acoesAgrupadas() && !maisAcoes ? 2 + (temInicio() ? 1 : 0) : nBotoesTodos();
-}
-
-// Que ACAO esta na posicao `n` da linha. As acoes tem numeros fixos (0
-// primario, 1 lista, 2 assistido, 3 fontes, 4 inicio) porque detail_evento
-// decide por eles; o que muda com o tipo e quais posicoes existem. Sem esta
-// traducao, na serie o segundo circular (que e o de fontes) dispararia
-// "marcar assistido". Quando temInicio, a posicao 1 e o secundario de texto
-// e os circulares escorregam um para a direita.
-// O pedido do assistido tambem tem DE NASCER COM O TITULO (#595): a linha de
-// acoes e do detail que apertou, e o roteador pode trocar de titulo antes de
-// consumir o pedido.
+static int acoesAgrupadas(void) { return 0; }
+static int nBotoes(void) { return nBotoesTodos(); }
 enum { ACAO_PRIMARIO = 0, ACAO_LISTA = 1, ACAO_ASSISTIDO = 2, ACAO_FONTES = 3,
        ACAO_INICIO = 4, ACAO_RECOMENDAR = 5, ACAO_LEMBRAR = 6, ACAO_ARTE = 7,
-       ACAO_TRAILER = 8, ACAO_EXPLORAR = 9, ACAO_MAIS = 10 };
+       ACAO_TRAILER = 8, ACAO_EXPLORAR = 9, ACAO_MAIS = 10,
+       ACAO_EPISODIOS = 11 };
 static int acaoEm(int n) {
-  if (n == 0) return ACAO_PRIMARIO;
-  if (temInicio()) {
-    if (n == 1) return ACAO_INICIO;
-    n--;
+  if (n-- == 0) return ACAO_PRIMARIO;
+  if (ehSerie()) {
+    if (n-- == 0) return ACAO_EPISODIOS;
   }
-  if (acoesAgrupadas() && n > 0) {
-    if (n == 1) return ACAO_LISTA;
-    n--;
+  if (temTrailer()) {
+    if (n-- == 0) return ACAO_TRAILER;
   }
-  // O "Lembrar-me" e o SEGUNDO botao de texto, e o desconto vem antes da conta
-  // dos circulares — pela mesma razao que o de temInicio: sem ele a posicao de
-  // um circular escorregaria e o OK dispararia a acao do vizinho.
-  if (temLembrar()) {
-    if (n == 1) return ACAO_LEMBRAR;
-    n--;
-  }
-  if (acoesAgrupadas() && n > 0) n++; // skip the list action already used as group anchor
-  // Skip the retired Sources/cloud position without shifting the
-  // persisted action identities. Series also skip the watched (eye) button.
-  // More remains the final circle: movie + / eye / ..., series + / ...
-  if (temMais() && n == (ehSerie() ? 2 : 3)) return ACAO_MAIS;
-  if (n >= 2 && ehSerie()) return n + 2;  // skip watched and Sources
-  if (n >= 3) return n + 1;               // skip Sources
-  return n;
+  if (n-- == 0) return ACAO_ASSISTIDO;
+  return temMais() && n == 0 ? ACAO_MAIS : -1;
 }
 
 // Toca o trailer `k` em TELA CHEIA (o OK numa miniatura da fileira e o botao
@@ -2842,7 +2809,15 @@ static void abrirCredito(void) {
 // O QUE A ILHA "MAIS OPCOES" ESCOLHEU (detmais.h). Eram os ramos dos quatro
 // circulares que sairam da linha; o comportamento de cada um e o mesmo.
 static void executarMais(int dm) {
-  if (dm == DMAIS_SINOPSE) {
+  if (dm == DMAIS_LEMBRAR) {
+    const CatItem *ci = cat_item(idx);
+    if (ci && ci->imdb[0]) {
+      if (!strcmp(ci->tipo, "movie"))
+        agenda_filme_alternar(ci->imdb, ci->titulo, ci->poster);
+      else agenda_alternar_lembrete(ci->imdb);
+      lembreteEm = SDL_GetTicks();
+    }
+  } else if (dm == DMAIS_SINOPSE) {
     const CatItem *ci = cat_item(idx);
     sinopse_abrir(ci ? ci->titulo : "", sinopseDe(idx));
   } else if (dm == DMAIS_TRAILER) {
