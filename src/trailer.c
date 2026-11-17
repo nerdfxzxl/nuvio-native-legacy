@@ -638,7 +638,8 @@ int trailer_evento(const SDL_Event *e) {
   if (k == SDLK_AC_BACK || k == SDLK_ESCAPE || k == SDLK_BACKSPACE || k == SDLK_DELETE ||
       e->key.keysym.scancode == NV_SCANCODE_BACK) { trailer_fechar(); return 1; }
   if (k == SDLK_RETURN || k == SDLK_KP_ENTER || k == SDLK_SPACE) {
-#ifdef __EMSCRIPTEN__
+    // Shared by native Android/webOS and browser-backed trailers. The old
+    // refactor left an orphan #ifdef that the narrow CI preflight missed.
     trailer_alternar_pausa();
     return 1;
   }
