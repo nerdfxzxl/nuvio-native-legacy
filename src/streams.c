@@ -75,11 +75,11 @@
 // player-mockup de 03/10): 820 de largura, a 40 das bordas, raio 36 — a
 // mesma folha dos Episodios no player.
 #include "telefoneui.h"
-#define FOLHA_W        telefoneui_largura(820.0f, NV_TELA_W, FOLHA_MARGEM)
+#define FOLHA_W        telefoneui_largura(850.0f, NV_TELA_W, FOLHA_MARGEM)
 #define FOLHA_MARGEM    40.0f
 #define FOLHA_RAIO_IL   36.0f
-#define FOLHA_PAD_E     48.0f  // da borda da folha ao cartao da linha
-#define FOLHA_PAD_D     56.0f
+#define FOLHA_PAD_E     42.0f  // larger cards with a comfortable inset
+#define FOLHA_PAD_D     44.0f
 #define FOLHA_TXT       26.0f  // do cartao ao texto
 // Sources grows from the clock island: plrilha in the player, ilha_corpo on
 // browsing pages. Without a visible clock, keep the right-edge sheet.
@@ -5586,9 +5586,12 @@ void stream_folha_atualizar(float dt, Uint32 agora) {
     char texto[TECLADO_MAX + 1];
     int r = st_ler(ST_BUSCA, texto, sizeof texto);
     if (r == ST_TEXTO || r == ST_FIM) {
-      snprintf(folhaBusca, sizeof folhaBusca, "%s", texto);
-      grupo = -2; foco = 0; rolagem = 0; velRol = 0;
-      montar(automaticaDaFolha());
+      // A focus event with unchanged search text must never reset the list.
+      if (strcmp(folhaBusca, texto)) {
+        snprintf(folhaBusca, sizeof folhaBusca, "%s", texto);
+        grupo = -2; foco = 0;
+        montar(automaticaDaFolha());
+      }
     } else if (r == ST_CANCELOU) {
       grupo = -2; // Keep the expanded search control and its last value.
     }
@@ -6713,7 +6716,8 @@ static void corpoFolha(float x, float w, float anim, Uint32 agora, int ilha) {
       if (b > t) ponteiro_alvo(r.x, t, r.w, b - t, ponteiroFolhaLinha, NULL, row, 0);
     }
     if(folhaRelogio && !canalFolha) {
-      gfx_cor(r,FOLHA_RAIO/r.h,.035f,.037f,.042f,.98f*anim);
+      // Solid #000000 surface against the OLED background.
+      gfx_cor(r,FOLHA_RAIO/r.h,0.0f,0.0f,0.0f,anim);
       if(sel) gfx_anel_fora(r,FOLHA_RAIO/r.h,0.0f,2.0f,1.0f,1.0f,1.0f,.95f*anim);
     } else if(sel){
       // Elevated official-style card surface plus the focused outline.

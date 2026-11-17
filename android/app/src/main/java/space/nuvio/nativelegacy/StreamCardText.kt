@@ -97,7 +97,8 @@ class StreamCardParagraphs internal constructor(
             title.multiParagraph.paint(composeCanvas, Color.White)
             description?.let {
                 canvas.translate(0f, (title.size.height + gap).toFloat())
-                it.multiParagraph.paint(composeCanvas, Color(0xffb3b3b3))
+                // Improve legibility on the exact black card background.
+                it.multiParagraph.paint(composeCanvas, Color(0xffd0d0d0))
             }
             val pixels = IntArray(width * rows)
             bitmap.getPixels(pixels, 0, width, 0, 0, width, rows)
