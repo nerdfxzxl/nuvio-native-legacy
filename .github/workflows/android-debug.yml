@@ -1,6 +1,7 @@
 name: Android APK (debug)
 
 on:
+  # Deliberate final integration retry after correcting the badge test fixture.
   # Temporary, tightly scoped one-time build trigger for the completed feature
   # branch. Remove immediately after the run is confirmed; ordinary source
   # commits cannot trigger an Android build.
