@@ -51,9 +51,18 @@ flags=(
   -Werror=incompatible-pointer-types
 )
 
-for source in src/main.c src/streams.c src/gfx.c src/selospacote.c src/ajustes.c src/player.c src/celular.c src/text.c src/stream_parse.c; do
+# The old gate skipped trailer.c and detail.c, masking a malformed #ifdef
+# until the full Gradle/native build after P2P dependencies.
+# Compile every native file touched by the Netflix detail integration.
+sources=(
+  src/main.c src/streams.c src/gfx.c src/selospacote.c src/ajustes.c
+  src/player.c src/celular.c src/text.c src/stream_parse.c
+  src/detail.c src/trailer.c src/detmais.c src/extras.c
+)
+for source in "${sources[@]}"; do
   echo "::group::Early C compile: $source"
   "$cc" "${flags[@]}" "$source"
   echo "::endgroup::"
 done
-echo "Early Android C compiler check: passed"
+python3 tests/detail_netflix.py
+echo "Early Android C compiler check: passed (detail, trailer, episodes, metadata)"
