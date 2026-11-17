@@ -1,9 +1,14 @@
 name: Android APK (debug)
 
 on:
-  # Build only when explicitly dispatched; feature commits do not consume
-  # Android Actions minutes. Preflight runs before the costly full APK job.
+  # One tightly scoped integration build. The one-shot push trigger is removed
+  # immediately after the artifact is verified; normal pushes never build.
   workflow_dispatch:
+  push:
+    branches:
+      - feature/official-stream-selector
+    paths:
+      - docs/ci/trigger-netflix-detail-once.txt
 
 permissions:
   contents: read
