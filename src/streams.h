@@ -469,7 +469,7 @@ int  stream_canal_prazo_longo(int idx);
 void stream_folha_abrir(void);
 // Native Dynamic Clock episode-action step. Action values:
 // 0=Play manually (expand streams), 1=Play from beginning, 2=mark watched.
-void stream_folha_abrir_opcoes_ep(void);
+void stream_folha_abrir_opcoes_ep(int watched);
 int  stream_folha_opcoes_escolheu(int *acao);
 // Root feeds an actual movie/episode metadata runtime or measured media
 // duration for this exact target. Never supply PLR_DUR_PADRAO, a season's

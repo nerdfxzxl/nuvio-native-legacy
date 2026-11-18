@@ -633,12 +633,11 @@ void notasui_mapa_card(const NotasSecao *s, GfxRect c, int selT, int selI, float
   TxtLinha lt;
   if (c.y >= NV_TELA_H || c.y + c.h <= 0.0f) return;
   painel(c, CARD_RAIO, aa);
-  lt = texto(TXT_G26B, "Notas por episódio", 245);
-  txt_desenhar_alpha(lt, px, py, aa);
-  py += (float)lt.h + 6.0f;
-  { TxtLinha l = txt_linha_corta(TXT_ILHA_SUB, "Cada quadrado é um episódio; a cor é a nota.",
-                                 180, 184, 192, 255, pw);
-    txt_desenhar_alpha(l, px, py, aa); py += (float)l.h + 22.0f; }
+  // The section already says "Ratings by episode"; skip duplicate title
+  // and explanatory subtitle so the compact heatmap uses the card's height.
+  (void)lt;
+  (void)selT;
+  (void)selI;
   if (s && s->nTemp > 0 && s->nEps && s->epNota) {
     nt = s->nTemp;
     for (t = 0; t < nt; t++) {
@@ -678,7 +677,7 @@ void notasui_mapa_card(const NotasSecao *s, GfxRect c, int selT, int selI, float
         if (rotTodos || (s->tempNum(t) % 5) == 0 || t == 0) {
           char rot[12];
           TxtLinha l;
-          snprintf(rot, sizeof rot, "T%d", s->tempNum(t));
+          snprintf(rot, sizeof rot, "S%d", s->tempNum(t));
           l = texto(rotTodos ? TXT_G20M : TXT_ILHA_NUM, rot, 180);
           txt_desenhar_alpha(l, px, ry + (ch - (float)l.h) * 0.5f, aa);
         }
@@ -699,8 +698,7 @@ void notasui_mapa_card(const NotasSecao *s, GfxRect c, int selT, int selI, float
               txt_desenhar_alpha(l, q.x + (cw - (float)l.w) * 0.5f, q.y + (ch - (float)l.h) * 0.5f, aa);
             }
           }
-          if (t == selT && i == selI)
-            gfx_anel_fora(q, rr, 2.0f, 2.0f, 1, 1, 1, 0.85f * aa);
+          // The whole card owns focus; individual rating squares never do.
         }
       }
       gy += (ch + gap) * (float)ntD - gap; }
@@ -722,10 +720,10 @@ void notasui_mapa_card(const NotasSecao *s, GfxRect c, int selT, int selI, float
   // Melhor e pior, no pe do cartao.
   if (melhorT >= 0) {
     char b1[64], b2[64], b[140];
-    snprintf(b1, sizeof b1, i18n("Melhor: T%dE%d  ·  %.1f"), s->tempNum(melhorT),
+    snprintf(b1, sizeof b1, "Best: S%dE%d  ·  %.1f", s->tempNum(melhorT),
              s->epNum(melhorT, melhorI), melhor / 10.0f); idioma_decimal_texto(b1, ajustes_idioma());
     if (piorT >= 0 && (piorT != melhorT || piorI != melhorI)) {
-      snprintf(b2, sizeof b2, i18n("Pior: T%dE%d  ·  %.1f"), s->tempNum(piorT),
+      snprintf(b2, sizeof b2, "Worst: S%dE%d  ·  %.1f", s->tempNum(piorT),
                s->epNum(piorT, piorI), pior / 10.0f); idioma_decimal_texto(b2, ajustes_idioma());
       snprintf(b, sizeof b, "%s.   %s.", b1, b2);
     } else snprintf(b, sizeof b, "%s.", b1);

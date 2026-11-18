@@ -72,6 +72,7 @@ int  episodios_menu_modo_temporada(void);
 // ar. `saida` nula conta. Publico para o teste.
 int  episodios_lote(int idxCat, int temporada, VistoPar *saida, int max);
 int episodios_marcar_um(int idxCat,int temporada,int episodio);
+int episodios_definir_um(int idxCat,int temporada,int episodio,int watched);
 void episodios_fechar(void);
 // O titulo da folha, ja conferido pelo id. Para teste (#190).
 int  episodios_titulo(void);

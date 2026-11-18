@@ -1,4 +1,5 @@
 #include "streams.h"
+#include "episodeicon.h"
 #include "mediaurl.h"
 #include "plrui.h"
 #include "ondever.h"
@@ -93,6 +94,7 @@ static Uint32 trocaDesde;
 static float pillX, pillW = -1.0f, pillDeX, pillDeW;   // x relative to the list column
 static int folhaRelogio; // Latched at opening, retained through closing.
 static int folhaOpcoesEp, folhaOpcoesFoco, folhaOpcoesEscolha = -1;
+static int folhaOpcoesVisto;
 #define FOLHA_ILHA_Y     48.0f   // plrilha.c: Y_TOPO
 #define FOLHA_ILHA_CAB   64.0f   // plrilha.c: CAB_H (a linha da hora)
 #define FOLHA_ILHA_BASE  48.0f   // margem de baixo = a de cima
@@ -4974,7 +4976,7 @@ static void folhaGeometria(void) {
     folhaBase = NV_TELA_H - FOLHA_ILHA_BASE - 16.0f;
     // Options start as a compact clock island. Choosing Play manually
     // expands the same island to the full-height stream selection panel.
-    if(folhaOpcoesEp)folhaBase=fminf(folhaBase,605.0f);
+    if(folhaOpcoesEp)folhaBase=fminf(folhaBase,410.0f);
   } else if (folhaIlha()) {
     folhaOY = FOLHA_ILHA_Y + FOLHA_ILHA_CAB + FOLHA_ILHA_PAD - 74.0f;
     folhaBase = NV_TELA_H - FOLHA_ILHA_BASE - 16.0f;
@@ -5099,8 +5101,9 @@ void stream_folha_abrir(void) {
 }
 // Present episode actions INSIDE the native Dynamic Clock island, using
 // exactly the same expansion and focus owner as the stream selection panel.
-void stream_folha_abrir_opcoes_ep(void) {
+void stream_folha_abrir_opcoes_ep(int watched) {
   stream_folha_abrir();
+  folhaOpcoesVisto=watched?1:0;
   folhaOpcoesEp=1;
   folhaOpcoesFoco=0;
   folhaOpcoesEscolha=-1;
@@ -6580,7 +6583,7 @@ static Uint32 folhaAgora;
 // O corpo dentro da ilha (plrilha.h): `a` ja traz a entrada e a saida da
 // forma, e a ilha segue chamando o ultimo corpo enquanto encolhe.
 static void desenharBuscaExterna(GfxRect c, float a) {
-  if (!aberta || a < .01f) return;
+  if (folhaOpcoesEp || !aberta || a < .01f) return;
   const int focada = grupo == -2;
   const float base = FOLHA_CHIP_H;
   const float pin = (FOLHA_ABAS_H - FOLHA_ABA_H) * .5f;
@@ -6617,7 +6620,7 @@ static void corpoIlhaFolha(GfxRect c, float a, void *u) {
   corpoFolha(c.x, c.w, a, folhaAgora, 1);
   // Search is outside the island bounds; release the rounded panel scissor first.
   gfx_sem_recorte();
-  desenharBuscaExterna(c, a);
+  if(!folhaOpcoesEp)desenharBuscaExterna(c, a);
 }
 static void stream_folha_desenharCorpo_(Uint32 agora) {
 #ifdef NV_ANDROID
@@ -6642,7 +6645,7 @@ static void stream_folha_desenharCorpo_(Uint32 agora) {
     return;
   }
   if (folhaRelogio) {
-    if (aberta) { ilha_corpo(FOLHA_W, folhaBase + 16.0f - NV_ILHA_Y, corpoIlhaFolha, NULL); ilha_corpo_sem_sombra(); }
+    if (aberta) { ilha_corpo(folhaOpcoesEp?570.0f:FOLHA_W, folhaBase + 16.0f - NV_ILHA_Y, corpoIlhaFolha, NULL); ilha_corpo_sem_sombra(); }
     return; // ilha_desenhar owns the surface, dim and closing.
   }
   float x=NV_TELA_W-FOLHA_W-FOLHA_MARGEM+(1-anim)*(FOLHA_W+FOLHA_MARGEM);
@@ -6670,31 +6673,39 @@ static float trocaEase(Uint32 agora) {
   if(ajustes_animacoes_reduzidas()||t>=1.0f) return 1.0f;
   t=1.0f-t; return 1.0f-t*t*t;
 }
+static void folhaOptionsFocusTouch(int i,int unused) {
+  (void)unused;
+  if(i>=0 && i<3)folhaOpcoesFoco=i;
+}
+static void folhaOptionsSelectTouch(int i,int unused) {
+  (void)unused;
+  if(i>=0&&i<3) {
+    folhaOpcoesFoco=i;folhaOpcoesEscolha=i;aberta=0;
+  }
+}
 static void corpoFolha(float x, float w, float anim, Uint32 agora, int ilha) {
   if(folhaOpcoesEp) {
-    // The first expansion of Dynamic Clock is a compact three-action menu.
-    // Everything remains attached to the clock, not a second overlay screen.
-    GfxRect surface={x,NV_ILHA_Y,w,folhaBase+16.0f-NV_ILHA_Y};
-    gfx_cor(surface,.035f,0,0,0,anim);
-    TxtLinha title=txt_linha(TXT_ILHA_TITULO,"Episode options",248,248,248,255);
-    float ty=folhaOY+42.0f;
-    txt_desenhar_alpha(title,x+44.0f,ty,anim);
-    static const char *names[3]={
-       "Play manually","Play from beginning","Mark as watched"};
-    static const char *icons[3]={
-       "aj_layers","aj_rotate-ccw-clock","aj_check"};
-    for(int i=0;i<3;i++) {
-      float y=ty+86.0f+i*90.0f;
-      GfxRect pill={x+40.0f,y,w-80.0f,72.0f};
-      int f=folhaOpcoesFoco==i;
-      if(f)gfx_cor(pill,.5f,.975f,.975f,.975f,anim);
-      float ink=f?.05f:1.0f;
-      gfx_icone((GfxRect){pill.x+22.0f,pill.y+20.0f,32,32},
-                icons[i],ink,ink,ink,anim);
-      TxtLinha t=txt_linha(TXT_CALLOUT,names[i],
-                           f?16:241,f?16:241,f?16:241,255);
-      txt_desenhar_alpha(t,pill.x+76.0f,
-                         pill.y+(pill.h-t.h)*.5f,anim);
+    // The island owns the glass surface and round corners: no black rectangle.
+    // The header/search chrome belongs only to the expanded stream list.
+    TxtLinha title=txt_linha(TXT_ILHA_TITULO,"Episode options",246,246,246,255);
+    float ty=folhaOY+23.0f;
+    txt_desenhar_alpha(title,x+30.0f,ty,anim);
+    const char *names[3]={"Play manually","Play from beginning",
+                          folhaOpcoesVisto?"Mark as unwatched":"Mark as watched"};
+    const char *icons[3]={"","aj_rotate-ccw-clock",folhaOpcoesVisto?"aj_check-check":"aj_check"};
+    for(int k=0;k<3;k++) {
+      GfxRect pill={x+23.0f,ty+62.0f+k*79.0f,w-46.0f,67.0f};
+      int focus=k==folhaOpcoesFoco;
+      if(focus)gfx_cor(pill,.5f,.98f,.98f,.98f,anim);
+      float ink=focus?.055f:1;
+      GfxRect icon={pill.x+20.0f,pill.y+19.0f,30.0f,30.0f};
+      if(k==0)episodeicon_draw(icon,ink,ink,ink,anim);
+      else gfx_icone(icon,icons[k],ink,ink,ink,anim);
+      TxtLinha t=txt_linha(TXT_CALLOUT,names[k],
+                           focus?15:237,focus?15:237,focus?15:237,255);
+      txt_desenhar_alpha(t,pill.x+69.0f,pill.y+(pill.h-t.h)*.5f,anim);
+      if(ponteiro_ativo()&&aberta)
+        ponteiro_alvo(pill.x,pill.y,pill.w,pill.h,folhaOptionsFocusTouch,folhaOptionsSelectTouch,k,0);
     }
     return;
   }

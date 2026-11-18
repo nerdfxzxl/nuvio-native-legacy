@@ -58,6 +58,7 @@ sources=(
   src/main.c src/streams.c src/gfx.c src/selospacote.c src/ajustes.c
   src/player.c src/celular.c src/text.c src/stream_parse.c
   src/detail.c src/trailer.c src/detmais.c src/extras.c
+  src/serieaud.c src/notasui.c src/episodios.c src/app.c
 )
 for source in "${sources[@]}"; do
   echo "::group::Early C compile: $source"

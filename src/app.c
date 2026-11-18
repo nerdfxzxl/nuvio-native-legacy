@@ -19,6 +19,7 @@
 #include "teclado.h"
 #include "ponteiro.h"
 #include "app.h"
+#include "vistoep.h"
 #include "teclavoltar.h"
 #include "deeplink.h"
 #include "telefoneui.h"
@@ -439,6 +440,8 @@ static int stalkerRenovando;
 // Sem isto, sair da folha com Voltar deixaria a tela em "carregando" para
 // sempre — o pedido de fonte ja tinha sido consumido e ninguem mais viria.
 static int    folhaParaTocar;
+// From-beginning is applied only AFTER the user picks a stream in Dynamic Clock.
+static int folhaInicioDepoisEscolha;
 // Back from the initial source picker cancels the pending player only after
 // the Dynamic Clock body has finished its collapse animation.
 static int    folhaCancelarTocar;
@@ -5876,12 +5879,24 @@ void app_atualizar(float dt, Uint32 agora) {
       int episodeT=0,episodeE=0,choice=-1;
       if(detail_pediu_opcoes_ep(&episodeT,&episodeE)) {
         optionsT=episodeT;optionsE=episodeE;
-        stream_folha_abrir_opcoes_ep();
+        const CatItem *ciOp=cat_item(detail_indice());
+        int watched=ciOp && ciOp->imdb[0] &&
+          vistoep_estado(ciOp->imdb,episodeT,episodeE)==1;
+        stream_folha_abrir_opcoes_ep(watched);
       }
       if(stream_folha_opcoes_escolheu(&choice)) {
-        if(choice==0)detail_pedir_fontes_ep(optionsT,optionsE);
-        else if(choice==1)detail_pedir_inicio_ep(optionsT,optionsE);
-        else if(choice==2)episodios_marcar_um(detail_indice(),optionsT,optionsE);
+        if(choice==0 || choice==1) {
+          folhaInicioDepoisEscolha=choice==1;
+          // Both options show source choices; "beginning" never autoplays an
+          // arbitrary first stream nor invokes the old legacy selector.
+          detail_pedir_fontes_ep(optionsT,optionsE);
+        } else if(choice==2) {
+          const CatItem *item=cat_item(detail_indice());
+          if(item && item->imdb[0]) {
+            int watched=vistoep_estado(item->imdb,optionsT,optionsE)==1;
+            episodios_definir_um(detail_indice(),optionsT,optionsE,!watched);
+          }
+        }
         optionsT=optionsE=0;
       }
     }
@@ -6650,6 +6665,8 @@ void app_atualizar(float dt, Uint32 agora) {
       diagnostico_cancelar_vazao();
       player_abrir(cat_indice_vivo(titulo, imdb),NULL);
       player_definir_episodio(t,e);
+      if(folhaInicioDepoisEscolha)player_do_inicio();
+      folhaInicioDepoisEscolha=0;
       stream_definir_atual(fonte);
       // Qualquer escolha nova invalida a resposta de um torrent anterior; o
       // motor P2P corta o pedido velho ja (sem isso a escolha nova esperaria
@@ -6810,6 +6827,7 @@ void app_atualizar(float dt, Uint32 agora) {
   // Do not turn cancellation into a "could not open source" error; let the
   // Dynamic Clock finish collapsing before clearing any pending playback state.
   if (folhaParaTocar && !stream_folha_aberta()) {
+    folhaInicioDepoisEscolha=0;
     folhaParaTocar = 0;
     folhaCancelarTocar = 1;
   }

@@ -754,7 +754,13 @@ static int blocoEmpilhado(void) { return telefoneui_ativo() && NV_TELA_W < 1500;
 static TextoGate gateBloco;
 void serieaud_bloco_reiniciar(void) { textogate_reiniciar(&gateBloco); }
 float serieaud_bloco_altura(void) {
-  return BL_CAB + BL_RET_H + BL_GAP + BL_DIG_H + (blocoEmpilhado() ? BL_GAP + 480 : 0);
+  // One heatmap card, height determined by available seasons rather than
+  // reserving space for the removed Retention/Fingerprint graphs.
+  int n=extras_n_temporadas();
+  if(n>24)n=24;
+  float h=142.0f+n*44.0f;
+  if(h<300.0f)h=300.0f;
+  return 79.0f+h;
 }
 
 // Frase de estado de um cartao sem dado: tres situacoes diferentes, e dizer
@@ -1057,40 +1063,13 @@ static void cardDigital(GfxRect c, const SaBloco *b, int usar, float a) {
   }
 }
 
-float serieaud_bloco(float x, float y, const SaBloco *b, float a) {
-  float alt = serieaud_bloco_altura(), aa, y0 = y + BL_CAB;
-  int pend0 = txt_pendentes, aberto, usar;
-  char txt[200];
-  if (y >= NV_TELA_H || y + alt <= 0.0f) return alt;
-  aberto = textogate_aberto(&gateBloco);
-  aa = aberto ? a * textogate_passo(&gateBloco, 0, SDL_GetTicks()) : NV_TXTGATE_AQUECER;
-  usar = b->aberto && nEps > 0 && serieaud_temporada() == b->temporada;
-  { TxtLinha l;
-    snprintf(txt, sizeof txt, i18n("Números da temporada %d"), b->temporada);
-    l = txt_linha(TXT_HEADLINE, txt, 245, 248, 255, 255);
-    txt_desenhar_alpha(l, x, y, aa);
-    // A linha de apoio e o indice da SERIE INTEIRA, dito pelo que ele e: o
-    // Trakt nao publica reproducoes por temporada.
-    if (usar && serieaud_rever_serie() > 0) {
-      char s1[32], s2[32];
-      TxtLinha ls;
-      curto(s1, sizeof s1, playsSerie);
-      curto(s2, sizeof s2, watchersSerie);
-      snprintf(txt, sizeof txt,
-               i18n("Série inteira: %s reproduções para %s pessoas — %.1f por espectador, somando todos os episódios"),
-               s1, s2, serieaud_rever_serie() / 100.0);
-      idioma_decimal_texto(txt, ajustes_idioma());
-      ls = txt_linha_corta(TXT_DET_META2, txt, 180, 184, 192, 255, NV_TELA_W - 2.0f * x);
-      txt_desenhar_alpha(ls, x, y + (float)l.h + 8.0f, aa);
-    } }
-  cardRetencao((GfxRect){ x, y0, BL_ESQ_W, BL_RET_H }, b, usar, aa);
-  cardDigital((GfxRect){ x, y0 + BL_RET_H + BL_GAP, BL_ESQ_W, BL_DIG_H }, b, usar, aa);
-  notasui_mapa_card(b->notas,
-                    (GfxRect){ blocoEmpilhado() ? x : x + BL_ESQ_W + BL_GAP,
-                               y0 + (blocoEmpilhado() ? BL_RET_H + BL_GAP + BL_DIG_H + BL_GAP : 0),
-                               blocoEmpilhado() ? BL_ESQ_W : NV_TELA_W - 2.0f * x - BL_ESQ_W - BL_GAP,
-                               blocoEmpilhado() ? 480 : BL_RET_H + BL_GAP + BL_DIG_H },
-                    b->tempIdx, b->sel, a);
-  if (!aberto) textogate_passo(&gateBloco, txt_pendentes - pend0, SDL_GetTicks());
-  return alt;
+float serieaud_bloco(float x,float y,const SaBloco *b,float a) {
+  float height=serieaud_bloco_altura();
+  if(y>=NV_TELA_H || y+height<=0.0f)return height;
+  TxtLinha heading=txt_linha(TXT_HEADLINE,"Ratings by episode",248,248,248,255);
+  txt_desenhar_alpha(heading,x,y,a);
+  GfxRect map={x,y+79.0f,NV_TELA_W-2.0f*x,height-79.0f};
+  notasui_mapa_card(b->notas,map,b->tempIdx,-1,a);
+  if(b->focado)gfx_anel_fora(map,.024f,0,3.0f,1,1,1,.96f*a);
+  return height;
 }

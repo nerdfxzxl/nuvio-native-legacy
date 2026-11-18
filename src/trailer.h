@@ -99,6 +99,7 @@ const char *trailer_dono_imdb(void);
 int  trailer_continuar(GfxRect r, int som);
 // 1 com o trailer aberto e com som (o `som` efetivo do ultimo trailer_abrir).
 int  trailer_com_som(void);
+void trailer_alternar_som(void);
 // Teclado do modo de tela cheia. 1 quando consumiu.
 int  trailer_evento(const SDL_Event *e);
 void trailer_atualizar(Uint32 agora);

@@ -1,4 +1,2 @@
-Stand-alone ARM64 native preflight for integrated detail redesign.
-Compiles modified C files and checks current Netflix layout contracts without building Rust/P2P/APK.
-
-Re-run after updating the old Resume progress assertion to require RED EPISODE THUMBNAIL progress, and verifying the native Dynamic Clock episode options at 4909864.
+Netflix detail #111 native preflight
+Review refinements: centered seasons, larger thumbnails, mobile touch, Dynamic Clock episode actions, mute/resumable trailer, single ratings heatmap, review picker, English title settings, no backdrop vignette.

@@ -34,9 +34,10 @@ need("Watched progress is red ONLY on episode thumbnails",
      "gfx_cor(track,.5f,.94f,.10f,.14f,1.0f)" in episode)
 need("Actual artwork title, AMOLED episode split, and compact season pills",
      "logotitulo_desenhar(" in episode and
-     "screenW * .40f" in episode and
+     "screenW*.40f" in episode and
      "gfx_cor((GfxRect){0,0,screenW,screenH},0,0,0,0,1)" in episode and
-     '"Season %d  ·  %d episodes"' in episode)
+     '"Season %d"' in episode and
+     'detEpTouchSeason' in episode)
 need("Focused hero action pill, no grey rectangular backgrounds",
      "label=\"More\";ico=\"aj_ellipsis\";" in detail and
      "gfx_cor(row,.5f,.975f,.975f,.975f,k*a)" in detail)
@@ -51,10 +52,10 @@ need("Early CI compiles the trailer, detail, extras, and More translation units"
          for unit in ("src/detail.c", "src/trailer.c", "src/extras.c", "src/detmais.c")))
 need("Episode selection anchored before Dynamic Clock stream panel",
      "pedFontesT=ep->temporada;pedFontesE=ep->episodio;" in episode and
-     "stream_folha_abrir_opcoes_ep()" in Path("src/app.c").read_text() and
+     "stream_folha_abrir_opcoes_ep(watched)" in Path("src/app.c").read_text() and
      "pedOpcoesT=ep->temporada;pedOpcoesE=ep->episodio" in episode)
 need("Episode actions use real clock, not a separate drawn overlay",
-     "void stream_folha_abrir_opcoes_ep(void)" in Path("src/streams.c").read_text()
+     "void stream_folha_abrir_opcoes_ep(int watched)" in Path("src/streams.c").read_text()
      and "if(folhaOpcoesEp)" in Path("src/streams.c").read_text()
      and "detEpMenuOpen" not in episode)
 
@@ -73,4 +74,23 @@ need("Episode visibility switches", all(
     ("AJ_DET_EP_DESCRICAO", "AJ_DET_EP_IMDB")))
 need("Optional Trakt/TMDB build configuration", all(
     name in workflow for name in ("secrets.TRAKT_CLIENT_ID", "secrets.TMDB_API_KEY")))
-print("PASS: Netflix detail integration invariants")
+need("Three clear trailer controls and exact-source resumed position",
+     "trailerControlFocus < 2" in detail
+     and "trailer_alternar_som()" in detail
+     and "trailerRetomadaPos=video_pos()" in trailer)
+need("Details positioned and DRAWN using stacked document geometry",
+     "case SEC_DETALHES:  // same stacked position" in detail
+     and "case SEC_DETALHES: desenhaDetalhes(x, y, f, a)" in detail)
+need("Ratings only, focused whole card, no retention or fingerprint",
+     "return t>=0 && extras_n_eps(t)>0 ? 1 : 0;" in detail
+     and "b.focado" in detail and
+     "Ratings by episode" in Path("src/serieaud.c").read_text()
+     and "cardDigital((GfxRect)" not in Path("src/serieaud.c").read_text()[Path("src/serieaud.c").read_text().find("float serieaud_bloco(float "):])
+need("Explicit stream selection before restarting an episode",
+     "folhaInicioDepoisEscolha=choice==1" in Path("src/app.c").read_text()
+     and "if(folhaInicioDepoisEscolha)player_do_inicio();" in Path("src/app.c").read_text())
+need("Episode touch and hold feedback", "ponteiro_rolagem(detEpTouchScroll)" in episode
+     and "ilha_atividade(p>=1.0f?" in episode)
+need("Review episode choice uses current selector", "detEpAbrirReview(t,e)" in detail)
+need("No poster vignette baked over artwork", "gfx_rect(alvo,tex,GFX_CARD,0,0,0,0,1,1,1,alpha)" in detail)
+print("PASS: Netflix detail refinements and navigation invariants")

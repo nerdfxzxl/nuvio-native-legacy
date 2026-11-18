@@ -7068,6 +7068,40 @@ static const char *rotuloNovo(int op) {
     case AJ_NOTAS_HOME: return "Nota do IMDb nos cartazes";
     case AJ_SUFIXO_TIPO: return "Filme ou série no nome da fileira";
     case AJ_NOME_ADDON: return "Nome do addon na fileira";
+    // English labels for Title page, metadata and episode controls.
+    case AJ_DET_DATA_CHEIA: return "Full release date";
+    case AJ_DET_BLUR_NAO_VISTOS: return "Blur unwatched episodes";
+    case AJ_DET_EP_DESCRICAO: return "Show episode summaries";
+    case AJ_DET_EP_IMDB: return "Show episode IMDb ratings";
+    case AJ_EP_TAMANHO: return "Episode thumbnail size";
+    case AJ_NT_EP: return "Episode rating sources";
+    case AJ_NT_IMDB: return "IMDb ratings";
+    case AJ_NT_TOMATES: return "Rotten Tomatoes ratings";
+    case AJ_NT_AUDIENCIA: return "Audience ratings";
+    case AJ_NT_META: return "Metacritic ratings";
+    case AJ_NT_METAUSER: return "Metacritic user ratings";
+    case AJ_NT_TRAKT: return "Trakt ratings";
+    case AJ_NT_TMDB: return "TMDB ratings";
+    case AJ_NT_LETTER: return "Letterboxd ratings";
+    case AJ_NT_MAL: return "MyAnimeList ratings";
+    case AJ_NT_EBERT: return "Roger Ebert ratings";
+    case AJ_NT_SCORE: return "Rating summary";
+    case AJ_NT_ORDEM: return "Rating order";
+    case AJ_TMDB_ARTE: return "TMDB artwork";
+    case AJ_TMDB_BASICO: return "TMDB titles and synopses";
+    case AJ_TMDB_FICHA: return "TMDB title information";
+    case AJ_TMDB_DATAS: return "TMDB release dates";
+    case AJ_TMDB_ELENCO: return "TMDB cast";
+    case AJ_TMDB_PROD: return "TMDB production companies";
+    case AJ_TMDB_REDES: return "TMDB networks";
+    case AJ_TMDB_EPS: return "TMDB episodes";
+    case AJ_TMDB_TRAILERS: return "TMDB trailers";
+    case AJ_TMDB_MAIS: return "TMDB recommendations";
+    case AJ_TMDB_COL: return "TMDB collections";
+    case AJ_TMDB_CW: return "TMDB Continue Watching artwork";
+    case AJ_DET_META_EXT: return "Prefer addon title information";
+    case AJ_DET_SO_CINEMETA: return "Use only Nuvio catalog metadata";
+    case AJ_MDB_CHAVE: return "MDBList API key";
     default: return NULL;
   }
 }
@@ -8006,7 +8040,7 @@ static const char *ajudaOpcaoBase(int op) {
     case AJ_CW_FONTE: return "De onde vem a fileira de retomada. \"Todas as fontes\" usa a conta Nuvio e completa com o Trakt e, se estiver vinculado, com o Simkl.";
     case AJ_CW_ESTILO: return "A forma do card da retomada: quadrado com a arte, deitado largo, ou o cartaz em pé.";
     case AJ_CW_THUMB: return "Usa a imagem do próprio episódio no card, em vez da arte da série.";
-    case AJ_CW_BLUR_PROX: case AJ_DET_BLUR_NAO_VISTOS: return "Oculta detalhes da miniatura para evitar spoilers de episódios ainda não assistidos.";
+    case AJ_CW_BLUR_PROX: case AJ_DET_BLUR_NAO_VISTOS: return "Blur unwatched episode thumbnails to avoid visual spoilers.";
     case AJ_CW_FURTHEST: return "Escolhe o próximo episódio a partir do mais avançado marcado como assistido.";
     case AJ_CW_PROXIMO: return "Ligado, a fileira mostra também o próximo episódio das séries que você acompanha. Desligado, mostra só o que você deixou pela metade.";
     case AJ_CW_NAO_EXIBIDOS: return "A retomada mostra o próximo episódio antes de ir ao ar.";
@@ -8028,8 +8062,8 @@ static const char *ajudaOpcaoBase(int op) {
 #endif
     case AJ_DET_SO_CINEMETA: return "Desligado (padrão): a ficha do título vem primeiro do add-on em cujo catálogo ele apareceu, com episódios e ids próprios (Kitsu, Xperience, AIOMetadata…), e o catálogo do Nuvio completa o que faltar (o Cinemeta só entra se o catálogo do Nuvio falhar). Ligado: só o catálogo do Nuvio, sem os add-ons.";
     case AJ_DET_META_EXT: return "Prefere a ficha do addon de metadados à do Cinemeta. Útil quando o seu addon tem sinopse e elenco melhores.";
-    case AJ_DET_DATA_CHEIA: return "Escreve a data de estreia por extenso em vez de só o ano.";
-    case AJ_DET_VEU: return "Quanto a vinheta escura cobre a arte na tela do título. Cem por cento é o padrão; zero mostra a arte limpa — o texto pode ficar difícil de ler sobre cenas claras.";
+    case AJ_DET_DATA_CHEIA: return "Show the complete release date instead of just the year.";
+    case AJ_DET_VEU: return "Legacy backdrop shading preference. The new title artwork is displayed without a colored vignette.";
     case AJ_DET_TRAILER_AUTO:
 #if defined(NV_TPK) && NV_TRAILER_CONTINUA_DETALHE
       // O trailer do cartaz continua na pagina (detail_abrir), com o som do
@@ -8146,8 +8180,8 @@ static const char *ajudaOpcaoBase(int op) {
     case AJ_ADDONS_PRINCIPAL: return "Os outros perfis desta conta usam os addons do perfil principal. Desligado, cada perfil usa os seus — a não ser que a conta já diga para usar os do principal.";
     case AJ_VIDRO_CONTORNO: return "O contorno das linhas e dos cartões, inclusive o do foco. Desligado, o item em foco é marcado só por um fundo mais claro na cor de destaque.";
     case AJ_NT_EP: return "Qual nota aparece nos cartões de episódio. Como na linha do título segue os interruptores de Notas (IMDb, Trakt, TMDB). Só nesta TV.";
-    case AJ_DET_EP_DESCRICAO: return "Mostra a sinopse ao lado da imagem de cada episódio na nova lista Netflix. Só nesta TV.";
-    case AJ_DET_EP_IMDB: return "Mostra a nota IMDb por episódio quando há uma fonte IMDb válida. Notas TMDB/Trakt nunca se passam por IMDb. Só nesta TV.";
+    case AJ_DET_EP_DESCRICAO: return "Show an episode synopsis beside its thumbnail in the new episode selector.";
+    case AJ_DET_EP_IMDB: return "Display verified IMDb ratings for each episode. TMDB and Trakt ratings are never presented as IMDb.";
     case AJ_ARTE_TOM: return "Vívido mantém as cores da arte. Claro usa tons pastel da mesma cor, com texto contrastante. Só nesta TV.";
     case AJ_COR_LOGO: return "Com um tema dinâmico, a cor sai do logo do título em vez da arte de fundo. Logo branco ou preto usa a arte.";
     case AJ_MANTER_VIDEO: return "Mantém o player pausado pelo tempo escolhido. Usa memória e decoder; o trailer espera. Desligado por padrão.";
@@ -8255,22 +8289,22 @@ static const char *ajudaOpcaoBase(int op) {
     case AJ_VELOCIDADE: return "Mede a velocidade dos seus addons e das fontes nesta TV e diz até quantos GB por filme e por episódio tocam sem travar. Não muda nenhum ajuste.";
 
     // --- Integracoes
-    case AJ_TMDB_LIGADO: return "O TMDB enriquece títulos com sinopse, elenco com foto, ficha técnica e trailers. Desligar corta tudo isso de uma vez.";
+    case AJ_TMDB_LIGADO: return "TMDB can enrich titles with summaries, cast photos, technical details and trailers.";
     case AJ_TMDB_IDIOMA: return "Idioma dos textos que o TMDB traz (sinopse, títulos). \"Da interface\" segue o idioma do app.";
     case AJ_TMDB_ARTE: return "Prefere pôster e fundo traduzidos pelo TMDB quando o título tem arte no seu idioma.";
     case AJ_TMDB_BASICO: return "Usa título e sinopse do TMDB no lugar dos que vieram no catálogo do addon.";
-    case AJ_TMDB_FICHA: return "Preenche a ficha técnica da página do título (status, duração, países).";
+    case AJ_TMDB_FICHA: return "Show title facts such as status, duration and countries.";
     case AJ_TMDB_DATAS: return "Datas de estreia e classificação etária do seu país, pelo TMDB.";
     case AJ_TMDB_ELENCO: return "Fotos do elenco e nomes dos papéis, vindos do TMDB.";
     case AJ_TMDB_PROD: return "Lista as produtoras na página do título; tocar num logo abre os títulos dela.";
     case AJ_TMDB_REDES: return "Lista as redes (HBO, Netflix…) na página da série; tocar num logo abre os títulos dela.";
-    case AJ_TMDB_EPS: return "Busca dados de episódios no TMDB para complementar os que vêm do addon.";
+    case AJ_TMDB_EPS: return "Fetch supplementary episode details from TMDB.";
     case AJ_TMDB_TRAILERS: return "A fileira de trailers da página do título. Desligue para esconder os cards.";
     case AJ_TMDB_MAIS: return "A aba \"Mais como este\" passa a usar as recomendações do TMDB.";
     case AJ_TMDB_COL: return "A aba de coleção/saga (as outras partes da franquia) na página do filme.";
     case AJ_TMDB_CW: return "Usa o TMDB para preencher os cartazes da fileira de retomada.";
     case AJ_MDB_LIGADO: return "O MDBList junta notas de várias fontes na página do título. Desligar esconde a fileira inteira.";
-    case AJ_MDB_CHAVE: return "A chave vem da sua conta Nuvio ou do arquivo do pacote. Não dá para digitar nesta TV.";
+    case AJ_MDB_CHAVE: return "The key comes from your Nuvio account or packaged configuration and cannot be entered on this TV.";
     case AJ_SEEKR_LIGADO: case AJ_SEEKR_CHAVE: return seekrAjuda(op);
     case AJ_SEEKR_FITA: return "Mostra o quadro anterior e o seguinte ao lado da miniatura, com o tempo de cada um. Deixa claro que há um quadro a cada 10 segundos.";
     case AJ_SEEKR_AJUSTE: return "Use quando a miniatura mostra sempre a cena de alguns segundos antes ou depois. Acontece quando a sua versão do título é diferente da usada pelo Seekr (outro corte, abertura mais longa). Vale para todos os títulos; volte a 0 ao trocar de filme.";

@@ -24,6 +24,7 @@
 #include "escala.h"
 #include "detail.h"
 #include "logotitulo.h"
+#include "episodeicon.h"
 #include "progresso.h"
 #include "biblioteca.h"
 #include "detail_acoes.h"
@@ -487,7 +488,7 @@ static float heroDx;                // deslocamento horizontal do bloco do heroi
 // home divide (mesmo modo cinema no destaque).
 static TrailerCinema trailerCinema;
 static int trailerManual;           // explicit hero trailer; Back restores artwork
-static int trailerControlFocus = -1; // -1 action stack, 0 pause, 1 restart
+static int trailerControlFocus = -1; // -1 action stack, 0 pause, 1 mute, 2 restart
 // A FONTE do trailer `k` desta pagina, no formato que trailer_abrir espera:
 // URL (Apple HLS nos dois alvos, MP4 do IMDb na LG) ou id do YouTube (Samsung,
 // lista do TMDB). NULL quando ainda nao ha — ou quando nao vai haver, e ai
@@ -1532,7 +1533,10 @@ static void desenhaArteDetalhe(GfxRect alvo, GLuint tex, const char *arte,
     } else {
       GfxRect holes[N_ITENS * 2];
       int n = epFuros(holes);
-      gfx_rect_furos(alvo, tex, GFX_DETALHE, veu, 0, 0, 0, 0, 0, 0, alpha, holes, n);
+      // No baked vignette, tint or artwork-colour halo on the title poster.
+      // Keep the original source pixels and let text contrast stand alone.
+      (void)holes;(void)n;
+      gfx_rect(alvo,tex,GFX_CARD,0,0,0,0,1,1,1,alpha);
     }
   } else {
     float ap = gfx_tex_aspect_atual > 0.05f ? gfx_tex_aspect_atual : (2.0f / 3.0f);
@@ -2105,35 +2109,25 @@ static void comentariosVoltar(void) {
 }
 
 static void comentariosEscolher(void) {
-  int n = foco.nColunas[SEC_EPISODIOS], k, c;
-  const CatItem *ci = cat_item(idx);
-  if (n <= 0) return;
-  // Voltar das temporadas deixa a pagina em outra temporada que a confirmada:
-  // reabrir volta para a do episodio de comEpT/comEpE.
-  if (comEpE > 0 && ci && ci->nTemporadas > 0 && temporadaEm(temporada) != comEpT)
-    for (k = 0; k < ci->nTemporadas; k++)
-      if (ci->temporadas[k] == comEpT) {
-        temporada = k;
-        irParaTemporada(k, 0);
-        foco.colunaLembrada[SEC_TEMPORADAS] = colTemp(k);
-        n = foco.nColunas[SEC_EPISODIOS] = epVisiveis();
-        for (c = 0; c < n; c++) {
-          const CatEp *e = cat_episodio(idx, epAbsoluto(c));
-          if (e && e->episodio == comEpE) { epAncora = c; foco.colunaLembrada[SEC_EPISODIOS] = c; break; }
-        }
-        break;
-      }
-  comPicando = 1;
-  foco.fileira = SEC_EPISODIOS;
-  foco.coluna = foco.colunaLembrada[SEC_EPISODIOS];
-  if (foco.coluna < 0 || foco.coluna >= n) foco.coluna = n - 1 < epAncora ? n - 1 : epAncora;
-  ilha_avisar("det-com-ep", ILHA_INFO, NULL,
-              i18n("Escolha a temporada e o episódio e aperte OK"), 6000u, 0);
+  // The old review episode picker navigated deleted SEC_EPISODIOS rows.
+  // Reuse the new Netflix-style chooser in review-only mode. Selection
+  // returns to this section and refreshes reviews for the chosen S/E.
+  int t=1,e=1;
+  (void)episodioDosComentarios(&t,&e);
+  detEpAbrirReview(t,e);
 }
 
-int detail_ep_foco(int *temp, int *epis) {
-  if (!aberto) return 0;
-  return episodioAlvo(temp, epis, NULL);
+int detail_ep_foco(int *temp,int *epis) {
+  if(!aberto)return 0;
+  if(detEpAberto) {
+    const CatEp *ep=detEpAt(detEpRow);
+    if(ep) {
+      if(temp)*temp=ep->temporada;
+      if(epis)*epis=ep->episodio;
+      return 1;
+    }
+  }
+  return episodioAlvo(temp,epis,NULL);
 }
 
 int detail_assentado(void) {
@@ -2517,10 +2511,8 @@ static int secaoN(int r) {
     // episodio e os numeros dos episodios saem todos do
     // `seasons?extended=episodes,full`.
     case SEC_AUD_ARCO: {
-      int t = audTemp(), n;
-      if (t < 0) return 0;
-      n = extras_n_eps(t);
-      return n < SA_EP_MAX ? n : SA_EP_MAX;
+      int t=audTemp();
+      return t>=0 && extras_n_eps(t)>0 ? 1 : 0; // focus the entire heatmap
     }
     case SEC_AUD_RADAR:
     case SEC_AUD_DIGITAL:
@@ -2908,12 +2900,13 @@ static void detail_evento_(const SDL_Event *e) {
         if (key == SDLK_UP || key == SDLK_LEFT) {
           if (key == SDLK_LEFT && trailerControlFocus > 0) trailerControlFocus--;
           else trailerControlFocus = -1;
-        } else if (key == SDLK_RIGHT && trailerControlFocus < 1)
+        } else if (key == SDLK_RIGHT && trailerControlFocus < 2)
           trailerControlFocus++;
         return;
       }
       if (key == SDLK_RETURN || key == SDLK_KP_ENTER) {
         if (trailerControlFocus == 0) trailer_alternar_pausa();
+        else if(trailerControlFocus == 1) trailer_alternar_som();
         else trailer_recomecar();
       }
     }
@@ -3252,9 +3245,9 @@ static void detail_evento_(const SDL_Event *e) {
       // "Série | Episódio": a pilula escolhe a fonte dos cartoes (ver a nota
       // em detail_atualizar sobre por que nao e ao passar o foco).
       comentEp = foco.coluna;
-      // Segurar OK em "Episódio": escolher temporada e episodio nas proprias
-      // fileiras da pagina; o OK de la devolve o foco para ca.
-      if (comentEp && dur >= NV_HOLD_MS) comentariosEscolher();
+      // OK opens the episode picker, including its touch targets. The
+      // previously deleted carousel can no longer be used for this purpose.
+      if (comentEp) comentariosEscolher();
     } else if (foco.fileira == SEC_COMENTARIOS && dur < NV_HOLD_MS) {
       abrirComentario(foco.coluna - nPilulasCom());
     } else if (foco.fileira == SEC_TRAILERS) {
@@ -3396,9 +3389,10 @@ static void detail_evento_(const SDL_Event *e) {
       return;
     }
     if (k == SDLK_DOWN) {
-      if(e->key.repeat && acaoEm(botao)!=ACAO_MAIS)return;
+      // Repeats advance through action pills until More. A new physical DOWN
+      // from More enters the document and then the normal fast repeat applies.
       if (botao + 1 < nBotoes()) { botao++; return; }
-      if(acaoEm(botao)!=ACAO_MAIS)return;
+      if(acaoEm(botao)!=ACAO_MAIS || e->key.repeat)return;
       sincronizarEpisodioPadrao(); epEscolhido = 1;
       for (int o = 0; o < N_ORDEM; o++) {
         int r = ordemSecoes()[o];
@@ -3974,13 +3968,9 @@ static void detail_atualizar_(float dt, Uint32 agora) {
   // estao no mesmo titulo (e na mesma temporada, no caso da audiencia) —, entao
   // chamar por quadro enquanto o foco esta aqui e a forma mais simples de nao
   // precisar de uma borda de "entrou agora" que erra quando o catalogo remonta.
-  if (nivel >= 1 && foco.fileira == SEC_NUMEROS) {
-    // AS NOTAS JA ESTAO NA MAO. Vem do mesmo `seasons?extended=episodes,full`
-    // que desenha as pastilhas da aba "Avaliações"; so a retencao custa pedido.
-    abrirAudiencia();
-    // O episodio em foco nos tres cartoes e a COLUNA focada.
-    serieaud_selecionar(foco.coluna);
-  }
+  // Ratings already come from the metadata. Don't run the removed Trakt
+  // retention/fingerprint network probes just to display the heatmap.
+
   // TROCAR DE TEMPORADA LA EM CIMA MEXE EM DUAS COISAS AQUI EMBAIXO.
   //
   // 1. FECHA a audiencia de volta para a chamada. O modulo guarda uma temporada
@@ -4991,7 +4981,7 @@ static void heroWeb(float a, float desloc) {
       float k=anim_clamp(focusSpring[i],0,1);
       const char *label=NULL,*ico="aj_play";
       if(action==ACAO_PRIMARIO)label=rot;
-      else if(action==ACAO_EPISODIOS){label="Episodes";ico="aj_layers";}
+      else if(action==ACAO_EPISODIOS){label="Episodes";ico=NULL;}
       else if(action==ACAO_TRAILER){label="Watch trailer";ico="aj_clapperboard";}
       else if(action==ACAO_ASSISTIDO) {
         label=cat_visto(ci)?"Mark as unwatched":"Mark as watched";
@@ -5003,7 +4993,9 @@ static void heroWeb(float a, float desloc) {
       GfxRect row={x,y,chipWidth,rowH};
       if(k>.005f)gfx_cor(row,.5f,.975f,.975f,.975f,k*a);
       float ink=1.0f-.94f*k;
-      gfx_icone((GfxRect){row.x+19,row.y+17,28,28},ico,ink,ink,ink,a);
+      if(action==ACAO_EPISODIOS)
+        episodeicon_draw((GfxRect){row.x+19,row.y+17,28,28},ink,ink,ink,a);
+      else gfx_icone((GfxRect){row.x+19,row.y+17,28,28},ico,ink,ink,ink,a);
       TxtLinha line=txt_linha_corta(TXT_DET_BOTAO,label,
                      (int)(ink*255),(int)(ink*255),(int)(ink*255),
                      255,chipWidth-75.0f);
@@ -6916,7 +6908,7 @@ static const char *rotuloPilulaCom(int k) {
   if (k != 1) return COM_ROT[0];
   if (episodioDosComentarios(&t, &ep) && t >= 0 && ep > 0) {
     char te[24];
-    snprintf(te, sizeof te, i18n("T%dE%d"), t, ep);
+    snprintf(te,sizeof te,"S%dE%d",t,ep);
     snprintf(buf, sizeof buf, "%s  \xc2\xb7  %s", i18n(COM_ROT[1]), te);
     return buf;
   }
@@ -7212,6 +7204,7 @@ static void desenhaNumeros(float x, float y, float a) {
   if (b.sel < 0 || b.sel >= secaoN(SEC_NUMEROS)) b.sel = 0;
   b.selEp = extras_ep_numero(t, b.sel);
   b.aberto = audAberta && audTempAberta == b.temporada;
+  b.focado = nivel>=1 && foco.fileira==SEC_NUMEROS;
   b.notas = notasDados();
   serieaud_bloco(x, y, &b, a);
 }
@@ -7411,6 +7404,7 @@ static void desenhaSecao(int r, float a, Uint32 agora) {
     case SEC_TRAILERS:
     case SEC_MUSICAS:
     case SEC_RELACIONADOS:
+    case SEC_DETALHES:  // same stacked position as recalcularLayout
     case SEC_FRASES:
     case SEC_COMENTARIOS:
     case SEC_ESTUDIOS:    y = conteudoSec[r]; break;
@@ -7934,8 +7928,7 @@ static void detalheFundo(float s) {
     gfx_cor(tela, 0.0f, NV_COR_FUNDO_R, NV_COR_FUNDO_G, NV_COR_FUNDO_B, pg);
   }
   // Frost independe da textura; a arte e apenas a camada opcional do topo.
-  if (modo == FUNDO_ARTE || comTrailer ||
-      (modo != FUNDO_FROST && (artePoster || !tex))) {
+  if (modo != FUNDO_FROST || comTrailer || (artePoster || !tex)) {
     desenhaArteDetalhe(alvo, tex, arte, artePoster,
                        tex ? aEntrada * (1.0f - 0.85f * pg) : 1.0f, pg);
     return;
@@ -7963,7 +7956,7 @@ static void detalheFundo(float s) {
     // ~30 fps, clr 22 ms + swap 21 ms). O teto de 0,998 que havia aqui
     // obrigava o caminho misturado; sem fundo intacto o caminho continua o
     // misturado (o "vazar"), com alfa 1 em vez de 0,998.
-    gfx_rect(alvo, tex, GFX_DETALHE, 1.0f, 0, 0, 0.0f, 0, 0, 0, aEntrada * (1.0f - pg));
+    gfx_rect(alvo,tex,GFX_CARD,0,0,0,0,1,1,1,aEntrada*(1.0f-pg));
     gfx_tex_aspect_atual = 0.0f;
     nv_ambiente_forca = salva;
   }
@@ -8067,16 +8060,18 @@ static void detail_desenhar_(Uint32 agora) {
     if (c > 0.005f) logoCinema(c * a2);
     if (ta > 0.005f) trocaarte_desenhar(logoDe(idx)); }
 
-  // Native icon-only trailer controls. No translated text and no tiny glyphs.
+  // Icon-only controls: pause, mute, restart. Mute has a slash.
   if(trailerManual && trailer_aberto() && nivel==0) {
-    float x=NV_TELA_W-207.0f,y=NV_TELA_H-115.0f;
-    for(int control=0;control<2;control++) {
+    float x=NV_TELA_W-300.0f,y=NV_TELA_H-115.0f;
+    for(int control=0;control<3;control++) {
       GfxRect circle={x+control*91.0f,y,76.0f,76.0f};
       int focused=trailerControlFocus==control;
       if(focused)gfx_cor(circle,.5f,.975f,.975f,.975f,1);
       else gfx_cor(circle,.5f,0,0,0,.52f);
       const char *glyph=control==0?
-        (trailer_pausado()?"aj_play":"aj_pause"):"aj_rotate-ccw-clock";
+        (trailer_pausado()?"aj_play":"aj_pause"):
+        control==1?(trailer_com_som()?"aj_volume-2":"aj_volume-x"):
+                   "aj_rotate-ccw-clock";
       float ink=focused?.06f:1;
       gfx_icone((GfxRect){circle.x+19,circle.y+19,38,38},
                 glyph,ink,ink,ink,1);

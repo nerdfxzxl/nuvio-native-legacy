@@ -22,6 +22,10 @@ static unsigned geracao;   // invalida a prova do player mesmo depois do trailer
 static int    falhouUltima;
 static GfxRect rect;
 static char   fonteAtual[1024];
+// Last native trailer playback position, keyed to its actual source URL.
+static char trailerRetomadaFonte[1024];
+static double trailerRetomadaPos;
+static int trailerRetomadaPendente;
 static Uint32 abertoEm;   // SDL_GetTicks da abertura da fonte atual, para o log
 static int    dono;       // TRAILER_DONO_* (trailer.h)
 static int    noCartao;   // trailer_no_cartao: quadro inteiro encaixado no .tpk
@@ -249,6 +253,8 @@ EM_JS(void, trailer_js_cmd, (const char *cmd), {
       if (c === 'pauseVideo') T.f.pause();
       else if (c === 'playVideo') T.f.play();
       else if (c === 'restartVideo') { T.f.currentTime = 0; T.f.play(); }
+      else if (c === 'muteVideo') T.f.muted = true;
+      else if (c === 'unMuteVideo') T.f.muted = false;
     } catch (e) {}
     return;
   }
@@ -352,6 +358,10 @@ static void nativoAplicar(void) {
   video_tpk_cartao_marcar(noCartao);
 #endif
   if(video_tocando())tocouFonte=1;
+  if(trailerRetomadaPendente && video_tocando()) {
+    video_buscar(trailerRetomadaPos);
+    trailerRetomadaPendente=0;
+  }
   // O uMS setVolume funciona nesta TV (provado ao contrario: sem ele o
   // trailer tocou com som).
   if (volumePendente && video_ativo()) {
@@ -459,6 +469,8 @@ void trailer_abrir(const char *fonte, GfxRect r, int som, int modoCheia) {
 #else
   if (nova) {
     if (!falso && !video_tocar(fonte)) return;
+    trailerRetomadaPendente=
+      trailerRetomadaPos>=2.0 && !strcmp(trailerRetomadaFonte,fonte);
 #ifdef NV_TPK
     video_tpk_trailer_marcar(1);
 #endif
@@ -507,6 +519,13 @@ void trailer_no_cartao(int sim) { noCartao = sim ? 1 : 0; }
 void trailer_fechar(void) {
   noCartao = 0;
   if (!aberto) return;
+#ifndef __EMSCRIPTEN__
+  if(video_ativo() && video_pos()>=2.0 && fonteAtual[0]) {
+    snprintf(trailerRetomadaFonte,sizeof trailerRetomadaFonte,"%s",fonteAtual);
+    trailerRetomadaPos=video_pos();
+  }
+  trailerRetomadaPendente=0;
+#endif
 #ifdef __EMSCRIPTEN__
   trailer_js_fechar();
 #else
@@ -546,6 +565,17 @@ int trailer_continuar(GfxRect r, int som) {
 int trailer_aberto(void)  { return aberto; }
 unsigned trailer_geracao(void) { return geracao; }
 int trailer_com_som(void) { return aberto && comSom; }
+void trailer_alternar_som(void) {
+  if(!aberto || !trailerfonte_com_som(trailerfonte_tizen()))return;
+  comSom=!comSom;
+#ifdef __EMSCRIPTEN__
+  trailer_js_cmd(comSom?"unMuteVideo":"muteVideo");
+#else
+  volumePendente=1;
+  video_volume(comSom?100:0);
+  volumePendente=0;
+#endif
+}
 int trailer_cheia(void)   { return aberto && cheia; }
 int trailer_tocando(void) {
 #ifdef __EMSCRIPTEN__
@@ -624,6 +654,8 @@ void trailer_alternar_pausa(void) {
 }
 void trailer_recomecar(void) {
   if (!aberto) return;
+  trailerRetomadaPos=0;
+  trailerRetomadaPendente=0;
 #ifdef __EMSCRIPTEN__
   trailer_js_cmd("restartVideo");
 #else

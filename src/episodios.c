@@ -455,16 +455,19 @@ static void menuAbrirTemporada(int idx, int t, int so) {
 
 // One episode, following the same watched map and remote destinations as
 // the existing batch menu (Trakt / Simkl / account when enabled).
-int episodios_marcar_um(int idxCat,int temporada,int episodio) {
+int episodios_definir_um(int idxCat,int temporada,int episodio,int watched) {
   const CatItem *ci=cat_item(idxCat);
   VistoPar item={(short)temporada,(short)episodio}, changed[1];
   int ja=0;
   if(!ci || !ci->imdb[0] || temporada<0 || episodio<=0)return 0;
-  int n=vistoep_aplicar(ci->imdb,&item,1,1,changed,&ja);
+  int n=vistoep_aplicar(ci->imdb,&item,1,watched?1:0,changed,&ja);
   if(n>0)
     visto_episodios_item(idxCat,ci->imdb,ci->tipo[0]?ci->tipo:"series",
-                         changed,n,1,visto_destinos());
+                         changed,n,watched?1:0,visto_destinos());
   return n;
+}
+int episodios_marcar_um(int idxCat,int temporada,int episodio) {
+  return episodios_definir_um(idxCat,temporada,episodio,1);
 }
 
 void episodios_abrir(int idx, int t, int e) {

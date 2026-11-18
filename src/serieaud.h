@@ -128,6 +128,7 @@ typedef struct {
   int sel;                  // episodio em foco (indice na temporada)
   int selEp;                // numero dele
   int aberto;               // a audiencia desta temporada ja foi pedida
+  int focado;               // one border around whole rating card
   const NotasSecao *notas;  // notas por episodio de todas as temporadas
 } SaBloco;
 // Altura FIXA do bloco: os dados chegam sem mexer no empilhamento.
