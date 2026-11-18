@@ -344,7 +344,11 @@ void notasui_cor_rampa(int d, float *r, float *g, float *b) {
 void notasui_painel(GfxRect r, float raio, float a) { painel(r, raio, a); }
 
 static TextoGate gateFontes;
-void notasui_reiniciar(void) { textogate_reiniciar(&gateFontes); }
+static int mapaPrimeira, mapaUltima;
+void notasui_reiniciar(void) {
+  textogate_reiniciar(&gateFontes);
+  mapaPrimeira=mapaUltima=0;
+}
 
 typedef struct {
   int nFontes;
@@ -625,6 +629,13 @@ float notasui_fontes_desenhar(const NotasSecao *s, float x, float y, float a,
 #define MAPA_ROT_W   60.0f
 #define MAPA_GAP      6.0f
 
+int notasui_mapa_mover(int direcao) {
+  int next=mapaPrimeira+direcao;
+  if(next<0 || next>mapaUltima)return 0;
+  mapaPrimeira=next;
+  return 1;
+}
+
 void notasui_mapa_card(const NotasSecao *s, GfxRect c, int selT, int selI, float aa) {
   int t, i, nt = 0, maxEps = 0;
   int melhorT = -1, melhorI = -1, piorT = -1, piorI = -1, melhor = 0, pior = 1000;
@@ -652,12 +663,21 @@ void notasui_mapa_card(const NotasSecao *s, GfxRect c, int selT, int selI, float
       }
     }
   }
-  // Espaco da grade: do fim do subtitulo ate a legenda e a frase do pe.
+  // The E1/E2/... headings occupy their own row above the grid.
+  // Keep the footer independent of the row count: no colour legend.
   gx = px + MAPA_ROT_W; gw = pw - MAPA_ROT_W;
-  gy = py; gh = c.y + c.h - 30.0f - 100.0f - gy;
+  gy = py + 33.0f;
+  gh = c.y + c.h - 30.0f - 76.0f - gy;
+  mapaUltima=0;
   if (nt > 0 && maxEps > 0) {
     int ntD = nt;
-    cw = (gw - MAPA_GAP * (float)(maxEps - 1)) / (float)maxEps;
+    // Long seasons use a horizontally browsable viewport of readable cells.
+    int fit=(int)((gw+MAPA_GAP)/(72.0f+MAPA_GAP));
+    if(fit<1)fit=1;
+    int visible=maxEps<fit?maxEps:fit;
+    mapaUltima=maxEps-visible;
+    if(mapaPrimeira>mapaUltima)mapaPrimeira=mapaUltima;
+    cw = (gw - MAPA_GAP * (float)(visible - 1)) / (float)visible;
     if (cw > 72.0f) cw = 72.0f;
     ch = (gh - MAPA_GAP * (float)(nt - 1)) / (float)nt;
     if (ch > 46.0f) ch = 46.0f;
@@ -666,6 +686,16 @@ void notasui_mapa_card(const NotasSecao *s, GfxRect c, int selT, int selI, float
       ch = 12.0f;
       ntD = (int)((gh + MAPA_GAP) / (ch + MAPA_GAP));
       if (ntD < 1) ntD = 1;
+    }
+    // A column heading is centered over its rating cells, never over S1/S2.
+    for (i = mapaPrimeira; i < mapaPrimeira+visible; i++) {
+      char label[14];
+      TxtLinha head;
+      float xc = gx + (cw + MAPA_GAP) * (float)(i-mapaPrimeira) + cw * 0.5f;
+      if (cw < 26.0f && i % 2) continue;
+      snprintf(label, sizeof label, "E%d", i + 1);
+      head = txt_linha(TXT_ILHA_NUM, label, 170, 170, 176, 255);
+      txt_desenhar_alpha(head, xc - (float)head.w * 0.5f, py, aa);
     }
     { float gap = ch < 20.0f ? 3.0f : MAPA_GAP;
       int numDentro = cw >= 40.0f && ch >= 28.0f;
@@ -681,8 +711,8 @@ void notasui_mapa_card(const NotasSecao *s, GfxRect c, int selT, int selI, float
           l = texto(rotTodos ? TXT_G20M : TXT_ILHA_NUM, rot, 180);
           txt_desenhar_alpha(l, px, ry + (ch - (float)l.h) * 0.5f, aa);
         }
-        for (i = 0; i < maxEps; i++) {
-          GfxRect q = { gx + (cw + MAPA_GAP) * (float)i, ry, cw, ch };
+        for (i = mapaPrimeira; i < mapaPrimeira+visible; i++) {
+          GfxRect q = { gx + (cw + MAPA_GAP) * (float)(i-mapaPrimeira), ry, cw, ch };
           float rr = (ch < 20.0f ? 4.0f : 10.0f) / ch, cr, cg, cb;
           int d = i < n ? s->epNota(t, i) : 0;
           if (i >= n) continue;
@@ -702,21 +732,16 @@ void notasui_mapa_card(const NotasSecao *s, GfxRect c, int selT, int selI, float
         }
       }
       gy += (ch + gap) * (float)ntD - gap; }
-  }
-  // Legenda: 6 ... 9+ na rampa (so com grade para explicar).
-  if (nt > 0 && maxEps > 0) { float ly = gy + 24.0f, lx = px;
-    int k, seg = 16;
-    float sw = 160.0f / (float)seg;
-    TxtLinha l0 = texto(TXT_ILHA_NUM, "6", 130), l1 = texto(TXT_ILHA_NUM, "9+", 130);
-    txt_desenhar_alpha(l0, lx, ly, aa);
-    lx += (float)l0.w + 10.0f;
-    for (k = 0; k < seg; k++) {
-      float cr, cg, cb;
-      notasui_cor_rampa(60 + (int)(30.0f * ((float)k + 0.5f) / (float)seg), &cr, &cg, &cb);
-      gfx_cor((GfxRect){ lx + sw * (float)k, ly + (float)l0.h * 0.5f - 4.0f, sw + 0.5f, 8.0f },
-              0, cr, cg, cb, aa);
+    // Subtle chevrons signal more episode columns without a redundant legend.
+    if(mapaPrimeira>0) {
+      TxtLinha back=txt_linha(TXT_LOG_18B,"‹",195,195,200,255);
+      txt_desenhar_alpha(back,gx-23.0f,py,aa);
     }
-    txt_desenhar_alpha(l1, lx + 160.0f + 10.0f, ly, aa); }
+    if(mapaPrimeira<mapaUltima) {
+      TxtLinha next=txt_linha(TXT_LOG_18B,"›",195,195,200,255);
+      txt_desenhar_alpha(next,c.x+c.w-MAPA_PAD-15.0f,py,aa);
+    }
+  }
   // Melhor e pior, no pe do cartao.
   if (melhorT >= 0) {
     char b1[64], b2[64], b[140];

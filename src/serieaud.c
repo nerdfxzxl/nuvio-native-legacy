@@ -758,8 +758,10 @@ float serieaud_bloco_altura(void) {
   // reserving space for the removed Retention/Fingerprint graphs.
   int n=extras_n_temporadas();
   if(n>24)n=24;
-  float h=142.0f+n*44.0f;
-  if(h<300.0f)h=300.0f;
+  // Include the E1/E2 heading and footer while letting short series use
+  // shorter cards (one season should not reserve space for three).
+  float h=171.0f+n*44.0f;
+  if(h<215.0f)h=215.0f;
   return 79.0f+h;
 }
 
@@ -1068,7 +1070,19 @@ float serieaud_bloco(float x,float y,const SaBloco *b,float a) {
   if(y>=NV_TELA_H || y+height<=0.0f)return height;
   TxtLinha heading=txt_linha(TXT_HEADLINE,"Ratings by episode",248,248,248,255);
   txt_desenhar_alpha(heading,x,y,a);
-  GfxRect map={x,y+79.0f,NV_TELA_W-2.0f*x,height-79.0f};
+  // Fit the heatmap panel to the actual episode columns. The old full-width
+  // card left a huge blank strip after the last column in short seasons.
+  float available=NV_TELA_W-2.0f*x, natural=420.0f;
+  if (b->notas && b->notas->nTemp>0 && b->notas->nEps) {
+    int maxEp=0;
+    for(int s=0;s<b->notas->nTemp;s++) {
+      int n=b->notas->nEps(s);
+      if(n>EX_EP_MAX)n=EX_EP_MAX;
+      if(n>maxEp)maxEp=n;
+    }
+    if(maxEp>0) natural=2.0f*34.0f+60.0f+72.0f*maxEp+6.0f*(maxEp-1);
+  }
+  GfxRect map={x,y+79.0f,fminf(available,fmaxf(420.0f,natural)),height-79.0f};
   notasui_mapa_card(b->notas,map,b->tempIdx,-1,a);
   if(b->focado)gfx_anel_fora(map,.024f,0,3.0f,1,1,1,.96f*a);
   return height;

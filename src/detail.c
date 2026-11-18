@@ -366,6 +366,11 @@ static float velSec[N_SECOES], velY = 0.0f;
 #ifdef NV_TOUCH_UI
 static ToqueRolagem toqueDetalhe, toqueSec[N_SECOES], toqueColecao, toquePessoa;
 static int toqueSecAtiva = -1;
+// The action stack accepts swipe-as-D-pad while the document keeps native
+// finger scrolling, matching the existing stream selector's touch behavior.
+static GfxRect heroTouchArea;
+static int heroGesture, heroGestureStop, mapGesture;
+static float heroGestureTravel, mapGestureTravel;
 static float toquePessoaOffset;
 static void toqueDetalheLimpar(void) {
   toquerol_limpar(&toqueDetalhe); toquerol_limpar(&toqueColecao); toquerol_limpar(&toquePessoa);
@@ -599,13 +604,22 @@ static int comentEp = 0;
 // le o foco ENQUANTO ele esta na fileira; ao descer ate os cartoes o foco ja
 // saiu de la e a conta caia no "retomar"/"proximo", que e outro episodio.
 static int comEpT = 0, comEpE = 0;
+// Review selector: zero = closed, one = season list, two = episode list.
+// The options are rebuilt only when opened; never in the 60 Hz draw loop.
+#define COM_MENU_MAX 2600
+#define COM_MENU_VISIBLE 5
+#define COM_MENU_STEP 54.0f
+static int comMenu, comMenuN, comMenuFocus, comMenuScroll, comMenuSeason;
+static int comMenuValues[COM_MENU_MAX];
+static float comSeasonAnim, comMenuX, comMenuY;
+static void comMenuAbrir(void);
+static int comMenuEvento(const SDL_Event *e);
+static void comMenuDesenhar(float a);
 // Escolhendo o episodio dos comentarios (segurar OK na pilula "Episódio"): o
 // foco foi para as fileiras de temporada/episodio e o OK volta para a pilula
 // em vez de reproduzir.
 static int comPicando = 0;
-// Dica de primeira vez da pilula, por perfil (avisodisp.h).
-#define COM_DICA_CHAVE "dica:comentarios-episodio"
-static int comDicaPend;   // enfileirada, ainda nao vista na ilha
+// No old long-press hint: season/episode choices are now visible controls.
 static int abaInfo = 0;              // aba de informacao escolhida
 
 // AS DUAS SECOES QUE SO CARREGAM QUANDO ALGUEM ENTRA NELAS.
@@ -794,7 +808,7 @@ static void abrirAudiencia(void) {
 // contagem de colunas e a largura de item — que ficam aqui em cima — precisam
 // perguntar quantas pilulas e quantos cartoes ela tem.
 #define COM_PILL_GAP  16.0f
-static const char *COM_ROT[2];
+static const char *COM_ROT[3];
 static const char *rotuloPilulaCom(int k);
 static int   nPilulasCom(void);
 static int   nCartoesCom(void);
@@ -1720,6 +1734,17 @@ static void abrirInterno(const HomeItem *it) {
   epEscolhido = 0;
   comentEp = 0;  // Every title opens on show comments, never a previous episode.
   comEpT = comEpE = 0;
+  comMenu = comMenuN = comMenuFocus = comMenuScroll = 0;
+  comSeasonAnim = 0.0f;
+  // Comments start on the most recently played episode, not "next to watch".
+  { const CatItem *watched = cat_item(idx);
+    const CatEp *first = primeiroEpRegular();
+    if(watched && watched->progresso > 0 && watched->episodio > 0 && watched->temporada >= 0) {
+      comEpT = watched->temporada; comEpE = watched->episodio;
+    } else if(first) {
+      comEpT = first->temporada; comEpE = first->episodio;
+    } else { comEpT = comEpE = 1; }
+  }
   comPicando = 0;
   { const CatItem *ci0 = cat_item(idx);
     int t = 0, e = 0, achou = 0;
@@ -2081,13 +2106,109 @@ static void sincronizarEpisodioPadrao(void) {
   }
 }
 
-// Episodio que os COMENTARIOS seguem: o ultimo pisado pelo foco; antes de o
-// foco passar pela fileira, o mesmo alvo do botao de reproduzir.
+// This is a review-only choice, independent of playback and focus in the
+// removed episode carousel. Never silently advance it to "next to watch".
 static int episodioDosComentarios(int *temp, int *epis) {
-  if (foco.fileira != SEC_EPISODIOS && comEpT >= 0 && comEpE > 0) {
-    *temp = comEpT; *epis = comEpE; return 1;
+  if (comEpT >= 0 && comEpE > 0) {
+    if (temp) *temp = comEpT;
+    if (epis) *epis = comEpE;
+    return 1;
   }
-  return episodioAlvo(temp, epis, NULL);
+  return episodioPadrao(temp, epis, NULL);
+}
+
+// Build a compact, sorted, unique list of real season or episode numbers.
+static void comMenuAdicionar(int n) {
+  if (n < 1 || comMenuN >= COM_MENU_MAX) return;
+  for (int i=0;i<comMenuN;i++) if (comMenuValues[i]==n) return;
+  int p=comMenuN++;
+  while(p>0 && comMenuValues[p-1]>n) {
+    comMenuValues[p]=comMenuValues[p-1];p--;
+  }
+  comMenuValues[p]=n;
+}
+static void comMenuAtualizarLista(void) {
+  const CatItem *ci=cat_item(idx);
+  int n=cat_n_episodios(idx), preferred=comMenu==1?comEpT:comEpE;
+  comMenuN=comMenuFocus=comMenuScroll=0;
+  if (comMenu==1) {
+    if(ci)for(int i=0;i<ci->nTemporadas;i++)
+      comMenuAdicionar(ci->temporadas[i]);
+  }
+  for(int i=0;i<n;i++) {
+    const CatEp *ep=cat_episodio(idx,i);
+    if(!ep)continue;
+    if(comMenu==1) comMenuAdicionar(ep->temporada);
+    else if(ep->temporada==comMenuSeason)comMenuAdicionar(ep->episodio);
+  }
+  // Trakt episode data may arrive before the catalog's episode list.
+  if(comMenuN==0) {
+    for(int t=0;t<extras_n_temporadas();t++) {
+      int sn=extras_temporada_numero(t);
+      if(comMenu==1) comMenuAdicionar(sn);
+      else if(sn==comMenuSeason)
+        for(int e=0;e<extras_n_eps(t);e++)comMenuAdicionar(extras_ep_numero(t,e));
+    }
+  }
+  if(comMenu==1 && !comMenuN)comMenuAdicionar(comEpT>0?comEpT:1);
+  for(int i=0;i<comMenuN;i++)
+    if(comMenuValues[i]==preferred) {comMenuFocus=i;break;}
+  comMenuScroll=comMenuFocus>=COM_MENU_VISIBLE?
+    comMenuFocus-COM_MENU_VISIBLE+1:0;
+}
+static void comMenuAjustarFoco(int next) {
+  if(!comMenuN)return;
+  if(next<0)next=0;
+  if(next>=comMenuN)next=comMenuN-1;
+  comMenuFocus=next;
+  if(comMenuFocus<comMenuScroll)comMenuScroll=comMenuFocus;
+  if(comMenuFocus>=comMenuScroll+COM_MENU_VISIBLE)
+    comMenuScroll=comMenuFocus-COM_MENU_VISIBLE+1;
+}
+static void comMenuAbrir(void) {
+  comMenu=1;comMenuSeason=comEpT>0?comEpT:1;
+  comMenuAtualizarLista();
+}
+static void comMenuSelecionar(void) {
+  if(!comMenuN)return;
+  int choice=comMenuValues[comMenuFocus];
+  if(comMenu==1) {
+    comMenuSeason=choice;
+    comMenu=2;
+    comMenuAtualizarLista();
+  } else if(comMenu==2) {
+    const CatItem *ci=cat_item(idx);
+    comEpT=comMenuSeason;comEpE=choice;
+    comentEp=1;comMenu=0;
+    foco.fileira=SEC_COMENTARIOS;foco.coluna=1;
+    foco.colunaLembrada[SEC_COMENTARIOS]=1;
+    if(ci && ci->imdb[0])
+      extras_pedir_comentarios_ep(ci->imdb,comEpT,comEpE);
+  }
+}
+static int comMenuEvento(const SDL_Event *e) {
+  if(!comMenu)return 0;
+  if(e->type==SDL_KEYDOWN) {
+    SDL_Keycode k=e->key.keysym.sym;
+    if(k==SDLK_ESCAPE||k==SDLK_AC_BACK||k==SDLK_BACKSPACE||
+       k==SDLK_DELETE||e->key.keysym.scancode==NV_SCANCODE_BACK) {
+      if(comMenu==2){comMenu=1;comMenuAtualizarLista();}
+      else comMenu=0;
+    } else if(k==SDLK_UP)comMenuAjustarFoco(comMenuFocus-1);
+    else if(k==SDLK_DOWN)comMenuAjustarFoco(comMenuFocus+1);
+  } else if(e->type==SDL_KEYUP &&
+            (e->key.keysym.sym==SDLK_RETURN||e->key.keysym.sym==SDLK_KP_ENTER))
+    comMenuSelecionar();
+  return 1;
+}
+static void comMenuPointerFocus(int index,int unused) {
+  (void)unused;
+  comMenuAjustarFoco(index);
+}
+static void comMenuPointerSelect(int index,int unused) {
+  (void)unused;
+  comMenuAjustarFoco(index);
+  comMenuSelecionar();
 }
 
 // De volta a pilula "Episódio" com o episodio que o foco pisou (comEpT/comEpE
@@ -2109,12 +2230,9 @@ static void comentariosVoltar(void) {
 }
 
 static void comentariosEscolher(void) {
-  // The old review episode picker navigated deleted SEC_EPISODIOS rows.
-  // Reuse the new Netflix-style chooser in review-only mode. Selection
-  // returns to this section and refreshes reviews for the chosen S/E.
-  int t=1,e=1;
-  (void)episodioDosComentarios(&t,&e);
-  detEpAbrirReview(t,e);
+  // The compact dropdown belongs to the reviews section; the full-screen
+  // Episodes view stays dedicated to watching, not selecting reviews.
+  comMenuAbrir();
 }
 
 int detail_ep_foco(int *temp,int *epis) {
@@ -2887,6 +3005,7 @@ static void executarMais(int dm) {
 
 static void detail_evento_(const SDL_Event *e) {
   if (detEpEvento(e)) return;
+  if (comMenuEvento(e)) return;
   if (trailerControlFocus >= 0 && trailerManual && trailer_aberto()) {
     if (e->type == SDL_KEYDOWN || e->type == SDL_KEYUP) {
       SDL_Keycode key = e->key.keysym.sym;
@@ -3244,10 +3363,15 @@ static void detail_evento_(const SDL_Event *e) {
     } else if (foco.fileira == SEC_COMENTARIOS && foco.coluna < nPilulasCom()) {
       // "Série | Episódio": a pilula escolhe a fonte dos cartoes (ver a nota
       // em detail_atualizar sobre por que nao e ao passar o foco).
-      comentEp = foco.coluna;
-      // OK opens the episode picker, including its touch targets. The
-      // previously deleted carousel can no longer be used for this purpose.
-      if (comentEp) comentariosEscolher();
+      if (foco.coluna == 2) comentariosEscolher();
+      else {
+        comentEp = foco.coluna;
+        if (comentEp) {
+          const CatItem *ci=cat_item(idx);
+          if(ci && ci->imdb[0])
+            extras_pedir_comentarios_ep(ci->imdb,comEpT,comEpE);
+        }
+      }
     } else if (foco.fileira == SEC_COMENTARIOS && dur < NV_HOLD_MS) {
       abrirComentario(foco.coluna - nPilulasCom());
     } else if (foco.fileira == SEC_TRAILERS) {
@@ -3428,6 +3552,8 @@ static void detail_evento_(const SDL_Event *e) {
     if (k == SDLK_RIGHT) return;
     if (k == SDLK_LEFT) { pediuMenu = 1; return; }
   }
+  if (foco.fileira==SEC_AUD_ARCO && (k==SDLK_LEFT || k==SDLK_RIGHT) &&
+      notasui_mapa_mover(k==SDLK_RIGHT?1:-1))return;
   if (k == SDLK_RIGHT) {
     if (!focus_mover(&foco, 1, 0) && !ehSerie() && parDir(foco.fileira) >= 0 &&
         foco.nColunas[parDir(foco.fileira)] > 0) {
@@ -3531,6 +3657,9 @@ static float larguraItem(int r, int c) {
 // x do item `c` DENTRO da fileira (antes da rolagem horizontal).
 static float xItem(int r, int c) {
   float x = ANC(NV_DETP_X);
+  // Review cards form their own row; the pill positions must not leak into it.
+  if (r==SEC_COMENTARIOS && c>=nPilulasCom())
+    return x+(c-nPilulasCom())*(COM_CARD_W+COM_CARD_GAP);
   for (int k = 0; k < c; k++) {
     if (r == SEC_EPISODIOS) { x += epCardPasso(); continue; }
     if (r == SEC_ELENCO)    { x += NV_DETP_EL_PASSO; continue; }
@@ -3683,7 +3812,68 @@ static void trailerDetalheTela(void) {
 }
 static int toqueDetalheRolar(const PonteiroRolagem *e) {
   int r = 0;
-  if (!telefoneui_ativo() || !aberto || saindo || pessoaAberta || colListaAberta || trailer_cheia() || corpoSobArte()) return 0;
+  if (!telefoneui_ativo() || !aberto || saindo || pessoaAberta || colListaAberta ||
+      trailer_cheia() || corpoSobArte()) return 0;
+  if(e->fase==PONT_ROL_INICIO) {
+    heroGesture=heroGestureStop=mapGesture=0;
+    heroGestureTravel=mapGestureTravel=0.0f;
+    // Phone users can swipe horizontally through long heatmap rows, while
+    // vertical swipes elsewhere retain the existing document scrolling.
+    if(!e->eixoY && secaoN(SEC_AUD_ARCO)>0) {
+      float top=conteudoSec[SEC_AUD_ARCO]-scrollY;
+      if(e->x>=ANC(NV_DETP_X) && e->x<NV_TELA_W-ANC(NV_DETP_X) &&
+         e->y>=top+79.0f && e->y<top+serieaud_bloco_altura()) {
+        mapGesture=1;
+        nivel=1;foco.fileira=SEC_AUD_ARCO;foco.coluna=0;
+        return 1;
+      }
+    }
+    // Only the hero's real action viewport becomes directional; all other
+    // parts of the detail page retain the natural free-scrolling touch path.
+    if(nivel==0 && !focoAmigos && e->x>=heroTouchArea.x &&
+       e->x<heroTouchArea.x+heroTouchArea.w && e->y>=heroTouchArea.y &&
+       e->y<heroTouchArea.y+heroTouchArea.h) {
+      heroGesture=1;return 1;
+    }
+  }
+  if(mapGesture) {
+    if(e->fase==PONT_ROL_MOVER || e->fase==PONT_ROL_INERCIA) {
+      mapGestureTravel-=e->delta;
+      int steps=0;
+      while(fabsf(mapGestureTravel)>=78.0f && steps++<5) {
+        int dir=mapGestureTravel>0?1:-1;
+        mapGestureTravel-=dir*78.0f;
+        if(!notasui_mapa_mover(dir)) {mapGestureTravel=0;break;}
+      }
+    } else if(e->fase==PONT_ROL_FIM || e->fase==PONT_ROL_CANCELAR)
+      mapGesture=0;
+    return 1;
+  }
+  if(heroGesture) {
+    if(e->fase==PONT_ROL_MOVER || e->fase==PONT_ROL_INERCIA) {
+      heroGestureTravel-=e->delta;
+      // One directional press per 70 logical pixels. Never race past More
+      // during a continuous swipe; the next gesture can enter the document.
+      int steps=0;
+      while(fabsf(heroGestureTravel)>=70.0f && steps++<4) {
+        int dir=heroGestureTravel>0?1:-1;
+        SDL_Event key;
+        memset(&key,0,sizeof key);
+        key.type=SDL_KEYDOWN;
+        key.key.keysym.sym=e->eixoY?
+           (dir>0?SDLK_DOWN:SDLK_UP):
+           (dir>0?SDLK_RIGHT:SDLK_LEFT);
+        heroGestureTravel-=dir*70.0f;
+        if(heroGestureStop && dir>0 && e->eixoY)continue;
+        detail_evento_(&key);
+        if(e->eixoY && dir>0 && nivel==0 && botao==nBotoes()-1)
+          heroGestureStop=1;
+        if(nivel!=0) {heroGestureStop=1;break;}
+      }
+    } else if(e->fase==PONT_ROL_FIM || e->fase==PONT_ROL_CANCELAR)
+      heroGesture=0;
+    return 1;
+  }
   if (e->eixoY) r = toquerol_evento(&toqueDetalhe, e);
   else {
     if (e->fase == PONT_ROL_INICIO) {
@@ -3750,6 +3940,13 @@ static void detail_atualizar_(float dt, Uint32 agora) {
   }
   if (!aberto) { blocoAnt[0] = blocoAnt[1] = blocoAnt[2] = -1.0f; return; }
   if (detEpAberto) { detEpAtualizar(dt); return; }
+  { int visible=ehSerie() && (comMenu ||
+          (nivel>=1 && foco.fileira==SEC_COMENTARIOS &&
+           (foco.coluna==1 || foco.coluna==2)));
+    if(ajustes_animacoes_reduzidas())comSeasonAnim=visible?1.0f:0.0f;
+    else comSeasonAnim=anim_clamp(comSeasonAnim+(visible?1.0f:-1.0f)*dt/0.20f,
+                                0.0f,1.0f);
+  }
   if (pessoaAberta && pessoa_falhou()) {
     pessoaAberta = 0;
     ilha_avisar("det-elenco-sem-pagina", ILHA_INFO, NULL,
@@ -3925,20 +4122,8 @@ static void detail_atualizar_(float dt, Uint32 agora) {
   // Saiu das fileiras de temporada/episodio sem confirmar: desfaz o modo.
   if (comPicando && foco.fileira != SEC_EPISODIOS && foco.fileira != SEC_TEMPORADAS)
     comPicando = 0;
-  // Primeira vez que o foco chega na pilula "Episódio" (por perfil): a ilha diz
-  // que segurar OK escolhe temporada e episodio. O rotulo "Segure OK" ao lado
-  // da pilula e a versao permanente.
-  // A dispensa so e gravada depois de a ilha MOSTRAR (ilha_mostrou): com a fila
-  // cheia ela descarta o aviso, e o perfil nunca mais veria a dica.
-  if (comDicaPend && ilha_mostrou(COM_DICA_CHAVE)) { avisodisp_por(COM_DICA_CHAVE); comDicaPend = 0; }
-  if (nivel >= 1 && foco.fileira == SEC_COMENTARIOS && ehSerie() && foco.coluna == 1 &&
-      !avisodisp_tem(COM_DICA_CHAVE)) {
-    if (!comDicaPend) {
-      ilha_avisar(COM_DICA_CHAVE, ILHA_INFO, NULL,
-                  i18n("Segure OK em Episódio para escolher a temporada e o episódio"), 6000u, 0);
-      comDicaPend = 1;
-    }
-  } else comDicaPend = 0;
+  // The Episode pill reveals the dedicated Season selector on focus.
+  // The former "hold OK to open the removed carousel" hint is obsolete.
 
   // SELETOR DE COMENTARIOS: a fonte troca no OK, NAO ao passar o foco.
   //
@@ -4958,6 +5143,9 @@ static void heroWeb(float a, float desloc) {
   { // Three visible Netflix-style action chips. The page does not scroll.
     const float rowH=62.0f, step=70.0f, stackW=530.0f, totalH=202.0f;
     float x=NV_DETW2_X,yTop=yAcoes;
+#ifdef NV_TOUCH_UI
+    heroTouchArea=(GfxRect){x-9.0f,yTop-8.0f,stackW+18.0f,totalH+16.0f};
+#endif
     static float scroll,velocity,focusSpring[6];
     static Uint32 lastTick; static int previousTitle=-1;
     Uint32 now=SDL_GetTicks();
@@ -6897,7 +7085,7 @@ static float alturaCabComentarios(void) {
 
 // Rotulos do seletor, em escopo de arquivo: a contagem de colunas e a largura
 // de item precisam deles fora do desenho.
-static const char *COM_ROT[2] = { "Série", "Episódio" };
+static const char *COM_ROT[3] = { "Série", "Episódio", "Season" };
 // A pilula do episodio DIZ qual episodio: "Episódio · T1E3". Sem isso a pessoa
 // nao tem como saber que os cartoes seguem o episodio em foco na fileira la de
 // cima (pedido do dono, #78). O texto ja sai traduzido pedaco a pedaco porque
@@ -6905,7 +7093,7 @@ static const char *COM_ROT[2] = { "Série", "Episódio" };
 static const char *rotuloPilulaCom(int k) {
   static char buf[64];
   int t = 0, ep = 0;
-  if (k != 1) return COM_ROT[0];
+  if (k != 1) return i18n(COM_ROT[k==2?2:0]);
   if (episodioDosComentarios(&t, &ep) && t >= 0 && ep > 0) {
     char te[24];
     snprintf(te,sizeof te,"S%dE%d",t,ep);
@@ -6921,7 +7109,7 @@ static const char *rotuloPilulaCom(int k) {
 // Os cartoes precisavam virar colunas: eles eram desenhados tres e ponto, sem
 // foco, entao os outros cinco que o Trakt manda (EX_COMENT_MAX = 8) eram
 // inalcancaveis — foi o "nao tava dando pra navegar nos comentarios".
-static int nPilulasCom(void) { return ehSerie() ? 2 : 0; }
+static int nPilulasCom(void) { return ehSerie() ? 3 : 0; }
 static int nCartoesCom(void) {
   int n = (ehSerie() && comentEp) ? extras_n_comentarios_ep()
                                  : extras_n_comentarios();
@@ -6956,11 +7144,19 @@ static float cabecalhoComentarios(float x, float y, float a) {
   // As duas pilulas. Em FILME so existe a da serie — nao ha episodio —, entao a
   // fileira inteira some em vez de mostrar um controle morto.
   if (ehSerie()) {
-    float px = x;
     int k;
+    const int order[3]={0,2,1}; // Paint Season under Episode while emerging.
     int fileira = SEC_COMENTARIOS;
-    for (k = 0; k < 2; k++) {
-      float w = larguraPilulaCom(rotuloPilulaCom(k));
+    float ex=x+larguraPilulaCom(rotuloPilulaCom(0))+COM_PILL_GAP;
+    float sx=ex+larguraPilulaCom(rotuloPilulaCom(1))+COM_PILL_GAP;
+    float eased=comSeasonAnim*comSeasonAnim*(3.0f-2.0f*comSeasonAnim);
+    comMenuX=sx;comMenuY=yy+COM_PILL_H+10.0f;
+    for (int it=0;it<3;it++) {
+      k=order[it];
+      if(k==2 && comSeasonAnim<0.005f)continue;
+      float w=larguraPilulaCom(rotuloPilulaCom(k));
+      float px=k==0?x:k==1?ex:ex+(sx-ex)*eased;
+      float fade=a*(k==2?comSeasonAnim:1.0f);
       GfxRect r = { px, yy, w, COM_PILL_H };
       // MEDIDO na referencia: a pilula ESCOLHIDA e BRANCA com texto escuro, e a
       // outra e #2D2D2D com texto branco. E o oposto das pilulas de temporada,
@@ -6973,7 +7169,7 @@ static float cabecalhoComentarios(float x, float y, float a) {
       // e nao colide com nada.
       float f = (nivel >= 1 && foco.fileira == fileira && foco.coluna == k)
                 ? animFoco[fileira][k] : 0.0f;
-      int sel = (comentEp == k);
+      int sel = (k<2 && comentEp == k);
       // FOCO: anel branco na pilula ESCURA, CRESCIMENTO na pilula branca.
       //
       // Anel branco em volta de preenchimento branco deixa uma folga escura
@@ -7000,19 +7196,19 @@ static float cabecalhoComentarios(float x, float y, float a) {
         float dw = r.w * (cresce - 1.0f), dh = r.h * (cresce - 1.0f);
         GfxRect rc = { r.x - dw * 0.5f, r.y - dh * 0.5f, r.w + dw, r.h + dh };
         float lum = 0.176f;                     // #2D2D2D
-        foco_anel(rc, NV_RAIO_PILL, f, a);      // so com "Foco no cartaz" ligado
+        foco_anel(rc, NV_RAIO_PILL, f, fade);      // so com "Foco no cartaz" ligado
         if (ajustes_vidro()) {
-          gfx_vidro_material(rc, NV_RAIO_PILL, GFX_VIDRO_DENS, a);
+          gfx_vidro_material(rc, NV_RAIO_PILL, GFX_VIDRO_DENS, fade);
           if (sel) { float ar, ag, ab; ajustes_acento(&ar, &ag, &ab);
-            gfx_cor(rc, NV_RAIO_PILL, ar, ag, ab, 0.20f * a); }
-          gfx_vidro_pilula_cheia(rc, NV_RAIO_PILL, f, a);
+            gfx_cor(rc, NV_RAIO_PILL, ar, ag, ab, 0.20f * fade); }
+          gfx_vidro_pilula_cheia(rc, NV_RAIO_PILL, f, fade);
         } else {
-        gfx_cor(rc, NV_RAIO_PILL, lum, lum, lum, a);
+        gfx_cor(rc, NV_RAIO_PILL, lum, lum, lum, fade);
         if (f > 0.01f) { float ar, ag, ab; ajustes_acento(&ar, &ag, &ab);
-                         gfx_cor(rc, NV_RAIO_PILL, ar, ag, ab, f * a); }
+                         gfx_cor(rc, NV_RAIO_PILL, ar, ag, ab, f * fade); }
         else if (sel) { float ar, ag, ab; ajustes_acento(&ar, &ag, &ab);
                         gfx_cor(rc, NV_RAIO_PILL, ar * 0.6f, ag * 0.6f,
-                                ab * 0.6f, a); }
+                                ab * 0.6f, fade); }
         }
         r = rc; }
       // A TINTA DO TEXTO E CALCULADA, nao cravada: a cor de realce e escolha
@@ -7029,13 +7225,66 @@ static float cabecalhoComentarios(float x, float y, float a) {
         if (f > 0.5f) cor = ajustes_tinta_foco();   // a tinta do acento (claros: escura)
         if (ajustes_vidro()) cor = f > 0.5f ? gfx_vidro_tinta(1.0f) : 255;   // so o foco e cheio
         { TxtLinha l = txt_linha(TXT_PLR_CORPO, rotuloPilulaCom(k), cor, cor, cor, 255);
-          txt_peso(l, r.x + (r.w - l.w) * 0.5f, r.y + (r.h - l.h) * 0.5f, a, 0.5f); } }
-      px += w + COM_PILL_GAP;
+          txt_peso(l, r.x + (r.w - l.w) * 0.5f, r.y + (r.h - l.h) * 0.5f, fade, 0.5f); } }
+      // Reviews used to lack any touch targets despite being visible pills.
+      if(ponteiro_ativo() && fade>0.30f)
+        ponteiro_alvo(r.x,r.y,r.w,r.h,ponteiroDetalhe,NULL,SEC_COMENTARIOS,k);
     }
-    // O gesto (segurar OK) so aparece na ilha, na primeira vez (COM_DICA_CHAVE).
+    // The third button animates out of Episode, then retracts on unfocus.
     yy += COM_PILL_H + 28.0f;
   }
   return yy;
+}
+
+
+// Native TV dropdown: five visible rows, or fewer when the list is short.
+// The fixed five-row viewport scrolls internally via Up/Down; nothing changes
+// watch progress. Registered last in the pointer layer so it blocks the page.
+static void comMenuDesenhar(float a) {
+  if (!comMenu || !ehSerie()) return;
+  int count=comMenuN<COM_MENU_VISIBLE?comMenuN:COM_MENU_VISIBLE;
+  if(count<1)count=1;
+  float w=270.0f, h=58.0f+count*COM_MENU_STEP+12.0f;
+  float x=comMenuX, y=comMenuY;
+  if(x+w>NV_TELA_W-24.0f)x=NV_TELA_W-w-24.0f;
+  if(y+h>NV_TELA_H-16.0f)y=fmaxf(16.0f,comMenuY-COM_PILL_H-h-16.0f);
+  if(x<16.0f)x=16.0f;
+  GfxRect card={x,y,w,h};
+  gfx_sem_recorte();
+  gfx_cor(card,.06f,.075f,.083f,.100f,.985f*a);
+  gfx_anel_fora(card,.06f,0.0f,1.0f,1.0f,1.0f,1.0f,.25f*a);
+  TxtLinha title=txt_linha(TXT_PLR_CORPO,comMenu==1?"Season":"Episode",242,243,245,255);
+  txt_desenhar_alpha(title,x+18.0f,y+14.0f,a);
+  if(!comMenuN) {
+    TxtLinha empty=txt_linha(TXT_CAPTION2,"No episodes available",180,181,184,255);
+    txt_desenhar_alpha(empty,x+18.0f,y+65.0f,a);
+  }
+  for(int j=0;j<count && comMenuN;j++) {
+    int i=comMenuScroll+j, focused=i==comMenuFocus;
+    if(i>=comMenuN)break;
+    GfxRect row={x+8.0f,y+58.0f+j*COM_MENU_STEP,w-16.0f,COM_MENU_STEP-4.0f};
+    char label[40];
+    int selected=(comMenu==1?comEpT:comEpE)==comMenuValues[i];
+    snprintf(label,sizeof label,"%s %d%s",comMenu==1?"Season":"Episode",
+             comMenuValues[i],selected?"  ✓":"");
+    if(focused)gfx_cor(row,.16f,.975f,.975f,.975f,a);
+    else if(selected)gfx_cor(row,.16f,.29f,.31f,.35f,a);
+    TxtLinha l=txt_linha(TXT_PLR_CORPO,label,
+                        focused?18:239,focused?18:239,focused?18:242,255);
+    txt_desenhar_alpha(l,row.x+15.0f,row.y+(row.h-l.h)*.5f,a);
+    if(ponteiro_ativo())
+      ponteiro_alvo(row.x,row.y,row.w,row.h,
+                    comMenuPointerFocus,comMenuPointerSelect,i,0);
+  }
+  if(comMenuN>COM_MENU_VISIBLE) {
+    GfxRect track={x+w-6.0f,y+59.0f,2.0f,count*COM_MENU_STEP-8.0f};
+    gfx_cor(track,.5f,1,1,1,.12f*a);
+    float thumbH=fmaxf(12.0f,track.h*COM_MENU_VISIBLE/comMenuN);
+    float frac=comMenuN>COM_MENU_VISIBLE?
+      (float)comMenuScroll/(comMenuN-COM_MENU_VISIBLE):0.0f;
+    gfx_cor((GfxRect){track.x,track.y+(track.h-thumbH)*frac,track.w,thumbH},
+            .5f,1,1,1,.7f*a);
+  }
 }
 
 // Match the B2 tint for both focused and resting comment cards.
@@ -7092,6 +7341,9 @@ static void desenhaComentarios(float x, float y, float a) {
     // pintar os que ninguem ve custa preenchimento num aparelho onde ele e o
     // recurso escasso.
     if (cx > NV_TELA_W || cx + COM_CARD_W < 0.0f) continue;
+    if(ponteiro_ativo() && a>0.30f && i<nCartoesCom())
+      ponteiro_alvo(card.x,card.y,card.w,card.h,ponteiroDetalhe,NULL,
+                    SEC_COMENTARIOS,nPilulasCom()+i);
     char rodape[64];
     px = cx + COM_PAD; larg = COM_CARD_W - COM_PAD * 2;
     // FOCO PREENCHIDO, NAO CONTORNADO. Era um anel na cor de realce em volta
@@ -7472,7 +7724,9 @@ static void desenhaSecao(int r, float a, Uint32 agora) {
     // protruding pixels, but do not request textures or lay out hidden cards.
     float margin = r == SEC_EPISODIOS ? fmaxf(w * FOCO_ZOOM * 0.5f, NV_ANEL_FOCO + 10.0f) : ANC(NV_DETP_X);
     if (x > NV_TELA_W + (r == SEC_EPISODIOS ? margin : 0.0f) || x + w < -margin) continue;
-    if (ponteiro_ativo() && a > 0.3f && c < secaoColunas(r) && alturaAlvo(r) > 0.0f)
+    if (ponteiro_ativo() && a > 0.3f && c < secaoColunas(r) &&
+        !(r==SEC_COMENTARIOS && c==2 && comSeasonAnim<0.95f) &&
+        alturaAlvo(r) > 0.0f)
       ponteiro_alvo(x, y,
                     w, alturaAlvo(r), ponteiroDetalhe, NULL, r, c);
     switch (r) {
@@ -8097,6 +8351,10 @@ static void detail_desenhar_(Uint32 agora) {
   for (int r = 0; r < N_SECOES; r++)
     desenhaSecao(r, (ehSerie() && (r == SEC_TEMPORADAS || r == SEC_EPISODIOS))
                     ? epLinhaAlfa() : corpoAlpha(a2), agora);
+  if(comMenu) {
+    ponteiro_camada();
+    comMenuDesenhar(1.0f);
+  }
   // POR CIMA de tudo: a ficha e outra tela, nao uma secao desta.
   // O ponteiro (#99) nao alcanca a pagina por baixo de nenhuma das duas.
   if (pessoaAberta) { ponteiro_camada(); desenhaPessoa(s); }

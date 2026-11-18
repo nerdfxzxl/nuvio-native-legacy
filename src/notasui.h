@@ -63,6 +63,8 @@ float notasui_fontes_desenhar(const NotasSecao *s, float x, float y, float a,
 // temporadas x episodios dentro de `card`; (selT, selI) e o episodio em foco
 // no bloco (indice da temporada em `s`, indice do episodio), -1 = nenhum.
 void  notasui_mapa_card(const NotasSecao *s, GfxRect card, int selT, int selI, float a);
+// Move horizontally across episode columns that exceed the visible card.
+int   notasui_mapa_mover(int direcao);
 
 // ESCALA DE COR comum as notas e aos graficos: laranja < 70, amarelo 70..82,
 // verde > 82 (0..100). A rampa e a mesma paleta, continua, para nota de

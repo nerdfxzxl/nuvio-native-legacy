@@ -13,33 +13,61 @@ static unsigned detEpCatalogVersion, detEpItemRevision;
 static float detEpScroll, detEpVel, detEpSeasonScroll, detEpSeasonVel;
 static int detEpShowDesc = 1, detEpShowRating = 1;
 static Uint32 detEpOkSince;
-static int detEpTouchFree,detEpTouchSide;
-static int detEpReviewPick;
+static int detEpGestureActive,detEpTouchSide;
+static float detEpGestureTravel;
 static void detEpRebuild(int targetSeason,int targetEpisode);
-static float detEpMaxRows,detEpMaxSeasons;
 static void detEpTouchSeason(int i,int unused) {
   (void)unused;
   if(i>=0&&i<detEpNSeasons&&i!=detEpSzn) {
     detEpRebuild(detEpSeasons[i],1); detEpScroll=detEpVel=0;
   }
-  detEpCol=0;detEpTouchFree=0;
+  detEpCol=0;
 }
 static void detEpTouchEpisode(int i,int unused) {
   (void)unused;
   if(i>=0&&i<detEpRows)detEpRow=i;
-  detEpCol=1;detEpTouchFree=0;
+  detEpCol=1;
 }
 static int detEpTouchScroll(const PonteiroRolagem *e) {
   if(e->fase==PONT_ROL_INICIO) {
-    if(!e->eixoY||e->y<135||e->y>NV_TELA_H-15)return 0;
-    detEpTouchSide=e->x<NV_TELA_W*.40f?0:1;detEpTouchFree=1;return 1;
+    if(e->y<135.0f || e->y>NV_TELA_H-15.0f)return 0;
+    detEpTouchSide=e->x<NV_TELA_W*.40f?0:1;
+    detEpCol=detEpTouchSide;
+    detEpGestureActive=1;detEpGestureTravel=0.0f;
+    return 1;
   }
-  if(!detEpTouchFree)return 0;
-  if(e->fase==PONT_ROL_MOVER||e->fase==PONT_ROL_INERCIA) {
-    float *o=detEpTouchSide?&detEpScroll:&detEpSeasonScroll;
-    float hi=detEpTouchSide?detEpMaxRows:detEpMaxSeasons;
-    *o=fmaxf(0,fminf(hi,*o-e->delta));return 1;
+  if(!detEpGestureActive)return 0;
+  if(e->fase==PONT_ROL_MOVER || e->fase==PONT_ROL_INERCIA) {
+    // Phone swipes drive precisely the same season/episode focus as the
+    // remote D-pad; the existing springs then scroll the focused row into view.
+    detEpGestureTravel-=e->delta;
+    const float threshold=e->eixoY?
+      (detEpTouchSide?128.0f:76.0f):72.0f;
+    int steps=0;
+    while(fabsf(detEpGestureTravel)>=threshold && steps++<4) {
+      int dir=detEpGestureTravel>0?1:-1;
+      detEpGestureTravel-=dir*threshold;
+      if(!e->eixoY) {
+        detEpCol=dir>0?1:0;
+        detEpTouchSide=detEpCol;
+        detEpGestureTravel=0;
+        break;
+      }
+      if(detEpCol==0) {
+        int next=detEpSzn+dir;
+        if(next>=0 && next<detEpNSeasons) {
+          detEpRebuild(detEpSeasons[next],1);
+          detEpScroll=detEpVel=0;
+        }
+      } else {
+        int next=detEpRow+dir;
+        if(next>=0 && next<detEpRows)detEpRow=next;
+      }
+    }
+    return 1;
   }
+  if(e->fase==PONT_ROL_FIM || e->fase==PONT_ROL_CANCELAR)
+    detEpGestureActive=0;
   return 1;
 }
 #define DET_EP_STEP 336.0f
@@ -127,20 +155,12 @@ static void detEpAbrir(void) {
   detEpVel = 0;
   detEpSeasonScroll = fmaxf(0.0f, (float)(detEpSzn - 3) * DET_SEASON_STEP);
   detEpSeasonVel = 0;
-  detEpOkSince=0;detEpTouchFree=0;detEpReviewPick=0;
+  detEpOkSince=0;detEpGestureActive=0;detEpGestureTravel=0.0f;
   detEpAberto = 1;
   // A full-screen episode view must never continue an autoplay trailer.
   if (trailer_aberto()) trailer_fechar();
 }
 
-static void detEpAbrirReview(int season,int episode) {
-  detEpAbrir();
-  detEpReviewPick=1;
-  detEpRebuild(season,episode);
-  detEpCol=1;
-  detEpScroll=fmaxf(0.0f,detEpRow*DET_EP_STEP-75.0f);
-  detEpVel=0.0f;
-}
 static const CatEp *detEpAt(int row) {
   return row >= 0 && row < detEpRows
     ? cat_episodio(idx, detEpRowIndexes[row]) : NULL;
@@ -158,12 +178,9 @@ static void detEpAtualizar(float dt) {
   float target=fminf(maxScroll,fmaxf(0,detEpRow*step-75.0f));
   float maxSeason=fmaxf(0,detEpNSeasons*seasonStep-(NV_TELA_H-340.0f));
   float targetSeason=fminf(maxSeason,fmaxf(0,detEpSzn*seasonStep-76.0f));
-  detEpMaxRows=maxScroll;detEpMaxSeasons=maxSeason;
-  if(!detEpTouchFree) {
-    detEpScroll=anim_mola2(&detEpVel,detEpScroll,target,dt,NV_MOLA2_SCROLL);
-    detEpSeasonScroll=anim_mola2(&detEpSeasonVel,detEpSeasonScroll,
-                                targetSeason,dt,NV_MOLA2_SCROLL);
-  }
+  detEpScroll=anim_mola2(&detEpVel,detEpScroll,target,dt,NV_MOLA2_SCROLL);
+  detEpSeasonScroll=anim_mola2(&detEpSeasonVel,detEpSeasonScroll,
+                              targetSeason,dt,NV_MOLA2_SCROLL);
   if(detEpOkSince && detEpCol==1 && detEpAt(detEpRow)) {
     Uint32 ms=SDL_GetTicks()-detEpOkSince;
     if(ms>=150u) {
@@ -186,14 +203,6 @@ static int detEpEvento(const SDL_Event *ev) {
     if(detEpCol==0) {detEpCol=1;return 1;}
     const CatEp *ep=detEpAt(detEpRow);
     if(ep && ep->temporada>=0 && ep->episodio>0 && !epNaoExibido(ep)) {
-      if(detEpReviewPick) {
-        const CatItem *ci=cat_item(idx);
-        comEpT=ep->temporada;comEpE=ep->episodio;
-        comentEp=1;detEpReviewPick=0;detEpAberto=0;
-        if(ci&&ci->imdb[0])
-          extras_pedir_comentarios_ep(ci->imdb,comEpT,comEpE);
-        return 1;
-      }
       if(held>=NV_HOLD_MS) {
         // Episode action menu belongs to the actual expanded Dynamic Clock.
         pedOpcoesT=ep->temporada;pedOpcoesE=ep->episodio;pedOpcoesEp=1;
@@ -209,7 +218,7 @@ static int detEpEvento(const SDL_Event *ev) {
      key==SDLK_BACKSPACE || key==SDLK_DELETE ||
      ev->key.keysym.scancode==NV_SCANCODE_BACK) {
     detEpAberto=0;
-    detEpOkSince=0;detEpTouchFree=0;
+    detEpOkSince=0;detEpGestureActive=0;
     return 1;
   }
   if(ok) {
@@ -219,7 +228,7 @@ static int detEpEvento(const SDL_Event *ev) {
   if(key==SDLK_LEFT)detEpCol=0;
   if(key==SDLK_RIGHT)detEpCol=1;
   if(key==SDLK_UP || key==SDLK_DOWN) {
-    detEpTouchFree=0;
+    detEpGestureActive=0;
     int dir=key==SDLK_DOWN?1:-1;
     if(detEpCol==0) {
       int next=detEpSzn+dir;
@@ -256,9 +265,6 @@ static void detEpDesenhar(Uint32 agora) {
   if(ponteiro_ativo()) {
     ponteiro_camada();ponteiro_rolagem(detEpTouchScroll);
   }
-  if(detEpReviewPick)
-    txt_desenhar_alpha(txt_linha(TXT_CAPTION2,"Choose an episode for reviews",
-                      190,190,190,255),startX+15.0f,86.0f,1);
   gfx_recorte(24.0f,300.0f,leftW-48.0f,screenH-315.0f);
   for (int s = 0; s < detEpNSeasons; s++) {
     float y=315.0f+s*DET_SEASON_STEP-detEpSeasonScroll;
