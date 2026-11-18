@@ -1,5 +1,5 @@
-Nuvio Legacy corrected review selector integration APK #113.
-Base: 25f693e93e7830ab01855821a65e07c117deea85
-Reason: #112 early C compilation succeeded, but tests/detail_netflix.py asserted removed detEpAbrirReview(t,e).
-Validation: corrected tests now exercise compact review selector, 5-row season/episode list, Trakt refresh and touch/keyboard focus.
-One Android debug APK workflow with mandatory preflight; no TPK build.
+Nuvio Legacy one full Android debug APK workflow — 2026-11-18.
+Feature branch base: dddf26aeddf9dfa522481eb4470f06a4210224bb
+Eight requested refinements: outlined Episodes icon, global Touch/Gesture navigation, 200ms Dynamic Clock hold feedback, double-glass review dropdown, immersive Home padding, active catalog row layouts, AMOLED Black, and instant same-artwork expansion.
+Native preflight run: https://github.com/nerdfxzxl/nuvio-native-legacy/actions/runs/44371655901
+Build only after the mandatory workflow preflight gates succeed.

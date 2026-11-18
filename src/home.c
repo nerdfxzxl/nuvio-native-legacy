@@ -4227,7 +4227,7 @@ static void dinArteColecao(float dt) {
     dinColAlfa = reduz ? 1.0f : dinColAlfa + dt * 3.0f;
     if (dinColAlfa > 1.0f) dinColAlfa = 1.0f;
   } else dinColAlfa = 0.0f;
-  if (dinColArte[0] && dinColAlfa > 0.004f) {
+  if (ajustes_fundo_din() != DIN_FUNDO_AMOLED && dinColArte[0] && dinColAlfa > 0.004f) {
     GLuint t = tex_obter_hero(dinColArte);
     if (t) {
       GfxRect r = { 0.0f, 0.0f, NV_TELA_W, DIN_COL_H };
@@ -7586,7 +7586,10 @@ static void pintarCartao(const CartaoFoco *k, float raio) {
           // bloco de 74 de altura com 8 de padding no topo (.home-poster-copy).
           // A faixa deitada da Dinamica SEMPRE leva o titulo dentro do cartao (a
           // Apple TV nao deixa cartao sem nome), com o rotulo ligado ou nao.
-          desenhaRotuloCard(cItem, tipo, deitado, rotuloFora, px, py, w, h, raio);
+          // Expandable rows rely on the embedded artwork title; drawing an
+          // additional app title/logo would duplicate it on the same image.
+          if (!(ajustes_expandir_poster() && podeExpandir(r)))
+            desenhaRotuloCard(cItem, tipo, deitado, rotuloFora, px, py, w, h, raio);
 
           // PÔSTER GRANDE: a ficha na base, sobre o veu da cor predominante.
           if (tipo == FILEIRA_POSTER_GRANDE && cItem)
@@ -7620,7 +7623,8 @@ static void pintarCartao(const CartaoFoco *k, float raio) {
           // Progresso em andamento vira um fio na base do card.
           if (abre > 0.01f && cItem) desenhaFaixaAberta(cItem, r, px, py, w, h, esc, abre);
           gfx_opacidade_grupo = ogCartao;
-          if (abre > 0.01f && cItem && cItem->logo[0]) {
+          if (abre > 0.01f && cItem && cItem->logo[0] &&
+              !(ajustes_expandir_poster() && podeExpandir(r))) {
             // Largura pedida pela tela, nao o teto generico de 640: o logo
             // nunca passa de ~65% do card, e decodificar o arquivo inteiro
             // so para encolher depois era cache e tempo jogados fora.
