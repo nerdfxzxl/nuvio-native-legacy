@@ -1,4 +1,4 @@
-Nuvio Legacy native detail polish integration APK build (#111)
-Base: e40bf1d9e97942b0946c0faeb8fd34efb247f7a5
-Preflight PASS: https://github.com/nerdfxzxl/nuvio-native-legacy/actions/runs/44252660165
-Scope: centered title art and season labels, larger focus-only thumbnails, native touch and hold, compact glass Dynamic Clock options, mute/resumable trailer, clean poster, corrected Details and review chooser, heatmap-only ratings, translated title settings. One Android debug APK, no TPK.
+Nuvio Legacy detail & Episodes refinement integration APK (#112)
+Implementation: a952c04b66612466e732b6fefcbd4dbdbafcba39
+Scope: solid Episodes / Play manually icons; phone D-pad-style gestures for detail actions and full-screen Episodes; ratings heatmap episode headings, fitted card, season-height, horizontal browsing, no legend, Best/Worst aligned; What People Are Saying season/episode dropdown and slide-fade Season control.
+Build policy: one Android debug APK after the existing built-in ARM64 native C preflight; no TPK.
