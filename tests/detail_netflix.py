@@ -91,6 +91,23 @@ need("Explicit stream selection before restarting an episode",
      and "if(folhaInicioDepoisEscolha)player_do_inicio();" in Path("src/app.c").read_text())
 need("Episode touch and hold feedback", "ponteiro_rolagem(detEpTouchScroll)" in episode
      and "ilha_atividade(p>=1.0f?" in episode)
-need("Review episode choice uses current selector", "detEpAbrirReview(t,e)" in detail)
+need("Reviews use the compact season/episode picker, not fullscreen Episodes",
+     "static void comentariosEscolher(void)" in detail
+     and "comMenuAbrir();" in detail
+     and "if (comMenuEvento(e)) return;" in detail
+     and "comMenuDesenhar(1.0f);" in detail
+     and "detEpAbrirReview(t,e)" not in detail)
+need("Review dropdown has five-row viewport and accessible focus",
+     "#define COM_MENU_VISIBLE 5" in detail
+     and "comMenuAjustarFoco(comMenuFocus-1)" in detail
+     and "comMenuAjustarFoco(comMenuFocus+1)" in detail
+     and "comMenuPointerSelect" in detail)
+need("Review episode choice refreshes Trakt with the selected season/episode",
+     "comEpT=comMenuSeason;comEpE=choice;" in detail
+     and "extras_pedir_comentarios_ep(ci->imdb,comEpT,comEpE)" in detail)
+need("Review Season control animates from Episode without legacy hold hint",
+     "comSeasonAnim" in detail
+     and "if (foco.coluna == 2) comentariosEscolher();" in detail
+     and "COM_DICA_CHAVE" not in detail)
 need("No poster vignette baked over artwork", "gfx_rect(alvo,tex,GFX_CARD,0,0,0,0,1,1,1,alpha)" in detail)
 print("PASS: Netflix detail refinements and navigation invariants")

@@ -1,2 +1,4 @@
-Netflix title refinements ARM64 native preflight retry.
-C files compiled successfully on run 44252411994. The coverage test now explicitly retires the inert legacy backdrop-vignette slider without renumbering settings IDs.
+Netflix native preflight for compact review dropdown and ratings interaction.
+Base: 7c52e168e362841f17f5b25082956ece84bc5e64
+Fix stale test: detEpAbrirReview was intentionally removed in the new review dropdown.
+Gate: ARM64 C syntax + all Netflix integration checks; no APK on this trigger.
