@@ -1,4 +1,3 @@
-Netflix native preflight for compact review dropdown and ratings interaction.
-Base: 7c52e168e362841f17f5b25082956ece84bc5e64
-Fix stale test: detEpAbrirReview was intentionally removed in the new review dropdown.
-Gate: ARM64 C syntax + all Netflix integration checks; no APK on this trigger.
+Nuvio Netflix native preflight: eight refinements from user on 2026-11-18.
+Head: 8d8b067c9076b9f0cd461221b2229c87ab212ed7
+Verify ARM64 C syntax, settings index parity, and Netflix episode/review integration. No APK in this run.

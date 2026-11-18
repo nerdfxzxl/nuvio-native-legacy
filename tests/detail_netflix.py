@@ -99,8 +99,9 @@ need("Reviews use the compact season/episode picker, not fullscreen Episodes",
      and "detEpAbrirReview(t,e)" not in detail)
 need("Review dropdown has five-row viewport and accessible focus",
      "#define COM_MENU_VISIBLE 5" in detail
-     and "comMenuAjustarFoco(comMenuFocus-1)" in detail
-     and "comMenuAjustarFoco(comMenuFocus+1)" in detail
+     and "comMenuAjustarFoco(comMenuFocus+delta)" in detail
+     and "comSeasonNav" in detail
+     and "comSeasonPointerSelect" in detail
      and "comMenuPointerSelect" in detail)
 need("Review episode choice refreshes Trakt with the selected season/episode",
      "comEpT=comMenuSeason;comEpE=choice;" in detail
