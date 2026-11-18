@@ -49,6 +49,9 @@ RETIRADAS = {
     # Retired stream selector toggle: Legacy now uses the Dynamic Clock
     # selector exclusively. Keep its saved enum slot but not its UX row.
     "AJ_STREAM_SELECTOR",
+    # The legacy artwork vignette slider is retired. Artwork is now displayed
+    # without a baked color gradient; retain the enum slot for saved index ABI.
+    "AJ_DET_VEU",
 }
 opcoes = [op for op in opcoes if op not in RETIRADAS]
 

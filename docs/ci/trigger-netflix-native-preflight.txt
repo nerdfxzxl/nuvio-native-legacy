@@ -1,2 +1,2 @@
-Netflix detail #111 native preflight
-Review refinements: centered seasons, larger thumbnails, mobile touch, Dynamic Clock episode actions, mute/resumable trailer, single ratings heatmap, review picker, English title settings, no backdrop vignette.
+Netflix title refinements ARM64 native preflight retry.
+C files compiled successfully on run 44252411994. The coverage test now explicitly retires the inert legacy backdrop-vignette slider without renumbering settings IDs.
