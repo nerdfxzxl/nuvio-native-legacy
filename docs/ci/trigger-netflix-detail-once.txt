@@ -1,5 +1,4 @@
-Nuvio Legacy one full Android debug APK workflow — 2026-11-18.
-Feature branch base: dddf26aeddf9dfa522481eb4470f06a4210224bb
-Eight requested refinements: outlined Episodes icon, global Touch/Gesture navigation, 200ms Dynamic Clock hold feedback, double-glass review dropdown, immersive Home padding, active catalog row layouts, AMOLED Black, and instant same-artwork expansion.
-Native preflight run: https://github.com/nerdfxzxl/nuvio-native-legacy/actions/runs/44371655901
-Build only after the mandatory workflow preflight gates succeed.
+Nuvio Legacy eight-refinement Android debug APK retry after EARLY gate failure.
+Reason: main.c used undeclared teclado_aberto(), removed; SDL_IsTextInputActive remains for the system IME.
+Previous full run 44372806052 stopped in C preflight; build job was skipped, no APK generated.
+Mandatory preflight remains enabled before any full APK build.

@@ -620,7 +620,7 @@ static void phoneRemoteKey(SDL_Keycode sym) {
 }
 static int phoneRemoteEnabled(void) {
   return layout_modo_mobile() && ajustes_gesto_remoto() &&
-         !SDL_IsTextInputActive() && !teclado_aberto();
+         !SDL_IsTextInputActive();
 }
 static int phoneRemoteGesture(const SDL_Event *event) {
   if (!phoneRemoteEnabled()) {
