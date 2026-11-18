@@ -183,8 +183,8 @@ static void detEpAtualizar(float dt) {
                               targetSeason,dt,NV_MOLA2_SCROLL);
   if(detEpOkSince && detEpCol==1 && detEpAt(detEpRow)) {
     Uint32 ms=SDL_GetTicks()-detEpOkSince;
-    if(ms>=150u) {
-      float p=fminf(1.0f,(float)(ms-150u)/(float)(NV_HOLD_MS-150));
+    if(ms>=200u) {
+      float p=fminf(1.0f,(float)(ms-200u)/(float)(NV_HOLD_MS-200));
       ilha_atividade(p>=1.0f?"Release to open options":"Hold for options",p);
     }
   }

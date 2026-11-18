@@ -4293,8 +4293,8 @@ static void detail_atualizar_(float dt, Uint32 agora) {
                                    (foco.fileira == SEC_TEMPORADAS && !ehShuffle(foco.coluna)))) ||
                    (nivel >= 1 && foco.fileira == SEC_COMENTARIOS && ehSerie() && foco.coluna == 1) ||
                    (nivel == 0 && !focoAmigos && acaoEm(botao) == ACAO_PRIMARIO);
-    if (alvoHold && dur >= 150u) {
-      float p = (float)(dur - 150u) / (float)(NV_HOLD_MS - 150);
+    if (alvoHold && dur >= 200u) {
+      float p = (float)(dur - 200u) / (float)(NV_HOLD_MS - 200);
       if (p > 1.0f) p = 1.0f;
       ilha_atividade(i18n(p >= 1.0f ? "Solte para abrir opções" : "Segure para opções"), p);
     }

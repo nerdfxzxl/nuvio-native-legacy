@@ -3953,27 +3953,13 @@ static void home_atualizar_(float dt, Uint32 agora) {
     }
   }
   }
-  // Relogio da expansao. Zera a cada movimento; conta so com o foco parado.
-  if (ajustes_expandir_poster() && !homeRetratoTelefone()) {
-    if (foco.fileira != expFileira || foco.coluna != expColuna) {
-      expFileira = foco.fileira; expColuna = foco.coluna;
-      expDesde = agora;
-      expAbre = 0.0f;            // fecha na hora; abrir e que e gradual
-    }
-    // MENU DO CARTAZ ABERTO = O CARTAO NAO EXPANDE (dono, 03/10: "se esta com
-    // o menu contextual aberto ele nao expande"). O relogio nao anda e a mola
-    // fica onde esta: o que ja abriu continua aberto, o que nao abriu espera.
-    // Ao fechar, a contagem do atraso recomeca do zero — sem salto.
-    if (ctx_aberto() || (okPressionando && okHold > 0.0f)) {
-      if (expAbre < 0.999f) expDesde = agora;
-    } else
-    { float atraso = ajustes_expandir_poster_atraso();
-      int pronto = expDesde && (agora - expDesde) >= (Uint32)(atraso * 1000.0f);
-      // Fileira DEITADA (e a de continuar assistindo) ja mostra a arte larga:
-      // nao ha para o que expandir.
-      if (pronto && podeExpandir(foco.fileira))
-        expAbre = motionReduzido ? 1.0f
-                   : anim_mola(expAbre, 1.0f, dt, NV_MOLA_TELA); }
+  // No delayed portrait expansion or width spring. The focused card adopts
+  // its expanded geometry in the very first frame; un-focus reverses instantly.
+  // Keep the existing toggle and never expand while a context menu is open.
+  if (ajustes_expandir_poster() && !homeRetratoTelefone() && !focoHero &&
+      !ctx_aberto() && podeExpandir(foco.fileira)) {
+    expFileira = foco.fileira; expColuna = foco.coluna;
+    expDesde = agora; expAbre = 1.0f;
   } else {
     expAbre = 0.0f; expFileira = expColuna = -1;
   }
@@ -4126,6 +4112,7 @@ static void home_atualizar_(float dt, Uint32 agora) {
 #define DIN_FUNDO_COR      1
 #define DIN_FUNDO_IMERSIVO 2
 #define DIN_FUNDO_CINZA_ESCURO 3
+#define DIN_FUNDO_AMOLED 4
 #define DIN_QUEDA          0.34f   // Imersivo: o que sobra da cor na base da tela
 #define DIN_TROCA_TAU      0.11f   // s; troca de modo ou de cor fixa: ~0,45 s
 #define DIN_IMERSIVO_TAU   0.30f   // s; ~1,2 s para assentar, sem piscada
@@ -4164,7 +4151,10 @@ static float dinPasso(Uint32 agora, const char *arte) {
   float dt = dinUlt ? (float)(agora - dinUlt) / 1000.0f : 0.0f, tau = DIN_TROCA_TAU, e;
   if (dt > 0.1f) dt = 0.1f;
   dinUlt = agora ? agora : 1u;
-  if (modo == DIN_FUNDO_CINZA) {
+  if (modo == DIN_FUNDO_AMOLED) {
+    dinAlvo[0] = dinAlvo[1] = dinAlvo[2] = 0.0f;
+    dinQuedaAlvo = 1.0f;
+  } else if (modo == DIN_FUNDO_CINZA) {
     memcpy(dinAlvo, DIN_CINZA, sizeof dinAlvo); dinQuedaAlvo = 1.0f;
   } else if (modo == DIN_FUNDO_CINZA_ESCURO) {
     memcpy(dinAlvo, DIN_CINZA_ESCURO, sizeof dinAlvo); dinQuedaAlvo = 0.56f;
@@ -4183,7 +4173,9 @@ static float dinPasso(Uint32 agora, const char *arte) {
       snprintf(dinArteAssentada, sizeof dinArteAssentada, "%s", dinArteVista);
     dinCorDaArte(dinArteAssentada);
   }
-  e = (primeiro || ajustes_animacoes_reduzidas()) ? 1.0f : 1.0f - expf(-dt / tau);
+  // AMOLED means exact RGB(0,0,0), including immediately after selection.
+  e = (modo == DIN_FUNDO_AMOLED || primeiro || ajustes_animacoes_reduzidas())
+    ? 1.0f : 1.0f - expf(-dt / tau);
   for (int k = 0; k < 3; k++) dinCor[k] += (dinAlvo[k] - dinCor[k]) * e;
   dinQueda += (dinQuedaAlvo - dinQueda) * e;
   return dt;
@@ -7816,10 +7808,10 @@ static void homeResidencia(void) {
       float x = homeFileiraX(r, c);
       if (x < -lw * 1.5f || x > NV_TELA_W + lw) continue;
       int idx = fileiraItemIndice(&fileiras[r], c);
+      // One resident texture per expandable row; no second focus-state image.
       tex_residencia_marcar(arte_por_identidade(idx,
-        (tipo == FILEIRA_CONTINUE || tipo == FILEIRA_RETORNO) ? 3 : deitado), r);
-      // Expanded cards may have a second cached landscape variant.
-      if (!deitado) tex_residencia_marcar(arte_por_identidade(idx, 1), r);
+        (tipo == FILEIRA_CONTINUE || tipo == FILEIRA_RETORNO) ? 3
+        : (deitado || (ajustes_expandir_poster() && podeExpandir(r)))), r);
     }
   }
 }
@@ -8282,16 +8274,12 @@ static void home_desenhar_(Uint32 agora) {
             w = h * 2.0f / 3.0f;   // daqui em diante, o cartaz
           }
           const char *caminho = NULL;
-          // Card DEITADO pede arte deitada. No web o poster do card landscape sai
-          // de `landscapePoster` -> `background` -> `backdrop` -> `poster`
-          // (homeScreen.js:3155), nao do poster 2:3 — usar o retrato aqui faria o
-          // shader recortar a cabeca de todo mundo para caber em 16:9.
-          // Aberto, o card mostra a arte DEITADA: e para isso que ele abre.
-          // A troca acontece na metade do caminho, quando a moldura ja tem
-          // largura de 16:9 e o retrato comecaria a ser recortado feio.
+          // A portrait row uses ONE landscape-ready artwork in both compact
+          // and expanded geometry, including the embedded title baked into it.
+          // Only the crop changes. The texture is never swapped on focus.
           caminho = arte_por_identidade(idxCat,
                                         (tipo == FILEIRA_CONTINUE || tipo == FILEIRA_RETORNO) ? 3
-                                        : (abre > 0.5f || deitado));
+                                        : (deitado || (ajustes_expandir_poster() && podeExpandir(r))));
 
           // `!focoHero` E A CONDICAO QUE FALTAVA AQUI, e e o mesmo defeito que
           // o anel de foco ja tinha resolvido dez linhas acima (linha 1747).

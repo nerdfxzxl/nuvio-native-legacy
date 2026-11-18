@@ -766,7 +766,7 @@ static const char *V_PALCO_FUNDO[] = { "Cortina", "Como está", "Só arte", "Pre
 static const char *V_TITULO_FIL[] = { "Clássico", "Ilha", "Editorial", "Acento" };
 static const char *V_DEGRADES[] = { "Automático", "Forte", "Desligado" };
 static const char *V_VIDRO_QUALIDADE[] = { "Automática", "Desempenho", "Alta" };
-static const char *V_FUNDO_DIN[] = { "Cinza", "Cor", "Imersivo", "Cinza escuro" };
+static const char *V_FUNDO_DIN[] = { "Cinza", "Cor", "Imersivo", "Cinza escuro", "AMOLED Black" };
 // A cor do fundo "Cor" sai da paleta do acento (TEMA_ACENTO), em ordem de
 // matiz. Sem o Branco (o fundo e escuro) e sem os dinamicos. Os nomes sao os
 // de V_TEMA, ja traduzidos; o indice gravado e o desta lista (append-only).
@@ -1808,7 +1808,7 @@ static const Opcao OPCOES[AJ_N] = {
   ESC("Menu de contexto enriquecido", V_LIGA, 2),              // local: menuCartazLocal
   ESC("Título das fileiras", V_TITULO_FIL, 4),   // local: rowTitleStyleLocal
   ESC("Qualidade do vidro", V_VIDRO_QUALIDADE, 3),   // local: vidroQualidadeLocal
-  ESC("Fundo da Dinâmica", V_FUNDO_DIN, 4),                  // local: fundoDinamicaLocal
+  ESC("Fundo da Dinâmica", V_FUNDO_DIN, 5),                  // local: fundoDinamicaLocal
   ESC("Cor do fundo", V_FUNDO_DIN_COR, 17),                  // local: fundoDinamicaCorLocal
   ESC("Escala de texto e componentes", V_ESCALA_TEXTO, 6),   // local: escalaTextoLocal
   ESC("Preferir o mesmo grupo de fonte", V_LIGA, 2),          // local: fonteGrupoLocal
@@ -3324,7 +3324,7 @@ int ajustes_palco_fundo(void) { return valor[AJ_PALCO_FUNDO]; }
 int ajustes_titulo_fil(void) { int v = valor[AJ_TITULO_FIL]; return v >= 0 && v <= 3 ? v : 0; }
 int ajustes_abertura_estilo(void) { return valor[AJ_ABERTURA_ESTILO] == 1; }   // 0 Centro (A3), 1 Canto (B3)
 int ajustes_menu_cartaz_simples(void) { return valor[AJ_MENU_CARTAZ] == 1; }
-int ajustes_fundo_din(void) { int v = valor[AJ_FUNDO_DIN]; return v >= 0 && v <= 3 ? v : 0; }
+int ajustes_fundo_din(void) { int v = valor[AJ_FUNDO_DIN]; return v >= 0 && v <= 4 ? v : 0; }
 void ajustes_fundo_din_cor(float rgb[3]) {
   int v = valor[AJ_FUNDO_DIN_COR];
   if (v < 0 || v >= FUNDO_DIN_N_COR) v = FUNDO_DIN_COR_PADRAO;   // arquivo de outra versao
