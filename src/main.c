@@ -602,63 +602,78 @@ static void teclasInjetadas(void (*entregar)(const SDL_Event *)) {
 }
 
 #if defined(NV_ANDROID) && defined(NV_TOUCH_UI)
-// Phone-only selector testing: swipe is a directional D-pad press, double-tap
-// is OK. All other screens keep native touch for login and navigation.
-static int selectorPhoneRemote(const SDL_Event *event) {
-  static SDL_FingerID finger;
-  static int pressed;
-  static float x0, y0, tapX, tapY;
-  static Uint32 lastTap;
-  SDL_Keycode keycode = SDLK_UNKNOWN;
-  if (!layout_modo_mobile() || !stream_folha_aberta() || st_dono() == ST_BUSCA) {
-    pressed = 0; lastTap = 0; return 0;
+// Optional phone-wide D-pad gesture mode. Touch is the default and retains
+// the native pointer path. All generated keys use the same app_evento handler
+// as a physical remote, including focus behavior.
+static int phoneFingerDown;
+static SDL_FingerID phoneFingerId;
+static float phoneStartX,phoneStartY,phoneTapX,phoneTapY;
+static Uint32 phoneLastTap,phoneNextRepeat;
+static SDL_Keycode phoneDirection=SDLK_UNKNOWN;
+static void phoneRemoteKey(SDL_Keycode sym) {
+  SDL_Event key; SDL_zero(key);
+  key.type=SDL_KEYDOWN;key.key.state=SDL_PRESSED;
+  key.key.keysym.sym=sym;key.key.keysym.scancode=SDL_GetScancodeFromKey(sym);
+  app_evento(&key);
+  key.type=SDL_KEYUP;key.key.state=SDL_RELEASED;
+  app_evento(&key);
+}
+static int phoneRemoteEnabled(void) {
+  return layout_modo_mobile() && ajustes_gesto_remoto() &&
+         !SDL_IsTextInputActive() && !teclado_aberto();
+}
+static int phoneRemoteGesture(const SDL_Event *event) {
+  if (!phoneRemoteEnabled()) {
+    phoneFingerDown=0;phoneDirection=SDLK_UNKNOWN;phoneLastTap=0;
+    return 0;
   }
-  if (event->type == SDL_MOUSEBUTTONDOWN || event->type == SDL_MOUSEBUTTONUP ||
-      event->type == SDL_MOUSEMOTION) {
-    return event->type == SDL_MOUSEMOTION ?
-      event->motion.which == SDL_TOUCH_MOUSEID :
-      event->button.which == SDL_TOUCH_MOUSEID;
+  // Ignore synthetic mouse events paired with real finger events.
+  if(event->type==SDL_MOUSEMOTION)
+    return event->motion.which==SDL_TOUCH_MOUSEID;
+  if(event->type==SDL_MOUSEBUTTONDOWN || event->type==SDL_MOUSEBUTTONUP)
+    return event->button.which==SDL_TOUCH_MOUSEID;
+  if(event->type!=SDL_FINGERDOWN && event->type!=SDL_FINGERMOTION &&
+     event->type!=SDL_FINGERUP) return 0;
+  if(event->tfinger.touchId==SDL_MOUSE_TOUCHID)return 1;
+  Uint32 now=SDL_GetTicks();
+  if(event->type==SDL_FINGERDOWN) {
+    phoneFingerId=event->tfinger.fingerId;phoneFingerDown=1;
+    phoneStartX=event->tfinger.x;phoneStartY=event->tfinger.y;
+    phoneDirection=SDLK_UNKNOWN;return 1;
   }
-  if (event->type != SDL_FINGERDOWN && event->type != SDL_FINGERMOTION &&
-      event->type != SDL_FINGERUP) return 0;
-  if (event->tfinger.touchId == SDL_MOUSE_TOUCHID) return 1;
-  if (event->type == SDL_FINGERDOWN) {
-    finger = event->tfinger.fingerId;
-    pressed = 1;
-    x0 = event->tfinger.x; y0 = event->tfinger.y;
+  if(!phoneFingerDown || event->tfinger.fingerId!=phoneFingerId)return 1;
+  float dx=event->tfinger.x-phoneStartX,dy=event->tfinger.y-phoneStartY;
+  if(event->type==SDL_FINGERMOTION) {
+    if(fabsf(dx)>0.048f || fabsf(dy)>0.048f) {
+      SDL_Keycode dir=fabsf(dx)>fabsf(dy) ? (dx>0?SDLK_RIGHT:SDLK_LEFT)
+                                            : (dy>0?SDLK_DOWN:SDLK_UP);
+      if(dir!=phoneDirection) {
+        phoneDirection=dir;phoneLastTap=0;
+        phoneRemoteKey(dir);
+        phoneNextRepeat=now+300u;
+      }
+    }
     return 1;
   }
-  if (!pressed || event->tfinger.fingerId != finger) return 1;
-  if (event->type == SDL_FINGERMOTION) return 1;
-  pressed = 0;
-  float dx = event->tfinger.x - x0;
-  float dy = event->tfinger.y - y0;
-  Uint32 now = SDL_GetTicks();
-  if (fabsf(dx) > 0.055f || fabsf(dy) > 0.055f) {
-    keycode = fabsf(dx) > fabsf(dy) ?
-      (dx > 0 ? SDLK_RIGHT : SDLK_LEFT) :
-      (dy > 0 ? SDLK_DOWN : SDLK_UP);
-    lastTap = 0;
-  } else if (lastTap && now - lastTap < 430u &&
-             fabsf(x0 - tapX) < 0.07f && fabsf(y0 - tapY) < 0.07f) {
-    keycode = SDLK_RETURN;
-    lastTap = 0;
-  } else {
-    lastTap = now;
-    tapX = x0; tapY = y0;
+  if(phoneDirection==SDLK_UNKNOWN) {
+    if(phoneLastTap && now-phoneLastTap<430u &&
+       fabsf(phoneStartX-phoneTapX)<0.07f &&
+       fabsf(phoneStartY-phoneTapY)<0.07f) {
+      phoneRemoteKey(SDLK_RETURN);phoneLastTap=0;
+    }else {
+      phoneLastTap=now;phoneTapX=phoneStartX;phoneTapY=phoneStartY;
+    }
   }
-  if (keycode != SDLK_UNKNOWN) {
-    SDL_Event key; SDL_zero(key);
-    key.type = SDL_KEYDOWN;
-    key.key.state = SDL_PRESSED;
-    key.key.keysym.sym = keycode;
-    key.key.keysym.scancode = SDL_GetScancodeFromKey(keycode);
-    app_evento(&key);
-    key.type = SDL_KEYUP;
-    key.key.state = SDL_RELEASED;
-    app_evento(&key);
+  phoneFingerDown=0;phoneDirection=SDLK_UNKNOWN;return 1;
+}
+static void phoneRemoteRepeat(void) {
+  if(!phoneRemoteEnabled() || !phoneFingerDown ||
+     phoneDirection==SDLK_UNKNOWN)return;
+  Uint32 now=SDL_GetTicks();
+  // One repeat per frame, with a short initial delay and no post-release tail.
+  if((Sint32)(now-phoneNextRepeat)>=0) {
+    phoneRemoteKey(phoneDirection);phoneNextRepeat=now+88u;
   }
-  return 1;
 }
 #endif
 
@@ -2057,7 +2072,7 @@ int main(int argc, char **argv) {
       // de cursor do webOS ficam la; o que ele traduz em tecla chega a
       // app_evento como se viesse do D-pad.
 #if defined(NV_ANDROID) && defined(NV_TOUCH_UI)
-      if (selectorPhoneRemote(&e)) continue;
+      if (phoneRemoteGesture(&e)) continue;
 #endif
       if (ponteiro_evento(&e, app_evento)) continue;
       // webOS Back uses scancode 482, sym 0. Normalize both edges below so
@@ -2114,6 +2129,9 @@ int main(int argc, char **argv) {
       }
       app_evento(&e);
     }
+#if defined(NV_ANDROID) && defined(NV_TOUCH_UI)
+    phoneRemoteRepeat();
+#endif
     central_tecla_quadro(SDL_GetTicks(), entregarCh);
     teclasInjetadas(app_evento);
 #ifdef NV_TOUCH_UI

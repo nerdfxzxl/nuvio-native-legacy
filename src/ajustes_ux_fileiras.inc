@@ -222,7 +222,71 @@ static void ajFilToqueModo(int a, int b) {
 }
 #endif
 
-static void desenhaFileiras(void) {
+// Minimal dedicated Home-layout sheet: no disabled/queued catalog listings,
+ // no remove/reorder controls, and no addon catalog inventory.
+ static const char *ajFazalLayoutNome(int tipo) {
+   if (tipo == FIL_TIPO_DESTAQUE) return "Large";
+   if (tipo == FIL_TIPO_COLECAO) return "Landscape";
+   if (tipo == FIL_TIPO_CARTAZ) return "Portrait";
+   return "Auto";
+ }
+ #ifdef NV_TOUCH_UI
+ static void ajFazalFocar(int i,int unused) { (void)unused; if (i>=0 && i<filListaN) filFoco=i; }
+ static void ajFazalEscolher(int i,int unused) { (void)unused;
+   if (i>=0 && i<filListaN) { filFoco=i; eventoFileiras(SDLK_RETURN); }
+ }
+ #endif
+ static void desenhaFileirasCatalogo(void) {
+   AjFilMedidas m = ajFilMedir();
+   GfxRect ilha = m.ilha;
+   float x = ilha.x + 54.0f, w = ilha.w - 108.0f;
+   float top = ilha.y + 160.0f, base = ilha.y + ilha.h - 65.0f;
+   const float step = 76.0f;
+   filMontarLista();
+   int n = filListaN;
+   int visible=(int)((base-top)/step);
+   if (visible<1) visible=1;
+   if (filFoco<filTopo) filTopo=filFoco;
+   if (filFoco>=filTopo+visible) filTopo=filFoco-visible+1;
+   if (filTopo<0) filTopo=0;
+   gfx_cor((GfxRect){0,0,NV_TELA_W,NV_TELA_H},0,0,0,0,0.52f);
+   ajPaginaIlha(ilha,36,1);
+   ajKicker("Nerd Fazal Settings · Home",x,ilha.y+30,1);
+   { TxtLinha t=ajTxt(TXT_ILHA_TITULO,"Home Row Layouts");
+     txt_desenhar(t,x,ilha.y+74); }
+   { TxtLinha t=ajTxtC(TXT_AJ_ESTADO,"Only enabled catalog rows currently on Home · OK changes layout",w);
+     txt_desenhar_alpha(t,x,ilha.y+134,0.66f); }
+   if (n==0) {
+     TxtLinha t=ajTxt(TXT_AJ_ROTULO,"No active catalog rows on Home");
+     txt_desenhar(t,x,top+24);
+   }
+   for(int j=filTopo;j<n && j<filTopo+visible;j++) {
+     int idx=filIdx(j), focused=j==filFoco;
+     float yy=top+(j-filTopo)*step;
+     GfxRect row={x,yy,w,step-7.0f};
+     if (focused) {
+       if (!gfx_foco_placa(row,0.18f,1.0f,1.0f))
+         ajNeutro(row,13.0f,0.15f,0.20f,0.21f,0.24f,1.0f);
+     } else ajNeutro(row,13.0f,0.08f,0.16f,0.17f,0.19f,1.0f);
+     float boxW=195.0f;
+     TxtLinha name=ajTxtC(TXT_AJ_ITEM,fil_titulo(idx),w-boxW-60.0f);
+     txt_desenhar_alpha(name,x+20.0f,yy+(row.h-name.h)*0.5f,1.0f);
+     const char *label=ajFazalLayoutNome(fil_linha_tipo(idx));
+     TxtLinha value=ajTxtC(TXT_AJ_VALOR18,label,boxW-35.0f);
+     txt_desenhar_alpha(value,x+w-boxW,yy+(row.h-value.h)*0.5f,focused?1.0f:0.85f);
+ #ifdef NV_TOUCH_UI
+     if(layout_modo_mobile()) ponteiro_alvo(row.x,row.y,row.w,row.h,ajFazalFocar,ajFazalEscolher,j,0);
+ #endif
+   }
+   if(n>visible) {
+     char s[60]; snprintf(s,sizeof s,"%d–%d of %d",filTopo+1,
+                         filTopo+visible<n?filTopo+visible:n,n);
+     TxtLinha t=ajTxt(TXT_AJ_ESTADO,s);
+     txt_desenhar_alpha(t,x,base+9.0f,0.65f);
+   }
+ }
+ static void desenhaFileiras(void) {
+   if(filModoCatalogo) { desenhaFileirasCatalogo(); return; }
   // #359: a ilha comeca depois da rail fixa, como o resto de Ajustes (ajX0):
   // em x 48 a pilula do menu cobria o titulo e o icone das linhas. Desenhado
   // em px da tela REAL (ESCALA_REAL), entao soma a rail sem dividir.

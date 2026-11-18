@@ -15,6 +15,10 @@ static const Item TELA[] = {
   SEC("Nerd Fazal Settings", "Personal customizations and Fusion badges", "aj_sparkles"),
     ROT("Fusion badges"),
       OPC(AJ_SELOS_PACOTE_ADD), OPC(AJ_PLAYER_SHOW), OPC(AJ_PLAYER_BADGES),
+#if defined(NV_ANDROID) && defined(NV_TOUCH_UI)
+    ROT("Touch navigation"), OPC(AJ_GESTO_REMOTE),
+#endif
+    ROT("Home customization"), OPC(AJ_HOME_ROW_LAYOUTS),
 
   // ---- ASSISTIR ------------------------------------------------------------------
   SEC("Playback", "Quality, sound, and playback behavior", "aj_circle-play"),

@@ -358,3 +358,5 @@
   0, /* Show in player: On; persisted in selos-player-visible-pN.txt */
   0, /* Netflix episode descriptions: On */
   0, /* Netflix episode IMDb scores: On */
+  0, /* Navigation mode: Touch by default */
+  0, /* Home row layouts: modal action; persisted in fileiras.c */

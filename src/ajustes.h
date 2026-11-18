@@ -575,6 +575,7 @@ enum { PALCO_CORTINA, PALCO_ATUAL, PALCO_ARTE, PALCO_PRETO, PALCO_AURA, PALCO_TR
 int   ajustes_palco_fundo(void);
 int   ajustes_titulo_fil(void);        // 0 Classico, 1 Ilha, 2 Editorial, 3 Acento
 int   ajustes_abertura_estilo(void);   // 0 Centro (A3), 1 Canto (B3)
+int   ajustes_gesto_remoto(void);  // Android Touch=0, Gesture (TV Remote)=1
 int   ajustes_fundo_din(void);         // #205: 0 Gray, 1 Color, 2 Immersive, 3 Dark Gray, 4 AMOLED Black
 void  ajustes_fundo_din_cor(float rgb[3]);   // #205: a cor escolhida para o fundo "Cor" (sRGB 0..1)
 // #205: tamanho dos cards de episodio (Moderna): 0 pequeno, 1 medio (padrao), 2 grande.

@@ -732,6 +732,8 @@ typedef enum {
   AJ_PLAYER_SHOW,    // Append-only: independent player badge visibility.
   AJ_DET_EP_DESCRICAO, // Netflix episodes: description visible, default On
   AJ_DET_EP_IMDB,      // Netflix episodes: IMDb score visible, default On
+  AJ_GESTO_REMOTE,     // Android touch navigation: Touch / Gesture (TV Remote)
+  AJ_HOME_ROW_LAYOUTS, // Action: only enabled and visible catalog rows
   AJ_N
 } OpcaoId;
 _Static_assert(DEBRID_RD == 0 && DEBRID_TB == 1 && DEBRID_PM == 2 && DEBRID_AD == 3,
@@ -766,6 +768,7 @@ static const char *V_PALCO_FUNDO[] = { "Cortina", "Como está", "Só arte", "Pre
 static const char *V_TITULO_FIL[] = { "Clássico", "Ilha", "Editorial", "Acento" };
 static const char *V_DEGRADES[] = { "Automático", "Forte", "Desligado" };
 static const char *V_VIDRO_QUALIDADE[] = { "Automática", "Desempenho", "Alta" };
+static const char *V_GESTO_REMOTE[] = { "Touch", "Gesture (TV Remote)" };
 static const char *V_FUNDO_DIN[] = { "Cinza", "Cor", "Imersivo", "Cinza escuro", "AMOLED Black" };
 // A cor do fundo "Cor" sai da paleta do acento (TEMA_ACENTO), em ordem de
 // matiz. Sem o Branco (o fundo e escuro) e sem os dinamicos. Os nomes sao os
@@ -1875,6 +1878,8 @@ static const Opcao OPCOES[AJ_N] = {
   ESC("Show in player", V_LIGA, 2),
   ESC("Descrição dos episódios", V_LIGA, 2),
   ESC("IMDb por episódio", V_LIGA, 2),
+  ESC("Navigation mode", V_GESTO_REMOTE, 2),
+  ACAO("Home Row Layouts"),
   };
 
 // Nome de cada opcao no arquivo. O formato era POSICIONAL — uma linha por
@@ -2213,6 +2218,8 @@ static const char *CHAVE[] = {
   "-playerBadgeShowLocal", // Visibility stored in selos-player-visible-pN.txt
   "detEpDescricaoLocal",
   "detEpImdbLocal",
+  "gestureRemoteLocal",
+  "-homeRowLayouts",
 };
 // QUATRO VETORES PARALELOS indexados pelo mesmo enum AJ_*: OPCOES, CHAVE,
 // valor e as secoes. OPCOES ja e declarado [AJ_N], e `valor` aceita inicializacao
@@ -2696,6 +2703,7 @@ static int pedeConfirmacao(int op) {
 // ajustes_pediu_addons). Uma folha aqui nao pede nada ao app.c.
 #define AJ_FIL_CAMPOS 4          // nome/mover, estado, card, tamanho
 static int filAberta;
+static int filModoCatalogo; // Nerd Fazal: only enabled catalog rows actually on Home
 static int filFoco;
 static int filCampo;
 // 0 = nada na mao, 1 = fileira na mao, 2 = BLOCO do addon na mao.
@@ -3324,6 +3332,7 @@ int ajustes_palco_fundo(void) { return valor[AJ_PALCO_FUNDO]; }
 int ajustes_titulo_fil(void) { int v = valor[AJ_TITULO_FIL]; return v >= 0 && v <= 3 ? v : 0; }
 int ajustes_abertura_estilo(void) { return valor[AJ_ABERTURA_ESTILO] == 1; }   // 0 Centro (A3), 1 Canto (B3)
 int ajustes_menu_cartaz_simples(void) { return valor[AJ_MENU_CARTAZ] == 1; }
+int ajustes_gesto_remoto(void) { return valor[AJ_GESTO_REMOTE] == 1; }
 int ajustes_fundo_din(void) { int v = valor[AJ_FUNDO_DIN]; return v >= 0 && v <= 4 ? v : 0; }
 void ajustes_fundo_din_cor(float rgb[3]) {
   int v = valor[AJ_FUNDO_DIN_COR];
@@ -6226,6 +6235,7 @@ static int somenteDesteAparelho(int op) {
     case AJ_ABERTURA_FUNDO: /* #508: idem */
     case AJ_ABERTURA_ESTILO: /* idem */
     case AJ_MENU_CARTAZ:    /* title menu presentation belongs to this TV */
+    case AJ_GESTO_REMOTE: /* Phone touch navigation is device-local */
     case AJ_FUNDO_DIN:     /* #205: o fundo da Dinamica e escolha desta TV */
     case AJ_FUNDO_DIN_COR: /* idem */
     case AJ_EP_TAMANHO:    /* idem */
@@ -6282,7 +6292,7 @@ static int soNaTv(int op) {
     case AJ_IDIOMA: case AJ_FONTE_UI: case AJ_ANIM:
     case AJ_RESOLUCAO: case AJ_TEX_MB: case AJ_QUALIDADE_IMG: case AJ_GPU_EFEITOS:
     case AJ_MEDIDOR: case AJ_ENVIO_AUTO: case AJ_AVANCADAS: case AJ_ITENS_FILEIRA:
-    case AJ_FIL_LIMITE: case AJ_FIL_ORDEM:
+    case AJ_FIL_LIMITE: case AJ_FIL_ORDEM: case AJ_HOME_ROW_LAYOUTS:
     case AJ_ESMAECER: case AJ_BRILHO_PLAYER: case AJ_PROPORCAO_PADRAO: case AJ_MANTER_VIDEO:
     case AJ_DESCANSO_ESTILO: case AJ_DESCANSO_FONTE:
     case AJ_CACHE_SEEK: case AJ_TRAILER_ZOOM_TPK: case AJ_LEG_SYNC_AUDIO:
@@ -6292,6 +6302,7 @@ static int soNaTv(int op) {
     case AJ_P2P_LIMITE: case AJ_P2P_DESTINO: case AJ_RELOGIO_12H:
     case AJ_AUDIO_OFFSET: case AJ_DTS_AC3: case AJ_DV_MKV: case AJ_DV7:
     case AJ_RETOMADA_MORNA: case AJ_MANTER_PRAZO: case AJ_BUFFER:
+    case AJ_GESTO_REMOTE:
     case AJ_INTERFACE_MODO: case AJ_MIC_BUSCA: case AJ_TECLADO_ANDROID:
     case AJ_TUNNELING: case AJ_HDR_INTERFACE: case AJ_HDR_UI: case AJ_LEG_SYNC_AUTO:
     case AJ_PLAYER_EXTERNO: case AJ_PLAYER_ANIME: case AJ_VIDRO_QUALIDADE:
@@ -7003,7 +7014,7 @@ int ajustes_iniciar(void) {
   if (uxAbrirOp >= 0) { int op = uxAbrirOp; uxAbrirOp = -1; focarOpcao(op); }
   if (uxVoltarOp >= 0) { int op = uxVoltarOp; uxVoltarOp = -1; focarOpcao(op); }
   uxCancelar(); uxAviso[0] = 0; uxRetornarOp = -1;
-  filAberta = 0; filFoco = 0; filCampo = 0; filPegou = 0; filTopo = 0;
+  filAberta = 0; filModoCatalogo = 0; filFoco = 0; filCampo = 0; filPegou = 0; filTopo = 0;
   emEdicao = 0;
   fil_confirmar_limite();   // rajada de uma visita anterior que nao fechou
   valor[AJ_FIL_LIMITE] = fil_limite_gravado();
@@ -8008,6 +8019,8 @@ static const char *ajudaOpcaoBase(int op) {
     case AJ_FIL_LIMITE: return "Quantas fileiras a Home monta, de 3 a 40. Menos fileiras também significam menos catálogos pedidos pela rede, e não fileiras invisíveis. Mais fileiras usam mais memória e rede: em TV com 1 GB de memória a Home pode ficar lenta ou fechar. Se o app fechar depois de você aumentar, ele volta sozinho ao valor anterior.";
 #endif
     case AJ_ITENS_FILEIRA: return "Quantos títulos cada fileira da Home mostra antes do Ver tudo. Mais itens usam mais memória: em TV com 1 GB de memória a Home pode ficar mais lenta ou fechar. Se o app fechar depois de você aumentar, ele volta sozinho ao valor anterior. Aumentar vale na próxima vez que o app abrir.";
+    case AJ_HOME_ROW_LAYOUTS: return "Customize the card layout for catalog rows enabled and currently visible on Home. Preferences stay with each catalog.";
+    case AJ_GESTO_REMOTE: return "Touch keeps normal tapping and scrolling. Gesture uses swipes for D-pad, double-tap for OK, and swipe-and-hold for repeated navigation.";
     case AJ_FIL_ORDEM: return "Abre a lista de fileiras para reordenar, ligar, desligar e escolher o card de cada uma. É lá que dá para ver de onde cada fileira vem.";
     case AJ_RAIL: return "A barra de navegação da esquerda fica sempre aberta, ou recolhida até você ir até ela.";
     case AJ_ABAS_ESTILO: return "Chips: uma fileira de botões, como sempre. Menu suspenso: escolha Filmes ou Séries e depois o catálogo numa lista. Barra central: uma pílula de vidro no centro do alto da tela. Páginas: um catálogo por página; Esquerda e Direita trocam de página. Vale para este perfil.";
@@ -8669,7 +8682,14 @@ static int filCmpFora(const void *pa, const void *pb) {
 static void filMontarLista(void) {
   int i, n = fil_n();
   filListaN = 0; filSep = -1;
-  if (filAba == 0) {
+  if (filModoCatalogo) {
+    for (i = 0; i < n; i++)
+      if (fil_estado(i) == FIL_NA_HOME &&
+          fil_linha_origem(i) == FIL_ORIGEM_CATALOGO &&
+          !fil_linha_oculta(i) && !fil_linha_sem_addon(i) &&
+          fil_aceita_tipo(i))
+        filLista[filListaN++] = i;
+  } else if (filAba == 0) {
     filLista[filListaN++] = AJ_FIL_DESTAQUE;
     for (i = 0; i < n; i++) {
       int e = fil_estado(i);
@@ -8760,6 +8780,21 @@ static void eventoFileiras(SDL_Keycode k) {
   int n;
   filMontarLista();
   n = filListaN;
+  if (filModoCatalogo) {
+    static const int styles[4] = { FIL_TIPO_AUTO, FIL_TIPO_DESTAQUE, FIL_TIPO_COLECAO, FIL_TIPO_CARTAZ };
+    if (k == SDLK_ESCAPE || k == SDLK_AC_BACK || k == SDLK_BACKSPACE || k == SDLK_DELETE) {
+      filAberta = filModoCatalogo = 0; return;
+    }
+    if (k == SDLK_UP && filFoco > 0) filFoco--;
+    else if (k == SDLK_DOWN && filFoco+1 < n) filFoco++;
+    else if ((k == SDLK_LEFT || k == SDLK_RIGHT || k == SDLK_RETURN || k == SDLK_KP_ENTER) && n > 0) {
+      int idx = filIdx(filFoco), old = fil_linha_tipo(idx), pos = 0;
+      for (int j=0;j<4;j++) if (styles[j]==old) { pos=j; break; }
+      pos = (pos + ((k == SDLK_LEFT) ? 3 : 1)) % 4;
+      if (fil_definir_tipo(fil_chave(idx), styles[pos])) fileirasReagir();
+    }
+    return;
+  }
   if (k == SDLK_ESCAPE || k == SDLK_AC_BACK || k == SDLK_BACKSPACE ||
       k == SDLK_DELETE) {
     if (filPegou) {
@@ -9985,7 +10020,14 @@ static void eventoTela(const SDL_Event *e) {
       teclado_permitir_vazio(iptvForm.nova);
       teclado_aceitar_utf8(1);return;
     }
+    if (focoOp == AJ_HOME_ROW_LAYOUTS) {
+      filModoCatalogo = 1; filAberta = 1;
+      filAba = 0; filFoco = filTopo = 0; filCampo = 2;
+      filNaBarra = filPegou = 0;
+      filMontarLista(); emEdicao = 0; return;
+    }
     if (focoOp == AJ_FIL_ORDEM) {
+      filModoCatalogo = 0;
       filAberta = 1; filFoco = 0; filCampo = 0; filPegou = 0; filTopo = 0;
       filAba = 0; filNaBarra = 0; filAviso[0] = 0;
       // O que passou do limite sem ter sido pedido vai para "Fora da Home"
