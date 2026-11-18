@@ -1,4 +1,5 @@
-Nuvio Legacy detail & Episodes refinement integration APK (#112)
-Implementation: a952c04b66612466e732b6fefcbd4dbdbafcba39
-Scope: solid Episodes / Play manually icons; phone D-pad-style gestures for detail actions and full-screen Episodes; ratings heatmap episode headings, fitted card, season-height, horizontal browsing, no legend, Best/Worst aligned; What People Are Saying season/episode dropdown and slide-fade Season control.
-Build policy: one Android debug APK after the existing built-in ARM64 native C preflight; no TPK.
+Nuvio Legacy corrected review selector integration APK #113.
+Base: 25f693e93e7830ab01855821a65e07c117deea85
+Reason: #112 early C compilation succeeded, but tests/detail_netflix.py asserted removed detEpAbrirReview(t,e).
+Validation: corrected tests now exercise compact review selector, 5-row season/episode list, Trakt refresh and touch/keyboard focus.
+One Android debug APK workflow with mandatory preflight; no TPK build.
