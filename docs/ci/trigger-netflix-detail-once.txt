@@ -1,6 +1,4 @@
-Netflix detail redesign - one integration Android debug APK build
-Base: a2d19a71b95d190b772fffbff3f342f1b245b8ae
-Scope: native Dynamic Clock episode options, 40/60 AMOLED seasons and episodes, hero action pills, cast, IMDb, trailer controls, navigation and regression tests
-
-Preflight success: https://github.com/nerdfxzxl/nuvio-native-legacy/actions/runs/44173301651
-This sentinel alone triggers the APK workflow once.
+Nuvio Legacy native detail polish integration APK build (#111)
+Base: e40bf1d9e97942b0946c0faeb8fd34efb247f7a5
+Preflight PASS: https://github.com/nerdfxzxl/nuvio-native-legacy/actions/runs/44252660165
+Scope: centered title art and season labels, larger focus-only thumbnails, native touch and hold, compact glass Dynamic Clock options, mute/resumable trailer, clean poster, corrected Details and review chooser, heatmap-only ratings, translated title settings. One Android debug APK, no TPK.
