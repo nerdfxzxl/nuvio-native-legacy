@@ -799,7 +799,7 @@ static float homeConteudoX(void) {
   // espelha sua reserva para centralizar sem desenhar por baixo dela.
   if (homeRetratoTelefone())
     return ajustes_rail_largura_fixa() > 0.0f ? fmaxf(48.0f, ajustes_conteudo_x()) : 48.0f;
-  return ANC(ajustes_conteudo_x());
+  return ANC(ajustes_rail_largura_fixa() + 54.0f);
 }
 static float homeMargemDireita(void) {
   return homeRetratoTelefone() ? homeConteudoX() : ANC(NV_HOME_SAFE_RIGHT);

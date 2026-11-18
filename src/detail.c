@@ -611,6 +611,8 @@ static int comEpT = 0, comEpE = 0;
 #define COM_MENU_STEP 54.0f
 static int comMenu, comMenuN, comMenuFocus, comMenuScroll, comMenuSeason;
 static int comMenuValues[COM_MENU_MAX];
+static int comSeasonValues[COM_MENU_MAX],comSeasonN,comSeasonFocus,comSeasonScroll;
+static int comSeasonNav;  // when both panels are visible, Left selects seasons
 static float comSeasonAnim, comMenuX, comMenuY;
 static void comMenuAbrir(void);
 static int comMenuEvento(const SDL_Event *e);
@@ -2167,13 +2169,18 @@ static void comMenuAjustarFoco(int next) {
 }
 static void comMenuAbrir(void) {
   comMenu=1;comMenuSeason=comEpT>0?comEpT:1;
+  comSeasonNav=0;
   comMenuAtualizarLista();
+  // Keep a stable season list while the second, episode-specific list opens.
+  comSeasonN=comMenuN;comSeasonFocus=comMenuFocus;comSeasonScroll=comMenuScroll;
+  memcpy(comSeasonValues,comMenuValues,(size_t)comSeasonN*sizeof *comSeasonValues);
 }
 static void comMenuSelecionar(void) {
   if(!comMenuN)return;
   int choice=comMenuValues[comMenuFocus];
   if(comMenu==1) {
-    comMenuSeason=choice;
+    comSeasonFocus=comMenuFocus;comSeasonScroll=comMenuScroll;
+    comMenuSeason=choice;comSeasonNav=0;
     comMenu=2;
     comMenuAtualizarLista();
   } else if(comMenu==2) {
@@ -2192,13 +2199,29 @@ static int comMenuEvento(const SDL_Event *e) {
     SDL_Keycode k=e->key.keysym.sym;
     if(k==SDLK_ESCAPE||k==SDLK_AC_BACK||k==SDLK_BACKSPACE||
        k==SDLK_DELETE||e->key.keysym.scancode==NV_SCANCODE_BACK) {
-      if(comMenu==2){comMenu=1;comMenuAtualizarLista();}
+      if(comMenu==2){comMenu=1;comSeasonNav=0;comMenuAtualizarLista();}
       else comMenu=0;
-    } else if(k==SDLK_UP)comMenuAjustarFoco(comMenuFocus-1);
-    else if(k==SDLK_DOWN)comMenuAjustarFoco(comMenuFocus+1);
+    } else if(k==SDLK_LEFT && comMenu==2) comSeasonNav=1;
+    else if(k==SDLK_RIGHT && comMenu==2) comSeasonNav=0;
+    else if(k==SDLK_UP || k==SDLK_DOWN) {
+      int delta=k==SDLK_DOWN?1:-1;
+      if(comMenu==2 && comSeasonNav) {
+        comSeasonFocus+=delta;
+        if(comSeasonFocus<0)comSeasonFocus=0;
+        if(comSeasonFocus>=comSeasonN)comSeasonFocus=comSeasonN-1;
+        if(comSeasonFocus<comSeasonScroll)comSeasonScroll=comSeasonFocus;
+        if(comSeasonFocus>=comSeasonScroll+COM_MENU_VISIBLE)
+          comSeasonScroll=comSeasonFocus-COM_MENU_VISIBLE+1;
+      } else comMenuAjustarFoco(comMenuFocus+delta);
+    }
   } else if(e->type==SDL_KEYUP &&
-            (e->key.keysym.sym==SDLK_RETURN||e->key.keysym.sym==SDLK_KP_ENTER))
-    comMenuSelecionar();
+            (e->key.keysym.sym==SDLK_RETURN||e->key.keysym.sym==SDLK_KP_ENTER)) {
+    if(comMenu==2 && comSeasonNav && comSeasonN>0) {
+      comMenuSeason=comSeasonValues[comSeasonFocus];
+      comSeasonNav=0;
+      comMenuAtualizarLista();
+    } else comMenuSelecionar();
+  }
   return 1;
 }
 static void comMenuPointerFocus(int index,int unused) {
@@ -2209,6 +2232,17 @@ static void comMenuPointerSelect(int index,int unused) {
   (void)unused;
   comMenuAjustarFoco(index);
   comMenuSelecionar();
+}
+static void comSeasonPointerFocus(int index,int unused) {
+  (void)unused;
+  if(comMenu!=2 || index<0 || index>=comSeasonN)return;
+  comSeasonFocus=index;comSeasonNav=1;
+}
+static void comSeasonPointerSelect(int index,int unused) {
+  (void)unused;
+  if(comMenu!=2 || index<0 || index>=comSeasonN)return;
+  comSeasonFocus=index;comMenuSeason=comSeasonValues[index];
+  comSeasonNav=0;comMenuAtualizarLista();
 }
 
 // De volta a pilula "Episódio" com o episodio que o foco pisou (comEpT/comEpE
@@ -7085,7 +7119,7 @@ static float alturaCabComentarios(void) {
 
 // Rotulos do seletor, em escopo de arquivo: a contagem de colunas e a largura
 // de item precisam deles fora do desenho.
-static const char *COM_ROT[3] = { "Série", "Episódio", "Season" };
+static const char *COM_ROT[3] = { "Série", "Episódio", "Choose Episode" };
 // A pilula do episodio DIZ qual episodio: "Episódio · T1E3". Sem isso a pessoa
 // nao tem como saber que os cartoes seguem o episodio em foco na fileira la de
 // cima (pedido do dono, #78). O texto ja sai traduzido pedaco a pedaco porque
@@ -7240,50 +7274,84 @@ static float cabecalhoComentarios(float x, float y, float a) {
 // Native TV dropdown: five visible rows, or fewer when the list is short.
 // The fixed five-row viewport scrolls internally via Up/Down; nothing changes
 // watch progress. Registered last in the pointer layer so it blocks the page.
+// Two independent liquid-glass menus. The episode menu is anchored to the
+// selected season's row rather than replacing the season menu in place.
 static void comMenuDesenhar(float a) {
-  if (!comMenu || !ehSerie()) return;
-  int count=comMenuN<COM_MENU_VISIBLE?comMenuN:COM_MENU_VISIBLE;
-  if(count<1)count=1;
-  float w=270.0f, h=58.0f+count*COM_MENU_STEP+12.0f;
-  float x=comMenuX, y=comMenuY;
-  if(x+w>NV_TELA_W-24.0f)x=NV_TELA_W-w-24.0f;
-  if(y+h>NV_TELA_H-16.0f)y=fmaxf(16.0f,comMenuY-COM_PILL_H-h-16.0f);
-  if(x<16.0f)x=16.0f;
-  GfxRect card={x,y,w,h};
+  if(!comMenu || !ehSerie())return;
+  const float w=270.0f,gap=12.0f,margin=16.0f;
+  int two=comMenu==2;
+  int sn=two?comSeasonN:comMenuN;
+  int sscroll=two?comSeasonScroll:comMenuScroll;
+  int scount=sn<COM_MENU_VISIBLE?sn:COM_MENU_VISIBLE;
+  int ecount=comMenuN<COM_MENU_VISIBLE?comMenuN:COM_MENU_VISIBLE;
+  if(scount<1)scount=1;if(ecount<1)ecount=1;
+  float sh=16.0f+scount*COM_MENU_STEP;
+  float eh=16.0f+ecount*COM_MENU_STEP;
+  float sx=comMenuX,sy=comMenuY;
+  if(sx+(two?2*w+gap:w)>NV_TELA_W-margin)
+    sx=NV_TELA_W-margin-(two?2*w+gap:w);
+  if(sx<margin)sx=margin;
+  if(sy+sh>NV_TELA_H-margin)sy=NV_TELA_H-margin-sh;
+  if(sy<margin)sy=margin;
   gfx_sem_recorte();
-  gfx_cor(card,.06f,.075f,.083f,.100f,.985f*a);
-  gfx_anel_fora(card,.06f,0.0f,1.0f,1.0f,1.0f,1.0f,.25f*a);
-  TxtLinha title=txt_linha(TXT_PLR_CORPO,comMenu==1?"Season":"Episode",242,243,245,255);
-  txt_desenhar_alpha(title,x+18.0f,y+14.0f,a);
-  if(!comMenuN) {
-    TxtLinha empty=txt_linha(TXT_CAPTION2,"No episodes available",180,181,184,255);
-    txt_desenhar_alpha(empty,x+18.0f,y+65.0f,a);
-  }
-  for(int j=0;j<count && comMenuN;j++) {
-    int i=comMenuScroll+j, focused=i==comMenuFocus;
-    if(i>=comMenuN)break;
-    GfxRect row={x+8.0f,y+58.0f+j*COM_MENU_STEP,w-16.0f,COM_MENU_STEP-4.0f};
-    char label[40];
-    int selected=(comMenu==1?comEpT:comEpE)==comMenuValues[i];
-    snprintf(label,sizeof label,"%s %d%s",comMenu==1?"Season":"Episode",
-             comMenuValues[i],selected?"  ✓":"");
-    if(focused)gfx_cor(row,.16f,.975f,.975f,.975f,a);
-    else if(selected)gfx_cor(row,.16f,.29f,.31f,.35f,a);
-    TxtLinha l=txt_linha(TXT_PLR_CORPO,label,
-                        focused?18:239,focused?18:239,focused?18:242,255);
-    txt_desenhar_alpha(l,row.x+15.0f,row.y+(row.h-l.h)*.5f,a);
-    if(ponteiro_ativo())
-      ponteiro_alvo(row.x,row.y,row.w,row.h,
-                    comMenuPointerFocus,comMenuPointerSelect,i,0);
-  }
-  if(comMenuN>COM_MENU_VISIBLE) {
-    GfxRect track={x+w-6.0f,y+59.0f,2.0f,count*COM_MENU_STEP-8.0f};
-    gfx_cor(track,.5f,1,1,1,.12f*a);
-    float thumbH=fmaxf(12.0f,track.h*COM_MENU_VISIBLE/comMenuN);
-    float frac=comMenuN>COM_MENU_VISIBLE?
-      (float)comMenuScroll/(comMenuN-COM_MENU_VISIBLE):0.0f;
-    gfx_cor((GfxRect){track.x,track.y+(track.h-thumbH)*frac,track.w,thumbH},
-            .5f,1,1,1,.7f*a);
+  for(int panel=0;panel<(two?2:1);panel++) {
+    int count=panel?ecount:scount;
+    int total=panel?comMenuN:sn;
+    int scroll=panel?comMenuScroll:sscroll;
+    float h=panel?eh:sh;
+    int chosenRow=two?comSeasonFocus-comSeasonScroll:comMenuFocus-comMenuScroll;
+    if(chosenRow<0)chosenRow=0;if(chosenRow>=scount)chosenRow=scount-1;
+    float x=sx+(panel?w+gap:0);
+    // Top of episode panel aligns with the clicked season row.
+    float y=panel?sy+8.0f+chosenRow*COM_MENU_STEP:sy;
+    if(y+h>NV_TELA_H-margin)y=NV_TELA_H-margin-h;
+    if(y<margin)y=margin;
+    GfxRect surface={x,y,w,h};
+    gfx_vidro_material(surface,0.10f,GFX_VIDRO_DENS,a);
+    gfx_anel_fora(surface,0.10f,0.0f,1,1,1,1,0.19f*a);
+    if(total==0) {
+      TxtLinha empty=txt_linha(TXT_CAPTION2,
+        panel?"No episodes available":"No seasons available",205,208,215,255);
+      txt_desenhar_alpha(empty,x+18.0f,y+18.0f,a);
+    }
+    for(int j=0;j<count && scroll+j<total;j++) {
+      int index=scroll+j;
+      int value=panel?comMenuValues[index]:(two?comSeasonValues[index]:comMenuValues[index]);
+      int selected=panel?(comEpT==comMenuSeason && comEpE==value)
+                        :(two?comMenuSeason==value:comEpT==value);
+      int focused=panel?(!comSeasonNav && index==comMenuFocus)
+                       :(two?(comSeasonNav && index==comSeasonFocus):index==comMenuFocus);
+      GfxRect row={x+8.0f,y+8.0f+j*COM_MENU_STEP,w-16.0f,COM_MENU_STEP-4.0f};
+      if(focused)gfx_cor(row,0.5f,0.98f,0.98f,0.98f,0.97f*a);
+      else if(selected)gfx_cor(row,0.5f,0.42f,0.45f,0.48f,0.38f*a);
+      else gfx_cor(row,0.5f,0.26f,0.28f,0.31f,0.18f*a);
+      char label[40];snprintf(label,sizeof label,"%s %d",panel?"Episode":"Season",value);
+      TxtLinha name=txt_linha_corta(TXT_PLR_CORPO,label,
+        focused?18:243,focused?18:243,focused?18:245,255,row.w-67.0f);
+      txt_desenhar_alpha(name,row.x+16.0f,row.y+(row.h-name.h)*0.5f,a);
+      if(selected) {
+        TxtLinha tick=txt_linha(TXT_PLR_CORPO,"✓",
+          focused?18:246,focused?18:246,focused?18:248,255);
+        txt_desenhar_alpha(tick,row.x+row.w-20.0f-tick.w,
+                          row.y+(row.h-tick.h)*0.5f,a);
+      }
+      if(ponteiro_ativo()) {
+        if(panel==0 && two)
+          ponteiro_alvo(row.x,row.y,row.w,row.h,
+            comSeasonPointerFocus,comSeasonPointerSelect,index,0);
+        else
+          ponteiro_alvo(row.x,row.y,row.w,row.h,
+            comMenuPointerFocus,comMenuPointerSelect,index,0);
+      }
+    }
+    if(total>COM_MENU_VISIBLE) {
+      GfxRect track={x+w-5.0f,y+10.0f,2.0f,count*COM_MENU_STEP-8.0f};
+      gfx_cor(track,0.5f,1,1,1,0.13f*a);
+      float thumbH=fmaxf(12.0f,track.h*COM_MENU_VISIBLE/total);
+      float pos=(float)scroll/(float)(total-COM_MENU_VISIBLE);
+      gfx_cor((GfxRect){track.x,track.y+(track.h-thumbH)*pos,track.w,thumbH},
+              0.5f,1,1,1,0.70f*a);
+    }
   }
 }
 

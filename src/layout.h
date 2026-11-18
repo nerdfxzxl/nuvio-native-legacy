@@ -317,7 +317,7 @@ int layout_modo_mobile(void);
 #define NV_DIN_ARTE_FADE_A  80.0f  // rolagem em que a arte comeca a apagar
 #define NV_DIN_ARTE_FADE_B 560.0f  // ...e em que ja sumiu
 #define NV_DIN_REPOUSO_FIL 980.0f  // titulo da 1a fileira com o destaque em foco
-#define NV_DIN_TOPO_FIL   150.0f   // titulo da 1a fileira, com o foco nela
+#define NV_DIN_TOPO_FIL    84.0f   // immersive: rows reach beneath floating glass clock
 #define NV_DIN_CENTRO_FIL 540.0f   // centro da fileira em foco (titulo + cartoes)
 #define NV_DIN_FOLGA_BASE  96.0f   // da base da ultima fileira a base da tela
 #define NV_DIN_FILEIRA_GAP 32.0f   // vao entre fileiras (mais fileiras na tela)
