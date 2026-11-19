@@ -20,11 +20,14 @@ detail = read("src/detail.c")
 workflow = read(".github/workflows/android-debug.yml")
 preflight = read("tools/android/preflight-c.sh")
 
-# One artwork URL; no late portrait-to-landscape switch or card state fade.
+# Compact cards use the actual poster URL; the expanded state still uses the
+# original wide variant. Only a transitioning focused card draws two sources.
 card_url = home.split("caminho = arte_por_identidade(idxCat,", 1)[1].split(";", 1)[0]
-require("deitado || (ajustes_expandir_poster() && podeExpandir(r))" in card_url,
-        "Expandable portraits must use one landscape-ready artwork source")
-require("abre" not in card_url, "Focus state must never change the artwork URL")
+require("deitado || portraitExpand" in card_url,
+        "Unfocused portraits must not force landscape art")
+require("arte_por_identidade(idxPortrait, 0)" in home and
+        "aArteCard * (1.0f - abre)" in home,
+        "Only the transitioning focused card should crossfade native portrait art")
 require("expFileira != foco.fileira || expColuna != foco.coluna" in home,
         "Focus changes must reset the expansion timeline")
 require("220.0f" in home and "motionReduzido ? 1.0f" in home,
@@ -32,7 +35,7 @@ require("220.0f" in home and "motionReduzido ? 1.0f" in home,
 require("empurra = (artH * escF * NV_EXP_ASPECTO - lw * escF) * expAbre;" in home,
         "Neighbor movement must share the same expansion progress")
 require("Expanded cards may have a second cached landscape variant." not in home,
-        "Home must not keep a second focus-state image")
+        "Avoid unused second image slots on every card")
 
 # Landscape artwork in a portrait box must COVER, not contain/letterbox.
 cover = home.split("gfx_card_forcar_cover_atual = (", 1)[1].split(") ? 1.0f", 1)[0]
@@ -87,6 +90,33 @@ require("SDL_IsTextInputActive();" not in main.split("static int phoneRemoteEnab
         "SDL text-input state is not a reliable global gesture gate")
 require("phoneRemoteRepeat();" in main and "phoneFingerDown=0;phoneDirection=SDLK_UNKNOWN;" in main,
         "Swipe-and-hold must repeat and stop immediately on release")
+
+# Input boundary guards: repeat events retain full speed within the row/actions
+# and only a fresh physical press crosses the sidebar or More threshold.
+require("homeLeftHeldFromRow" in home and "e->key.repeat || homeLeftHeldFromRow" in home,
+        "Held Left must stop on first poster without opening the sidebar")
+require("foco.coluna > 0" in home and "foco.coluna = 0;" in home,
+        "Home Back must first return to the beginning of the current row")
+require("downHeldFromActions" in detail and "e->key.repeat || downHeldFromActions" in detail,
+        "Held Down must stop on More while repeated action navigation survives")
+require("phoneSecondTap" in main and
+        "phoneRemoteKeyEvent(SDLK_RETURN,SDL_KEYDOWN,0)" in main and
+        "phoneRemoteKeyEvent(SDLK_RETURN,SDL_KEYUP,0)" in main,
+        "Double tap + hold must map to a balanced native long-OK gesture")
+require("0.898f,0.035f,0.078f" in detail and "prog_por_chave(key,&progress)" in detail,
+        "Resume progress must be red and sourced from saved checkpoint data")
+settings = read("src/ajustes.c")
+settings_page = read("src/ajustes_ux_tela.inc")
+require("AJ_TAM_GRANDE_DP" in settings and "AJ_TAM_PAISAGEM_DP" in settings and
+        "OPC(AJ_TAM_GRANDE_DP), OPC(AJ_TAM_PAISAGEM_DP), OPC(AJ_LARGURA_DP)" in settings_page,
+        "Three independent and visible poster size rows must use native numeric editors")
+require("escalaPaisagem()" in home and "escalaGrande()" in home,
+        "Landscape and large poster sizes must affect home dimensions")
+require("sharedPosterUrl" in detail and "de = item.rect;" in detail and
+        "item.rect.w < NV_TELA_W * 0.95f" in detail,
+        "Open/close must share actual poster bounds without enabling the old carousel")
+require("carro = 0;" in detail,
+        "Normal detail opening must not re-enable the retired carousel")
 
 # Don't accidentally reintroduce the ~30-minute apt install.
 require("python3-pil" in workflow and "ffmpeg" not in workflow.split("name: Install Android NDK and SDL development headers",1)[1].split("name: Compile-check",1)[0],
