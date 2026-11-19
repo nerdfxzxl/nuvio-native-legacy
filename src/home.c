@@ -7614,6 +7614,18 @@ static void pintarCartao(const CartaoFoco *k, float raio) {
           if (!arteSobreTrailer || (t && aArteCard > 0.004f))
             desenhaArteCard(card, tipo, caminho, t, cItem, f, raio, aArteCard,
                             varreFoco);
+          // The single transitioning card briefly blends its cached portrait
+          // artwork over the landscape key art. At rest there is only ONE
+          // texture draw; fully expanded the original landscape is untouched.
+          if (!arteSobreTrailer && !deitado && abre > 0.001f && abre < 0.999f &&
+              ajustes_expandir_poster() && podeExpandir(r)) {
+            int idxPortrait = fileiraItemIndice(&fileiras[r], c);
+            const char *portrait = arte_por_identidade(idxPortrait, 0);
+            GLuint portraitTex = portrait ? tex_obter_larg(portrait, h * 0.70f) : 0;
+            if (portraitTex)
+              desenhaArteCard(card, tipo, portrait, portraitTex, cItem, f, raio,
+                              aArteCard * (1.0f - abre), 0.0f);
+          }
           arteSobreTrailer = 0;
           if (t) gfx_veu_na_arte = 1; else gfx_veu_card_limpar();
           // SOBRE O TRAILER so ficam o anel e o logo do card aberto (o mesmo
@@ -8322,12 +8334,16 @@ static void home_desenhar_(Uint32 agora) {
             w = h * 2.0f / 3.0f;   // daqui em diante, o cartaz
           }
           const char *caminho = NULL;
-          // A portrait row uses ONE landscape-ready artwork in both compact
-          // and expanded geometry, including the embedded title baked into it.
-          // Only the crop changes. The texture is never swapped on focus.
+          // Compact portrait cards must use actual portrait art when supplied.
+          // Forcing a 16:9 backdrop into a 2:3 rectangle loses whole subjects,
+          // regardless of saliency offsets. Use the same landscape artwork as
+          // before ONLY when the focused card starts opening; blend during
+          // that transition below, preserving the approved expanded look.
+          int portraitExpand = !deitado && ajustes_expandir_poster() &&
+                               podeExpandir(r) && abre > 0.001f;
           caminho = arte_por_identidade(idxCat,
                                         (tipo == FILEIRA_CONTINUE || tipo == FILEIRA_RETORNO) ? 3
-                                        : (deitado || (ajustes_expandir_poster() && podeExpandir(r))));
+                                        : (deitado || portraitExpand));
 
           // `!focoHero` E A CONDICAO QUE FALTAVA AQUI, e e o mesmo defeito que
           // o anel de foco ja tinha resolvido dez linhas acima (linha 1747).
