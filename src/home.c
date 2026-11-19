@@ -1627,7 +1627,7 @@ static void desenhaFaixaAberta(const CatItem *ci, int r, float px, float py,
   float pad = 34.0f * esc, ch = 34.0f * esc, gap = 10.0f * esc;
   float cx = px + w - pad, cy = py + h - pad - ch;
   float a = abre;
-  int delta = 0, novo = 0, temTend;
+  (void)r;  // Ranking-change badges are intentionally not displayed.
   // VEU SO NA METADE DE BAIXO, onde a faixa mora. Era o GFX_VEU do cartao
   // inteiro (base + esquerda de cima a baixo): o card aberto e o maior desenho
   // da home parada, e na C9 a fileira de cards grandes caia de 60 para 44 fps
@@ -1641,31 +1641,9 @@ static void desenhaFaixaAberta(const CatItem *ci, int r, float px, float py,
   // px escurecidos fora do card). E o mesmo defeito do #144 no Continuar.
   gfx_veu_base((GfxRect){ px, py, w, h }, raioDe(w, h), NV_ABERTA_VEU_F,
                NV_ABERTA_VEU_A * abre);
-  temTend = (r >= 0 && r < nFileiras)
-          ? tend_delta(fileiras[r].chave, ci->imdb, &delta, &novo) : 0;
-
-  // Da direita para a esquerda, cada chip devolve a largura que ocupou.
-  // 1. Tendencia.
-  if (temTend && (novo || delta != 0)) {
-    char rot[24];
-    float cr, cg, cb;
-    TxtLinha l;
-    if (novo) { ajustes_acento(&cr, &cg, &cb); snprintf(rot, sizeof rot, "%s", i18n("Novo")); }
-    else if (delta > 0) { cr = 0.30f; cg = 0.78f; cb = 0.45f;
-                          snprintf(rot, sizeof rot, "\xe2\x86\x91 %d", delta); }
-    else { cr = 0.90f; cg = 0.36f; cb = 0.36f;
-           snprintf(rot, sizeof rot, "\xe2\x86\x93 %d", -delta); }
-    l = txt_linha(TXT_CAPTION, rot, 255, 255, 255, 255);
-    { float bw = l.w + 22.0f;
-      cx -= bw;
-      gfx_cor((GfxRect){ cx, cy, bw, ch }, 0.5f, cr, cg, cb, 0.92f * a);
-      { float lum = 0.2126f * cr + 0.7152f * cg + 0.0722f * cb;
-        int c = lum > 0.55f ? 17 : 255;
-        TxtLinha lt = txt_linha(TXT_CAPTION, rot, c, c, c, 255);
-        txt_desenhar_alpha(lt, cx + 11.0f, cy + (ch - lt.h) * 0.5f, a); }
-      cx -= gap; }
-  }
-  // 2. Classificacao etaria.
+  // Preserve verified IMDb/year/age details, without speculative trending
+  // arrows or "New" labels that depend on incomplete ranking history.
+  // Classificacao etaria.
   if (ci->classificacao[0]) {
     TxtLinha l = txt_linha(TXT_CAPTION, ci->classificacao, 235, 235, 240, 255);
     float bw = l.w + 22.0f;
@@ -3953,13 +3931,16 @@ static void home_atualizar_(float dt, Uint32 agora) {
     }
   }
   }
-  // No delayed portrait expansion or width spring. The focused card adopts
-  // its expanded geometry in the very first frame; un-focus reverses instantly.
-  // Keep the existing toggle and never expand while a context menu is open.
+  // Keep the row responsive: one 220ms ease-out controls BOTH card width
+  // and the space pushed into the following cards (no separate neighbor spring).
+  // Changing focus restarts the short transition; reduced motion stays instant.
   if (ajustes_expandir_poster() && !homeRetratoTelefone() && !focoHero &&
       !ctx_aberto() && podeExpandir(foco.fileira)) {
-    expFileira = foco.fileira; expColuna = foco.coluna;
-    expDesde = agora; expAbre = 1.0f;
+    if (expFileira != foco.fileira || expColuna != foco.coluna) {
+      expFileira = foco.fileira; expColuna = foco.coluna; expDesde = agora;
+    }
+    float t = fminf(1.0f, (float)(Uint32)(agora - expDesde) / 220.0f);
+    expAbre = motionReduzido ? 1.0f : 1.0f - (1.0f - t) * (1.0f - t) * (1.0f - t);
   } else {
     expAbre = 0.0f; expFileira = expColuna = -1;
   }
@@ -4115,8 +4096,8 @@ static void home_atualizar_(float dt, Uint32 agora) {
 #define DIN_FUNDO_AMOLED 4
 #define DIN_QUEDA          0.34f   // Imersivo: o que sobra da cor na base da tela
 #define DIN_TROCA_TAU      0.11f   // s; troca de modo ou de cor fixa: ~0,45 s
-#define DIN_IMERSIVO_TAU   0.30f   // s; ~1,2 s para assentar, sem piscada
-#define DIN_ASSENTA_MS     400u    // foco parado ha isto antes de retingir
+#define DIN_IMERSIVO_TAU   0.23f   // restrained, responsive palette transition
+#define DIN_ASSENTA_MS     160u    // foco parado ha isto antes de retingir
 #define DIN_IMERSIVO_L0    0.20f   // faixa de L (OKLab) do Imersivo: 0,05 de largura
 #define DIN_IMERSIVO_L1    0.25f
 static const float DIN_CINZA[3] = { 28 / 255.0f, 28 / 255.0f, 30 / 255.0f };   // #1C1C1E
@@ -4142,8 +4123,16 @@ static void dinTinge(const float rgb[3], float l0, float l1, float fator, float 
 }
 static void dinCorDaArte(const char *arte) {
   CorvivaPaleta p;
-  if (!arte || !arte[0] || !corviva_paleta(arte, &p) || !p.ok) return;   // mantem a cor
-  dinTinge(p.acento, DIN_IMERSIVO_L0, DIN_IMERSIVO_L1, 0.45f, 0.045f, dinAlvo);
+  if (!arte || !arte[0]) return;
+  // A card palette is produced during its existing image decode, but isn't
+  // globally published until requested. No second network/texture request.
+  tex_publicar_paleta(arte);
+  if (!corviva_paleta(arte, &p) || !p.ok) return;
+  // Mix dominant and accent colors so light logos or saturated text do not
+  // paint the background with an unrelated neon hue.
+  float rgb[3];
+  for (int i = 0; i < 3; i++) rgb[i] = p.base[i] * 0.58f + p.acento[i] * 0.42f;
+  dinTinge(rgb, DIN_IMERSIVO_L0, DIN_IMERSIVO_L1, 0.60f, 0.065f, dinAlvo);
 }
 // Um passo do fundo: escolhe o alvo do modo e cruza dinCor ate ele. Devolve dt.
 static float dinPasso(Uint32 agora, const char *arte) {
@@ -4180,24 +4169,26 @@ static float dinPasso(Uint32 agora, const char *arte) {
   dinQueda += (dinQuedaAlvo - dinQueda) * e;
   return dt;
 }
-// A arte de onde a cor sai: a do destaque no ar, ou (sem destaque) a do
-// primeiro cartao da fileira em foco — a mesma escolha de antes, sem textura.
+// Follow the image the viewer is ACTUALLY focused on: hero, individual title,
+// Continue Watching episode, or collection. A hero enabled in settings must not
+// override a focused poster's palette.
 static const char *dinArteDaCor(void) {
   const Fileira *f;
   int idx, deitado;
-  if (dinColArte[0] && dinColAlfa > 0.3f) return dinColArte;   // colecao em foco
-  if (ajustes_hero_ligado()) return arte_por_identidade(heroAtual, 2);
+  if (dinColArte[0] && dinColAlfa > 0.3f) return dinColArte;
+  if (focoHero && ajustes_hero_ligado()) return arte_por_identidade(heroAtual, 2);
   if (foco.fileira < 0 || foco.fileira >= nFileiras) return NULL;
   f = &fileiras[foco.fileira];
   if (f->tipo == FILEIRA_SOCIAL || f->tipo == FILEIRA_CATALOGOS) return NULL;
-  idx = fileiraItemIndice(f, 0);
+  idx = fileiraItemIndice(f, foco.coluna);
   if (idx < 0) return NULL;
   deitado = editorial(f->tipo) || f->tipo == FILEIRA_LARGA ||
             f->tipo == FILEIRA_HEROI ||
             f->tipo == FILEIRA_CONTINUE || f->tipo == FILEIRA_RETORNO ||
             (f->tipo != FILEIRA_POSTER && f->tipo != FILEIRA_TOP10_NUM &&
              f->tipo != FILEIRA_TOP10 && ajustes_posteres_deitados());
-  return arte_por_identidade(idx, deitado);
+  return arte_por_identidade(idx, f->tipo == FILEIRA_CONTINUE ||
+                                  f->tipo == FILEIRA_RETORNO ? 3 : deitado);
 }
 // O BANNER DA COLECAO NA DINAMICA. Com o foco num grupo de colecao o destaque
 // ja rolou para fora, entao o banner da pasta focada entra por tras do cabecalho
@@ -6922,7 +6913,20 @@ static void desenhaArteCard(GfxRect card, TipoFileira tipo, const char *caminho,
       gfx_cor(card, raio, NV_COR_ESQUELETO_R, NV_COR_ESQUELETO_G,
               NV_COR_ESQUELETO_B, 1.0f);
     gfx_varre_atual = varre;
-    gfx_rect(card, t, GFX_CARD, f, 0.0f, 0.0f,
+    // The same texture covers portrait and wide cards. A low-cost saliency
+    // window computed during the ORIGINAL decode nudges portrait framing
+    // toward the artwork's subject, rather than forcing a title-centric crop.
+    float cropBias = 0.0f;
+    if (caminho && card.w < card.h && (tipo == FILEIRA_NORMAL ||
+        tipo == FILEIRA_POSTER || tipo == FILEIRA_TOP10_NUM)) {
+      CorvivaPaleta pal;
+      tex_publicar_paleta(caminho);
+      if (corviva_paleta(caminho, &pal) && pal.ok && pal.txOk) {
+        float center = pal.tx[0] + pal.tx[2] * 0.5f;
+        cropBias = fminf(0.18f, fmaxf(-0.18f, center - 0.5f));
+      }
+    }
+    gfx_rect(card, t, GFX_CARD, f, 0.0f, cropBias,
              raio, 0, 0, 0, aArte);
     // Cartaz assentado e opaco: o fundo adiado nao precisa ser pintado
     // embaixo dele (gfx_mascara_opaca; no-op fora do regime).
