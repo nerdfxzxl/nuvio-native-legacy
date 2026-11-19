@@ -55,7 +55,7 @@ flags=(
 # until the full Gradle/native build after P2P dependencies.
 # Compile every native file touched by the Netflix detail integration.
 sources=(
-  src/main.c src/streams.c src/gfx.c src/selospacote.c src/ajustes.c
+  src/main.c src/home.c src/streams.c src/gfx.c src/selospacote.c src/ajustes.c
   src/player.c src/celular.c src/text.c src/stream_parse.c
   src/detail.c src/trailer.c src/detmais.c src/extras.c
   src/serieaud.c src/notasui.c src/episodios.c src/app.c
@@ -66,4 +66,5 @@ for source in "${sources[@]}"; do
   echo "::endgroup::"
 done
 python3 tests/detail_netflix.py
-echo "Early Android C compiler check: passed (detail, trailer, episodes, metadata)"
+python3 tests/native_home_refinements.py
+echo "Early Android C compiler check: passed (home, artwork, gesture, detail, trailer, episodes, metadata)"

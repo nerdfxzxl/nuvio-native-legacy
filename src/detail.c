@@ -5215,8 +5215,13 @@ static void heroWeb(float a, float desloc) {
       GfxRect row={x,y,chipWidth,rowH};
       if(k>.005f)gfx_cor(row,.5f,.975f,.975f,.975f,k*a);
       float ink=1.0f-.94f*k;
-      if(action==ACAO_EPISODIOS)
-        episodeicon_draw((GfxRect){row.x+19,row.y+17,28,28},ink,ink,ink,a);
+      if(action==ACAO_EPISODIOS) {
+        // The artwork glyph uses PURE black ink at full white focus, not the
+        // softer #0f0f0f used for action text and the other menu icons.
+        float iconInk=1.0f-k;
+        episodeicon_draw((GfxRect){row.x+19,row.y+17,28,28},
+                         iconInk,iconInk,iconInk,a);
+      }
       else gfx_icone((GfxRect){row.x+19,row.y+17,28,28},ico,ink,ink,ink,a);
       TxtLinha line=txt_linha_corta(TXT_DET_BOTAO,label,
                      (int)(ink*255),(int)(ink*255),(int)(ink*255),
