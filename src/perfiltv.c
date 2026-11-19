@@ -136,7 +136,7 @@ PtvCache ptv_cache(PtvPlataforma p, long mem) {
     c.decodeMb = ptv_tex_auto_mb(p, mem) / 2;
     if (c.decodeMb < 64) c.decodeMb = 64;
     if (c.decodeMb > 96) c.decodeMb = 96;
-    c.discoMb = 64;
+    c.discoMb = 250;
   } else if (p == PTV_TIZEN) c.discoMb = 48;
   return c;
 }

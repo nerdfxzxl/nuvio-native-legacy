@@ -616,7 +616,11 @@ void cachearte_nativo_indice_construir(void) {
       if (!native_image_name(e->d_name)) continue;
       snprintf(path, sizeof path, "%s/%s", dir, e->d_name);
       if (lstat(path, &st) || !S_ISREG(st.st_mode)) continue;
-      idx_por(e->d_name, (long)st.st_size, (long)st.st_mtime, 0);
+      #ifdef NV_ANDROID
+      idx_por(e->d_name,(long)st.st_size,(long)st.st_atime,0);
+#else
+      idx_por(e->d_name,(long)st.st_size,(long)st.st_mtime,0);
+#endif
       n++; b += (long)st.st_size;
     }
     closedir(d);

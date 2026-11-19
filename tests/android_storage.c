@@ -69,6 +69,10 @@ int main(int argc, char **argv) {
   snprintf(p,sizeof p,"%s/trailer/video",root); file(p,90L<<20,3);
   nv_android_cache_trim(NV_ANDROID_CACHE_BYTES);
   assert(nv_android_cache_size() <= NV_ANDROID_CACHE_BYTES);
+  snprintf(p,sizeof p,"%s/images",root); assert(!mkdir(p,0700));
+  snprintf(p,sizeof p,"%s/images/art.jpg",root); file(p,100L<<20,1);
+  nv_android_cache_trim(NV_ANDROID_CACHE_BYTES);
+  assert(!access(p,F_OK)); /* Artwork has an independent, storage-aware LRU. */
   snprintf(p,sizeof p,"%s/outside",data); file(p,17,1);
   snprintf(hot,sizeof hot,"%s/link",root); assert(!symlink(data,hot));
   assert(nv_android_cache_clear()); assert(nv_android_cache_size()==0);

@@ -56,7 +56,8 @@ static int scan(const char *dir, Entry **list, size_t *n, uint64_t *bytes, int c
     if (S_ISDIR(st.st_mode)) {
       /* Update staging must survive every automatic trim until the installer
        * consumes it. Size reporting and explicit clear still include it. */
-      if (list && depth==0 && !strcmp(e->d_name,"atualizacao")) continue;
+      if (list && depth==0 &&
+          (!strcmp(e->d_name,"atualizacao") || !strcmp(e->d_name,"images"))) continue;
       if (!scan(p,list,n,bytes,clear,depth+1)) ok=0;
       /* Retain empty cache directories: live writers reuse these paths. */
     } else if (clear) {
@@ -130,7 +131,7 @@ int __real_fclose(FILE *f);
 int __real_rename(const char *a,const char *b);
 static int cachePath(const char *p) {
   const char *root=nv_android_cache_dir(); size_t n=strlen(root);
-  return n && !strncmp(p,root,n) && p[n]=='/';
+  return n && !strncmp(p,root,n) && p[n]=='/' && strncmp(p+n+1,"images/",7);
 }
 int __wrap_fclose(FILE *f) {
   char fd[64],p[1200];

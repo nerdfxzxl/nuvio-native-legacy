@@ -83,6 +83,7 @@ static void heroTempoInicio(int indice) {
 float detail_progresso(void);
 int detail_aberto(void);
 int player_aberto(void);
+int player_mini_ativo(void);
 #include <stdio.h>
 #include <string.h>
 #include <dirent.h>
@@ -2437,8 +2438,11 @@ static void homeAtualizarReferenciasArte(void) {
   // Pin the actual source selected for the large hero request, which can use a
   // different backdrop URL and resolution from the row card.
   heroSetGarantir();
-  for (i = 0; i < heroSetN; i++)
-    homeMarcarURL(arte_por_identidade(heroSet[i], 2), NV_TELA_W);
+  int pos=heroPosDe(heroAtual);
+  if (heroSetN && pos>=0) {
+    homeMarcarURL(arte_por_identidade(heroAtual,2),NV_TELA_W);
+    homeMarcarURL(arte_por_identidade(heroSet[(pos+1)%heroSetN],2),NV_TELA_W);
+  }
   cachearte_estatisticas_pedir();
 }
 
@@ -3665,6 +3669,7 @@ static void heroAquecerVizinhos(Uint32 agora) {
 }
 
 static void home_atualizar_(float dt, Uint32 agora) {
+  if (player_aberto() && !player_mini_ativo()) return;
   curadoria_passo();   // a curadoria da fileira Herói, no seu tempo (curadoria.h)
 #ifdef NV_TOUCH_UI
   if (!telefoneui_ativo()) { toqueHomeLimpar(); toqueHeroCancelar(); }
@@ -4183,7 +4188,7 @@ static const char *dinArteDaCor(void) {
             (f->tipo != FILEIRA_POSTER && f->tipo != FILEIRA_TOP10_NUM &&
              f->tipo != FILEIRA_TOP10 && ajustes_posteres_deitados());
   return arte_por_identidade(idx, f->tipo == FILEIRA_CONTINUE ||
-                                  f->tipo == FILEIRA_RETORNO ? 3 : deitado);
+                                  f->tipo == FILEIRA_RETORNO ? 3 : (deitado || (ajustes_expandir_poster() && podeExpandir(foco.fileira))));
 }
 // O BANNER DA COLECAO NA DINAMICA. Com o foco num grupo de colecao o destaque
 // ja rolou para fora, entao o banner da pasta focada entra por tras do cabecalho
@@ -8379,7 +8384,7 @@ static void home_desenhar_(Uint32 agora) {
           if (c2 >= 0 && c2 < fileiras[r].n) {
             int idx2 = fileiraItemIndice(&fileiras[r], c2);
             tex_lookahead_pedir(arte_por_identidade(idx2,
-              (tipo == FILEIRA_CONTINUE || tipo == FILEIRA_RETORNO) ? 3 : deitado),
+              (tipo == FILEIRA_CONTINUE || tipo == FILEIRA_RETORNO) ? 3 : (deitado || (ajustes_expandir_poster() && podeExpandir(r)))),
               lw);
           }
         }
@@ -8501,7 +8506,7 @@ static void home_desenhar_(Uint32 agora) {
         if (x < -lw * 1.5f || x > NV_TELA_W + lw) continue;
         int idx = fileiraItemIndice(&fileiras[r], c);
         const char *cam = arte_por_identidade(idx,
-          (tipo == FILEIRA_CONTINUE || tipo == FILEIRA_RETORNO) ? 3 : deitado);
+          (tipo == FILEIRA_CONTINUE || tipo == FILEIRA_RETORNO) ? 3 : (deitado || (ajustes_expandir_poster() && podeExpandir(r))));
         pediu = tex_lookahead_pedir(cam, lw);
       }
     }

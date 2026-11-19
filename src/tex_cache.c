@@ -37,6 +37,7 @@ static int arqDiscoTem(const char *dst);
 #include <sys/stat.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <ctype.h>
 #include "layout.h"
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
@@ -52,6 +53,7 @@ static int arqDiscoTem(const char *dst);
 #include "artefalta.h"
 #include <string.h>
 #include <stdlib.h>
+#include <ctype.h>
 #include <stdio.h>
 
 #define MAX_ITENS_ABS 512
@@ -71,6 +73,10 @@ typedef struct {
   Uint32 cacheMs;     // leitura/lock do cache antes de baixar
   Uint32 persistMs;   // LG: so enfileirar a gravacao (fila de fundo); Tizen: escrita/rename
   unsigned int netCalls;
+#ifdef NV_ANDROID
+  char staleUrl[NV_TEX_URL_MAX];
+  time_t staleSince;
+#endif
 } TexFetchTrace;
 // Teto de decodificacao das artes de CARD; a nota que justifica o 640 esta
 // mais abaixo, junto do teto do heroi.
@@ -666,7 +672,7 @@ static void soltarCpu(int falhas);
 static int pressaoAtiva(void);
 static int pressaoSevera(void);
 static volatile int pressaoPlay = 100;   // tex_pressao_reproducao (abaixo)
-static int pressaoPlayLigada;
+static _Atomic int pressaoPlayLigada;
 // webOS/.tpk: faixa do piso de reproducao, alimentada pelo relatorio de 3 s
 // (tex_memoria_livre). 100 = memoria de sobra, sem piso. O Android nao a usa:
 // la o piso e fixo por MemTotal (tex_pressao_play_pct).
@@ -2082,7 +2088,17 @@ static int acertoDisco(const char *dst, TexFetchTrace *trace) {
       /* Evita uma escrita de metadados a cada card/quadro; o mtime e o LRU
        * entre sessoes, o indice e o LRU desta. */
       { struct stat st;
-        if (!stat(dst, &st) && time(NULL) - st.st_mtime >= 60) utime(dst, NULL); }
+        if (!stat(dst, &st)) {
+#ifdef NV_ANDROID
+          // Keep fetch time for revalidation and access time for LRU.
+          if (trace && time(NULL)-st.st_mtime>=30L*86400) trace->staleSince=st.st_mtime;
+          if (time(NULL)-st.st_atime>=60) {
+            struct utimbuf use={time(NULL),st.st_mtime}; utime(dst,&use);
+          }
+#else
+          if (time(NULL)-st.st_mtime>=60) utime(dst,NULL);
+#endif
+        } }
     } else {
       remove(dst);
       cachearte_nativo_indice_remover(dst);
@@ -2275,7 +2291,12 @@ static int baixarParaItem(int idx, const char *url, char *dst, size_t tam, int *
       SDL_UnlockMutex(mtx); }
     nomeDeCache(url, dst, tam);
     if (foiRede) *foiRede = 0;
-    if (acertoDisco(dst, trace)) return 1;
+    if (acertoDisco(dst, trace)) {
+#ifdef NV_ANDROID
+      if (trace && trace->staleSince) snprintf(trace->staleUrl,sizeof trace->staleUrl,"%s",url);
+#endif
+      return 1;
+    }
     if (!gravacaoPendente(dst, &corpo, &n)) {
       if (foiRede) *foiRede = 1;
       corpo = (unsigned char *)baixarImagem(url, &n, trace);
@@ -2333,6 +2354,7 @@ static int threadRede(void *arg) {
     char caminho[NV_TEX_URL_MAX], local[600];
     Uint32 filaEm = 0, filaWait = 0;
     int urgente = 0;
+    TexFetchTrace trace = {0};
     SDL_LockMutex(mtx);
     while (rodando && (filaIni == filaFim || meu >= fiosRedeAtivos)) SDL_CondWait(cond, mtx);
     if (!rodando) { SDL_UnlockMutex(mtx); return 0; }
@@ -2367,7 +2389,6 @@ static int threadRede(void *arg) {
 
     { Uint32 redeEm = SDL_GetTicks();
       int foiRede = 0;
-      TexFetchTrace trace = {0, 0, 0, 0, 0};
       int baixou = baixarParaItem(idx, caminho, local, sizeof local, &foiRede, &trace);
       Uint32 redeMs = SDL_GetTicks() - redeEm;
       if (urgente == 2) logoOrigem(caminho, foiRede ? "rede" : "disco", redeMs);
@@ -2430,7 +2451,24 @@ static int threadRede(void *arg) {
       continue;
     }
     paraDecode(idx);
+#ifdef NV_ANDROID
+    // The decoder already owns a cache hit. One idle network worker may now
+    // revalidate it. A failed fetch leaves the last good bytes available offline.
+    static Uint32 refreshAfter;
+    int refresh=trace.staleUrl[0] && filaIni==filaFim && !pressaoPlayLigada &&
+                SDL_TICKS_PASSED(SDL_GetTicks(),refreshAfter);
+    if (refresh) refreshAfter=SDL_GetTicks()+60000u;
+#endif
     SDL_UnlockMutex(mtx);
+#ifdef NV_ANDROID
+    if (refresh) {
+      long n=0; struct stat st;
+      char *bytes=baixarImagem(trace.staleUrl,&n,NULL);
+      if (bytes && !stat(local,&st) && st.st_mtime==trace.staleSince)
+        gravarArquivo(local,".refresh",(unsigned char *)bytes,n);
+      free(bytes);
+    }
+#endif
   }
 }
 

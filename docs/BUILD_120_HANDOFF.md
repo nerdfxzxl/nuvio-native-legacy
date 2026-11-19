@@ -23,7 +23,7 @@ The starting branch HEAD is exactly Build 119, 1b29dab675d80fc0bb2cc52aa06fcb28e
 |11|Row counters|Implemented in native code; device validation pending|
 |12|Per-row per-style size editor|Implemented; persistence and cancel tested, TV interaction pending|
 |13|Shared poster bounds|Partial: bounds timing and return motion changed; stale target and late artwork validation pending|
-|14|Persistent Home artwork cache|Not started|
+|14|Persistent Home artwork cache|Implemented; native budget, trim and clear tests passed. Offline TV startup and 4K memory measurements pending|
 
 ## Execution notes
 
@@ -46,3 +46,7 @@ Previous checkpoint 283ed53cfe6c7097d213d9fdfb4af009f220cb6f. Changed src/ajuste
 ### Row Style editor
 
 Previous commit d7295a425fac478458279259c0da853652d1b916. Changed src/ctxmenu.c, src/fileiras.c/.h, src/home.c, src/ajustes.h, src/ajustes_ux_desenho.inc, src/ajustes_ux_tela.inc and the corresponding settings/Home/row tests. Long OK on a resizable style opens the numeric glass panel with a live, memory-only preview. Left/Right adjust one dp; Up/Down focuses reset, OK activates it or saves, Back cancels. Sizes are stored by catalogue key and style family within the active profile; legacy variant IDs remain readable. Removed the three global controls and S/M/L selectors. Host compilation, settings coverage and source guards passed. Real on-disk reload, A=185/B=145, style round trip, cancel, Select All exceptions and new-catalogue selection passed in tests/fileiras.sh under ASan/UBSan (LeakSanitizer unavailable under ptrace). Device UI remains untested.
+
+### Artwork cache checkpoint
+
+Previous commit 16549eb8476faf5454e748e0bc94ab9550272d79. Changed src/tex_cache.c, cachearte.c, androidcache.c, perfiltv.c, home.c, docs/cache-capas.md and tests/android_storage.c. The existing worker pipeline reads compressed images on disk before network and bounds decoding/upload. Fixed double eviction by the general Android cache. Android artwork budget now uses up to 250 MiB, limited by free space. Disk hits preserve fetch age for idle background revalidation. Fullscreen playback suppresses Home prefetch. Media3 seek caching is untouched. Host compiler checked the five native units. cache-contrato, native LRU, explicit clear, durable file and APK staging tests passed. Kotlin cleanup test could not start locally because its Gradle jars are absent. TV launch latency, offline availability with cached metadata, and playback memory use still need measurement.
