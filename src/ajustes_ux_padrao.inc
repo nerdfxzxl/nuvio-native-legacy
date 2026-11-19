@@ -312,7 +312,7 @@
   0, /* poster menu: Full, device-local */
   0, /* row title style (#205): Classic */
   0, /* glass quality: Automatica */
-  0, /* Dynamic layout background (#205): Gray */
+  4, /* Dynamic layout background: AMOLED Black by default; Immersive optional */
   12, /* Dynamic layout background colour (#205): Ocean */
   0, /* text and component scale: 85% */
   0, 0, /* prefer binge group (the hand pick for the whole show + the auto memory) Ligado, across sessions Ligado */
