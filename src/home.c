@@ -6903,10 +6903,18 @@ static void desenhaArteCard(GfxRect card, TipoFileira tipo, const char *caminho,
     // GFX_CARD dispara com a moldura 25% fora da arte, e qualquer arte (fundo
     // 16:9 ou cartaz) ficava no meio do card com faixas cinza dos lados (dono,
     // 03/10: "tem que colocar uma imagem cropada para preencher tudo").
+    // Cards that share ONE landscape-ready key art across compact portrait
+    // and expanded landscape MUST cover both rectangles. Contain rendered the
+    // landscape image as a narrow strip in the middle of every portrait card.
+    // GFX_CARD's cover() uses the actual texture aspect, not a forced stretch.
     gfx_card_forcar_cover_atual = (tipo == FILEIRA_DESTAQUE_QUADRADO ||
                                    tipo == FILEIRA_RETORNO ||
                                    tipo == FILEIRA_HEROI ||
-                                   tipo == FILEIRA_POSTER_GRANDE) ? 1.0f : 0.0f;
+                                   tipo == FILEIRA_POSTER_GRANDE ||
+                                   tipo == FILEIRA_NORMAL ||
+                                   tipo == FILEIRA_POSTER ||
+                                   tipo == FILEIRA_LARGA ||
+                                   tipo == FILEIRA_TOP10_NUM) ? 1.0f : 0.0f;
     gfx_tex_aspect_atual = tex_aspecto(caminho);
     // O esqueleto fica por baixo so enquanto a arte esvanece: um
     // desenho do tamanho do card por ~220 ms, e depois nenhum.
@@ -6977,7 +6985,7 @@ static void veusDoCard(const CatItem *cItem, TipoFileira tipo, int deitado, floa
 
 // A legenda do cartaz (dentro do deitado, abaixo do cartaz em pe).
 static void desenhaRotuloCard(const CatItem *cItem, TipoFileira tipo, int deitado,
-                              int rotuloFora, float px, float py, float w, float h,
+                              int logoCard, int rotuloFora, float px, float py, float w, float h,
                               float raio) {
   if (tipo != FILEIRA_CONTINUE && tipo != FILEIRA_RETORNO && !editorial(tipo) &&
       (ajustes_rotulos_poster() || tipo == FILEIRA_LARGA || tipo == FILEIRA_HEROI_DIVIDIDO) && cItem) {
@@ -7009,9 +7017,10 @@ static void desenhaRotuloCard(const CatItem *cItem, TipoFileira tipo, int deitad
         TxtLinha ts = txt_linha_corta(larga ? TXT_CAPTION2 : TXT_MINI, sub,
                                       200, 202, 210, 255, maxW);
         txt_desenhar_alpha(ts, bx, py + h - base - ts.h, 0.85f);
-        txt_desenhar_alpha(tn, bx,
+        // A artwork logo occupies the title slot; keep the subtitle only.
+        if (!logoCard) txt_desenhar_alpha(tn, bx,
                            py + h - base - ts.h - (larga ? 2.0f : 4.0f) - tn.h, 0.98f);
-      } else {
+      } else if (!logoCard) {
         txt_desenhar_alpha(tn, bx, py + h - base - tn.h, 0.98f);
       }
     } else if (tipo == FILEIRA_HEROI_DIVIDIDO) {
@@ -7292,6 +7301,46 @@ static void desenhaRedonda(const CatItem *ci, GLuint t, const char *caminho,
     TxtLinha tn = txt_linha_corta(TXT_CAPTION2, ci->titulo, 245, 246, 250, 255, d);
     txt_desenhar_alpha(tn, px + (d - tn.w) * 0.5f, py + d + NV_POSTER_COPY_PADT, 0.98f);
   }
+}
+
+// Title artwork is an independent transparent texture, as in official Nuvio.
+// The image underneath remains the SAME texture when a portrait gains focus;
+// only the shader's aspect-preserving cover crop and this logo's placement
+// change. Do not paint the generic title on top of a successful logo.
+static int cartaoLogoElegivel(TipoFileira tipo) {
+  return tipo == FILEIRA_NORMAL || tipo == FILEIRA_POSTER ||
+         tipo == FILEIRA_LARGA || tipo == FILEIRA_TOP10_NUM;
+}
+static void desenhaLogoCartao(const CatItem *ci, float px, float py,
+                              float w, float h, int rotuloDentro) {
+  if (!ci || !ci->titulo[0] || w <= 0.0f || h <= 0.0f) return;
+  const int largo = w > h * 1.12f;
+  const float maxW = w * (largo ? 0.42f : 0.80f);
+  const float maxH = h * (largo ? 0.31f : 0.24f);
+  const char *logo = ci->logo[0] ? artehero_logo_sessao_larg(ci, maxW) : NULL;
+  GLuint t = logo && logo[0] ? tex_obter_logo_larg(logo, maxW) : 0;
+  float tw = 0.0f, th = 0.0f;
+  if (t && logo) {
+    float ap = tex_aspecto(logo);
+    if (ap > 0.01f) {
+      tw = fminf(maxW, maxH * ap); th = tw / ap;
+      float bottom = largo ? (rotuloDentro ? h*0.17f : h*0.095f) : h*0.075f;
+      float x = largo ? px + w*0.055f : px + (w-tw)*0.5f;
+      float y = py + h - bottom - th;
+      gfx_tex_aspect_atual = 0.0f;
+      gfx_rect((GfxRect){x,y,tw,th},t,
+               tex_marca_escura(logo) ? GFX_MARCA : GFX_TEXTO,
+               0,0,0,0.0f,1,1,1,1.0f);
+      return;
+    }
+  }
+  // No logo supplied (or downloaded yet): show an intentional, lightweight
+  // legible title inside the image rather than a blank poster.
+  TxtLinha title = txt_linha_corta(largo ? TXT_ROW_TITULO : TXT_CAPTION2,
+                                    ci->titulo,246,247,249,255,maxW);
+  float x = largo ? px + w*0.055f : px + (w-title.w)*0.5f;
+  float bottom = largo ? (rotuloDentro ? h*0.17f : h*0.095f) : h*0.075f;
+  txt_desenhar_alpha(title,x,py+h-bottom-title.h,0.95f);
 }
 
 // One metadata baseline for both Hero A rows; reserve the measured badge first.
@@ -7586,10 +7635,13 @@ static void pintarCartao(const CartaoFoco *k, float raio) {
           // bloco de 74 de altura com 8 de padding no topo (.home-poster-copy).
           // A faixa deitada da Dinamica SEMPRE leva o titulo dentro do cartao (a
           // Apple TV nao deixa cartao sem nome), com o rotulo ligado ou nao.
-          // Expandable rows rely on the embedded artwork title; drawing an
-          // additional app title/logo would duplicate it on the same image.
+          // On a compact/expanded portrait row, the title is drawn by
+          // desenhaLogoCartao INSIDE both states. Other rows retain their
+          // existing labels, but don't duplicate the title when a logo exists.
           if (!(ajustes_expandir_poster() && podeExpandir(r)))
-            desenhaRotuloCard(cItem, tipo, deitado, rotuloFora, px, py, w, h, raio);
+            desenhaRotuloCard(cItem, tipo, deitado,
+                              cartaoLogoElegivel(tipo) && cItem && cItem->logo[0],
+                              rotuloFora, px, py, w, h, raio);
 
           // PÔSTER GRANDE: a ficha na base, sobre o veu da cor predominante.
           if (tipo == FILEIRA_POSTER_GRANDE && cItem)
@@ -7622,49 +7674,13 @@ static void pintarCartao(const CartaoFoco *k, float raio) {
           // de realce. Sem historico ainda, sem chip — nada de inventar.
           // Progresso em andamento vira um fio na base do card.
           if (abre > 0.01f && cItem) desenhaFaixaAberta(cItem, r, px, py, w, h, esc, abre);
+          // Artwork title above both portrait and landscape: centered when
+          // compact, left-aligned when wide, without a second artwork download.
+          // Keep the mark hidden under an active video trailer.
+          gfx_opacidade_grupo = ogCartao * (1.0f - k->trailer);
+          if (cItem && cartaoLogoElegivel(tipo))
+            desenhaLogoCartao(cItem,px,py,w,h,deitado && !abre);
           gfx_opacidade_grupo = ogCartao;
-          if (abre > 0.01f && cItem && cItem->logo[0] &&
-              !(ajustes_expandir_poster() && podeExpandir(r))) {
-            // Largura pedida pela tela, nao o teto generico de 640: o logo
-            // nunca passa de ~65% do card, e decodificar o arquivo inteiro
-            // so para encolher depois era cache e tempo jogados fora.
-            const char *urlL = artehero_logo_sessao_larg(cItem, w * 0.65f);
-            GLuint tl = tex_obter_logo_larg(urlL, w * 0.65f);
-            if (tl) {
-              float pad = 34.0f * esc;
-              float ap = tex_aspecto(urlL);
-              float hL, wL, maxW;
-              // O veu ja saiu em desenhaFaixaAberta, o mesmo para o logo e
-              // para a faixa.
-              // SEM CHUTE DE ASPECTO. O fallback de 4.0 que estava aqui
-              // desenhava um retangulo mais largo que a imagem, e o modo de
-              // cartao RECORTA o que sobra — o "REACHER" saia com as duas
-              // pontas cortadas. Sem medida do arquivo, nao desenha.
-              if (ap <= 0.0f) { tl = 0; }
-              // Largura MANDA, altura sai dela: assim o retangulo tem sempre o
-              // aspecto da imagem e o recorte nunca acontece.
-              //
-              // MEDIDO na TCL no card aberto: logo de 163 px num card de 565
-              // (29% da largura) e 66 de altura num card de 320 (21%). O teto de
-              // altura existe para logo quadrado nao virar um bloco.
-              maxW = w * 0.30f;
-              wL = maxW; hL = wL / ap;
-              if (hL > h * 0.22f) { hL = h * 0.22f; wL = hL * ap; }
-              // GFX_MARCA/GFX_TEXTO, NAO GFX_CARD. O modo de cartao e para
-              // ARTE: ele faz cover com 3% de over-scan de proposito (a margem
-              // de parallax) e descarta o alfa da textura. Num logo isso corta
-              // as duas pontas — o "REACHER" saia como "EACHE" — e ainda pinta
-              // de preto onde deveria ser transparente.
-              //
-              // O par certo ja existia no projeto, na fileira de destaque:
-              // tex_marca_escura decide se a forma vem do alfa (logo claro) ou
-              // do desenho (logo escuro). Reusado aqui em vez de reinventado.
-              if (tl) { GfxRect rl = { px + pad, py + h - pad - hL, wL, hL };
-                GfxModo m = tex_marca_escura(urlL) ? GFX_MARCA : GFX_TEXTO;
-                gfx_tex_aspect_atual = 0.0f;
-                gfx_rect(rl, tl, m, 0, 0, 0, 0.0f, 1, 1, 1, abre); }
-            }
-          }
   gfx_opacidade_grupo = ogCartao * (1.0f - k->trailer);
   if (editorial(tipo)) desenhaEditorialCard(cItem, tipo, px, py, w, h, raio);
   gfx_opacidade_grupo = ogCartao;
