@@ -501,6 +501,12 @@ static const char *FS_CORPO[GFX_NMODOS] = {
   "  float ra = uAspect / max(uTexAsp, 0.01);\n"
   "  float contem = (uForceCover < 0.5 && uTexAsp > 0.05 && (ra < 0.80 || ra > 1.25)) ? 1.0 : 0.0;\n"
   "  vec2 uv0 = cover(vUv);\n"
+  // A native portrait card can use a restrained focal shift from the existing
+  // decoded image palette. uPar.y is otherwise unused by GFX_CARD.
+  "  if (uForceCover > 0.5 && uAspect < 1.0 && uTexAsp > uAspect) {\n"
+  "    float visible = uAspect / uTexAsp;\n"
+  "    uv0.x += uPar.y * (1.0 - visible);\n"
+  "  }\n"
   "  if (contem > 0.5) {\n"
   "    uv0 = vUv;\n"
   "    if (ra > 1.0) uv0.x = (uv0.x - 0.5) * ra + 0.5;\n"
