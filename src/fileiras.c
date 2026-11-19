@@ -73,6 +73,7 @@ typedef struct {
   // formato posicional da linha `linha` nao muda e o arquivo de quem ja usa
   // o app continua valendo byte a byte.
   int  ordem;
+  unsigned char styleDp[FIL_TIPO_N];
   int heroException; /* include in manual mode, exclude in Select All mode */
 } Linha;
 
@@ -313,6 +314,8 @@ static void gravar(void) {
   // o cabecalho. Alocado e nao na pilha: sao ~20 KB e esta funcao roda no fio
   // do desenho.
   size_t cap = 256 + (size_t)nLinhas * (9 * FIL_CHAVE + FIL_TITULO + 180);
+  for (int r=0;r<nLinhas;r++)
+    for (int t=0;t<FIL_TIPO_N;t++) if (linhas[r].styleDp[t]) cap+=strlen(linhas[r].chave)+40;
   char *txt = malloc(cap);
   size_t k;
   int i;
@@ -359,6 +362,10 @@ static void gravar(void) {
   for (i = 0; i < nLinhas && k < cap; ++i)
     if (linhas[i].heroException)
       k += (size_t)snprintf(txt+k, cap-k, "heropick %s\n", linhas[i].chave);
+  for (i=0;i<nLinhas;i++)
+    for (int t=0;t<FIL_TIPO_N && k<cap;t++)
+      if (linhas[i].styleDp[t])
+        k+=(size_t)snprintf(txt+k,cap-k,"styleDp %d %d %s\n",t,linhas[i].styleDp[t],linhas[i].chave);
   if (k < cap) dados_gravar(arquivoDoPerfil(), txt);
   free(txt);
   revisao++;
@@ -405,6 +412,10 @@ static void carregar(void) {
       migrado197 = 1;
     } else if (!strncmp(buf, "hero ", 5)) {
       snprintf(heroFonte, sizeof heroFonte, "%s", buf + 5);
+    } else if (!strncmp(buf, "styleDp ", 8)) {
+      int t,dp,n=0;
+      if (sscanf(buf+8,"%d %d %n",&t,&dp,&n)==2 && t>=0 && t<FIL_TIPO_N && dp>=72 && dp<=200)
+        for (int i=0;i<nLinhas;i++) if (!strcmp(linhas[i].chave,buf+8+n)) linhas[i].styleDp[t]=dp;
     } else if (!strncmp(buf, "heropick ", 9)) {
       for (int i=0; i<nLinhas; ++i)
         if (!strcmp(linhas[i].chave, buf+9)) linhas[i].heroException=1;
@@ -2110,27 +2121,57 @@ static float escalaCom(int tam, int t) {
   if (f > 1.0f && v > FATOR_4_3_G) v = FATOR_4_3_G;
   return v;
 }
-float fil_escala(const char *chave) {
-  int i;
-  float v = 1.0f;
-  if (!chave || !chave[0]) return 1.0f;
-  pthread_mutex_lock(&trava);
-  garantir();
-  i = achar(chave);
-  if (i >= 0) v = escalaCom(linhas[i].tam, linhas[i].tipo);
-  pthread_mutex_unlock(&trava);
-  return v;
-}
-float fil_escala_tipo(const char *chave, int t) {
-  int i, tam = FIL_TAM_PADRAO;
-  if (chave && chave[0]) {
-    pthread_mutex_lock(&trava);
-    garantir();
-    i = achar(chave);
-    if (i >= 0) tam = linhas[i].tam;
-    pthread_mutex_unlock(&trava);
+static int styleFamily(int t) {
+  switch(t) {
+    case FIL_TIPO_COLECAO: case FIL_TIPO_DESTAQUE: return FIL_TIPO_SERVICO;
+    case FIL_TIPO_DESTAQUE_QUADRADO_M: case FIL_TIPO_DESTAQUE_QUADRADO_G: return FIL_TIPO_DESTAQUE_QUADRADO;
+    case FIL_TIPO_POSTER_GRANDE_P: case FIL_TIPO_POSTER_GRANDE_G: return FIL_TIPO_POSTER_GRANDE;
+    default: return t;
   }
-  return escalaCom(tam, t);
+}
+int fil_resizable(int t) {
+  t=styleFamily(t);
+  return t==FIL_TIPO_CARTAZ || t==FIL_TIPO_SERVICO || t==FIL_TIPO_LARGA ||
+         t==FIL_TIPO_DESTAQUE_QUADRADO || t==FIL_TIPO_RANKING ||
+         t==FIL_TIPO_LINHA_TEMPO || t==FIL_TIPO_POSTER_GRANDE;
+}
+static char previewRow[FIL_CHAVE];
+static int previewStyle, previewDp, previewProfile;
+int fil_size_dp(const char *key,int t) {
+  pthread_mutex_lock(&trava); garantir();
+  int i=achar(key), dp=i>=0 && fil_resizable(t) ? linhas[i].styleDp[styleFamily(t)] : 0;
+  pthread_mutex_unlock(&trava);
+  return dp ? dp : 126;
+}
+void fil_preview_dp(const char *key,int t,int dp,int save) {
+  pthread_mutex_lock(&trava); garantir();
+  int i=achar(key);
+  if (i>=0 && fil_resizable(t) && dp>=72 && dp<=200) {
+    previewProfile=perfil; previewStyle=styleFamily(t); previewDp=dp;
+    snprintf(previewRow,sizeof previewRow,"%s",key);
+    if (save) { linhas[i].styleDp[previewStyle]=dp==126?0:dp; previewRow[0]=0; gravar(); }
+  } else previewRow[0]=0;
+  revisao++;
+  pthread_mutex_unlock(&trava);
+}
+static float styleScale(const Linha *row,int t) {
+  float base=escalaCom(row->tam,t);
+  if (!fil_resizable(t)) return base;
+  int family=styleFamily(t), dp=row->styleDp[family];
+  if (previewProfile==perfil && previewStyle==family && !strcmp(row->chave,previewRow)) dp=previewDp;
+  return dp ? base*(float)dp/126.0f : base;
+}
+float fil_escala_tipo(const char *key,int t) {
+  pthread_mutex_lock(&trava); garantir();
+  int i=key && key[0] ? achar(key) : -1;
+  float scale=i>=0 ? styleScale(&linhas[i],t) : escalaCom(FIL_TAM_PADRAO,t);
+  pthread_mutex_unlock(&trava); return scale;
+}
+float fil_escala(const char *key) {
+  pthread_mutex_lock(&trava); garantir();
+  int i=key && key[0] ? achar(key) : -1;
+  float scale=i>=0 ? styleScale(&linhas[i],linhas[i].tipo) : 1;
+  pthread_mutex_unlock(&trava); return scale;
 }
 
 unsigned fil_revisao(void) {

@@ -292,6 +292,8 @@ static float confAnim[2];// A PAGINA DE ESTILOS E UM MENU CONTEXTUAL pequeno ao 
 // D-pad esconde os tamanhos atras de um OK; o segmentado aparece na linha em
 // foco.
 static FilEstiloLinha estLin[FIL_TIPO_N];
+static int sizeDp, sizeReset, styleHeld;
+static Uint32 styleDown;
 static int   nEstilos, estFoco, estTam[FIL_TIPO_N];
 // A ultima FORMA tocada fica guardada fora do foco: indo ate a linha Ordem e
 // voltando, o OK aplica a ultima forma escolhida, nao a que teve foco por ultimo.
@@ -677,6 +679,7 @@ static void abrirComum(int indice) {
   // KEYUP seguinte seja reaproveitado como uma selecao dentro da modal.
   holdPronto = 0;
   esperandoSoltura = !ponteiro_ok_longo();   // dedo ja entregou o par completo
+  styleHeld=0;
   idx = indice; foco = 0; aberto = 1;
   dispensarOp = dispensarPend; dispensarPend = 0;
   detalhesOk = detalhesPend; detalhesPend = 0;
@@ -1120,6 +1123,12 @@ void ctx_evento(const SDL_Event *e) {
   // injetadas de /tmp/nuvio-key, por exemplo, nao passam pela fila do SDL).
   // Sem esta linha a marca nunca cairia por esse caminho e o modal ficaria
   // surdo ao OK.
+  if (pagina==1 && styleHeld && e->type==SDL_KEYUP && teclaOk(e->key.keysym.sym)) {
+    styleHeld=0;
+    if (SDL_GetTicks()-styleDown<NV_HOLD_MS || !fil_resizable(estTipo(estFoco))) aplicarEstilo();
+    else { sizeDp=fil_size_dp(filChave,estTipo(estFoco)); sizeReset=0; pagina=3; }
+    return;
+  }
   if (e->type == SDL_KEYUP && teclaOk(e->key.keysym.sym)) esperandoSoltura = 0;
   if (e->type != SDL_KEYDOWN) return;
   k = e->key.keysym.sym;
@@ -1127,6 +1136,21 @@ void ctx_evento(const SDL_Event *e) {
   // vezes solta e aperta de novo.
   if (e->key.repeat && teclaOk(k)) return;
   if (esperandoSoltura && teclaOk(k)) return;
+  if (pagina==3) {
+    int t=estTipo(estFoco);
+    if (k==SDLK_ESCAPE || k==SDLK_AC_BACK || k==SDLK_BACKSPACE || e->key.keysym.scancode==NV_SCANCODE_BACK) {
+      fil_preview_dp(filChave,t,0,0); pagina=1;
+    } else if (k==SDLK_UP || k==SDLK_DOWN) sizeReset=!sizeReset;
+    else if (k==SDLK_LEFT || k==SDLK_RIGHT) {
+      sizeReset=0; sizeDp+=(k==SDLK_LEFT?-1:1); if (sizeDp<72) sizeDp=72; if (sizeDp>200) sizeDp=200;
+      fil_preview_dp(filChave,t,sizeDp,0);
+    } else if (teclaOk(k)) {
+      if (sizeReset) { sizeDp=126; sizeReset=0; fil_preview_dp(filChave,t,sizeDp,0); }
+      else { fil_preview_dp(filChave,t,sizeDp,1); pagina=1; esperandoSoltura=1; }
+    }
+    return;
+  }
+  if (pagina==1 && !teclaOk(k)) styleHeld=0;
   if (k == SDLK_AC_BACK || k == SDLK_ESCAPE || k == SDLK_BACKSPACE ||
       e->key.keysym.scancode == NV_SCANCODE_BACK) {
     // Da pagina de estilos, Voltar volta ao menu do titulo — com o foco na
@@ -1162,11 +1186,11 @@ void ctx_evento(const SDL_Event *e) {
       if (k == SDLK_LEFT)  { if (ordemSel > 0) ordemSel--; estAoVivo(); return; }
       if (k == SDLK_RIGHT) { if (ordemSel + 1 < FIL_ORD_N) ordemSel++; estAoVivo(); return; }
     }
-    if (estFoco >= 0 && estFoco < nEstilos && estLin[estFoco].n > 1) {
-      if (k == SDLK_LEFT)  { if (estTam[estFoco] > 0) estTam[estFoco]--; estAoVivo(); return; }
-      if (k == SDLK_RIGHT) { if (estTam[estFoco] + 1 < estLin[estFoco].n) estTam[estFoco]++; estAoVivo(); return; }
+    if (teclaOk(k)) {
+      if (estFoco>=0 && estFoco<nEstilos && fil_resizable(estTipo(estFoco))) {
+        if (!styleHeld) { styleHeld=1; styleDown=SDL_GetTicks(); }
+      } else aplicarEstilo();
     }
-    if (teclaOk(k)) aplicarEstilo();
     return;
   }
   // Enquanto a requisicao esta no ar, OK nao repete a escrita. O foco continua
@@ -1187,6 +1211,10 @@ void ctx_evento(const SDL_Event *e) {
 void ctx_atualizar(float dt, Uint32 agora) {
   int i;
   int atual;
+  if (aberto && pagina==1 && styleHeld && agora-styleDown>=NV_HOLD_MS) {
+    styleHeld=0; sizeReset=0; sizeDp=fil_size_dp(filChave,estTipo(estFoco));
+    pagina=3; esperandoSoltura=1;
+  }
   if (!holdObservador) {
     SDL_AddEventWatch(observarHold, NULL);
     holdObservador = 1;
@@ -1488,33 +1516,6 @@ static void estGlifo(GfxRect q, int tipo, float tinta, float a) {
           tinta, tinta, tinta, 0.9f * a);
 }
 
-// O SEGMENTADO P M G, so na linha em foco, na ponta direita da pilula: o
-// escolhido vira um disco escuro com a letra clara; os outros so a letra.
-static void desenhaTamanhos(GfxRect r, int i, float a) {
-  int j, n = estLin[i].n;
-  float x0 = r.x + r.w - 10.0f - (float)n * EST_SEG_W - (float)(n - 1) * EST_SEG_GAP;
-  float y0 = r.y + (r.h - EST_SEG_H) * 0.5f;
-  for (j = 0; j < n; j++) {
-    GfxRect c = { x0 + (float)j * (EST_SEG_W + EST_SEG_GAP), y0, EST_SEG_W, EST_SEG_H };
-    const char *pal = i18n(fil_estilo_tam_palavra(j));
-    char letra[8];
-    int k = 0, esc = j == estTam[i];
-    TxtLinha l;
-    // A primeira letra, inteira: um caractere UTF-8 e o lider mais as
-    // continuacoes (10xxxxxx).
-    if (pal[0]) { letra[k++] = pal[0];
-      while (k < 6 && ((unsigned char)pal[k] & 0xC0) == 0x80) { letra[k] = pal[k]; k++; } }
-    letra[k] = 0;
-    if (aberto && pagina == 1 && a > 0.5f)
-      ponteiro_alvo(c.x, c.y, c.w, c.h, ponteiroEstFoco, ponteiroEstOk, i, j + 1);
-    if (esc) gfx_cor(c, 0.5f, 0.08f, 0.085f, 0.1f, 0.92f * a);
-    l = esc ? txt_linha(TXT_DET_BOTAO, letra, 243, 242, 239, 255)
-            : txt_linha(TXT_DET_BOTAO, letra, 20, 22, 26, 255);
-    txt_desenhar_alpha(l, c.x + (c.w - (float)l.w) * 0.5f, c.y + (c.h - (float)l.h) * 0.5f,
-                       (esc ? 1.0f : 0.6f) * a);
-  }
-}
-
 // UMA LINHA: glifo, nome e, em foco, a pilula branca com a tinta escura.
 static void linhaEstilo(GfxRect r, const char *rot, int tipo, float f, float a) {
   float k = f < 0.0f ? 0.0f : f > 1.0f ? 1.0f : f;
@@ -1587,7 +1588,10 @@ static void desenhaEstilos(float a) {
       if (aberto && pagina == 1 && a > 0.5f)
         ponteiro_alvo(r.x, r.y, r.w, r.h, ponteiroEstFoco, ponteiroEstOk, i, 0);
       linhaEstilo(r, estLin[i].rotulo, estTipo(i), estAnim[i], a);
-      if (estLin[i].n > 1 && estAnim[i] > 0.5f) desenhaTamanhos(r, i, a);
+      if (fil_resizable(estTipo(i)) && i==estFoco) {
+        TxtLinha hint=txt_linha(TXT_MINI,"Hold OK to resize",50,50,50,255);
+        txt_desenhar_alpha(hint,r.x+r.w-hint.w-14,r.y+(r.h-hint.h)*.5f,a);
+      }
     } else {
       // A ORDEM dos itens da colecao: o valor que esquerda/direita escolhem; o
       // clique cicla (mouse e Magic Remote nao tem esquerda/direita).
@@ -2012,6 +2016,26 @@ static void ctx_desenharCorpo_(Uint32 agora) {
   }
   if (a < 0.01f) return;
   if (modoInline() && pagina == 0) return;   // a linha do painel se abre sozinha (salvospainel.c)
+  if (pagina==3) {
+    float w=fminf(NV_TELA_W-48.0f,ajustes_slider_width()), h=322.0f;
+    GfxRect panel={(NV_TELA_W-w)*.5f,NV_TELA_H-h-32,w,h};
+    gfx_vidro_folha(panel,30.0f/h,a);
+    char value[20]; snprintf(value,sizeof value,"%d dp",sizeDp);
+    TxtLinha number=txt_linha(TXT_V2_NUM150,value,246,246,246,255);
+    txt_desenhar_alpha(number,panel.x+40,panel.y+24,a);
+    float y=panel.y+224,x=panel.x+88,track=w-176;
+    gfx_cor((GfxRect){x,y,track,10},.5f,.45f,.45f,.45f,a);
+    float f=(sizeDp-72)/128.0f;
+    if (f>0) gfx_cor((GfxRect){x,y,track*f,10},.5f,.96f,.96f,.96f,a);
+    gfx_cor((GfxRect){x+track*f-10,y-5,20,20},.5f,1,1,1,a);
+    gfx_icone((GfxRect){panel.x+36,y-12,32,32},"aj_minus",1,1,1,a);
+    gfx_icone((GfxRect){panel.x+w-68,y-12,32,32},"aj_plus",1,1,1,a);
+    GfxRect reset={panel.x+w-80,panel.y+36,48,48};
+    if (sizeReset) gfx_cor(reset,.5f,1,1,1,a);
+    float ink=sizeReset?.1f:1.0f;
+    gfx_icone((GfxRect){reset.x+8,reset.y+8,32,32},"aj_rotate-ccw-clock",ink,ink,ink,a);
+    return;
+  }
   if (pagina == 1) { desenhaEstilos(a); return; }
   if (doLista) { desenhaLista(a); return; }
   ci = itemAtual();
@@ -2242,6 +2266,8 @@ static void ctx_desenharCorpo_(Uint32 agora) {
 }
 
 void ctx_abrir_sessao(void) {
+  if (pagina==3) fil_preview_dp(filChave,estTipo(estFoco),0,0);
+  styleHeld=0;
   // Sem animacao de saida: uma linha inline pode perder o painel que a
   // desenhava e continuar aberta como uma camada invisivel sobre a Home.
   aberto = 0;

@@ -1523,6 +1523,37 @@ int main(void) {
     } }
   puts("ok  #204: catalogo que nenhum addon declara sai antes de recusar o novo; escolha explicita fica");
 
+  usaArquivo=1; fil_definir_perfil(120);
+  fil_registrar("catA","A","Cinemeta","movie",1);
+  fil_registrar("catB","B","Cinemeta","movie",1);
+  fil_preview_dp("catA",FIL_TIPO_SERVICO,185,1);
+  fil_preview_dp("catB",FIL_TIPO_SERVICO,145,1);
+  fil_preview_dp("catA",FIL_TIPO_CARTAZ,93,1);
+  assert(fil_definir_tipo("catA",FIL_TIPO_CARTAZ));
+  assert(fil_definir_tipo("catA",FIL_TIPO_SERVICO));
+  fil_recarregar();
+  assert(fil_size_dp("catA",FIL_TIPO_SERVICO)==185);
+  assert(fil_size_dp("catB",FIL_TIPO_SERVICO)==145);
+  assert(fil_size_dp("catA",FIL_TIPO_CARTAZ)==93);
+  float savedScale=fil_escala("catA");
+  fil_preview_dp("catA",FIL_TIPO_SERVICO,72,0);
+  assert(fil_escala("catA")<savedScale);
+  fil_preview_dp("catA",FIL_TIPO_SERVICO,0,0);
+  assert(fil_escala("catA")==savedScale);
+  fil_hero_select(NULL,1); fil_hero_select("catA",0);
+  fil_recarregar();
+  assert(!fil_hero_selected("catA") && fil_hero_selected("catB"));
+  assert(fil_hero_selected("future_catalogue"));
+  fil_hero_select(NULL,0); fil_hero_select("catB",0);
+  fil_recarregar();
+  assert(fil_hero_selected("catB") && !fil_hero_selected("catA"));
+  fil_hero_select(NULL,0); fil_definir_hero_fonte("");
+  fil_preview_dp("catA",FIL_TIPO_SERVICO,126,1);
+  fil_preview_dp("catB",FIL_TIPO_SERVICO,126,1);
+  fil_preview_dp("catA",FIL_TIPO_CARTAZ,126,1);
+  fil_definir_tipo("catA",FIL_TIPO_AUTO);
+  puts("ok  independent row/style sizes, preview cancel and Hero selection survive reload");
+  remove(nvt("/fileirasui-p120.txt"));
   puts("fileiras: tudo ok");
   return 0;
 }

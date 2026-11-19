@@ -693,6 +693,7 @@ int   ajustes_meta_so_cinemeta(void);
 
 // --- LAYOUT: foco no poster --------------------------------------------------
 int ajustes_foco_instantaneo(void);
+float ajustes_slider_width(void);
 int   ajustes_expandir_poster(void);         // focusedPosterBackdropExpandEnabled
 float ajustes_expandir_poster_atraso(void);  // em segundos
 int   ajustes_navegacao_horizontal_rapida(void); // fastHorizontalNavigationEnabled

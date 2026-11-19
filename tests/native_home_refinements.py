@@ -96,11 +96,8 @@ require("0.898f,0.035f,0.078f" in detail and "prog_por_chave(key,&progress)" in 
         "Resume progress must be red and sourced from saved checkpoint data")
 settings = read("src/ajustes.c")
 settings_page = read("src/ajustes_ux_tela.inc")
-require("AJ_TAM_GRANDE_DP" in settings and "AJ_TAM_PAISAGEM_DP" in settings and
-        "OPC(AJ_TAM_GRANDE_DP), OPC(AJ_TAM_PAISAGEM_DP), OPC(AJ_LARGURA_DP)" in settings_page,
-        "Three independent and visible poster size rows must use native numeric editors")
-require("escalaPaisagem()" in home and "escalaGrande()" in home,
-        "Landscape and large poster sizes must affect home dimensions")
+require("OPC(AJ_TAM_GRANDE_DP)" not in settings_page and "fil_preview_dp" in read("src/ctxmenu.c"),
+        "Row size belongs in the row style editor")
 require("sharedPosterUrl" in detail and "de = item.rect;" in detail and
         "item.rect.w < NV_TELA_W * 0.95f" in detail,
         "Open/close must share actual poster bounds without enabling the old carousel")

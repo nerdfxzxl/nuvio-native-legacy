@@ -21,7 +21,7 @@ The starting branch HEAD is exactly Build 119, 1b29dab675d80fc0bb2cc52aa06fcb28e
 |9|Resume pill track|Implemented in native code; device validation pending|
 |10|Continue Watching limits|Not started|
 |11|Row counters|Implemented in native code; device validation pending|
-|12|Per-row per-style size editor|Not started|
+|12|Per-row per-style size editor|Implemented; persistence and cancel tested, TV interaction pending|
 |13|Shared poster bounds|Partial: bounds timing and return motion changed; stale target and late artwork validation pending|
 |14|Persistent Home artwork cache|Not started|
 
@@ -42,3 +42,7 @@ Previous implementation commit ac24e9c9e9e4874150446ffef50bb5aaba05db70. Changed
 ### Hero selection and rotation
 
 Previous checkpoint 283ed53cfe6c7097d213d9fdfb4af009f220cb6f. Changed src/ajustes.c, src/ajustes_ux_ilha.inc, src/fileiras.c, src/fileiras.h, src/descoberta.c, src/home.c and src/layout.h. The existing picker toggles any registered catalogue using profile-specific named exceptions and Select All includes future rows. A session-seeded round robin samples distinct titles from each source. The discovery worker fills absent sources using metadata, with up to ten nonempty supplemental feeds. Only the upcoming Hero artwork is warmed. Manual navigation wraps; the six-second timer respects the existing playing-trailer gate. An empty selection falls back to available titles. A new launch reshuffles; there is no cross-launch recent-title blacklist. Passed host compiler checks for affected translation units, fileiras.sh and herocat_regras.sh. No APK yet.
+
+### Row Style editor
+
+Previous commit d7295a425fac478458279259c0da853652d1b916. Changed src/ctxmenu.c, src/fileiras.c/.h, src/home.c, src/ajustes.h, src/ajustes_ux_desenho.inc, src/ajustes_ux_tela.inc and the corresponding settings/Home/row tests. Long OK on a resizable style opens the numeric glass panel with a live, memory-only preview. Left/Right adjust one dp; Up/Down focuses reset, OK activates it or saves, Back cancels. Sizes are stored by catalogue key and style family within the active profile; legacy variant IDs remain readable. Removed the three global controls and S/M/L selectors. Host compilation, settings coverage and source guards passed. Real on-disk reload, A=185/B=145, style round trip, cancel, Select All exceptions and new-catalogue selection passed in tests/fileiras.sh under ASan/UBSan (LeakSanitizer unavailable under ptrace). Device UI remains untested.

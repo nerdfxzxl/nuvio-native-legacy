@@ -489,6 +489,9 @@ float fil_escala(const char *chave);  // 1.0 quando nao foi escolhido
 // O fator que a fileira teria COM a forma `t`: o Tamanho dela vezes o fator da
 // forma (fil_tipo_fator). E o que a previa do modal precisa — a forma em foco
 // ainda nao foi gravada. fil_escala(chave) == fil_escala_tipo(chave, tipo dela).
+int fil_resizable(int t);
+int fil_size_dp(const char *key,int t);
+void fil_preview_dp(const char *key,int t,int dp,int save);
 float fil_escala_tipo(const char *chave, int t);
 
 // 1 quando existe ordem LOCAL gravada. Sem ela, fil_unir e a identidade e a

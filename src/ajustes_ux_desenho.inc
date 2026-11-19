@@ -423,6 +423,10 @@ static GfxRect aj2EditorR(void) {
   float x = aj2X0() + (ajTelaCheia() ? 0.0f : AJ2_EDITOR_DX);
   return (GfxRect){ x, AJ2_CORPO, NV_VTELA_W - AJ2_MARGEM - x, NV_VTELA_H - AJ2_CORPO - AJ2_MARGEM };
 }
+float ajustes_slider_width(void) {
+  float w=aj2EditorR().w-104.0f;
+  return w-576.0f>=560.0f ? w-576.0f : w;
+}
 // Onde a lista comeca (o fim do cabecalho: 42 + kicker 21,8 + 4 + titulo 62,9
 // + 8 + sub 29 + 18) e onde termina (a margem; os ultimos 90 px esvanecem).
 static float aj2TextoLista = 1.0f;   // o texto da lista (0 com o editor por cima)
