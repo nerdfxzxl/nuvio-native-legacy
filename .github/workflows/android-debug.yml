@@ -18,9 +18,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Manual full builds first run this validation gate. No push-triggered CI.
+  # Gate ALL inexpensive checks, including real artwork staging, before native dependencies/P2P.
   preflight:
-    name: Early Android C compilation
+    name: Early Android C and asset validation
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
@@ -38,8 +38,9 @@ jobs:
           set -euo pipefail
           sdkmanager --install "ndk;27.2.12479018"
           sudo apt-get update -qq
+          # Host FFmpeg CLI is required by tools/tizen-art.sh to convert WebP badges.
           sudo apt-get install -y --no-install-recommends \
-            libsdl2-dev libsdl2-image-dev libsdl2-ttf-dev
+            libsdl2-dev libsdl2-image-dev libsdl2-ttf-dev ffmpeg
 
       - name: Compile-check updated native UI files (ARM64)
         shell: bash
@@ -52,6 +53,18 @@ jobs:
           bash tests/selospacote.sh
           bash tests/celular.sh
           bash tests/detail_acoes_gap.sh
+
+      - name: Stage and validate Android artwork before native dependencies or P2P
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v ffmpeg >/dev/null || { echo '::error::Missing host ffmpeg for artwork conversion'; exit 1; }
+          stage="$RUNNER_TEMP/nuvio-android-art-preflight"
+          NUVIO_BADGE_PNG_HEIGHT=192 NUVIO_ARTE_ESTAGIO="$stage" bash tools/tizen-art.sh >/dev/null
+          test -s "$stage/badges/index.json"
+          test -n "$(find "$stage" -type f -name '*.png' -print -quit)"
+          test -z "$(find "$stage" -type f -name '*.webp' -print -quit)"
+          echo 'Android artwork conversion and asset checks: passed'
 
       - name: Check stream-card wrapping and color emoji with Android graphics
         run: |
@@ -86,11 +99,13 @@ jobs:
           sdkmanager --install "platforms;android-35" "build-tools;35.0.0" "ndk;27.2.12479018" "cmake;3.22.1"
           # The SDK already supplies Ninja and CMake 3.22 for Android libs.
           # P2P requires a HOST CMake >=3.24; use the runner's installed
-          # CMake when possible. Do NOT apt-install host ffmpeg: the Android
-          # FFmpeg JNI is built from its own pinned source in tools/android.sh.
+          # CMake when possible. The host FFmpeg CLI converts WebP badges;
+          # Android FFmpeg JNI is independently built from pinned sources.
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ffmpeg
+          command -v ffmpeg >/dev/null || { echo '::error::Host ffmpeg missing before expensive native builds'; exit 1; }
           installed="$(cmake --version 2>/dev/null | awk 'NR==1 {print $3}' || true)"
           if [[ -z "$installed" ]] || [[ "$(printf '%s\n' "$installed" "3.24.0" | sort -V | head -n 1)" != "3.24.0" ]]; then
-            sudo apt-get update -qq
             sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends cmake
           fi
           for tool in cmake perl python3 make git unzip; do
