@@ -201,7 +201,7 @@ jobs:
       # specific nuvio-engine commit in pasta.sh. Cached hit skips ~7 minutes.
       - name: Restore P2P engine libraries
         id: p2p-cache
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: |
             ${{ runner.temp }}/nuvio-p2p-motor/android/lib
@@ -220,6 +220,17 @@ jobs:
           export ANDROID_HOME="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
           export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/27.2.12479018"
           bash tools/p2p-motor/build-android.sh "$NUVIO_P2P_MOTOR/android"
+
+      # Save the successful P2P output immediately. A later Gradle/asset error
+      # must not force another costly engine build on the next attempt.
+      - name: Save completed P2P engine for retries
+        if: steps.p2p-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ${{ runner.temp }}/nuvio-p2p-motor/android/lib
+            ${{ runner.temp }}/nuvio-p2p-motor/android/include
+          key: p2p-r27c-v1-${{ hashFiles('tools/p2p-motor/pasta.sh', 'tools/p2p-motor/build-android.sh', 'tools/p2p-motor/janela-334.patch') }}
 
       - name: Build full APK with login configuration
         shell: bash
