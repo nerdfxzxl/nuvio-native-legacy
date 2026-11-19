@@ -2,3 +2,6 @@ Nuvio Native UI refinements: no-APK NDK compile and regression checks.
 Head before trigger: 54363f55f6c2b63a8863e260d4d5a14f95cfa298
 Check home.c, main.c, detail.c, Episodes vector glyph, cover art, gesture routing, settings parity and native dependency workflow.
 No full Android APK will be built by this workflow.
+
+Recheck after correcting desenhaRotuloCard()'s logoCard argument in home_vitrine_cartao (home.c commit 14b37f5).
+Native ARM64 syntax and integration tests only; NO APK requested.
