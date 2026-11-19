@@ -6,3 +6,7 @@ Mandatory preflight remains enabled before any full APK build.
 Build requested after successful no-APK preflight #10 (run 44467158696).
 Include corrected src/home.c signature and latest gesture/artwork refinements.
 Use mandatory early gate then full debug APK; publish artifact when successful.
+
+Retry after failed APK #116 (run 44467402935): P2P succeeded, host ffmpeg CLI missing during WebP artwork staging.
+The early gate now stages the 192px Android badges and validates the converted images before expensive native and P2P work. The build runner also installs ffmpeg and saves completed P2P outputs immediately.
+Full Android debug APK requested; do not bypass preflight.
