@@ -734,6 +734,7 @@ typedef enum {
   AJ_DET_EP_IMDB,      // Netflix episodes: IMDb score visible, default On
   AJ_GESTO_REMOTE,     // Android touch navigation: Touch / Gesture (TV Remote)
   AJ_HOME_ROW_LAYOUTS, // Action: only enabled and visible catalog rows
+  AJ_TAM_GRANDE_DP, AJ_TAM_PAISAGEM_DP, // append-only: independent row poster dimensions
   AJ_N
 } OpcaoId;
 _Static_assert(DEBRID_RD == 0 && DEBRID_TB == 1 && DEBRID_PM == 2 && DEBRID_AD == 3,
@@ -1476,7 +1477,7 @@ static const Opcao OPCOES[AJ_N] = {
   ESC("Profundidade no elenco",     V_LIGA, 2),
   ESC("Profundidade nos trailers",  V_LIGA, 2),
 
-  NUM("Largura do item",            72, 200, 2, " dp"), // posterCardWidthDp
+  NUM("Portrait poster size",        72, 200, 2, " dp"), // posterCardWidthDp
   NUM("Arredondamento",             0, 40, 1, " dp"),   // posterCardCornerRadiusDp
   ESC("Qualidade da imagem",        V_QUALIMG, 3),
 
@@ -1880,6 +1881,8 @@ static const Opcao OPCOES[AJ_N] = {
   ESC("IMDb por episódio", V_LIGA, 2),
   ESC("Navigation mode", V_GESTO_REMOTE, 2),
   ACAO("Home Row Layouts"),
+  NUM("Large poster size",            72, 200, 2, " dp"),
+  NUM("Landscape poster size",        72, 200, 2, " dp"),
   };
 
 // Nome de cada opcao no arquivo. O formato era POSICIONAL — uma linha por
@@ -2220,6 +2223,7 @@ static const char *CHAVE[] = {
   "detEpImdbLocal",
   "gestureRemoteLocal",
   "-homeRowLayouts",
+  "posterLargeSizeLocal", "posterLandscapeSizeLocal",
 };
 // QUATRO VETORES PARALELOS indexados pelo mesmo enum AJ_*: OPCOES, CHAVE,
 // valor e as secoes. OPCOES ja e declarado [AJ_N], e `valor` aceita inicializacao
@@ -3879,6 +3883,8 @@ float ajustes_profundidade_brilho(void)    { return valor[AJ_PROF_BRILHO] / 100.
 float ajustes_profundidade_cobertura(void) { return valor[AJ_PROF_COBERTURA] / 100.0f; }
 
 int   ajustes_largura_poster_dp(void) { return valor[AJ_LARGURA_DP]; }
+int   ajustes_largura_grande_dp(void) { return valor[AJ_TAM_GRANDE_DP]; }
+int   ajustes_largura_paisagem_dp(void) { return valor[AJ_TAM_PAISAGEM_DP]; }
 int   ajustes_raio_poster_dp(void)    { return valor[AJ_RAIO_DP]; }
 // 0 baixa, 1 padrao, 2 alta. Quem consome sao tex_cache (teto de decodificacao)
 // e artehero (qual url pedir para a arte de tela cheia).
@@ -7068,7 +7074,7 @@ static const char *rotuloNovo(int op) {
     case AJ_TMDB_IDIOMA: return "Idioma dos dados do título";
     case AJ_HERO_FUNDO: return "Imagem de fundo do destaque";
     case AJ_GRAD_CLASSICO: return "Realce antigo no cartaz em foco";
-    case AJ_LARGURA_DP: return "Largura do cartaz";
+    case AJ_LARGURA_DP: return "Portrait poster size";
     case AJ_RAIO_DP: return "Cantos do cartaz";
     case AJ_TMDB_LIGADO: return "Dados do TMDB";
     case AJ_MDB_LIGADO: return "Notas do MDBList";
