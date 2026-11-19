@@ -2518,7 +2518,10 @@ static int focoVertical(int dy) {
   return 1;
 }
 
+static int homeLeftHeldFromRow;
 static void home_evento_(const SDL_Event *e) {
+  if (e->type == SDL_KEYUP && e->key.keysym.sym == SDLK_LEFT)
+    homeLeftHeldFromRow = 0;
   pedidoRelogio = 0;
   if (e->type == SDL_QUIT) { sair = 1; return; }
   if (homevazio_ativo(nFileiras)) {
@@ -2675,14 +2678,18 @@ static void home_evento_(const SDL_Event *e) {
     //   2. Ja no canto, o primeiro Voltar so PERGUNTA, por 3 s. So o segundo
     //      dentro da janela sai.
     if (!focoHero) {
-      // O canto superior esquerdo passou a ser o DESTAQUE: subir ate a fileira
-      // 0 e parar ali deixaria um degrau invisivel entre "o topo" e "o topo de
-      // verdade", e o segundo Voltar fecharia o app com a pessoa achando que
-      // ainda tinha para onde subir.
-      focoHero = 1;
-      foco.fileira = 0;
-      foco.coluna = 0;
-      foco.colunaLembrada[0] = 0;
+      // Back returns to the FIRST poster of the current row before hero.
+      // Do not reset the user's row/scroll position on that first Back.
+      if (foco.fileira >= 0 && foco.fileira < nFileiras && foco.coluna > 0) {
+        foco.coluna = 0;
+        if (foco.fileira < FOCUS_MAX_FILEIRAS) foco.colunaLembrada[foco.fileira] = 0;
+      } else if (ajustes_hero_ligado() && cat_n() > 0) {
+        focoHero = 1;
+      } else {
+        int primeira = primeiraFileiraNavegavel();
+        if (primeira >= 0) { foco.fileira = primeira; foco.coluna = 0;
+          if (primeira < FOCUS_MAX_FILEIRAS) foco.colunaLembrada[primeira] = 0; }
+      }
       sairPerguntadoEm = 0;
       return;
     }
@@ -2756,7 +2763,13 @@ static void home_evento_(const SDL_Event *e) {
     // por exemplo) nao tinha como abrir o menu sem antes descer. O carrossel
     // continua acessivel pela direita e pela troca automatica.
     // Por isso a esquerda nunca bate na borda: a coluna 0 e a porta do menu.
-    if (foco.coluna == 0) { pedidoMenu = 1; return; }
+    if (foco.coluna == 0) {
+      // Reaching poster #1 during a held Left must not open the sidebar.
+      // A fresh press from poster #1 remains the normal sidebar shortcut.
+      if (e->key.repeat || homeLeftHeldFromRow) return;
+      pedidoMenu = 1; return;
+    }
+    homeLeftHeldFromRow = 1;
     if (!focus_mover(&foco, -1, 0) && foco.fileira < MAX_FIL)
       anim_borda_bater(&bordaFil[foco.fileira], -NV_BORDA_AMP);
   }
