@@ -602,9 +602,9 @@ static void teclasInjetadas(void (*entregar)(const SDL_Event *)) {
 }
 
 #if defined(NV_ANDROID) && defined(NV_TOUCH_UI)
-// Optional phone-wide D-pad gesture mode. Touch is the default and retains
-// the native pointer path. All generated keys use the same app_evento handler
-// as a physical remote, including focus behavior.
+// Optional Android D-pad gestures. Touch mode keeps native pointers everywhere
+// EXCEPT the stream selector, whose original swipe/D-pad navigation remains
+// enabled independently of this new setting. Physical remote keys remain native.
 static int phoneFingerDown;
 static SDL_FingerID phoneFingerId;
 static float phoneStartX,phoneStartY,phoneTapX,phoneTapY;
@@ -619,8 +619,12 @@ static void phoneRemoteKey(SDL_Keycode sym) {
   app_evento(&key);
 }
 static int phoneRemoteEnabled(void) {
-  return layout_modo_mobile() && ajustes_gesto_remoto() &&
-         !SDL_IsTextInputActive();
+  // Restore the original stream-selector D-pad behavior even in Touch mode.
+  // SDL_IsTextInputActive() can remain set on Android while NO actual edit
+  // field is open; using it as a global gate disabled gestures everywhere.
+  // Check the explicit Android text-entry session instead.
+  const int selector=stream_folha_aberta() && st_dono()!=ST_BUSCA;
+  return (selector || ajustes_gesto_remoto()) && !texto_sistema_aberto();
 }
 static int phoneRemoteGesture(const SDL_Event *event) {
   if (!phoneRemoteEnabled()) {

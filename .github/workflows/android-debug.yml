@@ -84,8 +84,21 @@ jobs:
         run: |
           set -euo pipefail
           sdkmanager --install "platforms;android-35" "build-tools;35.0.0" "ndk;27.2.12479018" "cmake;3.22.1"
-          sudo apt-get update
-          sudo apt-get install -y cmake ninja-build ffmpeg perl python3
+          # The SDK already supplies Ninja and CMake 3.22 for Android libs.
+          # P2P requires a HOST CMake >=3.24; use the runner's installed
+          # CMake when possible. Do NOT apt-install host ffmpeg: the Android
+          # FFmpeg JNI is built from its own pinned source in tools/android.sh.
+          installed="$(cmake --version 2>/dev/null | awk 'NR==1 {print $3}' || true)"
+          if [[ -z "$installed" ]] || [[ "$(printf '%s\n' "$installed" "3.24.0" | sort -V | head -n 1)" != "3.24.0" ]]; then
+            sudo apt-get update -qq
+            sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends cmake
+          fi
+          for tool in cmake perl python3 make git unzip; do
+            command -v "$tool" >/dev/null || { echo "::error::Missing host tool: $tool"; exit 1; }
+          done
+          cmake --version | head -1
+          echo "SDK Ninja: $ANDROID_HOME/cmake/3.22.1/bin/ninja"
+          test -x "$ANDROID_HOME/cmake/3.22.1/bin/ninja"
 
       - name: Restore persistent debug signing identity (optional)
         shell: bash
@@ -147,6 +160,17 @@ jobs:
           fi
           chmod 600 local.properties
 
+      # Cache native outputs and pinned source downloads across runner rebuilds.
+      # This also preserves the custom 16-KB-page FFmpeg JNI between APK runs.
+      - name: Restore native Android dependency cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ runner.temp }}/nuvio-android-cache/src
+            ${{ runner.temp }}/nuvio-android-cache/prefix
+            ${{ runner.temp }}/nuvio-android-cache/media3-ffmpeg
+          key: native-android-r27c-v1-${{ hashFiles('tools/android/deps.sh', 'tools/android/ffmpeg-android.sh', 'tools/android.sh') }}
+
       - name: Build native curl, JPEG and WebP libraries
         shell: bash
         env:
@@ -158,7 +182,19 @@ jobs:
           export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/27.2.12479018"
           bash tools/android/deps.sh arm64-v8a armeabi-v7a
 
+      # Motor output is self-contained (two ABIs + headers) and pinned to a
+      # specific nuvio-engine commit in pasta.sh. Cached hit skips ~7 minutes.
+      - name: Restore P2P engine libraries
+        id: p2p-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ runner.temp }}/nuvio-p2p-motor/android/lib
+            ${{ runner.temp }}/nuvio-p2p-motor/android/include
+          key: p2p-r27c-v1-${{ hashFiles('tools/p2p-motor/pasta.sh', 'tools/p2p-motor/build-android.sh', 'tools/p2p-motor/janela-334.patch') }}
+
       - name: Build the P2P engine for both Android ABIs
+        if: steps.p2p-cache.outputs.cache-hit != 'true'
         shell: bash
         env:
           NUVIO_P2P_MOTOR: ${{ runner.temp }}/nuvio-p2p-motor
