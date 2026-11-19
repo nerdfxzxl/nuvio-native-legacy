@@ -27,13 +27,25 @@ jobs:
           set -euo pipefail
           sdkmanager --install "ndk;27.2.12479018"
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends libsdl2-dev libsdl2-image-dev libsdl2-ttf-dev
+          sudo apt-get install -y --no-install-recommends libsdl2-dev libsdl2-image-dev libsdl2-ttf-dev python3-pil
       - name: Check all changed Android C translation units
         shell: bash
         run: |
           set -euo pipefail
           export ANDROID_NDK_HOME="${ANDROID_HOME:-$ANDROID_SDK_ROOT}/ndk/27.2.12479018"
           bash tools/android/preflight-c.sh
+      - name: Validate exact Android asset staging (no APK)
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n tools/tizen-art.sh tools/android.sh
+          /usr/bin/python3 -c 'from PIL import Image, features; assert features.check("webp")'
+          stage="$RUNNER_TEMP/nuvio-artwork-validated"
+          NUVIO_BADGE_PNG_HEIGHT=192 NUVIO_ARTE_ESTAGIO="$stage" bash tools/tizen-art.sh >/dev/null
+          test -s "$stage/badges/index.json"
+          test -n "$(find "$stage" -type f -name '*.png' -print -quit)"
+          test -z "$(find "$stage" -type f -name '*.webp' -print -quit)"
+          echo 'Android Pillow WebP conversion + badges + safety guards: passed'
       - name: Verify Netflix integration and settings indexes
         shell: bash
         run: |
