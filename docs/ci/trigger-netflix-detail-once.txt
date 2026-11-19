@@ -2,3 +2,7 @@ Nuvio Legacy eight-refinement Android debug APK retry after EARLY gate failure.
 Reason: main.c used undeclared teclado_aberto(), removed; SDL_IsTextInputActive remains for the system IME.
 Previous full run 44372806052 stopped in C preflight; build job was skipped, no APK generated.
 Mandatory preflight remains enabled before any full APK build.
+
+Build requested after successful no-APK preflight #10 (run 44467158696).
+Include corrected src/home.c signature and latest gesture/artwork refinements.
+Use mandatory early gate then full debug APK; publish artifact when successful.
