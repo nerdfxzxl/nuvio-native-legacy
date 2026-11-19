@@ -716,6 +716,8 @@ float ajustes_profundidade_cobertura(void);  // 0..1 (cardDepthEdgeCoverage/100)
 // variavel inline de 218 para 300 nao mexeu um pixel no card. O que sai da
 // preferencia e so o RAIO.
 int   ajustes_largura_poster_dp(void);
+int   ajustes_largura_grande_dp(void);
+int   ajustes_largura_paisagem_dp(void);
 int   ajustes_raio_poster_dp(void);
 // QUALIDADE DA IMAGEM: 0 baixa, 1 padrão, 2 alta.
 //
