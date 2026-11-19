@@ -306,6 +306,7 @@ static int pessoaColunas(void) {
 
 static int maisAcoes;
 static int  botao = 0;      // botao em foco no hero
+static int downHeldFromActions; // one held Down cannot cross the More boundary
 static GfxRect maisAncora;  // onde o "..." foi desenhado (ilha detmais.h)
 // A ILHA DE AMIGOS (quem assistiu/gostou deste titulo), logo abaixo dos botoes:
 // um alvo focavel do nivel 0, entre os botoes e as secoes. Baixo nos botoes cai
@@ -1626,6 +1627,7 @@ static void abrirInterno(const HomeItem *it) {
   audAberta = 0; audTempAberta = -1; audTempVista = -1; frasesAberta = 0;
   item = *it;
   aberto = 1; saindo = 0; nivel = 0; botao = 0; focoAmigos = 0;
+  downHeldFromActions = 0;
   amtui_fechar();
   detmais_zerar();
   heroReiniciar();
@@ -3038,6 +3040,8 @@ static void executarMais(int dm) {
 }
 
 static void detail_evento_(const SDL_Event *e) {
+  if (e->type == SDL_KEYUP && e->key.keysym.sym == SDLK_DOWN)
+    downHeldFromActions = 0;
   if (detEpEvento(e)) return;
   if (comMenuEvento(e)) return;
   if (trailerControlFocus >= 0 && trailerManual && trailer_aberto()) {
@@ -3549,8 +3553,11 @@ static void detail_evento_(const SDL_Event *e) {
     if (k == SDLK_DOWN) {
       // Repeats advance through action pills until More. A new physical DOWN
       // from More enters the document and then the normal fast repeat applies.
-      if (botao + 1 < nBotoes()) { botao++; return; }
-      if(acaoEm(botao)!=ACAO_MAIS || e->key.repeat)return;
+      if (botao + 1 < nBotoes()) { botao++; downHeldFromActions = 1; return; }
+      // Repeats may move THROUGH the action buttons, but cannot escape
+      // through More until the user releases and presses Down again.
+      if(acaoEm(botao)!=ACAO_MAIS || e->key.repeat || downHeldFromActions)return;
+      downHeldFromActions = 1;
       sincronizarEpisodioPadrao(); epEscolhido = 1;
       for (int o = 0; o < N_ORDEM; o++) {
         int r = ordemSecoes()[o];
@@ -5149,6 +5156,7 @@ static void heroWeb(float a, float desloc) {
   // era dado como impossivel aqui; e possivel desde que extras_ep_visto existe.
   char rot[128];
   int retomando = 0;
+  float resumeProgress = 0.0f;
   { int t = 0, e = 0, de = 0;
     if (ehSerie() && episodioAlvo(&t, &e, &de) && t >= 0 && e > 0 && de == 2) {
       // Resume only when this precise episode has an unfinished checkpoint.
@@ -5177,6 +5185,18 @@ static void heroWeb(float a, float desloc) {
       size_t n=strlen(rot);
       snprintf(rot+n,sizeof rot-n," · %d min left",ci->restanteMin);
     }
+  }
+  if (retomando && ci) {
+    resumeProgress = (float)ci->progresso / 100.0f;
+    if (ci->imdb[0]) {
+      char key[48]; ProgRegistro progress;
+      int st=ehSerie()?ci->temporada:0, ep=ehSerie()?ci->episodio:0;
+      if (ehSerie()) (void)episodioAlvo(&st,&ep,NULL);
+      prog_chave(key,sizeof key,ci->imdb,st,ep);
+      if (prog_por_chave(key,&progress) && progress.durSeg > 1.0)
+        resumeProgress = (float)(progress.posSeg / progress.durSeg);
+    }
+    resumeProgress = fminf(1.0f,fmaxf(0.0f,resumeProgress));
   }
   primarioPct=-1;
 
@@ -5233,6 +5253,14 @@ static void heroWeb(float a, float desloc) {
                      (int)(ink*255),(int)(ink*255),(int)(ink*255),
                      255,chipWidth-75.0f);
       txt_desenhar_alpha(line,row.x+60,row.y+(row.h-line.h)*.5f,a);
+      if(action==ACAO_PRIMARIO && retomando && resumeProgress > 0.001f) {
+        // A real checkpoint, not a decorative fabricated percentage. Red
+        // remains visible on the white focused action as well as dark idle.
+        GfxRect track={row.x+8.0f,row.y+row.h-4.0f,row.w-16.0f,3.0f};
+        gfx_cor(track,0.5f,0.48f,0.48f,0.48f,a*0.65f);
+        track.w *= resumeProgress;
+        gfx_cor(track,0.5f,0.898f,0.035f,0.078f,a);
+      }
       if(action==ACAO_PRIMARIO)player_morph_de(morphLogo,row);
       if(action==ACAO_MAIS)maisAncora=row;
       if(a>.3f)ponteiro_alvo(row.x,row.y,row.w,row.h,ponteiroDetalhe,NULL,-1,i);
