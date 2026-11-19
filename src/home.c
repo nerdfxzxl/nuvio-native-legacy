@@ -7244,7 +7244,9 @@ void home_vitrine_cartao(const CatItem *ci, GfxRect base, GfxRect card, float al
   if (t) veusDoCard(ci, FILEIRA_NORMAL, deitado, 0.0f, 0);
   desenhaArteCard(card, FILEIRA_NORMAL, cam, t, ci, 0.0f, raio, 1.0f, 0.0f);
   if (t) gfx_veu_na_arte = 1; else gfx_veu_card_limpar();
-  desenhaRotuloCard(ci, FILEIRA_NORMAL, deitado, temRotulo(FILEIRA_NORMAL),
+  // The standalone vitrine path does not draw an independent title logo.
+  // Keep its prior outside-label behavior after logoCard was added.
+  desenhaRotuloCard(ci, FILEIRA_NORMAL, deitado, 0, temRotulo(FILEIRA_NORMAL),
                     base.x, base.y, base.w, base.h, raio);
   gfx_veu_card_limpar();
   gfx_opacidade_grupo = og;
