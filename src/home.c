@@ -1006,10 +1006,10 @@ static float larguraDe(TipoFileira t) {
     // Opção editorial já existente: card panorâmico 16:9.
     case FILEIRA_DESTAQUE: return escalaPaisagem() * (layoutHome() == HOME_LAYOUT_DINAMICA
                                 ? NV_DIN_DEST_W * gfx_poster_k() : NV_DESTAQUE_EDITORIAL_W * gfx_poster_k());
-    case FILEIRA_TOP10_NUM: return (NV_CARD_W * gfx_poster_k()) * escalaPosterTelefone();
-    case FILEIRA_LINHA_TEMPO: return (NV_CARD_W * gfx_poster_k());
+    case FILEIRA_TOP10_NUM: return escalaDoAjuste() * (NV_CARD_W * gfx_poster_k()) * escalaPosterTelefone();
+    case FILEIRA_LINHA_TEMPO: return escalaDoAjuste() * (NV_CARD_W * gfx_poster_k());
     case FILEIRA_FICHA:    return NV_FICHA_W * gfx_poster_k();
-    case FILEIRA_PALCO:    return (NV_CARD_W * gfx_poster_k()) * NV_PALCO_ESC;
+    case FILEIRA_PALCO:    return escalaDoAjuste() * (NV_CARD_W * gfx_poster_k()) * NV_PALCO_ESC;
     case FILEIRA_POSTER_GRANDE: return escalaGrande() * (NV_POSTER_G_W * gfx_poster_k());
     case FILEIRA_HEROI_DIVIDIDO: return divArteH() * 2.0f / 3.0f;
     case FILEIRA_REDONDA:  return (NV_REDONDA_D * gfx_poster_k());
@@ -1531,10 +1531,10 @@ static float alturaDe(TipoFileira t) {
     case FILEIRA_CONTINUE: return escalaPaisagem() * NV_DESTAQUE_H * gfx_poster_k();
     case FILEIRA_DESTAQUE: return escalaPaisagem() * (layoutHome() == HOME_LAYOUT_DINAMICA
                                 ? NV_DIN_DEST_H * gfx_poster_k() : NV_DESTAQUE_EDITORIAL_H * gfx_poster_k());
-    case FILEIRA_TOP10_NUM: return (NV_CARD_H * gfx_poster_k()) * escalaPosterTelefone();
-    case FILEIRA_LINHA_TEMPO:
+    case FILEIRA_TOP10_NUM: return escalaDoAjuste() * (NV_CARD_H * gfx_poster_k()) * escalaPosterTelefone();
+    case FILEIRA_LINHA_TEMPO: return escalaDoAjuste() * (NV_CARD_H * gfx_poster_k());
     case FILEIRA_FICHA:    return (NV_CARD_H * gfx_poster_k());
-    case FILEIRA_PALCO:    return (NV_CARD_H * gfx_poster_k()) * NV_PALCO_ESC;
+    case FILEIRA_PALCO:    return escalaDoAjuste() * (NV_CARD_H * gfx_poster_k()) * NV_PALCO_ESC;
     case FILEIRA_POSTER_GRANDE: return escalaGrande() * (NV_POSTER_G_H * gfx_poster_k());
     case FILEIRA_HEROI_DIVIDIDO: return divArteH();
     case FILEIRA_REDONDA:  return (NV_REDONDA_D * gfx_poster_k());
