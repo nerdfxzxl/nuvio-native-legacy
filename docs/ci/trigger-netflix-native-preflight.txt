@@ -6,3 +6,5 @@ No full Android APK will be built by this workflow.
 Recheck after correcting desenhaRotuloCard()'s logoCard argument in home_vitrine_cartao (home.c commit 14b37f5).
 Native ARM64 syntax and integration tests only; NO APK requested.
 Validate five Home/detail/immersive refinements, subject crop shader, fast Pillow WebP artwork packaging and CI build cache before expensive APK. This is no-APK validation only.
+
+Eight-refinement preflight: appended poster sizes, compact portrait art, shared-element flight, gesture and repeat boundaries, resume checkpoint bar. Verify full ARM64 C syntax, settings indexes, and regression tests. No APK.
