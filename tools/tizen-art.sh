@@ -70,7 +70,7 @@ case "$BADGE_PNG_HEIGHT" in
   64|96|128|160|192) ;;
   *) echo "tizen-art.sh: invalid NUVIO_BADGE_PNG_HEIGHT=$BADGE_PNG_HEIGHT" >&2; exit 1 ;;
 esac
-if find "$DESTINO" -name '*.webp' | grep -q .; then
+if [ -n "$(find "$DESTINO" -type f -name '*.webp' -print -quit)" ]; then
   # CONVERTER: sips on macOS, ffmpeg on Linux — the test bench (galaxy) has no
   # sips and the whole build used to stop here. ffmpeg is already required by
   # tests/mkv_legendas.sh, and `scale=-1:64` reproduces sips' `--resampleHeight
@@ -135,7 +135,7 @@ done
 # catalogo-rede.bin.tmp que ja tem as fileiras dentro — mesma credencial, outra
 # extensao. "Outra extensao" e exatamente como collections.json passou pela
 # lista de .txt do .ipk uma vez.
-if find "$DESTINO" \( -name '*.txt' -o -name '*.bin' -o -name '*.tmp' \) | grep -q .; then
+if [ -n "$(find "$DESTINO" -type f \( -name '*.txt' -o -name '*.bin' -o -name '*.tmp' \) -print -quit)" ]; then
   echo "tizen-art.sh: ARQUIVO DE CREDENCIAL OU CATALOGO no estagio — abortado" >&2
   find "$DESTINO" \( -name '*.txt' -o -name '*.bin' -o -name '*.tmp' \) >&2
   exit 1
