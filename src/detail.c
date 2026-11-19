@@ -1577,6 +1577,9 @@ static float suave(float x) {
   x = anim_clamp(x, 0.0f, 1.0f);
   return 1.0f - (1.0f - x) * (1.0f - x) * (1.0f - x);
 }
+static float flightProgress(void) {
+  return t * t * (3.0f - 2.0f * t);
+}
 static float fase2(void) { return suave((t - 0.45f) / 0.55f); }
 
 // Preserve the approved weight using the same cached glyph texture.
@@ -2012,7 +2015,7 @@ int detail_relogio_navegavel(void) {
 // que o produz e a mesma do desenho — dois relogios diferentes descasariam.
 // No carrossel a home NAO desce: o cartaz abre por cima dela, que fica parada
 // por baixo da folha ate ser coberta.
-float detail_progresso(void) { return aberto && !carro ? suave(t) : 0.0f; }
+float detail_progresso(void) { return aberto && !carro ? flightProgress() : 0.0f; }
 
 // Temporada e episodio EM FOCO, para quem for pedir fonte.
 //
@@ -2296,7 +2299,7 @@ int detail_assentado(void) {
 // so, usada por detail_cobre_tela e por detail_desenhar — se as duas
 // divergirem, a home some um quadro antes de a arte cobrir e a tela pisca.
 static void backdropRect(GfxRect *r, float *opac) {
-  float s = suave(t);
+  float s = flightProgress();
   GfxRect de;
   home_hero_rect(&de.x, &de.y, &de.w, &de.h);
   // The actual selected poster, not the (possibly unrelated) home hero, is
@@ -4265,7 +4268,9 @@ static void detail_atualizar_(float dt, Uint32 agora) {
   // contagem do quadro anterior deixaria o layout um quadro atrasado — visivel
   // como um tranco quando o elenco ou os trailers chegam.
   recalcularLayout();
-  t  = anim_mola(t,  saindo ? 0.0f : 1.0f, dt, NV_MOLA_TELA);
+  if (carro) t = anim_mola(t, saindo ? 0.0f : 1.0f, dt, NV_MOLA_TELA);
+  else if (ajustes_animacoes_reduzidas()) t = saindo ? 0.0f : 1.0f;
+  else t = anim_clamp(t + (saindo ? -dt : dt) / .38f, 0.0f, 1.0f);
   // Rigidez propria: o web leva 0.8s para apagar o backdrop (cubic-bezier
   // .4,0,.2,1), e a mola de NV_MOLA_TELA assenta em ~330ms.
   // Temporadas e episodios da serie moram na PRIMEIRA tela (Glass UI): com o
@@ -5262,13 +5267,20 @@ static void heroWeb(float a, float desloc) {
                      (int)(ink*255),(int)(ink*255),(int)(ink*255),
                      255,chipWidth-75.0f);
       txt_desenhar_alpha(line,row.x+60,row.y+(row.h-line.h)*.5f,a);
-      if(action==ACAO_PRIMARIO && retomando && resumeProgress > 0.001f) {
-        // A real checkpoint, not a decorative fabricated percentage. Red
-        // remains visible on the white focused action as well as dark idle.
-        GfxRect track={row.x+8.0f,row.y+row.h-4.0f,row.w-16.0f,3.0f};
-        gfx_cor(track,0.5f,0.48f,0.48f,0.48f,a*0.65f);
-        track.w *= resumeProgress;
-        gfx_cor(track,0.5f,0.898f,0.035f,0.078f,a);
+      if (action == ACAO_PRIMARIO && retomando) {
+        // Clip the original pill's rounded silhouette to its bottom band.
+        const float band = row.h * .13f;
+        float top = fmaxf(row.y + row.h - band, yTop-8);
+        float bottom = fminf(row.y + row.h, yTop+totalH+8);
+        if (bottom > top) {
+          gfx_recorte(row.x,top,row.w,bottom-top);
+          gfx_cor(row,.5f,.48f,.48f,.48f,a*.70f);
+          if (resumeProgress > 0) {
+            gfx_recorte(row.x,top,row.w*resumeProgress,bottom-top);
+            gfx_cor(row,.5f,0.898f,0.035f,0.078f,a);
+          }
+          gfx_recorte(x-9,yTop-8,stackW+18,totalH+16);
+        }
       }
       if(action==ACAO_PRIMARIO)player_morph_de(morphLogo,row);
       if(action==ACAO_MAIS)maisAncora=row;
@@ -8298,10 +8310,10 @@ static void detalheFundo(float s) {
   // reversing the same t shrinks the page into the *same* selected card.
   // Do not re-enable the retired carousel: only this renderer is shared.
   if (item.rect.w > 8.0f && item.rect.h > 8.0f &&
-      item.rect.w < NV_TELA_W * 0.95f && s < 0.999f &&
+      item.rect.w < NV_TELA_W * 0.95f && (s < 0.999f || !tex) &&
       !comTrailer && pg < 0.01f && modo != FUNDO_FROST) {
     GLuint source = sharedPosterUrl[0] ? tex_obter_larg(sharedPosterUrl,item.rect.w) : 0;
-    float blend = anim_clamp((s - 0.18f) / 0.72f,0.0f,1.0f);
+    float blend = anim_clamp((s - 0.62f) / 0.38f,0.0f,1.0f);
     float radius = (CAR_RAIO_HOME * (1.0f - s)) / fmaxf(1.0f,fminf(alvo.w,alvo.h));
     radius = fminf(0.48f,fmaxf(0.0f,radius));
     gfx_card_forcar_cover_atual = 1.0f;
@@ -8379,7 +8391,7 @@ static void detail_desenhar_(Uint32 agora) {
   { const char *cv = arteDe(idx), *lg = logoDe(idx);
     if (cv) corviva_definir(cv, CORVIVA_DETALHE);
     if (lg) corviva_definir_logo(lg, CORVIVA_DETALHE); }
-  float s = suave(t), a2 = fase2();
+  float s = carro ? suave(t) : flightProgress(), a2 = fase2();
 
   // TRAILER EM TELA CHEIA: a tela inteira e furo, nada da pagina por cima.
   // No .tpk, ate o recorte do zoom assentar (trailer_mostra_video, #178),

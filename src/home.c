@@ -905,6 +905,8 @@ static float corteFileiras(void) {
 // foco", que e o quanto o destaque sobe ao descer.
 static float empurraHero(void) {
   int heroOn = ajustes_hero_ligado();
+  if (heroOn && !telefoneui_ativo())
+    return fmaxf(0.0f, NV_TELA_H + 16.0f - topoFileiras());
   if (homeRetratoTelefone() && !heroOn) return 0.0f;
   switch (layoutHome()) {
     case HOME_LAYOUT_PADRAO:   return 0.0f;
@@ -2571,7 +2573,7 @@ static void home_evento_(const SDL_Event *e) {
   { SDL_Keycode kk = e->key.keysym.sym;
     int ehOk = (kk == SDLK_RETURN || kk == SDLK_KP_ENTER || kk == SDLK_SPACE);
     if (e->type == SDL_KEYDOWN && ehOk) {
-      if (!okPressionando) {
+      if (!okPressionando && !e->key.repeat) {
         okPressionando = 1;
         okLongDisparado = 0;
         okConsumirSoltura = 0;
@@ -2672,7 +2674,8 @@ static void home_evento_(const SDL_Event *e) {
   if (k == SDLK_ESCAPE || k == SDLK_AC_BACK || k == SDLK_BACKSPACE) return;
   if (k == SDLK_q) { sair = 1; return; }
 #else
-  if (k == SDLK_ESCAPE || k == SDLK_AC_BACK) {
+  if (k == SDLK_ESCAPE || k == SDLK_AC_BACK || k == SDLK_BACKSPACE || k == SDLK_DELETE || e->key.keysym.scancode == NV_SCANCODE_BACK) {
+    if (e->key.repeat) return;
     // UM TOQUE NAO FECHA O APLICATIVO.
     //
     // O relato: "na home, se apertar voltar, na LG ele fecha o aplicativo e no
@@ -2730,12 +2733,10 @@ static void home_evento_(const SDL_Event *e) {
       heroPasso(-1); return;
     }
     if (k == SDLK_DOWN) {
-      if (foco.fileira < 0 || foco.fileira >= foco.nFileiras ||
-          foco.nColunas[foco.fileira] < 1) {
-        int primeira = primeiraFileiraNavegavel();
-        if (primeira < 0) return;
-        foco.fileira = primeira; foco.coluna = 0;
-      }
+      int primeira = primeiraFileiraNavegavel();
+      if (primeira < 0) return;
+      foco.fileira = primeira;
+      foco.coluna = foco.colunaLembrada[primeira] = 0;
       focoHero = 0; return;
     }
     // Up reaches the top menu or focuses the clock until OK is pressed.
@@ -4841,7 +4842,7 @@ static float desenhaCopiaHero(const CatItem *ci, int principal, float x,
 // nao como troca de tela.
 static void ponteiroHero(int a, int b);
 static GfxRect heroArtworkRect(int lay, int cheio) {
-  if (lay == HOME_LAYOUT_PADRAO) return padBannerRect();
+  if (lay == HOME_LAYOUT_PADRAO && telefoneui_ativo()) return padBannerRect();
   GfxRect r = lay == HOME_LAYOUT_DINAMICA
             ? (GfxRect){0, dinHeroY(), NV_TELA_W, ANC(NV_DIN_ARTE_H)}
             : cheio ? (GfxRect){0, 0, NV_TELA_W, ANC(NV_HERO_CHEIO_H)}
@@ -4858,6 +4859,12 @@ static GfxRect heroArtworkRect(int lay, int cheio) {
     }
   }
 #endif
+  if (!telefoneui_ativo() && ajustes_hero_ligado()) {
+    if (lay == HOME_LAYOUT_PADRAO) r = padBannerRect();
+    float reveal = anim_clamp(-scrollY / fmaxf(1.0f, empurraHero()), 0, 1);
+    r.x *= 1.0f-reveal; r.y *= 1.0f-reveal;
+    r.w += (NV_TELA_W-r.w)*reveal; r.h += (NV_TELA_H-r.h)*reveal;
+  }
   return r;
 }
 
@@ -7918,7 +7925,7 @@ static void home_desenhar_(Uint32 agora) {
   // O `pd` vem da MESMA mola que o detalhe usa para desenhar (detail_progresso),
   // e nao de um relogio proprio: dois relogios descasariam e a home sairia
   // adiantada ou atrasada em relacao a arte que entra.
-  float descida = pd * NV_TELA_H * 0.08f;
+  float descida = 0.0f;
   if (pd >= 0.996f) return;
   // MODO CINEMA: as fileiras descem NV_CINEMA_DESCE e apagam (o mesmo que o
   // bloco do hero faz), para o trailer ficar inteiro. Assentado, NAO SE
@@ -8050,34 +8057,6 @@ static void home_desenhar_(Uint32 agora) {
       if(!strncmp(fileiras[r].catId,"ai_",3)) {
         TxtLinha ai=txt_linha(TXT_HERO_META,"AI-powered",183,192,219,255);
         txt_desenhar(ai,fimTit+22,y+(tl.h-ai.h)*.5f);
-      }
-      if (foco.fileira == r && !focoHero && tipo == FILEIRA_PALCO) {
-        char current[32], total[32];
-        snprintf(current, sizeof current, "%d", colunaDaFileira(r) + 1);
-        snprintf(total, sizeof total, " / %d", fileiras[r].n);
-        TxtLinha n = txt_linha(TXT_ROW_TITULO, current, 243, 242, 239, 255);
-        TxtLinha t = txt_linha(TXT_CW_META, total, 137, 140, 147, 255);
-        float x = homeConteudoDireita() - n.w - t.w;
-        txt_desenhar(n, x, y + (tl.h - n.h) * .5f);
-        txt_desenhar(t, x + n.w, y + (tl.h - t.h) * .5f);
-      } else if (foco.fileira == r && !focoHero && tipo != FILEIRA_SOCIAL &&
-                 tipo != FILEIRA_HEROI && tipo != FILEIRA_HEROI_DIVIDIDO) {
-        char pos[32];
-        if (foco.coluna < fileiras[r].n)
-          snprintf(pos, sizeof pos, "%d / %d", foco.coluna + 1, fileiras[r].n);
-        else snprintf(pos, sizeof pos, "Ver tudo");
-        // PILULA ESCURA ATRAS DO CONTADOR. A fileira de baixo corre sobre a arte
-        // do destaque, e cinza 186 direto sobre um fundo claro sumia — o "See
-        // all" do fim da fileira virou um "all" solto na C9 (22/09, arte clara
-        // de One Night Only). O veu so escurece a esquerda, onde mora o titulo;
-        // a direita a arte chega quase crua.
-        char posTr[32];
-        snprintf(posTr, sizeof posTr, "%s", foco.coluna < fileiras[r].n ? pos : i18n(pos));
-        TxtLinha lp = txt_linha(TXT_HERO_META, posTr, 238, 240, 245, 255);
-        float px = homeConteudoDireita() - lp.w, py = y + (tl.h - lp.h)*.5f;
-        gfx_cor((GfxRect){ px - 16.0f, py - 6.0f, lp.w + 32.0f, lp.h + 12.0f }, 0.5f,
-                0.04f, 0.045f, 0.055f, 0.62f);
-        txt_desenhar(lp, px, py);
       }
       if (tipo == FILEIRA_SOCIAL) {
 #ifdef NV_TOUCH_UI
@@ -8414,26 +8393,6 @@ static void home_desenhar_(Uint32 agora) {
             cartaoFoco.caminho = caminho ? cartaoFocoArte : NULL; }
 
 
-          // Feedback progressivo do gesto, sem duplicar o menu contextual. A
-          // barra aparece somente enquanto o mesmo item esta sob pressao;
-          // atingido o limiar, ctxmenu ja foi aberto e a soltura e consumida.
-          // Mesma guarda: segurar o OK no destaque desenhava a barra de
-          // progresso no primeiro card, que nao e o item sob pressao.
-          if (!focoHero && okPressionando && okHold > 0.0f &&
-              foco_pode_pressao_longa() && focus_indice(&foco, r, c)) {
-            float bx = px + NV_HOME_TEXT_GUTTER;
-            float bw = w - NV_HOME_TEXT_GUTTER * 2.0f;
-            GfxRect trilho = { bx, py + h - 12.0f, bw, 4.0f };
-            if (ajustes_vidro()) gfx_vidro_chip(trilho, 0.5f, 0.92f, 1.0f);
-            else gfx_cor(trilho, 0.5f, 0.18f, 0.19f, 0.22f, 0.92f);
-            gfx_cor((GfxRect){ bx, trilho.y, bw * okHold, trilho.h },
-                    0.5f, 0.92f, 0.93f, 0.96f, 1.0f);
-            TxtLinha dica = txt_linha(TXT_MINI,
-                                      okHold >= 1.0f ? "Solte para abrir opções"
-                                                     : "Segure para opções",
-                                      225, 228, 235, 255);
-            txt_desenhar_alpha(dica, bx, py + h - 38.0f, 0.92f);
-          }
         }
       }
       if (tipo == FILEIRA_HEROI_DIVIDIDO)

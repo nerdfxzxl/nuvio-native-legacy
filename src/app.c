@@ -894,6 +894,7 @@ const char *app_tela_nome(void) {
   if ((unsigned)tela < sizeof NOMES / sizeof *NOMES) return NOMES[tela];
   return "?";
 }
+static int leftDown, repeatedLeftExit;
 static int saiuPorEsquerda, saiuPorCima;   // a ultima tecla foi ESQUERDA ou CIMA (ver app_evento)
 // A barra e uma camada de navegacao, mas nao pode disputar o Guia de TV nem
 // um canal minimizado. Manter a regra aqui evita que cada tela invente sua
@@ -4242,6 +4243,15 @@ static int relogioPedidoPagina(void) {
 }
 
 void app_evento(const SDL_Event *e) {
+  int heldLeft = 0;
+  if (e->type == SDL_KEYDOWN && e->key.keysym.sym == SDLK_LEFT) {
+    heldLeft = e->key.repeat || leftDown;
+    leftDown = 1;
+  } else if ((e->type == SDL_KEYUP && e->key.keysym.sym == SDLK_LEFT) ||
+             e->type == SDL_APP_WILLENTERBACKGROUND ||
+             (e->type == SDL_WINDOWEVENT && e->window.event == SDL_WINDOWEVENT_FOCUS_LOST)) {
+    leftDown = 0;
+  }
   if (musicaui_aberta()) {
     if (e->type == SDL_APP_WILLENTERBACKGROUND || e->type == SDL_APP_TERMINATING || e->type == SDL_QUIT)
       musicaui_fechar();
@@ -4620,6 +4630,7 @@ void app_evento(const SDL_Event *e) {
   // segundo ESQUERDA. `saiuPorEsquerda` e o que o bloco de sair le.
   if (e->type == SDL_KEYDOWN) {
     saiuPorEsquerda = (e->key.keysym.sym == SDLK_LEFT);
+    repeatedLeftExit = heldLeft;
     saiuPorCima = (e->key.keysym.sym == SDLK_UP);
   }
   if (spotAtalho(e) && spotPode()) { spotAbrir(e->key.keysym.sym == SPOT_TECLA_VOZ); return; }
@@ -4647,7 +4658,7 @@ void app_evento(const SDL_Event *e) {
     }
     // No MESMO evento, como a home: diferido um quadro, as teclas seguintes
     // do controle ainda cairiam na pagina.
-    if (detail_aberto() && detail_pediu_menu() && sidebar_permitida()) {
+    if (detail_aberto() && detail_pediu_menu() && !heldLeft && sidebar_permitida()) {
       menu_abrir_sobre(1);
       saiuPorEsquerda = saiuPorCima = 0;
     }
@@ -4672,7 +4683,7 @@ void app_evento(const SDL_Event *e) {
     relogioFocoPedir(vertudo_pediu_relogio());
     // ESQUERDA na coluna 0 de "Ver tudo"/colecao: a barra por cima dela.
     // Por cima: DIREITA/Voltar voltam para a lista, um destino a fecha.
-    if (vertudo_aberta() && vertudo_pediu_menu() && sidebar_permitida()) {
+    if (vertudo_aberta() && vertudo_pediu_menu() && !heldLeft && sidebar_permitida()) {
       menu_abrir_sobre(0);
       saiuPorEsquerda = saiuPorCima = 0;
     }
@@ -4703,7 +4714,7 @@ void app_evento(const SDL_Event *e) {
   // app_atualizar. Diferido por um quadro, as teclas que vierem logo depois do
   // ESQUERDA — e num controle elas vem — sao entregues a tela de tras, que
   // ainda acha que e a dona do foco.
-  if (tela == TELA_HOME && home_pediu_menu() && sidebar_permitida()) {
+  if (tela == TELA_HOME && home_pediu_menu() && !heldLeft && sidebar_permitida()) {
     menu_abrir();
     saiuPorEsquerda = saiuPorCima = 0;
   }
@@ -5625,7 +5636,9 @@ void app_atualizar(float dt, Uint32 agora) {
       // ESQUERDA na borda abre a barra SOBRE a tela atual. Voltar continua
       // sendo a saída normal para a Home; assim o foco da tela não é perdido
       // só para alcançar a navegação principal.
-      if ((saiuPorEsquerda || saiuPorCima) && sidebar_permitida()) {
+      if (saiuPorEsquerda && repeatedLeftExit) {
+        /* Consume the boundary request; keep this screen and its focus. */
+      } else if ((saiuPorEsquerda || saiuPorCima) && sidebar_permitida()) {
         menu_abrir();
       } else if (tela == TELA_SOCIAL && socialDoPerfil) {
         trocarTela(TELA_PERFIL);

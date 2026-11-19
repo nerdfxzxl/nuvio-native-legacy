@@ -13,16 +13,16 @@ The starting branch HEAD is exactly Build 119, 1b29dab675d80fc0bb2cc52aa06fcb28e
 |1|Single artwork and framing|Implemented; host syntax and source guards passed. TV pending.|
 |2|Interruptible focus and neighbor motion|Implemented; host syntax and source guards passed. TV pending.|
 |3|Smooth or instant preference|Implemented; host syntax and source guards passed. TV pending.|
-|4|Back / Hero Down|Not started|
-|5|Fullscreen Hero|Not started|
+|4|Back / Hero Down|Implemented in native code; device validation pending|
+|5|Fullscreen Hero|Implemented in native code; device validation pending|
 |6|Multi-catalogue Hero rotation|Not started|
-|7|Fast Left protection|Not started|
-|8|Short / long OK|Not started|
-|9|Resume pill track|Not started|
+|7|Fast Left protection|Implemented in native code; device validation pending|
+|8|Short / long OK|Implemented in native code; device validation pending|
+|9|Resume pill track|Implemented in native code; device validation pending|
 |10|Continue Watching limits|Not started|
-|11|Row counters|Not started|
+|11|Row counters|Implemented in native code; device validation pending|
 |12|Per-row per-style size editor|Not started|
-|13|Shared poster bounds|Not started|
+|13|Shared poster bounds|Partial: bounds timing and return motion changed; stale target and late artwork validation pending|
 |14|Persistent Home artwork cache|Not started|
 
 ## Execution notes
@@ -34,3 +34,7 @@ Start with src/home.c, src/detail.c and the native regression guards in tests/na
 ### Poster focus checkpoint
 
 Changed src/home.c, src/ajustes.c, src/ajustes.h, src/ajustes_ux_padrao.inc, src/ajustes_ux_tela.inc and tests/native_home_refinements.py. The shared artwork uses the existing decode-time saliency and centered fallback. Title overlays are suppressed on identified poster fallbacks and styles with their own title renderer. Embedded provider text in arbitrary backdrops cannot be identified from metadata alone. Interrupted expansions retain their displayed widths. The new named preference uses Legacy's existing persistent settings table. Host GCC syntax check for Home/settings, native_home_refinements.py and ajustes_secoes.sh passed. Handoff baseline commit 726729c1b3d530f3fb9350cabedac9856aec4c4d. No APK or physical verification yet.
+
+### Navigation, input, Resume and shared bounds
+
+Previous implementation commit ac24e9c9e9e4874150446ffef50bb5aaba05db70. Changed src/home.c, src/app.c and src/detail.c. Down from Hero resolves the first navigable row, resetting its column. TV Hero scroll targets move the shelf outside the viewport. Removed current/total headings. The central router consumes held-Left sidebar requests after component navigation. Home classifies OK on release or at hold threshold; opening options supplies the long-press feedback. Resume uses a band clipped to the original pill silhouette and its stack clip. Detail now traverses actual bounds on a reversible 380 ms timeline; removed the competing Home shelf offset. Source-art fallback stays on screen if the backdrop is missing. Still verify close after catalogue movement and late-art blending. Passed host GCC syntax checks for all three files, tests/detail_netflix.py, tests/native_home_refinements.py, and git diff --check. No Android build yet.
