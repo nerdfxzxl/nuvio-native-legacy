@@ -25,8 +25,12 @@ card_url = home.split("caminho = arte_por_identidade(idxCat,", 1)[1].split(";", 
 require("deitado || (ajustes_expandir_poster() && podeExpandir(r))" in card_url,
         "Expandable portraits must use one landscape-ready artwork source")
 require("abre" not in card_url, "Focus state must never change the artwork URL")
-require("expDesde = agora; expAbre = 1.0f;" in home,
-        "Focused posters must expand with zero width-animation delay")
+require("expFileira != foco.fileira || expColuna != foco.coluna" in home,
+        "Focus changes must reset the expansion timeline")
+require("220.0f" in home and "motionReduzido ? 1.0f" in home,
+        "Portrait expansion should ease out in ~220ms with reduced-motion support")
+require("empurra = (artH * escF * NV_EXP_ASPECTO - lw * escF) * expAbre;" in home,
+        "Neighbor movement must share the same expansion progress")
 require("Expanded cards may have a second cached landscape variant." not in home,
         "Home must not keep a second focus-state image")
 
@@ -36,8 +40,24 @@ for item in ("FILEIRA_NORMAL", "FILEIRA_POSTER", "FILEIRA_LARGA"):
     require("tipo == " + item in cover, "Missing cover rule for " + item)
 require("gfx_tex_aspect_atual = tex_aspecto(caminho)" in home,
         "Cover crop must use the real image aspect ratio")
-require("vec2 coverAsp" in read("src/gfx.c"),
+gfx = read("src/gfx.c")
+require("vec2 coverAsp" in gfx,
         "Renderer must use aspect-preserving cover coordinates")
+require("uv0.x += uPar.y * (1.0 - visible)" in gfx and "cropBias" in home,
+        "Portrait subject crop must respect the existing artwork saliency")
+
+# Source guards for honest focused-card metadata and ambient colors.
+expanded_labels = home.split("static void desenhaFaixaAberta", 1)[1].split("// ZERO.", 1)[0]
+require("tend_delta(" not in expanded_labels and "i18n(\"Novo\")" not in expanded_labels,
+        "Remove untrusted trending movement/New labels from expanded cards")
+require("badge_imdb(" in expanded_labels and "ci->meta" in expanded_labels,
+        "Preserve IMDb badge and year while removing speculative labels")
+require("fileiraItemIndice(f, foco.coluna)" in home and "tex_publicar_paleta(arte)" in home,
+        "Immersive colors must follow the actual focused item's cached palette")
+require('"Resume"' in detail and '"Play"' in detail and '"Resume S%dE%d"' in detail,
+        "Detail Play and Resume should use consistent English action text")
+require("4, /* Dynamic layout background: AMOLED Black by default" in read("src/ajustes_ux_padrao.inc"),
+        "Pure AMOLED black must remain the default on new installs")
 
 # Artwork title is independently drawn inside both portrait and wide cards.
 require("desenhaLogoCartao(cItem,px,py,w,h," in home,
@@ -69,8 +89,12 @@ require("phoneRemoteRepeat();" in main and "phoneFingerDown=0;phoneDirection=SDL
         "Swipe-and-hold must repeat and stop immediately on release")
 
 # Don't accidentally reintroduce the ~30-minute apt install.
-require("sudo apt-get install -y cmake ninja-build ffmpeg perl python3" not in workflow,
-        "Host FFmpeg was the major CI slowdown; keep its apt install removed")
+require("python3-pil" in workflow and "ffmpeg" not in workflow.split("name: Install Android NDK and SDL development headers",1)[1].split("name: Compile-check",1)[0],
+        "Use lightweight host Pillow conversion instead of the expensive FFmpeg package")
+require("gradle/actions/setup-gradle@v4" in workflow,
+        "Cache Gradle dependencies for faster repeat runs")
+require("Save completed P2P engine for retries" in workflow,
+        "Save completed P2P immediately so later APK errors do not discard its cache")
 require("id: p2p-cache" in workflow and "steps.p2p-cache.outputs.cache-hit != 'true'" in workflow,
         "P2P must skip rebuild on an exact cache hit")
 require("src/home.c" in preflight and "python3 tests/native_home_refinements.py" in preflight,
