@@ -610,13 +610,19 @@ static SDL_FingerID phoneFingerId;
 static float phoneStartX,phoneStartY,phoneTapX,phoneTapY;
 static Uint32 phoneLastTap,phoneNextRepeat;
 static SDL_Keycode phoneDirection=SDLK_UNKNOWN;
-static void phoneRemoteKey(SDL_Keycode sym) {
+static int phoneSecondTap;
+// Keep DOWN and UP separate on the second tap, so the normal OK hold timer
+// measures from actual finger contact until lift (short single tap stays inert).
+static void phoneRemoteKeyEvent(SDL_Keycode sym, Uint32 type, int repeat) {
   SDL_Event key; SDL_zero(key);
-  key.type=SDL_KEYDOWN;key.key.state=SDL_PRESSED;
+  key.type=type; key.key.state=type==SDL_KEYDOWN?SDL_PRESSED:SDL_RELEASED;
+  key.key.repeat=type==SDL_KEYDOWN && repeat;
   key.key.keysym.sym=sym;key.key.keysym.scancode=SDL_GetScancodeFromKey(sym);
   app_evento(&key);
-  key.type=SDL_KEYUP;key.key.state=SDL_RELEASED;
-  app_evento(&key);
+}
+static void phoneRemoteKey(SDL_Keycode sym) {
+  phoneRemoteKeyEvent(sym,SDL_KEYDOWN,0);
+  phoneRemoteKeyEvent(sym,SDL_KEYUP,0);
 }
 static int phoneRemoteEnabled(void) {
   // Restore the original stream-selector D-pad behavior even in Touch mode.
@@ -628,7 +634,8 @@ static int phoneRemoteEnabled(void) {
 }
 static int phoneRemoteGesture(const SDL_Event *event) {
   if (!phoneRemoteEnabled()) {
-    phoneFingerDown=0;phoneDirection=SDLK_UNKNOWN;phoneLastTap=0;
+    if (phoneSecondTap) phoneRemoteKeyEvent(SDLK_RETURN,SDL_KEYUP,0);
+    phoneSecondTap=0;phoneFingerDown=0;phoneDirection=SDLK_UNKNOWN;phoneLastTap=0;
     return 0;
   }
   // Ignore synthetic mouse events paired with real finger events.
@@ -643,7 +650,14 @@ static int phoneRemoteGesture(const SDL_Event *event) {
   if(event->type==SDL_FINGERDOWN) {
     phoneFingerId=event->tfinger.fingerId;phoneFingerDown=1;
     phoneStartX=event->tfinger.x;phoneStartY=event->tfinger.y;
-    phoneDirection=SDLK_UNKNOWN;return 1;
+    phoneDirection=SDLK_UNKNOWN;
+    phoneSecondTap=phoneLastTap && now-phoneLastTap<430u &&
+      fabsf(phoneStartX-phoneTapX)<0.07f && fabsf(phoneStartY-phoneTapY)<0.07f;
+    if (phoneSecondTap) {
+      phoneLastTap=0;
+      phoneRemoteKeyEvent(SDLK_RETURN,SDL_KEYDOWN,0);
+    }
+    return 1;
   }
   if(!phoneFingerDown || event->tfinger.fingerId!=phoneFingerId)return 1;
   float dx=event->tfinger.x-phoneStartX,dy=event->tfinger.y-phoneStartY;
@@ -659,14 +673,12 @@ static int phoneRemoteGesture(const SDL_Event *event) {
     }
     return 1;
   }
-  if(phoneDirection==SDLK_UNKNOWN) {
-    if(phoneLastTap && now-phoneLastTap<430u &&
-       fabsf(phoneStartX-phoneTapX)<0.07f &&
-       fabsf(phoneStartY-phoneTapY)<0.07f) {
-      phoneRemoteKey(SDLK_RETURN);phoneLastTap=0;
-    }else {
-      phoneLastTap=now;phoneTapX=phoneStartX;phoneTapY=phoneStartY;
-    }
+  if(phoneSecondTap) {
+    phoneRemoteKeyEvent(SDLK_RETURN,SDL_KEYUP,0);
+    phoneSecondTap=0;phoneLastTap=0;
+  } else if(phoneDirection==SDLK_UNKNOWN) {
+    // First tap alone never sends OK.
+    phoneLastTap=now;phoneTapX=phoneStartX;phoneTapY=phoneStartY;
   }
   phoneFingerDown=0;phoneDirection=SDLK_UNKNOWN;return 1;
 }
@@ -676,7 +688,11 @@ static void phoneRemoteRepeat(void) {
   Uint32 now=SDL_GetTicks();
   // One repeat per frame, with a short initial delay and no post-release tail.
   if((Sint32)(now-phoneNextRepeat)>=0) {
-    phoneRemoteKey(phoneDirection);phoneNextRepeat=now+88u;
+    // A held gesture emits repeated DOWNs. Mark them as repeats even though
+    // the compatibility helper sends a balanced UP after each step.
+    phoneRemoteKeyEvent(phoneDirection,SDL_KEYDOWN,1);
+    phoneRemoteKeyEvent(phoneDirection,SDL_KEYUP,0);
+    phoneNextRepeat=now+88u;
   }
 }
 #endif
