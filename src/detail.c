@@ -5156,9 +5156,15 @@ static void heroWeb(float a, float desloc) {
       snprintf(rot, sizeof rot, "Resume S%dE%d", t, e);
       retomando = 1;
     }
-    else { snprintf(rot, sizeof rot, "%s",
-                    det_rotulo_primario(ci ? ci->progresso : 0, ajustes_cw_concluido()));
-           retomando = !ehSerie(); } }
+    else {
+      // The native Netflix-style primary action uses its own English labels,
+      // independent of a Portuguese account/TV automatic locale. The exact
+      // checkpoint state still decides whether this is Resume or Play.
+      int inProgress = ci && ci->progresso > 0 &&
+                       ci->progresso < ajustes_cw_concluido();
+      snprintf(rot, sizeof rot, "%s", inProgress ? "Resume" : "Play");
+      retomando = !ehSerie() && inProgress;
+    } }
   // Use the active profile checkpoint for precise watched time if available.
   if(retomando && ci && ci->imdb[0]) {
     char key[48]; ProgRegistro checkpoint;
