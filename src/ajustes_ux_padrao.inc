@@ -360,3 +360,5 @@
   0, /* Netflix episode IMDb scores: On */
   0, /* Navigation mode: Touch by default */
   0, /* Home row layouts: modal action; persisted in fileiras.c */
+  126, /* Large poster size: 126dp keeps measured Legacy dimensions */
+  126, /* Landscape poster size: 126dp keeps measured Legacy dimensions */
