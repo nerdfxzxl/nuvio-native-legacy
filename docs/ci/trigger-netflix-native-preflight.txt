@@ -1,3 +1,4 @@
-Nuvio Netflix native preflight: eight refinements from user on 2026-11-18.
-Head: 8d8b067c9076b9f0cd461221b2229c87ab212ed7
-Verify ARM64 C syntax, settings index parity, and Netflix episode/review integration. No APK in this run.
+Nuvio Native UI refinements: no-APK NDK compile and regression checks.
+Head before trigger: 54363f55f6c2b63a8863e260d4d5a14f95cfa298
+Check home.c, main.c, detail.c, Episodes vector glyph, cover art, gesture routing, settings parity and native dependency workflow.
+No full Android APK will be built by this workflow.
