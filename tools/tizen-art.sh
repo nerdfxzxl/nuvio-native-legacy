@@ -77,10 +77,17 @@ if [ -n "$(find "$DESTINO" -type f -name '*.webp' -print -quit)" ]; then
   # 64` exactly (fixed height, width by aspect ratio).
   # (Note: `dwebp -getinfo` does not exist in Ubuntu's webp 1.5.0, and plain
   # `-scale` would need the width read and computed by hand. ffmpeg does both.)
+  # The CI runner uses Ubuntu's small python3-pil package instead of FFmpeg's
+  # ~87 host media dependencies. Keep sips/FFmpeg for existing local builds.
+  PILBIN=""
   if command -v sips >/dev/null; then CONV=sips
+  elif command -v python3 >/dev/null && python3 -c 'from PIL import Image, features; assert features.check("webp")' >/dev/null 2>&1; then
+    CONV=pillow; PILBIN=python3
+  elif [ -x /usr/bin/python3 ] && /usr/bin/python3 -c 'from PIL import Image, features; assert features.check("webp")' >/dev/null 2>&1; then
+    CONV=pillow; PILBIN=/usr/bin/python3
   elif command -v ffmpeg >/dev/null; then CONV=ffmpeg
   else
-    echo "tizen-art.sh: no webp converter (sips on macOS, ffmpeg on Linux)" >&2
+    echo "tizen-art.sh: no webp converter (Pillow, sips or ffmpeg)" >&2
     exit 1
   fi
   N=0
@@ -95,6 +102,21 @@ if [ -n "$(find "$DESTINO" -type f -name '*.webp' -print -quit)" ]; then
     if [ "$CONV" = sips ]; then
       sips -s format png $RED "$w" --out "${w%.webp}.png" >/dev/null 2>&1 || {
         echo "tizen-art.sh: failed converting $w" >&2; exit 1; }
+    elif [ "$CONV" = pillow ]; then
+      if ! "$PILBIN" - "$w" "${w%.webp}.png" "$BADGE_PNG_HEIGHT" "$RED" <<'PY'
+import sys
+from PIL import Image
+src, target, height, resize = sys.argv[1:]
+with Image.open(src) as im:
+    if resize:
+        h = int(height)
+        w = max(1, round(im.width * h / im.height))
+        im = im.resize((w, h), Image.Resampling.LANCZOS)
+    im.save(target, format="PNG")
+PY
+      then
+        echo "tizen-art.sh: failed converting $w with Pillow" >&2; exit 1
+      fi
     elif [ -n "$RED" ]; then
       if ! ffmpeg -v error -i "$w" -vf "scale=-1:$BADGE_PNG_HEIGHT:flags=lanczos" -y "${w%.webp}.png" 2>/dev/null; then
         echo "tizen-art.sh: failed converting $w" >&2; exit 1; fi
