@@ -10,9 +10,9 @@ The starting branch HEAD is exactly Build 119, 1b29dab675d80fc0bb2cc52aa06fcb28e
 
 | # | Refinement | Work on this branch since 119 |
 |---|---|---|
-|1|Single artwork and framing|Not started|
-|2|Interruptible focus and neighbor motion|Not started|
-|3|Smooth or instant preference|Not started|
+|1|Single artwork and framing|Implemented; host syntax and source guards passed. TV pending.|
+|2|Interruptible focus and neighbor motion|Implemented; host syntax and source guards passed. TV pending.|
+|3|Smooth or instant preference|Implemented; host syntax and source guards passed. TV pending.|
 |4|Back / Hero Down|Not started|
 |5|Fullscreen Hero|Not started|
 |6|Multi-catalogue Hero rotation|Not started|
@@ -30,3 +30,7 @@ The starting branch HEAD is exactly Build 119, 1b29dab675d80fc0bb2cc52aa06fcb28e
 Initial files changed: this document only. Verified branch ancestry and workflow triggers. No implementation tests or TV tests yet. The reported Build 119 visual defects remain open. No clarification pending.
 
 Start with src/home.c, src/detail.c and the native regression guards in tests/native_home_refinements.py. The latter encode Build 119's superseded two-artwork and global-size behavior. Trace geometry, capture actual drawn bounds, and update only guards superseded by new requirements. Then implement Home/Hero navigation and rotation, input and Resume, row editor, and artwork cache. Inspect the existing native cache before changing it. Leave Android playback seek cache intact. For each group record changed paths, actual checks and remaining device validation. Run tools/android/preflight-c.sh in the NDK environment. The scoped no-APK and APK workflows watch docs/ci/trigger-netflix-native-preflight.txt and docs/ci/trigger-netflix-detail-once.txt respectively. Only change the full-build trigger when integrated checks pass. Inspect jobs, fix concrete failures, verify artifact for the exact built SHA.
+
+### Poster focus checkpoint
+
+Changed src/home.c, src/ajustes.c, src/ajustes.h, src/ajustes_ux_padrao.inc, src/ajustes_ux_tela.inc and tests/native_home_refinements.py. The shared artwork uses the existing decode-time saliency and centered fallback. Title overlays are suppressed on identified poster fallbacks and styles with their own title renderer. Embedded provider text in arbitrary backdrops cannot be identified from metadata alone. Interrupted expansions retain their displayed widths. The new named preference uses Legacy's existing persistent settings table. Host GCC syntax check for Home/settings, native_home_refinements.py and ajustes_secoes.sh passed. Handoff baseline commit 726729c1b3d530f3fb9350cabedac9856aec4c4d. No APK or physical verification yet.

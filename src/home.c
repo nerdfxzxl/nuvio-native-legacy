@@ -361,6 +361,7 @@ static void publicarItemFoco(void) {
   temItemFoco = 1;
 }
 static float animFoco[MAX_FIL][MAX_CARDS];
+static float expansion[MAX_FIL][MAX_CARDS], expansionStart[MAX_FIL][MAX_CARDS];
 // O TITULO DA FILEIRA acende (branco) quando a fileira e a focada e volta ao
 // cinza secundario quando nao e (dono, 14/10: "quando a fileira nao tiver
 // focada deixar o titulo da fileira em cinza") — a mesma mola do foco do card.
@@ -3569,6 +3570,7 @@ static void sincronizarFileiras(void) {
         }
         break;
       }
+  memset(expansion,0,sizeof expansion); memset(expansionStart,0,sizeof expansionStart);
   expFileira = expColuna = -1; expAbre = 0.0f;
   homeAtualizarReferenciasArte();
   if (nFileiras < 1) return;
@@ -3953,19 +3955,19 @@ static void home_atualizar_(float dt, Uint32 agora) {
     }
   }
   }
-  // Keep the row responsive: one 220ms ease-out controls BOTH card width
-  // and the space pushed into the following cards (no separate neighbor spring).
-  // Changing focus restarts the short transition; reduced motion stays instant.
-  if (ajustes_expandir_poster() && !homeRetratoTelefone() && !focoHero &&
-      !ctx_aberto() && podeExpandir(foco.fileira)) {
-    if (expFileira != foco.fileira || expColuna != foco.coluna) {
-      expFileira = foco.fileira; expColuna = foco.coluna; expDesde = agora;
-    }
-    float t = fminf(1.0f, (float)(Uint32)(agora - expDesde) / 220.0f);
-    expAbre = motionReduzido ? 1.0f : 1.0f - (1.0f - t) * (1.0f - t) * (1.0f - t);
-  } else {
-    expAbre = 0.0f; expFileira = expColuna = -1;
+  int expandRow = ajustes_expandir_poster() && !homeRetratoTelefone() &&
+      !focoHero && podeExpandir(foco.fileira) && foco.coluna < fileiras[foco.fileira].n
+      ? foco.fileira : -1;
+  int expandCol = expandRow < 0 ? -1 : foco.coluna;
+  if (expandRow != expFileira || expandCol != expColuna) {
+    memcpy(expansionStart, expansion, sizeof expansion);
+    expFileira = expandRow; expColuna = expandCol; expDesde = agora;
   }
+  const int instantFocus = motionReduzido || ajustes_foco_instantaneo();
+  float phase = instantFocus ? 1.0f : fminf(1.0f, (agora - expDesde) / 210.0f);
+  float ease = phase * phase * (3.0f - 2.0f * phase);
+  expAbre = expandRow >= 0 && expandCol < MAX_CARDS
+      ? expansionStart[expandRow][expandCol] + (1.0f-expansionStart[expandRow][expandCol])*ease : 0;
 
   { int alvo = palcoFundoDestino();
     if (alvo != PALCO_ATUAL) palcoFundoItem = fileiraItemIndice(&fileiras[foco.fileira], foco.coluna);
@@ -4012,7 +4014,9 @@ static void home_atualizar_(float dt, Uint32 agora) {
       // e o D-pad so obedecia a um deles. O `foco` nao e zerado — ele guarda
       // onde a pessoa estava, e e para la que o baixo devolve.
       float alvo = (!focoHero && focus_indice(&foco, r, c)) ? 1.0f : 0.0f;
-      animFoco[r][c] = motionReduzido
+      float target = r == expFileira && c == expColuna ? 1.0f : 0.0f;
+      expansion[r][c] = expansionStart[r][c] + (target - expansionStart[r][c]) * ease;
+      animFoco[r][c] = instantFocus
                      ? alvo
                      : anim_mola(animFoco[r][c], alvo, dt,
                                  alvo > animFoco[r][c] ? NV_MOLA_FOCO : NV_MOLA_DESFOCO);
@@ -6939,7 +6943,7 @@ static void desenhaArteCard(GfxRect card, TipoFileira tipo, const char *caminho,
     // window computed during the ORIGINAL decode nudges portrait framing
     // toward the artwork's subject, rather than forcing a title-centric crop.
     float cropBias = 0.0f;
-    if (caminho && card.w < card.h && (tipo == FILEIRA_NORMAL ||
+    if (caminho && (tipo == FILEIRA_NORMAL ||
         tipo == FILEIRA_POSTER || tipo == FILEIRA_TOP10_NUM)) {
       CorvivaPaleta pal;
       tex_publicar_paleta(caminho);
@@ -7614,18 +7618,6 @@ static void pintarCartao(const CartaoFoco *k, float raio) {
           if (!arteSobreTrailer || (t && aArteCard > 0.004f))
             desenhaArteCard(card, tipo, caminho, t, cItem, f, raio, aArteCard,
                             varreFoco);
-          // The single transitioning card briefly blends its cached portrait
-          // artwork over the landscape key art. At rest there is only ONE
-          // texture draw; fully expanded the original landscape is untouched.
-          if (!arteSobreTrailer && !deitado && abre > 0.001f && abre < 0.999f &&
-              ajustes_expandir_poster() && podeExpandir(r)) {
-            int idxPortrait = fileiraItemIndice(&fileiras[r], c);
-            const char *portrait = arte_por_identidade(idxPortrait, 0);
-            GLuint portraitTex = portrait ? tex_obter_larg(portrait, h * 0.70f) : 0;
-            if (portraitTex)
-              desenhaArteCard(card, tipo, portrait, portraitTex, cItem, f, raio,
-                              aArteCard * (1.0f - abre), 0.0f);
-          }
           arteSobreTrailer = 0;
           if (t) gfx_veu_na_arte = 1; else gfx_veu_card_limpar();
           // SOBRE O TRAILER so ficam o anel e o logo do card aberto (o mesmo
@@ -7718,8 +7710,10 @@ static void pintarCartao(const CartaoFoco *k, float raio) {
           // compact, left-aligned when wide, without a second artwork download.
           // Keep the mark hidden under an active video trailer.
           gfx_opacidade_grupo = ogCartao * (1.0f - k->trailer);
-          if (cItem && cartaoLogoElegivel(tipo))
-            desenhaLogoCartao(cItem,px,py,w,h,deitado && !abre);
+          if (cItem && cartaoLogoElegivel(tipo) && caminho &&
+              (!cItem->poster[0] || strcmp(caminho,cItem->poster)) &&
+              !(tipo == FILEIRA_POSTER_GRANDE || tipo == FILEIRA_DESTAQUE))
+            desenhaLogoCartao(cItem,px,py,w,h,w >= h);
           gfx_opacidade_grupo = ogCartao;
   gfx_opacidade_grupo = ogCartao * (1.0f - k->trailer);
   if (editorial(tipo)) desenhaEditorialCard(cItem, tipo, px, py, w, h, raio);
@@ -8166,6 +8160,7 @@ static void home_desenhar_(Uint32 agora) {
         gfx_recorte(left, corte, divididoDireita() - left, NV_TELA_H - corte);
       }
       for (int passe = 1; passe < 2; passe++) {
+        float neighborOffset = 0.0f;
         for (int c = 0; c < fileiras[r].n; c++) {
           float f = animFoco[r][c];
           if (passe == 0 && f < 0.01f) continue;
@@ -8177,7 +8172,7 @@ static void home_desenhar_(Uint32 agora) {
           //
           // A altura nao entra na conta: na referencia ela nao muda, e o card
           // cresce so para a direita a partir de uma borda esquerda parada.
-          float abre = (r == expFileira && c == expColuna) ? expAbre : 0.0f;
+          float abre = expansion[r][c];
           float larguraAberta = artH * esc * NV_EXP_ASPECTO;
           // Cascata: atraso pela coluna VISIVEL, nao pela absoluta — a
           // fileira rolada ate a coluna 20 entra pelo primeiro card da tela.
@@ -8190,18 +8185,10 @@ static void home_desenhar_(Uint32 agora) {
             entra = revela_entra(filEntraEm[r], ordem * NV_ENTRA_PASSO_MS, agora);
           }
           gfx_opacidade_grupo = grupoFil * entra;
-          float empurra = 0.0f;
-          // O empurrao e medido no card aberto COM a escala de foco dele, nao
-          // no de escala 1: o aberto mede artH*escF*16/9 e o empurrao contava
-          // artH*16/9 — faltavam (escF-1)*artH*16/9 ≈ 40 px, e o vizinho da
-          // direita ficava por baixo do aberto ("alguns cards quando abrem
-          // ficam por cima do outro", 20/09/2026). Com o vizinho empurrado
-          // pela medida certa sobra so a folga normal de um card focado.
-          if (r == expFileira && expAbre > 0.0f && c > expColuna) {
-            float escF = 1.0f + escalaDe(tipo) * animFoco[r][expColuna];
-            empurra = (artH * escF * NV_EXP_ASPECTO - lw * escF) * expAbre;
-          }
-          if (abre > 0.0f) w = lw * esc + (larguraAberta - lw * esc) * abre;
+          float empurra = neighborOffset;
+          float extraWidth = (larguraAberta - w) * abre;
+          w += extraWidth;
+          neighborOffset += extraWidth;
           float cx = homeFileiraX(r, c) + lw * 0.5f
                    + empurra + (w - lw * esc) * 0.5f + xOffTipo(tipo);
           if (tipo == FILEIRA_PALCO) { palcoGeo(r, c, lw, &cx, &esc); if (r == foco.fileira && c == foco.coluna) esc *= okDip; w = lw * esc; h = artH * esc; }
@@ -8334,13 +8321,7 @@ static void home_desenhar_(Uint32 agora) {
             w = h * 2.0f / 3.0f;   // daqui em diante, o cartaz
           }
           const char *caminho = NULL;
-          // Compact portrait cards must use actual portrait art when supplied.
-          // Forcing a 16:9 backdrop into a 2:3 rectangle loses whole subjects,
-          // regardless of saliency offsets. Use the same landscape artwork as
-          // before ONLY when the focused card starts opening; blend during
-          // that transition below, preserving the approved expanded look.
-          int portraitExpand = !deitado && ajustes_expandir_poster() &&
-                               podeExpandir(r) && abre > 0.001f;
+          int portraitExpand = ajustes_expandir_poster() && podeExpandir(r);
           caminho = arte_por_identidade(idxCat,
                                         (tipo == FILEIRA_CONTINUE || tipo == FILEIRA_RETORNO) ? 3
                                         : (deitado || portraitExpand));
@@ -8795,6 +8776,7 @@ void home_abrir_sessao(void) {
   memset(tempoCol, 0, sizeof tempoCol); memset(tempoAno, 0, sizeof tempoAno);
   memset(tempoEntraEm, 0, sizeof tempoEntraEm); memset(tempoUlt, 0, sizeof tempoUlt);
   fileirasVistasEm = 0;
+  memset(expansion,0,sizeof expansion); memset(expansionStart,0,sizeof expansionStart);
   expFileira = expColuna = -1; expDesde = 0; expAbre = 0.0f;
   heroAtual = heroAnterior = heroPendente = 0;
   heroDesejado = heroTardeItem = heroPreItem = heroPreLogado = heroInfoItem = -1;

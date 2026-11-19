@@ -735,6 +735,7 @@ typedef enum {
   AJ_GESTO_REMOTE,     // Android touch navigation: Touch / Gesture (TV Remote)
   AJ_HOME_ROW_LAYOUTS, // Action: only enabled and visible catalog rows
   AJ_TAM_GRANDE_DP, AJ_TAM_PAISAGEM_DP, // append-only: independent row poster dimensions
+  AJ_FOCO_INSTANTANEO,
   AJ_N
 } OpcaoId;
 _Static_assert(DEBRID_RD == 0 && DEBRID_TB == 1 && DEBRID_PM == 2 && DEBRID_AD == 3,
@@ -769,6 +770,7 @@ static const char *V_PALCO_FUNDO[] = { "Cortina", "Como está", "Só arte", "Pre
 static const char *V_TITULO_FIL[] = { "Clássico", "Ilha", "Editorial", "Acento" };
 static const char *V_DEGRADES[] = { "Automático", "Forte", "Desligado" };
 static const char *V_VIDRO_QUALIDADE[] = { "Automática", "Desempenho", "Alta" };
+static const char *V_FOCO_POSTER[] = { "Smooth focus", "Instant focus" };
 static const char *V_GESTO_REMOTE[] = { "Touch", "Gesture (TV Remote)" };
 static const char *V_FUNDO_DIN[] = { "Cinza", "Cor", "Imersivo", "Cinza escuro", "AMOLED Black" };
 // A cor do fundo "Cor" sai da paleta do acento (TEMA_ACENTO), em ordem de
@@ -1883,6 +1885,7 @@ static const Opcao OPCOES[AJ_N] = {
   ACAO("Home Row Layouts"),
   NUM("Large poster size",            72, 200, 2, " dp"),
   NUM("Landscape poster size",        72, 200, 2, " dp"),
+  ESC("Poster focus", V_FOCO_POSTER, 2),
   };
 
 // Nome de cada opcao no arquivo. O formato era POSICIONAL — uma linha por
@@ -2224,6 +2227,7 @@ static const char *CHAVE[] = {
   "gestureRemoteLocal",
   "-homeRowLayouts",
   "posterLargeSizeLocal", "posterLandscapeSizeLocal",
+  "posterFocusInstantLocal",
 };
 // QUATRO VETORES PARALELOS indexados pelo mesmo enum AJ_*: OPCOES, CHAVE,
 // valor e as secoes. OPCOES ja e declarado [AJ_N], e `valor` aceita inicializacao
@@ -3872,6 +3876,7 @@ int ajustes_botao_trailer(void)       { return lig(AJ_DET_TRAILER); }
 int ajustes_meta_externo(void)        { return lig(AJ_DET_META_EXT); }
 int ajustes_meta_so_cinemeta(void)    { return lig(AJ_DET_SO_CINEMETA); }
 
+int ajustes_foco_instantaneo(void) { return valor[AJ_FOCO_INSTANTANEO] == 1; }
 int   ajustes_expandir_poster(void)   { return lig(AJ_EXPANDIR); }
 float ajustes_expandir_poster_atraso(void) { return (float)valor[AJ_EXPANDIR_ATRASO]; }
 int   ajustes_navegacao_horizontal_rapida(void) { return lig(AJ_NAV_RAPIDA); }

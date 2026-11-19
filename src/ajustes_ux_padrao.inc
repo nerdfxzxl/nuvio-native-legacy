@@ -362,3 +362,4 @@
   0, /* Home row layouts: modal action; persisted in fileiras.c */
   126, /* Large poster size: 126dp keeps measured Legacy dimensions */
   126, /* Landscape poster size: 126dp keeps measured Legacy dimensions */
+  0, /* Smooth poster focus */
