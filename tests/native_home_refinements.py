@@ -54,7 +54,7 @@ require("episodeicon_draw" in icon and "gfx_cor" in icon,
         "Episode icon must be drawn natively, not from a screenshot")
 require(icon.count("gfx_cor((GfxRect)") == 8,
         "Expected two 2-stroke L shapes and one 4-stroke front rectangle")
-require("const float iconInk=1.0f-k;" in detail,
+require("float iconInk=1.0f-k;" in detail,
         "Focused Episodes icon should use full black")
 require("episodeicon_draw" in detail, "Detail must use the shared icon")
 
