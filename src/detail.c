@@ -484,6 +484,7 @@ static float cartao = 1.0f, cartaoVel;  // 1 = cartao, 0 = pagina cheia
 static int   carCheia;
 static float carTxt = 1.0f, carTxtVel;
 static GfxRect carOrigem;           // cartaz da fileira (abrir e fechar)
+static char sharedPosterUrl[NV_TEX_URL_MAX]; // stable original artwork for flight
 static float heroDx;                // deslocamento horizontal do bloco do heroi
 // MODO CINEMA DO TRAILER (dono, 21/09/2026, com a foto do outro app: "quando
 // comecar a tocar o trailer descer a arte do titulo e deixar assim"). Com o
@@ -1626,6 +1627,9 @@ static void abrirInterno(const HomeItem *it) {
   trocaarte_fechar();
   audAberta = 0; audTempAberta = -1; audTempVista = -1; frasesAberta = 0;
   item = *it;
+  // Freeze the launch artwork URL: Home may refresh its row during the
+  // detail transition; the moving visual must never switch to another title.
+  snprintf(sharedPosterUrl,sizeof sharedPosterUrl,"%s",it->arte?it->arte:"");
   aberto = 1; saindo = 0; nivel = 0; botao = 0; focoAmigos = 0;
   downHeldFromActions = 0;
   amtui_fechar();
@@ -2295,6 +2299,11 @@ static void backdropRect(GfxRect *r, float *opac) {
   float s = suave(t);
   GfxRect de;
   home_hero_rect(&de.x, &de.y, &de.w, &de.h);
+  // The actual selected poster, not the (possibly unrelated) home hero, is
+  // the shared element in both directions. Keep the original rect immutable.
+  if (item.rect.w > 8.0f && item.rect.h > 8.0f &&
+      item.rect.w <= NV_TELA_W && item.rect.h <= NV_TELA_H)
+    de = item.rect;
   r->x = de.x + (0.0f - de.x) * s;
   r->y = de.y + (0.0f - de.y) * s;
   r->w = de.w + (NV_TELA_W - de.w) * s;
@@ -8284,6 +8293,32 @@ static void detalheFundo(float s) {
   int comTrailer = trailerFade > 0.005f && trailer_aberto() && !trailer_cheia();
   // Backdrop em tela cheia: pede o teto de 1920.
   GLuint tex = arte ? tex_obter_hero(arte) : 0;
+  // Shared-element flight: the focused card's bounds grow out to the full
+  // backdrop. The original cached poster eases into the detail artwork;
+  // reversing the same t shrinks the page into the *same* selected card.
+  // Do not re-enable the retired carousel: only this renderer is shared.
+  if (item.rect.w > 8.0f && item.rect.h > 8.0f &&
+      item.rect.w < NV_TELA_W * 0.95f && s < 0.999f &&
+      !comTrailer && pg < 0.01f && modo != FUNDO_FROST) {
+    GLuint source = sharedPosterUrl[0] ? tex_obter_larg(sharedPosterUrl,item.rect.w) : 0;
+    float blend = anim_clamp((s - 0.18f) / 0.72f,0.0f,1.0f);
+    float radius = (CAR_RAIO_HOME * (1.0f - s)) / fmaxf(1.0f,fminf(alvo.w,alvo.h));
+    radius = fminf(0.48f,fmaxf(0.0f,radius));
+    gfx_card_forcar_cover_atual = 1.0f;
+    if (source && (!tex || blend < 0.999f)) {
+      gfx_tex_aspect_atual=tex_aspecto(sharedPosterUrl);
+      gfx_rect(alvo,source,GFX_CARD,0,0,0,radius,1,1,1,aEntrada*(tex?1.0f-blend:1.0f));
+    }
+    if (tex) {
+      gfx_tex_aspect_atual=tex_aspecto(arte);
+      gfx_rect(alvo,tex,GFX_CARD,0,0,0,radius,1,1,1,aEntrada*(source?blend:1.0f));
+    }
+    if (!source && !tex)
+      gfx_cor(alvo,radius,NV_COR_FUNDO_R,NV_COR_FUNDO_G,NV_COR_FUNDO_B,aEntrada);
+    gfx_tex_aspect_atual=0.0f;
+    gfx_card_forcar_cover_atual=0.0f;
+    return;
+  }
   if (pg > 0.01f && !detail_cobre_tela()) {
     GfxRect tela = { 0, 0, NV_TELA_W, NV_TELA_H };
     gfx_cor(tela, 0.0f, NV_COR_FUNDO_R, NV_COR_FUNDO_G, NV_COR_FUNDO_B, pg);
