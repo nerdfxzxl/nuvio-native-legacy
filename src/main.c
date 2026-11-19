@@ -662,6 +662,9 @@ static int phoneRemoteGesture(const SDL_Event *event) {
   if(!phoneFingerDown || event->tfinger.fingerId!=phoneFingerId)return 1;
   float dx=event->tfinger.x-phoneStartX,dy=event->tfinger.y-phoneStartY;
   if(event->type==SDL_FINGERMOTION) {
+    // While the second tap is held, it owns OK. Finger drift must not
+    // simultaneously fire a directional swipe and break native long-press.
+    if (phoneSecondTap) return 1;
     if(fabsf(dx)>0.048f || fabsf(dy)>0.048f) {
       SDL_Keycode dir=fabsf(dx)>fabsf(dy) ? (dx>0?SDLK_RIGHT:SDLK_LEFT)
                                             : (dy>0?SDLK_DOWN:SDLK_UP);
