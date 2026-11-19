@@ -73,6 +73,7 @@ typedef struct {
   // formato posicional da linha `linha` nao muda e o arquivo de quem ja usa
   // o app continua valendo byte a byte.
   int  ordem;
+  int heroException; /* include in manual mode, exclude in Select All mode */
 } Linha;
 
 static Linha linhas[FIL_MAX];
@@ -311,7 +312,7 @@ static void gravar(void) {
   // 64 linhas de ate ~310 bytes (chave 192 + titulo 96 + quatro numeros), mais
   // o cabecalho. Alocado e nao na pilha: sao ~20 KB e esta funcao roda no fio
   // do desenho.
-  size_t cap = 128 + 64 + (size_t)FIL_MAX * (2 * FIL_CHAVE + FIL_TITULO + 56);
+  size_t cap = 256 + (size_t)nLinhas * (9 * FIL_CHAVE + FIL_TITULO + 180);
   char *txt = malloc(cap);
   size_t k;
   int i;
@@ -355,6 +356,9 @@ static void gravar(void) {
     if (linhas[i].ordem > 0 && linhas[i].ordem < FIL_ORD_N)
       k += (size_t)snprintf(txt + k, cap - k, "ordemfileira %s %d\n",
                             linhas[i].chave, linhas[i].ordem);
+  for (i = 0; i < nLinhas && k < cap; ++i)
+    if (linhas[i].heroException)
+      k += (size_t)snprintf(txt+k, cap-k, "heropick %s\n", linhas[i].chave);
   if (k < cap) dados_gravar(arquivoDoPerfil(), txt);
   free(txt);
   revisao++;
@@ -401,6 +405,9 @@ static void carregar(void) {
       migrado197 = 1;
     } else if (!strncmp(buf, "hero ", 5)) {
       snprintf(heroFonte, sizeof heroFonte, "%s", buf + 5);
+    } else if (!strncmp(buf, "heropick ", 9)) {
+      for (int i=0; i<nLinhas; ++i)
+        if (!strcmp(linhas[i].chave, buf+9)) linhas[i].heroException=1;
     } else if (!strncmp(buf, "conta_auto ", 11)) {
       snprintf(donoAuto, sizeof donoAuto, "%s", buf + 11);
     } else if (!strncmp(buf, "nova ", 5)) {
@@ -527,7 +534,7 @@ void fil_definir_teto_sessao(int teto) {
 // ----------------------------------------------------------------- destaque
 
 const char *fil_hero_fonte(void) {
-  static char copia[FIL_CHAVE];
+  static _Thread_local char copia[FIL_CHAVE];
   pthread_mutex_lock(&trava);
   garantir();
   snprintf(copia, sizeof copia, "%s", heroFonte);
@@ -625,6 +632,36 @@ int fil_estado(int i) {
 // a tabela nao a conhece (ainda nao foi registrada). E a mesma regra do editor
 // (fil_estado), para a home nao desenhar o que o editor diz que esta na fila.
 static int achar(const char *chave);
+static int heroSelected(const char *key, int i) {
+  if (!strcmp(heroFonte,"*")) return i < 0 || !linhas[i].heroException;
+  if (!strcmp(heroFonte,"@manual")) return i >= 0 && linhas[i].heroException;
+  return !strcmp(heroFonte,key);
+}
+int fil_hero_selected(const char *key) {
+  pthread_mutex_lock(&trava);
+  garantir();
+  int selected = heroSelected(key,achar(key));
+  pthread_mutex_unlock(&trava);
+  return selected;
+}
+void fil_hero_select(const char *key, int all) {
+  pthread_mutex_lock(&trava);
+  garantir();
+  if (!key) {
+    for (int j=0;j<nLinhas;j++) linhas[j].heroException=0;
+    strcpy(heroFonte,all ? "*" : "@manual");
+  } else {
+    int i=achar(key);
+    if (i<0) { pthread_mutex_unlock(&trava); return; }
+    if (strcmp(heroFonte,"*") && strcmp(heroFonte,"@manual")) {
+      for (int j=0;j<nLinhas;j++) linhas[j].heroException=!strcmp(heroFonte,linhas[j].chave);
+      strcpy(heroFonte,"@manual");
+    }
+    linhas[i].heroException=!linhas[i].heroException;
+  }
+  gravar();
+  pthread_mutex_unlock(&trava);
+}
 int fil_estado_chave(const char *chave) {
   int i, r = -1;
   if (!chave || !chave[0]) return -1;
@@ -740,7 +777,7 @@ void fil_normalizar(void) {
                 linhas[i].oculta != OC_COLECAO &&
                 !linhas[i].visPessoal && !linhas[i].fila &&
                 linhas[i].tipo == FIL_TIPO_AUTO && linhas[i].tam == FIL_TAM_PADRAO &&
-                !(heroFonte[0] && !strcmp(heroFonte, linhas[i].chave));
+                !linhas[i].heroException && !(heroFonte[0] && !strcmp(heroFonte, linhas[i].chave));
     if (morto) { mudou = 1; continue; }
     if (w != i) linhas[w] = linhas[i];
     w++;
@@ -864,7 +901,7 @@ int fil_addon_ausente(const char *id, const char *base) {
 
 static int temEscolha(const Linha *l) {
   return l->visPessoal || l->oculta == OC_PESSOA || l->fila || l->tipo != FIL_TIPO_AUTO ||
-         l->tam != FIL_TAM_PADRAO || (heroFonte[0] && !strcmp(heroFonte, l->chave));
+         l->tam != FIL_TAM_PADRAO || (l->heroException || (heroFonte[0] && !strcmp(heroFonte, l->chave)));
 }
 
 // #327: o catalogo que a pessoa ADICIONOU a Home nesta TV (visPessoal, ligado)
@@ -893,7 +930,7 @@ int fil_adicionada_na_tv(const char *chave) {
 // da pessoa de um automatico; vale como automatico.
 static int escolhaExplicita(const Linha *l) {
   return l->visPessoal || l->fila || l->tipo != FIL_TIPO_AUTO ||
-         l->tam != FIL_TAM_PADRAO || (heroFonte[0] && !strcmp(heroFonte, l->chave));
+         l->tam != FIL_TAM_PADRAO || (l->heroException || (heroFonte[0] && !strcmp(heroFonte, l->chave)));
 }
 
 // Despejavel por "ninguem declara mais": catalogo de addon, sem escolha
@@ -991,7 +1028,7 @@ static int podarCatalogos(const char *const *ids, const char *const *bases, int 
     if (w != i) linhas[w] = linhas[i];
     w++;
   }
-  if (completa && heroFonte[0] && strcmp(heroFonte, "*") && !catalogoInstalado(heroFonte)) {
+  if (completa && heroFonte[0] && strcmp(heroFonte, "*") && strcmp(heroFonte, "@manual") && !catalogoInstalado(heroFonte)) {
     heroFonte[0] = 0; limpouHero = 1;
   }
   if (fora || limpouHero) {
@@ -1058,7 +1095,7 @@ int fil_marcar_sem_addon(const char *const *ids, const char *const *bases,
                 linhas[i].tipo == FIL_TIPO_AUTO && linhas[i].tam == FIL_TAM_PADRAO &&
                 (linhas[i].oculta == OC_SUGESTAO ||
                  linhas[i].oculta == OC_PESSOA) &&
-                !(heroFonte[0] && !strcmp(heroFonte, linhas[i].chave));
+                !linhas[i].heroException && !(heroFonte[0] && !strcmp(heroFonte, linhas[i].chave));
     if (morto) { limpeza++; continue; }
     if (w != i) linhas[w] = linhas[i];
     w++;

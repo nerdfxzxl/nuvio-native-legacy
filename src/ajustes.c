@@ -8735,7 +8735,8 @@ static const char *heroFonteRotulo(void) {
   const char *f = fil_hero_fonte();
   int i, n;
   if (!f[0]) return i18n("Automático");
-  if (f[0] == '*' && !f[1]) return i18n("Aleatório do catálogo");
+  if (!strcmp(f,"@manual")) return "Selected catalogues";
+  if (!strcmp(f,"*")) return "Catalogue selection";
   n = fil_n();
   for (i = 0; i < n; i++)
     if (!strcmp(fil_chave(i), f)) return fil_titulo(i);
@@ -9573,7 +9574,7 @@ static void frEvento(SDL_Keycode k) {
 // os catálogos agrupados por addon. OK escolhe e fecha; a busca filtra por
 // nome do catálogo e do addon (ao confirmar o teclado).
 enum { HC_BUSCA, HC_FIXA, HC_CAB, HC_CAT, HC_VAZIO };
-#define HC_LINHAS (FIL_MAX + 64)
+#define HC_LINHAS (2 * FIL_MAX + HC_SUG_MAX + 8)
 static int hcAberta, hcFoco, hcTeclado, hcN;
 static char hcBusca[48];
 static struct { char tipo; int idx; char txt[96]; } hcL[HC_LINHAS];
@@ -9591,7 +9592,7 @@ static void hcMontar(void) {
   const char *atual = fil_hero_fonte();
   hcN = 0;
   hcPor(HC_BUSCA, -1, "");
-  if (!hcBusca[0]) { hcPor(HC_FIXA, 0, "Automático"); hcPor(HC_FIXA, 1, "Aleatório do catálogo"); }
+  if (!hcBusca[0]) { hcPor(HC_FIXA, 1, "Select All"); hcPor(HC_FIXA, 0, "Clear All"); }
   for (i = 0; i < total && n < FIL_MAX; i++) {
     int o = fil_origem_de(fil_chave(i));
     if (o == FIL_ORIGEM_COLECAO) continue;
@@ -9628,10 +9629,9 @@ static void hcEscolher(int i) {
                       NULL, hcBusca[0] ? hcBusca : NULL);
     return;
   }
-  if (hcL[i].tipo == HC_FIXA) fil_definir_hero_fonte(hcL[i].idx ? "*" : "");
-  else fil_definir_hero_fonte(fil_chave(hcL[i].idx));
+  if (hcL[i].tipo == HC_FIXA) fil_hero_select(NULL,hcL[i].idx);
+  else fil_hero_select(fil_chave(hcL[i].idx),0);
   sync_proteger_ajustes_locais();
-  hcAberta = 0;
 }
 static void hcEvento(SDL_Keycode k) {
   int p;

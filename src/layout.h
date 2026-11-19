@@ -501,7 +501,7 @@ int layout_modo_mobile(void);
 #define NV_DESTAQUE_QUADRADO_W (NV_DESTAQUE_QUADRADO_H * 4.0f / 3.0f)
 
 // Hero-carrossel: tempo em cada arte e duracao do crossfade.
-#define NV_HERO_INTERVALO_MS  7000
+#define NV_HERO_INTERVALO_MS  6000
 // APAGAR a arte velha, NAO dissolver uma na outra.
 //
 // MEDIDO na referencia (screenrecord do aparelho, quadros com carimbo de tempo,

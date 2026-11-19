@@ -1730,7 +1730,12 @@ static void lerPrefs(void) {
 // Um contador que mede metade do caminho ja me custou uma rodada.
 static int engolidasNaDeclaracao;
 // #327: chave da fileira baixada so para alimentar o destaque (vazia = nenhuma).
-static char heroAlimChave[192];
+static char heroFeeds[10][192];
+static int nHeroFeeds;
+static int heroFeedOnly(const char *key) {
+  for (int i=0;i<nHeroFeeds;i++) if (!strcmp(key,heroFeeds[i])) return 1;
+  return 0;
+}
 
 // A VISIBILIDADE DO GRUPO FAZ PARTE DA PERGUNTA, E EU JA A TIREI UMA VEZ.
 //
@@ -5203,20 +5208,19 @@ static void *montar(void *u) {
       // catalogo nenhuma, o primeiro da ordem. A fileira entra marcada como
       // fora da Home (ela esta engolida/oculta/na fila), entao a home nao a
       // desenha — so o destaque usa os titulos.
-      heroAlimChave[0] = 0;
-      if (nFil < CAT_FIL_MAX - (nContinuar ? 0 : 1) - 1) {
-        const char *hf = fil_hero_fonte();
-        const Decl *dh = NULL;
-        int temCat = 0, q, ja = 0;
-        for (q = 0; q < nFil; q++) if (fil[q].base[0]) { temCat = 1; break; }
-        if (hf[0] && !(hf[0] == '*' && !hf[1])) {
-          for (q = 0; q < nFil && !ja; q++) ja = !strcmp(fil[q].chave, hf);
-          if (!ja) for (q = 0; q < nDecl; q++)
-            if (!strcmp(decls[q].chave, hf)) { dh = &decls[q]; break; }
-        } else if (!temCat) {
-          for (q = 0; q < nOrdem && !dh; q++) if (!fil_oculta(decls[ordem[q]].chave)) dh = &decls[ordem[q]];
-          for (q = 0; q < nOrdem && !dh; q++) dh = &decls[ordem[q]];
-        }
+      nHeroFeeds = 0;
+      int haveVisibleCatalog = 0;
+      for (int q=0;q<nFil;q++) if (fil[q].base[0]) haveVisibleCatalog=1;
+      int automaticHero = !fil_hero_fonte()[0];
+      static unsigned feedSeed;
+      if (!feedSeed) feedSeed=(unsigned)time(NULL) | 1u;
+      for (int j=0; j<nDecl && nHeroFeeds<10 &&
+           nFil<CAT_FIL_MAX-(nContinuar?0:1)-1; ++j) {
+        const Decl *dh=&decls[(feedSeed+j)%nDecl];
+        if (automaticHero ? (haveVisibleCatalog || nHeroFeeds) : !fil_hero_selected(dh->chave)) continue;
+        int duplicate=0;
+        for (int q=0;q<nFil && !duplicate;++q) duplicate=!strcmp(fil[q].chave,dh->chave);
+        if (duplicate) continue;
         if (dh && dh->base[0] && (fil_estado_chave(dh->chave) == FIL_FORA ||
                                               fil_estado_chave(dh->chave) == FIL_NA_FILA)) {
           static CatItem hItens[HOME_VISTOS_MAX];
@@ -5239,7 +5243,7 @@ static void *montar(void *u) {
               memcpy(lote + n, hItens, sizeof(CatItem) * (size_t)got);
               f->ini = n; f->n = got;
               n += got;
-              snprintf(heroAlimChave, sizeof heroAlimChave, "%s", dh->chave);
+              snprintf(heroFeeds[nHeroFeeds++], sizeof heroFeeds[0], "%s", dh->chave);
             }
           }
         }
@@ -5768,7 +5772,7 @@ void desc_remontar_fileiras(void) {
   for (i = 0; i < nFileirasMontadas; i++) {
     const CatFileira *f = &filsMontadas[i];
     if (!f->base[0]) continue;
-    if (heroAlimChave[0] && !strcmp(f->chave, heroAlimChave) &&
+    if (heroFeedOnly(f->chave) &&
         fil_estado_chave(f->chave) != FIL_NA_HOME) continue;   // #327: volta no fim
     if (fil_oculta(f->chave) || (catordem_oculta(f->chave, f->chave) && !fil_adicionada_na_tv(f->chave))) continue;
     if (dentroDeColecaoVisivelBase(f->base, f->tipo, f->catId) &&
@@ -5853,7 +5857,8 @@ void desc_remontar_fileiras(void) {
     saidaFil[nOut++] = filsMontadas[idxCat[ordem[k]]];
 
   // #327: a fileira so do destaque fica, fora da conta do limite.
-  if (heroAlimChave[0] && nOut < CAT_FIL_MAX) {
+  for (int h=0; h<nHeroFeeds && nOut<CAT_FIL_MAX; ++h) {
+    const char *heroAlimChave=heroFeeds[h];
     int ja = 0;
     for (i = 0; i < nOut && !ja; i++) ja = !strcmp(saidaFil[i].chave, heroAlimChave);
     for (i = 0; !ja && i < nFileirasMontadas; i++)

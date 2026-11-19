@@ -1836,7 +1836,7 @@ static void desenhaFolhaHeroCat(void) {
           ajIcone("aj_search", r.x + 22 + 14, y + 16 + 14, 20, 0.85f);
         } else if (t == HC_FIXA) {
           nome = i18n(nome);
-          marcado = hcL[i].idx ? (atual[0] == '*' && !atual[1]) : !atual[0];
+          marcado = 0;
           ajNeutro((GfxRect){ r.x + 22, y + 16, 48, 48 }, 14, 0.09f, 0.141f, 0.149f, 0.173f, 1);
           ajIcone("aj_film", r.x + 22 + 14, y + 16 + 14, 20, 0.85f);
         } else {
@@ -1845,7 +1845,7 @@ static void desenhaFolhaHeroCat(void) {
           snprintf(ap, sizeof ap, "%s%s%s", fil_linha_addon(ix), fil_linha_addon(ix)[0] && fil_linha_conteudo(ix)[0] ? " · " : "",
                    fil_linha_conteudo(ix));
           apoio = ap;
-          marcado = !strcmp(fil_chave(ix), atual);
+          marcado = fil_hero_selected(fil_chave(ix));
           ajRosto(nome, r.x + 22, y + 16, 48, 14, 0.09f, 0.85f, TXT_ILHA_INICIAL);
         }
         { TxtLinha tl = t == HC_CAT ? txt_linha_corta(TXT_AJ_ROTULO, nome, AJ_TX, tw) : ajTxtC(TXT_AJ_ROTULO, nome, tw);

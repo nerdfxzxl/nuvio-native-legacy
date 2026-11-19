@@ -448,7 +448,7 @@ static int focoHero = 1;
 // carrossel avancava no MESMO instante em que a home assentava — matando a
 // janela do trailer do destaque (#86: detalhe toca, hero nao inicia).
 static Uint32 heroUltTecla;
-#define HOME_HERO_OCIO_MS 12000
+#define HOME_HERO_OCIO_MS 6000
 // Quantos titulos o destaque percorre com a seta. O carrossel automatico
 // atravessava o catalogo inteiro (281 titulos na conta do dono) — invisivel
 // enquanto ninguem contava, mentira assim que aparece um "3 / 281" na tela e a
@@ -1060,70 +1060,58 @@ static int heroSetCat, heroSetNFil;
 // quer dizer para quem esta no sofa.
 static unsigned heroSemente;
 
-static void heroMontarSet(void) {
-  const char *fonte = fil_hero_fonte();
-  int total = nAcervoHero();
-  int i;
-  heroSetN = 0;
-  if (fonte[0] == '*' && !fonte[1]) {
-    // Sorteio sem repeticao: embaralha os `total` indices por Fisher-Yates
-    // parcial, usando so os HOME_HERO_LISTA primeiros passos.
-    int n = total < HOME_HERO_LISTA ? total : HOME_HERO_LISTA;
-    static int baralho[512];
-    int m = total < (int)(sizeof baralho / sizeof *baralho)
-          ? total : (int)(sizeof baralho / sizeof *baralho);
-    unsigned x = heroSemente ? heroSemente : (heroSemente = (unsigned)SDL_GetTicks() | 1u);
-    int candidatos = 0;
-    for (i = 0; i < m; i++)
-      if (!filmeVistoOculto(cat_item(i))) baralho[candidatos++] = i;
-    m = candidatos;
-    if (n > m) n = m;
-    for (i = 0; i < n && i < m; i++) {
-      int j;
-      x = x * 1103515245u + 12345u;
-      j = i + (int)((x >> 16) % (unsigned)(m - i));
-      { int t = baralho[i]; baralho[i] = baralho[j]; baralho[j] = t; }
-      heroSet[heroSetN++] = baralho[i];
-    }
-    return;
+static const CatItem *cat_item_exato(int i);
+static unsigned heroRandom(unsigned *state) {
+  *state = *state * 1664525u + 1013904223u;
+  return *state;
+}
+static int heroAddTitle(int idx) {
+  const CatItem *ci = cat_item_exato(idx);
+  if (!ci || filmeVistoOculto(ci)) return 0;
+  for (int j=0; j<heroSetN; ++j) {
+    const CatItem *prev=cat_item_exato(heroSet[j]);
+    if (prev && (ci->imdb[0] ? !strcmp(ci->imdb,prev->imdb) :
+        !strcmp(ci->titulo,prev->titulo) && !strcmp(ci->tipo,prev->tipo))) return 0;
   }
-  if (fonte[0]) {
-    // FILEIRA ESCOLHIDA. Nao existir nao apaga a escolha: o addon pode voltar,
-    // e ate la o destaque cai no automatico — que e o comportamento de quem
-    // nunca escolheu nada, nao um estado de erro.
-    for (i = 0; i < nFileiras; i++) {
-      if (strcmp(fileiras[i].chave, fonte)) continue;
-      { int k;
-        for (k = 0; k < fileiras[i].n && heroSetN < HOME_HERO_LISTA; k++) {
-          int idx = fileiraItemIndice(&fileiras[i], k);
-          if (idx >= 0 && idx < cat_n()) heroSet[heroSetN++] = idx;
-        } }
-      break;
-    }
-    // #327: a fileira escolhida pode nao estar DESENHADA (catalogo dentro de
-    // uma pasta de colecao, ou fora da Home): a descoberta a baixa so para
-    // alimentar o destaque. Os titulos dela estao no catalogo publicado.
-    if (!heroSetN) {
-      for (i = 0; i < cat_n_fileiras(); i++) {
-        const CatFileira *cf = cat_fileira(i);
-        int k;
-        if (!cf || strcmp(cf->chave, fonte)) continue;
-        for (k = 0; k < cf->n && heroSetN < HOME_HERO_LISTA; k++)
-          if (cf->ini + k >= 0 && cf->ini + k < cat_n() &&
-              !filmeVistoOculto(cat_item(cf->ini + k))) heroSet[heroSetN++] = cf->ini + k;
-        break;
+  heroSet[heroSetN++]=idx;
+  return 1;
+}
+static void heroMontarSet(void) {
+  int rows[CAT_FIL_MAX], offset[CAT_FIL_MAX], visited[CAT_FIL_MAX]={0}, count=0;
+  if (!heroSemente) heroSemente=(unsigned)time(NULL) ^ (unsigned)SDL_GetPerformanceCounter() | 1u;
+  unsigned random=heroSemente;
+  int automatic=!fil_hero_fonte()[0];
+  heroSetN=0;
+  for (int i=0; i<cat_n_fileiras() && count<CAT_FIL_MAX; ++i) {
+    const CatFileira *row=cat_fileira(i);
+    if (!row || row->n<1 || !(automatic ? row->base[0]!=0 : fil_hero_selected(row->chave))) continue;
+    rows[count++]=i;
+  }
+  for (int i=count-1;i>0;--i) {
+    int k=heroRandom(&random)%(i+1), tmp=rows[k]; rows[k]=rows[i]; rows[i]=tmp;
+  }
+  for (int i=0;i<count;++i) offset[i]=heroRandom(&random)%cat_fileira(rows[i])->n;
+  int before;
+  do {
+    before=heroSetN;
+    for (int i=0;i<count && heroSetN<HOME_HERO_LISTA;++i) {
+      const CatFileira *row=cat_fileira(rows[i]);
+      while (visited[i]<row->n) {
+        int col=(offset[i]+visited[i]++)%row->n;
+        if (heroAddTitle(row->ini+col)) break;
       }
     }
-    if (heroSetN) return;
+  } while (before!=heroSetN && heroSetN<HOME_HERO_LISTA);
+  if (!heroSetN) {
+    int total=cat_n(), start=total ? heroRandom(&random)%total : 0;
+    for (int i=0;i<total && heroSetN<HOME_HERO_LISTA;++i) heroAddTitle((start+i)%total);
   }
-  for (i = 0; i < total && heroSetN < HOME_HERO_LISTA; i++)
-    if (!filmeVistoOculto(cat_item(i))) heroSet[heroSetN++] = i;
 }
 
 static void heroSetGarantir(void) {
   unsigned fr = fil_revisao();
   int ocultar = ajustes_ocultar_filmes_vistos();
-  unsigned ir = ocultar ? cat_revisao_itens() : 0;
+  unsigned ir = cat_revisao();
   int cn = cat_n(), nf = nFileiras;
   if (heroSetRev && fr == heroSetFilRev && cn == heroSetCat && nf == heroSetNFil &&
       ocultar == heroSetOcultaVistos && ir == heroSetItensRev)
@@ -1462,7 +1450,7 @@ static void heroPasso(int d) {
   int pos = heroPosDe(heroIntencao());
   int alvo;
   if (pos < 0) pos = 0;
-  alvo = heroIdxEm(pos + d);
+  alvo = n > 0 ? heroIdxEm((pos + d + n) % n) : -1;
   if (n <= 0 || alvo < 0) return;
   heroPendente = alvo;
   heroTempoInicio(alvo);
@@ -2725,11 +2713,6 @@ static void home_evento_(const SDL_Event *e) {
   if (focoHero) {
     if (k == SDLK_RIGHT) { heroPasso(1); return; }
     if (k == SDLK_LEFT) {
-      // Mesma regra do resto da home: esquerda na PRIMEIRA posicao chama o menu
-      // lateral. O destaque nao da a volta justamente para que essa saida
-      // exista sempre no mesmo lugar.
-      if (heroPosDe(heroIntencao()) <= 0) { pedidoMenu = 1; return; }
-      heroAutoDesligado = 1;   // voltou um titulo: navega a mao, o carrossel para
       heroPasso(-1); return;
     }
     if (k == SDLK_DOWN) {
@@ -3669,25 +3652,24 @@ static void heroPreBuscarInfo(int indice) {
     heroPedirLogo(cat_item_exato(lista[k]), ajustes_home_layout(), focoHero);
 }
 static void heroAquecerVizinhos(Uint32 agora) {
-  int n = heroNLista(), pos, d;
+  int n = heroNLista(), pos;
   if (heroAtual != heroVizBase) { heroVizBase = heroAtual; heroVizFeito = 0; heroVizTentaEm = 0; }
-  if (n < 2 || heroVizFeito == 3) return;
+  if (n < 2 || heroVizFeito) return;
   if (heroVizTentaEm && agora - heroVizTentaEm < 250) return;
   heroVizTentaEm = agora ? agora : 1;
   pos = heroPosDe(heroAtual);
   if (pos < 0) return;
-  for (d = -1; d <= 1; d += 2) {
-    const int bit = d < 0 ? 1 : 2;
+  {
+    const int d=1, bit=2;
     int viz = heroIdxEm((pos + d + n) % n);
     const char *arte;
-    if (heroVizFeito & bit) continue;
-    if (viz < 0 || viz == heroAtual || (d > 0 && n == 2)) { heroVizFeito |= bit; continue; }
+    if (viz < 0 || viz == heroAtual) { heroVizFeito |= bit; return; }
     // O logo vai ANTES da arte e sem esperar por ela: pedido como logo (nivel
     // 2) ele fura a fila dos fundos, que era onde o aquecimento a 128 px
     // (nivel 0) ficava parado — o logo do vizinho chegava depois da virada.
     heroPedirLogo(cat_item_exato(viz), ajustes_home_layout(), focoHero);
     arte = arte_por_identidade(viz, 2);
-    if (!arte) continue;
+    if (!arte) return;
     heroVizFeito |= bit;
     (void)tex_obter_hero_quente(arte);
     printf("[hero] pre-busca vizinho %s hash=%08lx\n", d < 0 ? "anterior" : "proximo",

@@ -189,6 +189,8 @@ const char *fil_origem_ajuda(int origem);
 // Quem le trata isso como "automatico" em vez de apagar a escolha: o addon pode
 // voltar, e apagar em silencio faria a preferencia sumir sem ninguem pedir.
 const char *fil_hero_fonte(void);
+int fil_hero_selected(const char *key);
+void fil_hero_select(const char *key, int all);
 void        fil_definir_hero_fonte(const char *chave);
 
 // --- limite ------------------------------------------------------------------
