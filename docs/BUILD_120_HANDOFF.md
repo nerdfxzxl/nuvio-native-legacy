@@ -22,7 +22,7 @@ The starting branch HEAD is exactly Build 119, 1b29dab675d80fc0bb2cc52aa06fcb28e
 |10|Continue Watching limits|Not started|
 |11|Row counters|Implemented in native code; device validation pending|
 |12|Per-row per-style size editor|Implemented; persistence and cancel tested, TV interaction pending|
-|13|Shared poster bounds|Partial: bounds timing and return motion changed; stale target and late artwork validation pending|
+|13|Shared poster bounds|Implemented; native compile and source guards passed. Actual edge alignment, rapid reversal and late-art blending need TV testing.|
 |14|Persistent Home artwork cache|Implemented; native budget, trim and clear tests passed. Offline TV startup and 4K memory measurements pending|
 
 ## Execution notes
@@ -50,3 +50,7 @@ Previous commit d7295a425fac478458279259c0da853652d1b916. Changed src/ctxmenu.c,
 ### Artwork cache checkpoint
 
 Previous commit 16549eb8476faf5454e748e0bc94ab9550272d79. Changed src/tex_cache.c, cachearte.c, androidcache.c, perfiltv.c, home.c, docs/cache-capas.md and tests/android_storage.c. The existing worker pipeline reads compressed images on disk before network and bounds decoding/upload. Fixed double eviction by the general Android cache. Android artwork budget now uses up to 250 MiB, limited by free space. Disk hits preserve fetch age for idle background revalidation. Fullscreen playback suppresses Home prefetch. Media3 seek caching is untouched. Host compiler checked the five native units. cache-contrato, native LRU, explicit clear, durable file and APK staging tests passed. Kotlin cleanup test could not start locally because its Gradle jars are absent. TV launch latency, offline availability with cached metadata, and playback memory use still need measurement.
+
+### Shared-element completion
+
+Previous checkpoint 11eb24e2fe686cd33599631dfcd3f36243893167. src/app.c, detail.c/.h and home.c/.h distinguish Home launches, convert physical bounds into the Detail viewport, revalidate the returning title by ID, and reuse a ready texture variant and the cached horizontal subject bias. A late backdrop has its own 180 ms fade. Source guards and native compiler passed. An unavailable return target with a changed identity closes in place. TV frames have not been captured.

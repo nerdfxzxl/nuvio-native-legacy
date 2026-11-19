@@ -11,6 +11,7 @@
 #include "home.h"
 
 void detail_abrir(const HomeItem *item);
+void detail_abrir_da_home(const HomeItem *item);
 // Abre a FILMOGRAFIA de uma pessoa por cima da pagina ja aberta (o mesmo painel
 // do OK num rosto do elenco). Para o Spotlight: a pessoa achada no elenco de um
 // titulo abre a pagina dele e o painel dela na mesma tecla. Sem pagina aberta

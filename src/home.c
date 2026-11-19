@@ -1591,6 +1591,12 @@ static float fileiraGapBase(void) {
 // fechado que os 24 px que o comentario dizia garantir. O teto e metade da
 // LARGURA medida na mesma escala, senao um retangulo mais largo que alto
 // termina com canto reto na horizontal e redondo na vertical.
+float home_crop_bias(const char *url) {
+  CorvivaPaleta pal;
+  if (!url || !corviva_paleta(url,&pal) || !pal.ok || !pal.txOk) return 0;
+  return fminf(0.18f,fmaxf(-0.18f,pal.tx[0] + pal.tx[2]*0.5f - 0.5f));
+}
+
 static float raioDe(float w, float h) {
   if (h <= 0.0f) return NV_RAIO_CARD;
   { float r = ajustes_raio_poster_px() / h;
@@ -6925,12 +6931,8 @@ static void desenhaArteCard(GfxRect card, TipoFileira tipo, const char *caminho,
     float cropBias = 0.0f;
     if (caminho && (tipo == FILEIRA_NORMAL ||
         tipo == FILEIRA_POSTER || tipo == FILEIRA_TOP10_NUM)) {
-      CorvivaPaleta pal;
       tex_publicar_paleta(caminho);
-      if (corviva_paleta(caminho, &pal) && pal.ok && pal.txOk) {
-        float center = pal.tx[0] + pal.tx[2] * 0.5f;
-        cropBias = fminf(0.18f, fmaxf(-0.18f, center - 0.5f));
-      }
+      cropBias = home_crop_bias(caminho);
     }
     gfx_rect(card, t, GFX_CARD, f, 0.0f, cropBias,
              raio, 0, 0, 0, aArte);

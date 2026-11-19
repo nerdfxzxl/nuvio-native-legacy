@@ -52,6 +52,7 @@ typedef struct {
   const char *meta;
 } HomeItem;
 
+float home_crop_bias(const char *url);
 int  home_iniciar(const char *dirArte);
 int  home_cartao_foco_por_cima(int indice); // repinta o cartao focado (menu do cartaz)
 int  home_item_focado(HomeItem *out);      // 0 se o foco ainda nao foi desenhado

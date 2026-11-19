@@ -484,6 +484,8 @@ static float cartao = 1.0f, cartaoVel;  // 1 = cartao, 0 = pagina cheia
 static int   carCheia;
 static float carTxt = 1.0f, carTxtVel;
 static GfxRect carOrigem;           // cartaz da fileira (abrir e fechar)
+static int sharedFromHome;
+static Uint32 sharedArtReady;
 static char sharedPosterUrl[NV_TEX_URL_MAX]; // stable original artwork for flight
 static float heroDx;                // deslocamento horizontal do bloco do heroi
 // MODO CINEMA DO TRAILER (dono, 21/09/2026, com a foto do outro app: "quando
@@ -1629,6 +1631,8 @@ static void abrirInterno(const HomeItem *it) {
   seriefrases_fechar();
   trocaarte_fechar();
   audAberta = 0; audTempAberta = -1; audTempVista = -1; frasesAberta = 0;
+  sharedFromHome = 0;
+  sharedArtReady = 0;
   item = *it;
   // Freeze the launch artwork URL: Home may refresh its row during the
   // detail transition; the moving visual must never switch to another title.
@@ -1901,6 +1905,21 @@ void detail_abrir(const HomeItem *it) {
   // tambem fica sem a lista de episodios; pedir aqui e idempotente.
   if (it) desc_episodios_garantir(it->indice);
   if (replacing) t = pg = 1.0f; // Switch titles directly without exposing Home.
+}
+
+// Home reports screen coordinates. Detail lays out in its text-scaled viewport.
+static GfxRect homeRectDetalhe(GfxRect r) {
+  float scale = gfx_escala_tela_txt();
+  if (scale > 0) {
+    r.x /= scale; r.y /= scale; r.w /= scale; r.h /= scale;
+  }
+  return r;
+}
+void detail_abrir_da_home(const HomeItem *it) {
+  HomeItem local = *it;
+  local.rect = homeRectDetalhe(it->rect);
+  detail_abrir(&local);
+  sharedFromHome = 1;
 }
 
 // Monta a pagina do titulo que a tira deixou em cena. Adiada ate a tira
@@ -3965,6 +3984,19 @@ static float blocoAnt[3] = { -1.0f, -1.0f, -1.0f };   // Notas / Numeros / Progr
 static void detail_atualizar_(float dt, Uint32 agora) {
   if (musicaui_aberta()) { musicaui_atualizar(agora); return; }
   if (aberto) revalidarIdx();
+  if (saindo && sharedFromHome) {
+    HomeItem current;
+    if (home_item_focado(&current)) {
+      const CatItem *title = current.indice >= 0 && current.indice < cat_n() ? cat_item(current.indice) : NULL;
+      if (title && idxImdb[0] && !strcmp(title->imdb, idxImdb))
+        item.rect = homeRectDetalhe(current.rect);
+      else {
+        // The catalogue removed/replaced the origin. Reveal Home in place.
+        item.rect = (GfxRect){0,0,NV_TELA_W,NV_TELA_H};
+        t = 0;
+      }
+    }
+  }
   pessoaBuscaAtualizar();
 #ifdef NV_TOUCH_UI
   toqueDetalheSincronizarModo();
@@ -8309,17 +8341,22 @@ static void detalheFundo(float s) {
   // backdrop. The original cached poster eases into the detail artwork;
   // reversing the same t shrinks the page into the *same* selected card.
   // Do not re-enable the retired carousel: only this renderer is shared.
+  Uint32 drawTime = SDL_GetTicks();
+  if (!tex) sharedArtReady = 0;
+  else if (!sharedArtReady) sharedArtReady = drawTime ? drawTime : 1;
+  float readyBlend = tex ? fminf(1.0f, (drawTime - sharedArtReady) / 180.0f) : 0;
   if (item.rect.w > 8.0f && item.rect.h > 8.0f &&
-      item.rect.w < NV_TELA_W * 0.95f && (s < 0.999f || !tex) &&
+      item.rect.w < NV_TELA_W * 0.95f && (s < 0.999f || readyBlend < 1.0f) &&
       !comTrailer && pg < 0.01f && modo != FUNDO_FROST) {
-    GLuint source = sharedPosterUrl[0] ? tex_obter_larg(sharedPosterUrl,item.rect.w) : 0;
+    GLuint source = sharedPosterUrl[0] ? tex_obter_larg_qualquer(sharedPosterUrl,item.rect.w) : 0;
     float blend = anim_clamp((s - 0.62f) / 0.38f,0.0f,1.0f);
-    float radius = (CAR_RAIO_HOME * (1.0f - s)) / fmaxf(1.0f,fminf(alvo.w,alvo.h));
+    blend = fminf(blend, readyBlend);
+    float radius = ajustes_raio_poster_px() * (1.0f - s) / fmaxf(1.0f,alvo.h);
     radius = fminf(0.48f,fmaxf(0.0f,radius));
     gfx_card_forcar_cover_atual = 1.0f;
     if (source && (!tex || blend < 0.999f)) {
       gfx_tex_aspect_atual=tex_aspecto(sharedPosterUrl);
-      gfx_rect(alvo,source,GFX_CARD,0,0,0,radius,1,1,1,1.0f);
+      gfx_rect(alvo,source,GFX_CARD,0,0,sharedFromHome ? home_crop_bias(sharedPosterUrl)*(1-s) : 0,radius,1,1,1,1.0f);
     }
     if (tex) {
       gfx_tex_aspect_atual=tex_aspecto(arte);

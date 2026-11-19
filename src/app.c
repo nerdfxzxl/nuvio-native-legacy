@@ -992,6 +992,12 @@ static void abrirTitulo(const HomeItem *it, int exigeArte, int descartarRetido) 
   detail_abrir(it);
 }
 
+static void abrirCartaoHome(const HomeItem *it) {
+  if (!it->arte) return;
+  player_descartar_retido();
+  detail_abrir_da_home(it);
+}
+
 static void abrirPorIndice(int i) {
   const CatItem *c = cat_item(i);
   if (!c || (!c->backdrop[0] && !c->poster[0])) return;
@@ -5709,7 +5715,7 @@ void app_atualizar(float dt, Uint32 agora) {
     HomeItem it;
     SpotPedido pedPessoa;
     if (tela == TELA_HOME && home_pediu_abrir()) {
-      if (home_item_focado(&it)) abrirTitulo(&it, 1, 1);
+      if (home_item_focado(&it)) abrirCartaoHome(&it);
     } else if (tela == TELA_EXPLORAR && explorar_pediu_abrir(&idx)) {
       abrirPorIndice(idx);
     } else if (tela == TELA_HOME && home_pediu_tocar()) {
@@ -5764,7 +5770,7 @@ void app_atualizar(float dt, Uint32 agora) {
           cwEspera = 2; // Resume the current episode once metadata publishes its video ID.
           tocar = 0;
         }
-        abrirTitulo(&it, 1, 1);
+        abrirCartaoHome(&it);
         if (cwEspera) desc_episodios(detail_indice(), 0);
         if (tocar) detail_pedir_reproduzir();
       }
