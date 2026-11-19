@@ -8307,11 +8307,11 @@ static void detalheFundo(float s) {
     gfx_card_forcar_cover_atual = 1.0f;
     if (source && (!tex || blend < 0.999f)) {
       gfx_tex_aspect_atual=tex_aspecto(sharedPosterUrl);
-      gfx_rect(alvo,source,GFX_CARD,0,0,0,radius,1,1,1,aEntrada*(tex?1.0f-blend:1.0f));
+      gfx_rect(alvo,source,GFX_CARD,0,0,0,radius,1,1,1,1.0f);
     }
     if (tex) {
       gfx_tex_aspect_atual=tex_aspecto(arte);
-      gfx_rect(alvo,tex,GFX_CARD,0,0,0,radius,1,1,1,aEntrada*(source?blend:1.0f));
+      gfx_rect(alvo,tex,GFX_CARD,0,0,0,radius,1,1,1,source?blend:1.0f);
     }
     if (!source && !tex)
       gfx_cor(alvo,radius,NV_COR_FUNDO_R,NV_COR_FUNDO_G,NV_COR_FUNDO_B,aEntrada);
