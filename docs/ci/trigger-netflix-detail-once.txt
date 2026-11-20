@@ -15,3 +15,5 @@ No-APK preflight #11 (44525638397) PASSED on source commit f5285348c4b0505fdaf61
 
 Eight-refinement APK build 2026-11-19T16:49:39.701Z: full source head 4f35bb3e8da9908a5636e830904ed28f138e5db5. No-APK ARM64 C and asset preflight 44569527598 success. Final branch also includes portrait sizing row variants and second-tap drift guard. Mandatory Android APK early preflight and cached P2P/Gradle enabled. Verify artifact and final status.
 Build 120 Android debug APK. Integrated Home, detail, row sizing, input, history and artwork cache refinements.
+
+Post-Build-120 refinement APK build requested 2026-11-20, after successful post-fix native preflight #14 (run 44693847068). Use the complete feature/official-stream-selector HEAD including handoff commit 8bffa6922d6d5527d45a479ce73b8349d778eaf9 and 18 post-120 commits. Keep mandatory early preflight and all existing caches. Build the full two-ABI Android debug APK only once, then verify the uploaded artifact. TV runtime acceptance remains pending.
