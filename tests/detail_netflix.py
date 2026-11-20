@@ -125,7 +125,7 @@ need("Saving row size commits style, value and dialog origin",
      'estOrigTipo = fil_tipo(filChave);' in ctx)
 need("Style size persisted by exact row and exact style, without aliases",
      'static int styleFamily(int t) { return t; }' in rows and
-     'linhas[i].styleDp[previewStyle]=dp==126?0:dp' in rows)
+     'linhas[i].styleDp[previewStyle]=dp==FIL_SIZE_DP_DEFAULT?0:dp' in rows)
 need("Style menu shows dedicated unobstructed hold hint",
      '"Hold for options"' in ctx and
      'm.y + m.h - hintH + (hintH - hint.h) * 0.5f' in ctx)
@@ -140,4 +140,22 @@ need("Netflix stills enlarge responsively, badge is bigger/darker",
 need("Current season remains highlighted while its episodes have focus",
      'int selected = s == detEpSzn;' in episode and
      'if(selected)gfx_cor(pill,' in episode)
-print("PASS: Netflix detail refinements, row editor, poster-hold clock and episodes")
+need("Style-specific size range is wired to UI, persistence and reload",
+     "int fil_size_max_dp(int t)" in rows and
+     "unsigned short styleDp[FIL_TIPO_N]" in rows and
+     "dp<=fil_size_max_dp(t)" in rows and
+     "const int styleMax=fil_size_max_dp(estTipo(estFoco));" in ctx and
+     "snprintf(maxLabel,sizeof maxLabel" in ctx)
+need("Held D-pad accelerates smoothly using elapsed time rather than repeat",
+     "sizeHoldFrame(agora)" in ctx and
+     "sizeHoldDir=dir; sizeHoldSince=sizeHoldLast=SDL_GetTicks();" in ctx and
+     "sizeMove(dir); // initial single press = exactly 1 dp" in ctx and
+     "float speed=9.0f+221.0f*ramp*ramp;" in ctx and
+     "sizeHoldFraction+=speed*dt;" in ctx and
+     "if (sizeHoldDir!=dir)" in ctx and
+     "sizeHoldStop();" in ctx)
+need("Size editor release resets held movement",
+     "if (pagina==3 && e->type==SDL_KEYUP)" in ctx and
+     "sizeHoldDir==-1 && key==SDLK_LEFT" in ctx and
+     "sizeHoldDir==1 && key==SDLK_RIGHT" in ctx)
+print("PASS: Netflix detail refinements, row editor, acceleration and per-style maxes")
