@@ -17,3 +17,5 @@ Eight-refinement APK build 2026-11-19T16:49:39.701Z: full source head 4f35bb3e8d
 Build 120 Android debug APK. Integrated Home, detail, row sizing, input, history and artwork cache refinements.
 
 Post-Build-120 refinement APK build requested 2026-11-20, after successful post-fix native preflight #14 (run 44693847068). Use the complete feature/official-stream-selector HEAD including handoff commit 8bffa6922d6d5527d45a479ce73b8349d778eaf9 and 18 post-120 commits. Keep mandatory early preflight and all existing caches. Build the full two-ABI Android debug APK only once, then verify the uploaded artifact. TV runtime acceptance remains pending.
+
+Build 122 Android debug APK after native-only preflight #15 PASSED (run 44713443081). Include corrected per-row per-style size persistence, exact Play-hold Dynamic Clock animation on poster hold, visible Style hold hint, larger Netflix episode thumbnails/badges and persistent season highlight. Reuse existing Gradle, native-Android, P2P, and FFmpeg caches. Mandatory full-APK preflight must execute the regression tests; publish ONE signed-by-debug APK artifact.
