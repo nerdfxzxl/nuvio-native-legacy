@@ -92,3 +92,13 @@ Included source changes: corrected poster flight coordinate conversion to handle
 The title-review comment **content** is user-generated and may still be in other languages: existing src/extras.c sorts by the interface language and src/detail.c displays language tags; diagnostic-string localization is NOT a translation or proof that comments will be in English. Avoid claiming this part is solved without verifying its UX or changing comment selection. User must test animation alignment, clipping, cursor disappearance, comment language, framing and editor behavior on a TV. Native preflight only checks code and assets; it is not a runtime GPU test.
 
 Workflow .github/workflows/android-debug.yml already has Gradle setup caching, the keyed native Android source/prefix/Media3-FFmpeg cache, and a separately restored/saved P2P engine cache. Build #120 logs show native ~100 MB cache hit and P2P ~71 MB cache hit, skipping P2P compilation. None of the post-120 changes modified cache key inputs. Do not invalidate these caches just to retrigger the build. Launch the normal single full APK workflow by updating docs/ci/trigger-netflix-detail-once.txt, which triggers the mandatory Android preflight first. Then confirm full build and artifact on that trigger SHA, or record an exact failure.
+
+
+### Build 121 — verified green (post-120 correction APK)
+
+- Workflow: [Android APK (debug) #121](https://github.com/nerdfxzxl/nuvio-native-legacy/actions/runs/44705517243).
+- Built exact source SHA: `84196e271ee954ab8e6a0dd969dbf81ac6d79b85`.
+- Both early preflight and Android debug build jobs succeeded on 2026-11-20. Gradle reported `BUILD SUCCESSFUL in 4m 6s` and the final APK path `build/android/Nuvio-2.0.8-android-debug.apk` (about 82 MB).
+- Artifact: [nuvio-native-legacy-android-debug, ID 14614982627](https://github.com/nerdfxzxl/nuvio-native-legacy/actions/runs/44705517243/artifacts/14614982627), uploaded successfully; GitHub artifact expiry 2026-12-04.
+- Real cache log confirms `Cache hit for: native-android-r27c-v1-c11d5d6...` and `Cache hit for: p2p-r27c-v1-54d2a5...`, both restored. P2P build skipped. Reuse preserved; don't change dependency hash keys without reason.
+- Source construction is verified, but physical TV/phone visual behavior and review-language preference remain acceptance items. Keep post-120 fixes in place. No additional APK build is needed until TV test evidence identifies a regression.
