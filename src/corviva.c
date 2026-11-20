@@ -319,6 +319,49 @@ static void recorteTextura(const unsigned char *px, int w, int h, int pitch, Cor
   p->txOk = 1;
 }
 
+// Independent portrait framing: score a compact grid of the image that the
+// decode worker already owns. Prefer subject-like skin regions and contours;
+// this is not a face detector, and impossible compositions still need fallback.
+// No extra network, decode, GPU readback or rendering-frame work.
+static void retratoFoco(const unsigned char *px, int w, int h, int pitch, CorvivaPaleta *p) {
+  enum { CX = 64, CY = 32 };
+  float bins[CX] = {0.0f}, total = 0.0f, bestScore = -1e30f;
+  int cw, best = 0;
+  if (!px || w < 16 || h < 16 || w <= h) return;
+  float fraction = (2.0f / 3.0f) * (float)h / (float)w;
+  if (fraction >= .95f) return;
+  cw = (int)(fraction * CX + .5f);
+  if (cw < 4) cw = 4;
+  if (cw >= CX) return;
+  for (int j = 0; j < CY; j++) {
+    int y = (2*j+1)*h/(2*CY), yp = y > h/CY ? y-h/CY : 0;
+    float up = 1.40f - .80f*(float)j/(float)(CY-1);
+    for (int i = 0; i < CX; i++) {
+      int x = (2*i+1)*w/(2*CX), xp = x > w/CX ? x-w/CX : 0;
+      const unsigned char *q = px+(size_t)y*pitch+(size_t)x*4;
+      const unsigned char *l = px+(size_t)y*pitch+(size_t)xp*4;
+      const unsigned char *v = px+(size_t)yp*pitch+(size_t)x*4;
+      if (q[3] < 180) continue;
+      float R=q[0]/255.0f, G=q[1]/255.0f, B=q[2]/255.0f;
+      float Y=.299f*R+.587f*G+.114f*B;
+      float Yx=(.299f*l[0]+.587f*l[1]+.114f*l[2])/255.0f;
+      float Yy=(.299f*v[0]+.587f*v[1]+.114f*v[2])/255.0f;
+      float skin= R>.24f && R>G*1.08f && G>B*1.04f && R-B>.10f && R-G<.38f ? 1.0f : 0.0f;
+      bins[i] += up*(2.0f*skin + 2.5f*(fabsf(Y-Yx)+fabsf(Y-Yy)) + .10f*Y + .01f);
+    }
+  }
+  for (int i=0; i<CX; i++) total += bins[i];
+  if (total <= 0.0f) return;
+  for (int start=0; start+cw<=CX; start++) {
+    float sum=0.0f, centre=((float)start+.5f*cw)/(float)CX;
+    for (int i=start; i<start+cw; i++) sum += bins[i];
+    sum -= total*.015f*fabsf(centre-.5f);
+    if (sum > bestScore) { bestScore=sum; best=start; }
+  }
+  p->cropFocal=((float)best+.5f*cw)/(float)CX;
+  p->cropOk=1;
+}
+
 int corviva_extrair(const unsigned char *px, int w, int h, int pitch,
                     CorvivaPaleta *p) {
   Celula cel[CV_NC];
@@ -385,6 +428,7 @@ int corviva_extrair(const unsigned char *px, int w, int h, int pitch,
   }
   if (total < 8) return 0;
   p->transparente = transp * 5 >= (transp + total);     // >= 20% transparente
+  if (!p->transparente) retratoFoco(px, w, h, pitch, p);
   if (p->transparente) {
     // Logo: sem desconto de pele.
     for (i = 0; i < CV_NC; i++) pesoCheio(&cel[i]);
@@ -830,15 +874,22 @@ void corviva_carregar(void) {
                c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7], c[8]) == 12 && h) {
       CorvivaPaleta pal;
       int k, bom = 1, txOk = 0;
-      float t4[4], y2[2];
+      float t4[4], y2[2], crop = -.1f;
       char med[8], *q = p;
       memset(&pal, 0, sizeof pal);
       // TEXTURA, depois das nove cores: ok x y w h p10 p90 media.
       for (k = 0; k < 13 && q; k++) { q = strchr(q, ' '); if (q) q++; }
-      if (q && sscanf(q, "%d %f %f %f %f %f %f %7s", &txOk, &t4[0], &t4[1], &t4[2], &t4[3],
-                      &y2[0], &y2[1], med) == 8 && txOk && lerHex(med, pal.txMedia)) {
-        pal.txOk = 1;
-        memcpy(pal.tx, t4, sizeof t4); memcpy(pal.txY, y2, sizeof y2);
+      if (q) {
+        int nf = sscanf(q, "%d %f %f %f %f %f %f %7s %f", &txOk,
+                        &t4[0], &t4[1], &t4[2], &t4[3], &y2[0], &y2[1], med, &crop);
+        if (nf >= 8 && txOk && lerHex(med, pal.txMedia)) {
+          pal.txOk = 1;
+          memcpy(pal.tx, t4, sizeof t4); memcpy(pal.txY, y2, sizeof y2);
+        }
+        // Old p3 lines have eight texture fields; new focal field is optional.
+        if (nf == 9 && crop >= 0.0f && crop <= 1.0f) {
+          pal.cropOk = 1; pal.cropFocal = crop;
+        }
       }
       pal.ok = ok ? 1 : 0; pal.transparente = tr ? 1 : 0;
       bom &= lerHex(c[0], pal.acento);
@@ -881,11 +932,11 @@ void corviva_gravar_se_preciso(int forcar) {
     corHex(e->p.acento, c[0]); corHex(e->p.base, c[1]);
     for (j = 0; j < 3; j++) corHex(e->p.grad[j], c[2 + j]);
     for (j = 0; j < 4; j++) corHex(e->p.regiao[j], c[5 + j]);
-    i = snprintf(buf + w, sizeof buf - w, "p3 %08x %d %d %s %s %s %s %s %s %s %s %s %d %.4f %.4f %.4f %.4f %.4f %.4f %s\n",
+    i = snprintf(buf + w, sizeof buf - w, "p3 %08x %d %d %s %s %s %s %s %s %s %s %s %d %.4f %.4f %.4f %.4f %.4f %.4f %s %.4f\n",
                  e->h, e->p.ok, e->p.transparente,
                  c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7], c[8],
                  e->p.txOk, e->p.tx[0], e->p.tx[1], e->p.tx[2], e->p.tx[3],
-                 e->p.txY[0], e->p.txY[1], med);
+                 e->p.txY[0], e->p.txY[1], med, e->p.cropOk ? e->p.cropFocal : -1.0f);
     if (i < 0 || (size_t)i >= sizeof buf - w) break;
     w += (size_t)i;
   }
