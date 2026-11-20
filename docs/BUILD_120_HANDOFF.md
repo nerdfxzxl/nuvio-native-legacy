@@ -19,7 +19,7 @@ The starting branch HEAD is exactly Build 119, 1b29dab675d80fc0bb2cc52aa06fcb28e
 |7|Fast Left protection|Implemented in native code; device validation pending|
 |8|Short / long OK|Implemented in native code; device validation pending|
 |9|Resume pill track|Implemented in native code; device validation pending|
-|10|Continue Watching limits|Not started|
+|10|Continue Watching limits|Row-specific caps removed in native discovery, provider ingestion, progress storage and rendering. 620-record reload and 96-item provider checks passed. TV performance pending.|
 |11|Row counters|Implemented in native code; device validation pending|
 |12|Per-row per-style size editor|Implemented; persistence and cancel tested, TV interaction pending|
 |13|Shared poster bounds|Implemented; native compile and source guards passed. Actual edge alignment, rapid reversal and late-art blending need TV testing.|
@@ -27,9 +27,7 @@ The starting branch HEAD is exactly Build 119, 1b29dab675d80fc0bb2cc52aa06fcb28e
 
 ## Execution notes
 
-Initial files changed: this document only. Verified branch ancestry and workflow triggers. No implementation tests or TV tests yet. The reported Build 119 visual defects remain open. No clarification pending.
-
-Start with src/home.c, src/detail.c and the native regression guards in tests/native_home_refinements.py. The latter encode Build 119's superseded two-artwork and global-size behavior. Trace geometry, capture actual drawn bounds, and update only guards superseded by new requirements. Then implement Home/Hero navigation and rotation, input and Resume, row editor, and artwork cache. Inspect the existing native cache before changing it. Leave Android playback seek cache intact. For each group record changed paths, actual checks and remaining device validation. Run tools/android/preflight-c.sh in the NDK environment. The scoped no-APK and APK workflows watch docs/ci/trigger-netflix-native-preflight.txt and docs/ci/trigger-netflix-detail-once.txt respectively. Only change the full-build trigger when integrated checks pass. Inspect jobs, fix concrete failures, verify artifact for the exact built SHA.
+Use the status table above and the newest checkpoint below. Run the native ARM64 preflight before the full APK workflow. The full workflow also runs the Android storage unit tests. No physical TV is attached to this session.
 
 ### Poster focus checkpoint
 
@@ -54,3 +52,9 @@ Previous commit 16549eb8476faf5454e748e0bc94ab9550272d79. Changed src/tex_cache.
 ### Shared-element completion
 
 Previous checkpoint 11eb24e2fe686cd33599631dfcd3f36243893167. src/app.c, detail.c/.h and home.c/.h distinguish Home launches, convert physical bounds into the Detail viewport, revalidate the returning title by ID, and reuse a ready texture variant and the cached horizontal subject bias. A late backdrop has its own 180 ms fade. Source guards and native compiler passed. An unavailable return target with a changed identity closes in place. TV frames have not been captured.
+
+### Long histories and integrated preflight
+
+Previous implementation commit 9c9ea928d9092abf5717bac4a616f5a0b076c546. Changed src/home.c, descoberta.c, catalogo.c, cwordem.c/.h, js.h, progresso.c/.h, simkl.c/.h and trakt.c/.h. Discovered provider metadata determines allocations. Continue Watching, future episodes and the optimistic refresh preserve complete index lists. Home recycles visible animation slots and visits nearby cards for render/residency/prefetch. The on-disk progress store grows on demand and preserves old records. Global native catalogue capacity, free memory and the amount served by a provider still apply. Dynamic allocation failure during history assembly keeps the published row.
+
+Host syntax checks passed for all changed history translation units. tests/progresso.c round-trips 620 distinct records. tests/simkl_cw.c long-history passes 96 paused movies plus four suggestions. The standard Simkl suite reached a separate profile stats assertion. Some older test scripts assume Darwin link flags or contain duplicate stubs. The local phone pairing test could not open its listener. The Android build's preflight runs that test again on a GitHub runner. tools/android/preflight-c.sh now checks all touched native translation units. No Kotlin source or Media3 cache changes. Next: monitor the scoped no-APK preflight, fix any actual failure, trigger the full debug APK workflow once green, verify the artifact and record both run links. No user decision pending.

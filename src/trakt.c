@@ -470,7 +470,7 @@ static TkUltimo *ult;   // nUlt: ver trakt_esquecer
 static int ultCap;
 // Keep Trakt-confirmed episodes distinct from guesses that metadata must validate.
 typedef struct { char id[32]; int confirmado; } TkProximo;
-static TkProximo proxIds[TK_ULT_MAX];   // nProxIds: ver trakt_esquecer
+static TkProximo proxIds[CAT_MAX];   // nProxIds: ver trakt_esquecer
 static int ehProximo(const char *id) {
   int i, achou = 0;
   pthread_mutex_lock(&travaCred);
@@ -1005,9 +1005,8 @@ int trakt_enfeitar_lote(CatItem *saida, int n) {
 // OS IDS DOS REGISTROS DE PLAYBACK da ultima leitura, para poder APAGAR.
 // Preenchida em trakt_continuar; consumida por trakt_playback_remover. Cabe a
 // mesma quantidade que a fileira mostra com folga.
-#define TK_PLAY_MAX 64
 typedef struct { char chave[64], visivel[64]; long long id; } TkPlay;
-static TkPlay play[TK_PLAY_MAX];   // nPlay: ver trakt_esquecer
+static TkPlay play[CAT_MAX];   // nPlay: ver trakt_esquecer
 
 // Remove o item da barra de retomada do Trakt. `imdb` e a chave COMPOSTA, do
 // mesmo jeito que trakt_continuar a montou ("tt123:2:8" em serie, "tt123" em
@@ -1748,15 +1747,15 @@ static void *fioFilmesVistos(void *u) {
   return NULL;
 }
 
-int trakt_continuar(CatItem *saida, int max) {
+static int continuarPedido(CatItem *saida, int max, CatItem **allocated) {
   const char *cab[4];
   char aut[200], chave[140];
   char *corpo;
   const char *p;
   int n = 0;
-  TkPlay playLocal[TK_PLAY_MAX] = {0}; int nPlayLocal = 0;
+  TkPlay *playLocal = NULL; int nPlayLocal = 0;
   TkUltimo *ultLocal; int nUltLocal = 0, capUltLocal = TK_ULT_MAX;
-  TkProximo proxIdsLocal[TK_ULT_MAX] = {0}; int nProxLocal = 0;
+  TkProximo *proxIdsLocal = NULL; int nProxLocal = 0;
   HistoricoPedido pedido = historicoPedido();
   if (!cabecalhosPedido(pedido, cab, aut, sizeof aut, chave, sizeof chave)) return 0;
   if (pedidoTravar(pedido)) { continuarFalhou = 0; pedidoDestravar(); } else return 0;
@@ -1784,6 +1783,19 @@ int trakt_continuar(CatItem *saida, int max) {
   else carregarHistoricoTudo(cab, pedido, &ultLocal, &nUltLocal, &capUltLocal);
   if (!historicoPedidoAtual(pedido)) {
     free(corpo); free(ultLocal); if (filmes) pthread_join(fioFilmes, NULL); return 0;
+  }
+  int records = js_contar_objetos(js_raiz_array(corpo), CAT_MAX);
+  int available = records + (ajustes_cw_proximo() ? nUltLocal : 0);
+  if (available > CAT_MAX) available = CAT_MAX;
+  if (max > available) max = available;
+  if (allocated && max) saida = *allocated = malloc(sizeof *saida * (size_t)max);
+  int slots = max > 0 ? max : 1;
+  playLocal = calloc((size_t)slots,sizeof *playLocal);
+  proxIdsLocal = calloc((size_t)slots,sizeof *proxIdsLocal);
+  if ((!saida && max) || !playLocal || !proxIdsLocal) {
+    free(playLocal); free(proxIdsLocal); free(corpo); free(ultLocal);
+    if (filmes) pthread_join(fioFilmes,NULL);
+    return -1;
   }
   // O corpo e um array na raiz; js_array procura por chave, entao anda-se a mao.
   p = strchr(corpo, '[');
@@ -1860,7 +1872,7 @@ int trakt_continuar(CatItem *saida, int max) {
       // O "id" do topo do objeto e o do registro; os blocos aninhados trazem
       // "ids" (plural), que nao casa com a busca por "id".
       { double pid = js_num(p, f, "id", 0.0);
-        if (nPlayLocal < TK_PLAY_MAX && pid > 0.0) {
+        if (nPlayLocal < max && pid > 0.0) {
           snprintf(playLocal[nPlayLocal].chave, sizeof playLocal[nPlayLocal].chave, "%s", d->imdb);
           snprintf(playLocal[nPlayLocal].visivel, sizeof playLocal[nPlayLocal].visivel, "%s", d->imdb);
           playLocal[nPlayLocal].id = (long long)pid;
@@ -1886,7 +1898,7 @@ int trakt_continuar(CatItem *saida, int max) {
     TarefaProx *tar = calloc((size_t)nUltLocal, sizeof *tar);
     int *tarDe = calloc((size_t)nUltLocal, sizeof *tarDe); // ultLocal[u] -> indice em tar[]
     if (nUltLocal && (!tar || !tarDe)) {
-      free(tar); free(tarDe); free(ultLocal);
+      free(tar); free(tarDe); free(ultLocal); free(playLocal); free(proxIdsLocal);
       if (filmes) pthread_join(fioFilmes, NULL);
       if (pedidoTravar(pedido)) { continuarFalhou = 1; pedidoDestravar(); }
       return 0;
@@ -1942,7 +1954,7 @@ int trakt_continuar(CatItem *saida, int max) {
         snprintf(d->tipo, sizeof d->tipo, "series");
         d->progresso = 0;
         d->retomadoMs = ultLocal[u].quandoMs;
-        if (nProxLocal < TK_ULT_MAX) {
+        if (nProxLocal < max) {
           TkProximo *p = &proxIdsLocal[nProxLocal++];
           snprintf(p->id, sizeof p->id, "%s", d->imdb);
           p->confirmado = tarDe[u] >= 0 && tar[tarDe[u]].estado == 1;
@@ -1978,9 +1990,9 @@ int trakt_continuar(CatItem *saida, int max) {
     }
     nUlt = ultCap >= nUltLocal ? nUltLocal : 0;
     if (nUlt) memcpy(ult, ultLocal, sizeof *ult * (size_t)nUlt);
-    memcpy(proxIds, proxIdsLocal, sizeof proxIdsLocal); nProxIds = nProxLocal;
+    memcpy(proxIds, proxIdsLocal, sizeof *proxIdsLocal * (size_t)nProxLocal); nProxIds = nProxLocal;
     pthread_mutex_lock(&playTrava);
-    memcpy(play, playLocal, sizeof playLocal); nPlay = nPlayLocal;
+    memcpy(play, playLocal, sizeof *playLocal * (size_t)nPlayLocal); nPlay = nPlayLocal;
     pthread_mutex_unlock(&playTrava);
     pedidoDestravar();
     n = trakt_enfeitar_lote_sessao(saida, n, pedido.sessao);
@@ -1995,34 +2007,42 @@ int trakt_continuar(CatItem *saida, int max) {
           break;
         }
     }
-    { TkProximo mapeados[TK_ULT_MAX] = {0}; int nm = 0;
-      for (int i = 0; i < nProxLocal && nm < TK_ULT_MAX; i++) {
+    { int nm = 0;
+      for (int i = 0; i < nProxLocal && nm < max; i++) {
         size_t L = obraLen(proxIdsLocal[i].id);
         for (int k = 0; k < n; k++)
           if (obraLen(saida[k].imdb) == L && !strncmp(saida[k].imdb, proxIdsLocal[i].id, L)) {
-            mapeados[nm] = proxIdsLocal[i];
-            snprintf(mapeados[nm].id, sizeof mapeados[nm].id, "%s", saida[k].imdb);
+            proxIdsLocal[nm] = proxIdsLocal[i];
+            snprintf(proxIdsLocal[nm].id, sizeof proxIdsLocal[nm].id, "%s", saida[k].imdb);
             nm++;
             break;
           }
       }
-      memset(proxIdsLocal, 0, sizeof proxIdsLocal);
-      memcpy(proxIdsLocal, mapeados, sizeof mapeados); nProxLocal = nm;
+      nProxLocal = nm;
     }
     if (pedidoTravar(pedido)) {
-      memcpy(proxIds, proxIdsLocal, sizeof proxIdsLocal); nProxIds = nProxLocal;
+      memcpy(proxIds, proxIdsLocal, sizeof *proxIdsLocal * (size_t)nProxLocal); nProxIds = nProxLocal;
       pthread_mutex_lock(&playTrava);
-      memcpy(play, playLocal, sizeof playLocal); nPlay = nPlayLocal;
+      memcpy(play, playLocal, sizeof *playLocal * (size_t)nPlayLocal); nPlay = nPlayLocal;
       pthread_mutex_unlock(&playTrava);
       pedidoDestravar();
     }
   } else n = 0;
-  free(ultLocal);
+  free(ultLocal); free(playLocal); free(proxIdsLocal);
   if (filmes) pthread_join(fioFilmes, NULL);
 
   printf("[trakt] %d em andamento\n", n);
   fflush(stdout);
   return historicoPedidoAtual(pedido) ? n : 0;
+}
+
+int trakt_continuar(CatItem *saida, int max) {
+  int n = continuarPedido(saida,max,NULL);
+  return n > 0 ? n : 0;
+}
+int trakt_continuar_alocado(CatItem **saida) {
+  *saida = NULL;
+  return continuarPedido(NULL,CAT_MAX,saida);
 }
 
 // Alguns clientes recebem 401 apenas no feed agregado. O grafo e o

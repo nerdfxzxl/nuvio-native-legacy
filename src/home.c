@@ -121,13 +121,8 @@ int video_registro_negado(void); /* video.h: motivo do trailer bloqueado */
 #define MAX_FIL    64
 #endif
 _Static_assert(MAX_FIL >= CAT_FIL_MAX + 16, "a home precisa de folga sobre o teto do catalogo");
-// 41: 40 cartazes (teto nativo de "Continuar assistindo", CONT_MAX) mais a
-// coluna do card "Ver tudo", que ocupa a posicao seguinte a ultima arte. Com
-// menos que isso, animFoco[r][n] escrevia fora do vetor — o card nunca
-// acendia ao receber foco e a memoria do vizinho era corrompida em silencio.
+// Bounded animation slots. Long history rows recycle slots as cards leave the viewport.
 #define MAX_CARDS 41
-// Mesmo valor que CONT_MAX (CWO_FILEIRA_MAX, issue #205).
-#define CW_TETO CWO_FILEIRA_MAX
 _Static_assert(DESC_ITENS_POR_FILEIRA <= MAX_CARDS - 1, "itens por fileira + Ver tudo cabem em MAX_CARDS");
 // A faixa editorial precisa de uma terceira alternativa para não terminar
 // visualmente depois de apenas dois cards. Quando o catálogo que virou
@@ -190,6 +185,7 @@ typedef struct {
   // que com a capa da colecao. FILEIRA_CATALOGOS e o Automatico: vale a forma
   // que a conta deu a pasta (`forma`).
   TipoFileira estiloCol;
+  const int *historyIndices;
 } Fileira;
 
 static int fileiraItemIndice(const Fileira *f, int coluna) {
@@ -198,6 +194,7 @@ static int fileiraItemIndice(const Fileira *f, int coluna) {
   // catalogo. O item dela e o cartao em foco (ou o titulo mais novo do rosto),
   // que e o que o destaque e a memoria de posicao precisam.
   if (f->tipo == FILEIRA_SOCIAL) return amigosfil_indice_cat(coluna);
+  if (f->historyIndices) return f->historyIndices[coluna];
   return f->usaItens ? f->itens[coluna] : f->ini + coluna;
 }
 
@@ -1863,6 +1860,30 @@ static float homeFileiraX(int r, int c) {
   return homeConteudoX() + (float)c * passoFil(r) - scrollX[r] + bordaX(r);
 }
 
+// A history row keeps all indices, with work proportional to the visible strip.
+static int historyFirst(int row) {
+  if (fileiras[row].n <= MAX_CARDS) return 0;
+  int first = (int)(-homeFileiraX(row,0) / fmaxf(1,passoFil(row))) - 5;
+  return first > 0 ? first : 0;
+}
+static int historyEnd(int row, int first) {
+  int count = fileiras[row].n + fileiras[row].verTudo;
+  if (count <= MAX_CARDS) return count;
+  int visible = (int)(NV_TELA_W / fmaxf(1,passoFil(row))) + 13;
+  if (visible > MAX_CARDS) visible = MAX_CARDS;
+  return first + visible < count ? first + visible : count;
+}
+static int historySlot(int row, int col) {
+  static int tag[MAX_FIL][MAX_CARDS];
+  int slot = col % MAX_CARDS;
+  if (tag[row][slot] != col + 1) {
+    animFoco[row][slot] = expansion[row][slot] = expansionStart[row][slot] = 0;
+    memset(&revArte[row][slot],0,sizeof revArte[row][slot]);
+    tag[row][slot] = col + 1;
+  }
+  return slot;
+}
+
 // ROLAGEM CENTRADA DA DINAMICA (dono, 01/10: "o foco fica na fileira do meio e
 // a lista rola por baixo, como o Apple TV"). `off` e a soma das fileiras acima
 // da `r` — a rolagem que a ancoraria em NV_DIN_TOPO_FIL, como era. Daqui sai a
@@ -2894,7 +2915,7 @@ static void dinAtribuirTipos(int total) {
 // arranjo por fil_unir: a fileira nao e do catalogo nem da conta, e sim uma
 // metade da retomada — registra-la em fileiras.c a poria no fim da home (chave
 // nova vai para o fim) e deixaria a pessoa separa-la da outra metade.
-static int proxHome[MAX_CARDS], nProxHome;
+static int proxHome[CAT_MAX], currentHistory[CAT_MAX], nProxHome;
 
 // A CURADORIA DA FILEIRA HERÓI RESOLVIDA EM ÍNDICE de catálogo — e só quando
 // muda (curadoria_revisao): cat_indice_por_imdb é uma varredura, e a home
@@ -3066,6 +3087,7 @@ static void sincronizarFileiras(void) {
     // usou índices compostos. Limpar a marca evita que uma linha comum herde
     // silenciosamente os índices daquela montagem anterior.
     fileiras[destino].usaItens = 0;
+    fileiras[destino].historyIndices = NULL;
     snprintf(fileiras[destino].titulo, sizeof fileiras[destino].titulo, "%s", cf->titulo);
     // "Continuar assistindo" e a unica landscape: e o
     // `continueWatchingCardStyle: "card"` do perfil. Todo o resto e poster 2:3.
@@ -3092,7 +3114,7 @@ static void sincronizarFileiras(void) {
       // "Continuar assistindo" nao segue "Itens por fileira": lista local que
       // a pessoa ja preencheu, nao catalogo de rede — o teto e o nativo
       // (CONT_MAX de descoberta.c); o web da 300.
-      if (!strcmp(cf->chave, "continue_watching")) teto = CW_TETO;
+      if (!strcmp(cf->chave, "continue_watching")) teto = cf->n;
       else if (teto > DESC_ITENS_POR_FILEIRA) teto = DESC_ITENS_POR_FILEIRA;
       fileiras[destino].n = cf->n > teto ? teto : cf->n; }
     // UMA COLUNA A MAIS: o card "Ver tudo" no fim. So em fileira que veio de um
@@ -3122,12 +3144,12 @@ static void sincronizarFileiras(void) {
         const CatItem *it = cat_item(idx);
         if (it && cw_retido_exclui(it->imdb)) { tirou = 1; continue; }
         if (it && ajustes_cw_ordem() == CWO_SEPARAR && cwo_e_futuro(it->imdb)) {
-          if (nProxHome < MAX_CARDS) proxHome[nProxHome++] = idx;
+          if (nProxHome < CAT_MAX) proxHome[nProxHome++] = idx;
           continue;
         }
-        if (nm < teto && nm < MAX_CARDS) cw->itens[nm++] = idx;
+        if (nm < teto && nm < CAT_MAX) currentHistory[nm++] = idx;
       }
-      if (nProxHome || tirou) { cw->usaItens = 1; cw->n = nm; }
+      if (nProxHome || tirou) { cw->historyIndices = currentHistory; cw->n = nm; }
     }
     snprintf(fileiras[destino].chave, sizeof fileiras[destino].chave,
              "%s", cf->chave);
@@ -3244,11 +3266,11 @@ static void sincronizarFileiras(void) {
       static unsigned semente;   // o sorteio da sessao, guardado
       int c, idx = -1, itens[MAX_CARDS], nIt = 0;
       for (c = 0; c < s->n && c < MAX_CARDS; c++) {
-        int j = s->usaItens ? s->itens[c] : s->ini + c;
+        int j = fileiraItemIndice(s,c);
         if (j >= 0 && j < cat_n()) itens[nIt++] = j;
       }
       idx = curadoria_escolher(itens, nIt, cat_n(), heroiCuradoriaIndice(), &semente);
-      if (idx >= 0) { s->itens[0] = idx; s->usaItens = 1; s->n = 1; }
+      if (idx >= 0) { s->historyIndices = NULL; s->itens[0] = idx; s->usaItens = 1; s->n = 1; }
       else s->n = 0;
       s->verTudo = 0;
     }
@@ -3258,11 +3280,12 @@ static void sincronizarFileiras(void) {
       int anos[MAX_CARDS], c, k;
       for (c = 0; c < s->n; c++) {
         const CatItem *it;
-        s->itens[c] = s->usaItens ? s->itens[c] : s->ini + c;
+        s->itens[c] = fileiraItemIndice(s,c);
         it = cat_item_exato(s->itens[c]);
         anos[c] = it ? nv_ano_meta(it->meta) : 0;
         if (!anos[c]) anos[c] = 9999;
       }
+      s->historyIndices = NULL;
       for (c = 1; c < s->n; c++) {
         int v = s->itens[c], a = anos[c];
         for (k = c; k > 0 && anos[k - 1] > a; k--) { s->itens[k] = s->itens[k - 1]; anos[k] = anos[k - 1]; }
@@ -3509,7 +3532,7 @@ static void sincronizarFileiras(void) {
     if (c >= 0 && !ja) {
       Fileira u = fileiras[c];
       u.n = nProxHome;
-      memcpy(u.itens, proxHome, sizeof(int) * (size_t)nProxHome);
+      u.historyIndices = proxHome;
       u.usaItens = 1;
       u.verTudo = 0;
       snprintf(u.titulo, sizeof u.titulo, "%s", "Pr\xc3\xb3ximos epis\xc3\xb3""dios");
@@ -3946,8 +3969,8 @@ static void home_atualizar_(float dt, Uint32 agora) {
   const int instantFocus = motionReduzido || ajustes_foco_instantaneo();
   float phase = instantFocus ? 1.0f : fminf(1.0f, (agora - expDesde) / 210.0f);
   float ease = phase * phase * (3.0f - 2.0f * phase);
-  expAbre = expandRow >= 0 && expandCol < MAX_CARDS
-      ? expansionStart[expandRow][expandCol] + (1.0f-expansionStart[expandRow][expandCol])*ease : 0;
+  expAbre = expandRow >= 0
+      ? expansionStart[expandRow][historySlot(expandRow,expandCol)] + (1.0f-expansionStart[expandRow][historySlot(expandRow,expandCol)])*ease : 0;
 
   { int alvo = palcoFundoDestino();
     if (alvo != PALCO_ATUAL) palcoFundoItem = fileiraItemIndice(&fileiras[foco.fileira], foco.coluna);
@@ -3986,20 +4009,20 @@ static void home_atualizar_(float dt, Uint32 agora) {
   // meio de qualquer teste.
 
   for (int r = 0; r < nFileiras; r++) {
-    int nAnim = fileiras[r].n + (fileiras[r].verTudo ? 1 : 0);
-    if (nAnim > MAX_CARDS) nAnim = MAX_CARDS;
-    for (int c = 0; c < nAnim; c++) {
+    int first = historyFirst(r), end = historyEnd(r,first);
+    for (int c = first; c < end; c++) {
+      int slot = historySlot(r,c);
       // UM FOCO POR VEZ. Com o destaque em foco, o card que ficou para tras
       // continuava com o anel aceso: a tela mostrava dois lugares selecionados
       // e o D-pad so obedecia a um deles. O `foco` nao e zerado — ele guarda
       // onde a pessoa estava, e e para la que o baixo devolve.
       float alvo = (!focoHero && focus_indice(&foco, r, c)) ? 1.0f : 0.0f;
       float target = r == expFileira && c == expColuna ? 1.0f : 0.0f;
-      expansion[r][c] = expansionStart[r][c] + (target - expansionStart[r][c]) * ease;
-      animFoco[r][c] = instantFocus
+      expansion[r][slot] = expansionStart[r][slot] + (target - expansionStart[r][slot]) * ease;
+      animFoco[r][slot] = instantFocus
                      ? alvo
-                     : anim_mola(animFoco[r][c], alvo, dt,
-                                 alvo > animFoco[r][c] ? NV_MOLA_FOCO : NV_MOLA_DESFOCO);
+                     : anim_mola(animFoco[r][slot], alvo, dt,
+                                 alvo > animFoco[r][slot] ? NV_MOLA_FOCO : NV_MOLA_DESFOCO);
     }
     { float alvoFil = (!focoHero && foco.fileira == r) ? 1.0f : 0.0f;
       animFocoFil[r] = motionReduzido ? alvoFil
@@ -5819,7 +5842,7 @@ static void desenhaAtalhos(int r, float y) {
     // O MESMO CRESCIMENTO DO FOCO das outras fileiras (escalaDe), a partir do
     // centro do cartao. Sem ele, com o anel desligado, a colecao em foco nao
     // mudava em nada.
-    float f = animFoco[r][c], esc = 1.0f + escalaDe(FILEIRA_CATALOGOS) * f;
+    float f = animFoco[r][historySlot(r,c)], esc = 1.0f + escalaDe(FILEIRA_CATALOGOS) * f;
     float cw = w * esc, ch = h * esc, x = x0 - (cw - w) * 0.5f, cy = y - (ch - h) * 0.5f;
     float raio = raioDe(cw, ch);
     GfxRect card = {x, cy, cw, ch};
@@ -6429,7 +6452,7 @@ static float numeraisAlfa(int r, Uint32 agora) {
     int c, falta = 0;
     char rank[8];
     if (!numPedidoEm[r]) numPedidoEm[r] = agora ? agora : 1u;
-    for (c = 0; c < fileiras[r].n; c++) {
+    for (int c = historyFirst(r), end = historyEnd(r,c); c < end && c < fileiras[r].n; c++) {
       snprintf(rank, sizeof rank, "%d", fileiraRanking(&fileiras[r], c));
       if (!txt_linha(TXT_RANK_GRANDE, rank, NUM_COR).tex) falta = 1;
     }
@@ -7840,7 +7863,7 @@ static void homeResidencia(void) {
     int deitado = editorial(tipo) || tipo == FILEIRA_LARGA || tipo == FILEIRA_HEROI ||
       (tipo != FILEIRA_TOP10_NUM && tipo != FILEIRA_TOP10 && tipo != FILEIRA_CONTINUE &&
        tipo != FILEIRA_POSTER_GRANDE && tipo != FILEIRA_HEROI_DIVIDIDO && ajustes_posteres_deitados());
-    for (int c = 0; c < fileiras[r].n; c++) {
+    for (int c = historyFirst(r), end = historyEnd(r,c); c < end && c < fileiras[r].n; c++) {
       float x = homeFileiraX(r, c);
       if (x < -lw * 1.5f || x > NV_TELA_W + lw) continue;
       int idx = fileiraItemIndice(&fileiras[r], c);
@@ -8059,7 +8082,7 @@ static void home_desenhar_(Uint32 agora) {
       // empilhados e centrados. Focado, a moldura acende.
       if (fileiras[r].verTudo) {
         int c = fileiras[r].n;
-        float f = animFoco[r][c];
+        float f = animFoco[r][historySlot(r,c)];
         float esc = 1.0f + escalaDe(tipo) * f;
         float w = lw * esc, h = artH * esc;
         float cx = homeFileiraX(r, c) + lw * 0.5f + xOffTipo(tipo);
@@ -8115,8 +8138,8 @@ static void home_desenhar_(Uint32 agora) {
       }
       for (int passe = 1; passe < 2; passe++) {
         float neighborOffset = 0.0f;
-        for (int c = 0; c < fileiras[r].n; c++) {
-          float f = animFoco[r][c];
+        for (int c = historyFirst(r), end = historyEnd(r,c); c < end && c < fileiras[r].n; c++) {
+          float f = animFoco[r][historySlot(r,c)];
           if (passe == 0 && f < 0.01f) continue;
           float esc = 1.0f + escalaDe(tipo) * f;
           if (r == foco.fileira && c == foco.coluna) esc *= okDip;
@@ -8126,7 +8149,7 @@ static void home_desenhar_(Uint32 agora) {
           //
           // A altura nao entra na conta: na referencia ela nao muda, e o card
           // cresce so para a direita a partir de uma borda esquerda parada.
-          float abre = expansion[r][c];
+          float abre = expansion[r][historySlot(r,c)];
           float larguraAberta = artH * esc * NV_EXP_ASPECTO;
           // Cascata: atraso pela coluna VISIVEL, nao pela absoluta — a
           // fileira rolada ate a coluna 20 entra pelo primeiro card da tela.
@@ -8308,7 +8331,7 @@ static void home_desenhar_(Uint32 agora) {
           // estourava com ~40 texturas, despejando o que ainda estava na tela.
           GLuint t = caminho ? tex_obter_larg(caminho, tipo == FILEIRA_PALCO ? lw : w) : 0;
           // ARTE CHEGANDO: so esvanece quem foi visto esperando (revela.h).
-          float aArte = revela_arte(&revArte[r][c], t != 0, agora);
+          float aArte = revela_arte(&revArte[r][historySlot(r,c)], t != 0, agora);
           // ANEL DE FOCO: 4 px de #FFFFFF, POR FORA da arte.
           //
           // Era 2 px de #f5f5f5, tirado do `box-shadow` do app WEB. MEDIDO no
@@ -8503,7 +8526,7 @@ static void home_desenhar_(Uint32 agora) {
                     (tipo != FILEIRA_TOP10_NUM && tipo != FILEIRA_TOP10 &&
                      tipo != FILEIRA_CONTINUE && tipo != FILEIRA_POSTER_GRANDE && tipo != FILEIRA_HEROI_DIVIDIDO &&
                      ajustes_posteres_deitados());
-      for (int c = 0; c < fileiras[r].n && !pediu; c++) {
+      for (int c = historyFirst(r), end = historyEnd(r,c); c < end && c < fileiras[r].n && !pediu; c++) {
         float x = homeFileiraX(r, c);
         if (x < -lw * 1.5f || x > NV_TELA_W + lw) continue;
         int idx = fileiraItemIndice(&fileiras[r], c);

@@ -104,6 +104,7 @@ const char *simkl_rota_lista(int adicionar);
 // vinculo. Pula a rede quando /sync/activities responde igual a ultima vez
 // (a doc manda nao baixar all-items "on a timer").
 int simkl_continuar(CatItem *saida, int max);
+int simkl_continuar_alocado(CatItem **saida);
 // O id ("tt:S:E") e um "a seguir" do Simkl da ultima leitura (progresso 0).
 int simkl_e_a_seguir(const char *id);
 

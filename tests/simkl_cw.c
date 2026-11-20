@@ -512,7 +512,31 @@ static void perfilStats(void) {
   OK("perfil: identidade e estatisticas mensais saem do Simkl; outro mes fica fora");
 }
 
+static void longHistory(void) {
+  static char json[32000];
+  const char *previous = PLAYBACK;
+  size_t used = 1;
+  json[0] = '[';
+  for (int i=0;i<96;i++) {
+    int bytes = snprintf(json+used,sizeof json-used,
+      "%s{\"id\":%d,\"progress\":50,\"type\":\"movie\",\"movie\":{\"title\":\"Movie %d\",\"ids\":{\"imdb\":\"tt%07d\"}}}",
+      i ? "," : "",1000+i,i,1000+i);
+    assert(bytes>0 && (size_t)bytes < sizeof json-used);
+    used += (size_t)bytes;
+  }
+  strcpy(json+used,"]"); PLAYBACK=json;
+  simkl_esquecer(); tokenAtual=TOKEN;
+  CatItem *history=NULL;
+  int n=simkl_continuar_alocado(&history), matches=0;
+  assert(history && n>=96);
+  for (int i=0;i<n;i++) if (history[i].progresso==50) matches++;
+  assert(matches==96);
+  free(history); PLAYBACK=previous; simkl_esquecer();
+  puts("PASS: 96 Simkl playback records survive the network-to-history path");
+}
+
 int main(int argc, char **argv) {
+  if (argc > 1 && !strcmp(argv[1],"long-history")) { longHistory(); return 0; }
   (void)argv;
   if (argc > 1) {
     CatItem *v = calloc(12, sizeof *v);

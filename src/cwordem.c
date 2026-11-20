@@ -1,3 +1,4 @@
+#include <stdlib.h>
 #include "cwordem.h"
 #include "idiomacod.h"
 #include <pthread.h>
@@ -76,26 +77,23 @@ long long cwo_estreia(const char *id) {
 // Teto da fileira (CONT_MAX / CW_TETO). cwo_corte com 0 pausados devolve ate
 // max futuros; a tabela tem de caber todos, senão os ultimos ficam em
 // "Continuar assistindo" e nunca viram "Proximos episodios".
-#define CWO_FUT_MAX CWO_FILEIRA_MAX
-_Static_assert(CWO_FUT_MAX >= 40 && CWO_FUT_MAX == CWO_FILEIRA_MAX,
-               "futuros publicados cabem na fileira");
-static char fut[CWO_FUT_MAX][64];
+static char (*fut)[64];
 static int nFut;
 static pthread_mutex_t futTrava = PTHREAD_MUTEX_INITIALIZER;
 
 static unsigned futRev;
 
 void cwo_publicar_futuros(const char *const *ids, int n) {
-  static char novo[CWO_FUT_MAX][64];
-  int i, nNovo = 0;
-  for (i = 0; ids && i < n && nNovo < CWO_FUT_MAX; i++)
-    if (ids[i] && ids[i][0]) snprintf(novo[nNovo++], sizeof novo[0], "%s", ids[i]);
+  char (*novo)[64] = n > 0 ? malloc(sizeof *novo * (size_t)n) : NULL;
+  int nNovo = 0;
+  if (n > 0 && !novo) return;
+  for (int i = 0; ids && i < n; i++)
+    if (ids[i] && ids[i][0]) snprintf(novo[nNovo++],sizeof novo[0],"%s",ids[i]);
   pthread_mutex_lock(&futTrava);
-  if (nNovo != nFut || memcmp(novo, fut, sizeof fut[0] * (size_t)nNovo)) {
-    memcpy(fut, novo, sizeof fut[0] * (size_t)nNovo);
-    nFut = nNovo;
-    futRev++;
+  if (nNovo != nFut || (nNovo && memcmp(novo,fut,sizeof *fut * (size_t)nNovo))) {
+    free(fut); fut = novo; novo = NULL; nFut = nNovo; futRev++;
   }
+  free(novo);
   pthread_mutex_unlock(&futTrava);
 }
 

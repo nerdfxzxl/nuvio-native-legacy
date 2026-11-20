@@ -2049,11 +2049,12 @@ int cat_home_apenas_fixas(void) {
 int cat_copiar_fileira(const char *chave, CatItem *saida, int max,
                        CatFileira *meta) {
   int r, qtd;
-  if (!chave || !*chave || !saida || max < 1) return 0;
+  if (!chave || !*chave || (saida && max < 1)) return 0;
   catTravar();
   for (r = 0; r < nFils; r++) {
     CatFileira *f = &fils[r];
     if (strcmp(f->chave, chave) || f->n < 1) continue;
+    if (!saida) { pthread_mutex_unlock(&pubTrava); return f->n; }
     qtd = f->n < max ? f->n : max;
     if (f->ini < 0 || f->ini + qtd > n || !itens) break;
     memcpy(saida, itens + f->ini, sizeof(CatItem) * (size_t)qtd);

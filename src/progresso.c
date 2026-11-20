@@ -29,7 +29,19 @@ static pthread_mutex_t tranca = PTHREAD_MUTEX_INITIALIZER;
 #define TRANCAR()   pthread_mutex_lock(&tranca)
 #define DESTRANCAR() pthread_mutex_unlock(&tranca)
 
-static ProgRegistro regs[PROG_MAX];
+static ProgRegistro *regs;
+static int capRegs, leituraFalhou;
+static int reservarRegs(int total) {
+  if (total <= capRegs) return 1;
+  if (total > INT_MAX / (int)sizeof *regs) return 0;
+  int cap = capRegs > 0 ? capRegs : 32;
+  while (cap < total && cap <= INT_MAX / (int)sizeof *regs / 2) cap *= 2;
+  if (cap < total) cap = total;
+  ProgRegistro *novos = realloc(regs,sizeof *regs * (size_t)cap);
+  if (!novos) return 0;
+  regs = novos; capRegs = cap;
+  return 1;
+}
 static int nRegs;
 static int carregado;
 static long long (*relogio)(void);
@@ -127,8 +139,12 @@ static void carregar(void) {
   carregado = 1;
   nRegs = 0;
   buf = dados_ler(ARQ);
+  leituraFalhou = 0;
   if (!buf) return;
-  for (linha = strtok_r(buf, "\n", &ctx); linha && nRegs < PROG_MAX;
+  int linhas = 1;
+  for (const char *ch = buf; *ch; ch++) if (*ch == '\n' && linhas < INT_MAX) linhas++;
+  if (!reservarRegs(linhas)) { leituraFalhou = 1; carregado = 0; free(buf); return; }
+  for (linha = strtok_r(buf, "\n", &ctx); linha;
        linha = strtok_r(NULL, "\n", &ctx)) {
     ProgRegistro r;
     if (!linha[0] || linha[0] == '\r') continue;
@@ -158,6 +174,7 @@ static void carregar(void) {
 }
 
 static int gravar(void) {
+  if (leituraFalhou) return 0;
   // Ate os limites dos campos e dos inteiros cabem em 256 bytes por linha.
   // Conferir snprintf tambem impede que uma mudanca futura desses limites
   // transforme um arquivo invalido em escrita alem do buffer.
@@ -182,16 +199,8 @@ static int gravar(void) {
   return ok;
 }
 
-// Quando o arquivo esta cheio, sai a linha NAO pendente mais antiga. Pendente
-// nunca sai: e informacao que so este aparelho tem.
 static int abrirVaga(void) {
-  int i, alvo = -1;
-  if (nRegs < PROG_MAX) return nRegs;
-  for (i = 0; i < nRegs; i++) {
-    if (regs[i].pendente) continue;
-    if (alvo < 0 || regs[i].lastWatchedMs < regs[alvo].lastWatchedMs) alvo = i;
-  }
-  return alvo;
+  return !leituraFalhou && reservarRegs(nRegs+1) ? nRegs : -1;
 }
 
 static int achar(int perfil, const char *chave) {
@@ -211,11 +220,12 @@ static int maisNovoPrimeiro(const void *a, const void *b) {
 
 int prog_ler(ProgRegistro *saida, int max) {
   int i, k = 0, maisVelho = -1, perfil = perfis_ativo();
-  if (!saida || max < 1) return 0;
+  if ((!saida && max != 0) || (saida && max < 1)) return 0;
   TRANCAR();
   carregar();
   for (i = 0; i < nRegs; i++) {
     int j;
+    if (!saida) { k += regs[i].perfil == perfil; continue; }
     if (regs[i].perfil != perfil) continue;
     if (k < max) { saida[k++] = regs[i]; continue; }
     // O limite vale DEPOIS da escolha dos mais novos. Truncar na ordem do
@@ -231,7 +241,7 @@ int prog_ler(ProgRegistro *saida, int max) {
     }
   }
   DESTRANCAR();
-  qsort(saida, (size_t)k, sizeof *saida, maisNovoPrimeiro);
+  if (saida && k > 1) qsort(saida, (size_t)k, sizeof *saida, maisNovoPrimeiro);
   return k;
 }
 

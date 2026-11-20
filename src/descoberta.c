@@ -3013,12 +3013,13 @@ static void *fioCatalogo(void *u) {
 // Os registros do disco para montarContinuar, UM buffer para continuarLocal e
 // filtrarRemoto: sao ~77 KB, e na Samsung (teto do WebAssembly) nao se paga
 // isso duas vezes em BSS. Os dois so rodam sob contTrava, um de cada vez.
-static ProgRegistro contRegs[PROG_MAX];
+static ProgRegistro *contRegs;
+static int contRegCount;
 
 static int continuarLocal(CatItem *saida, int max) {
   ProgRegistro *regs = contRegs;
   int k, i, n = 0;
-  k = prog_ler(regs, PROG_MAX);
+  k = contRegCount;
   for (i = 0; i < k && n < max; i++) {
     const ProgRegistro *r = &regs[i];
     CatItem *d;
@@ -3243,7 +3244,7 @@ static int recuarPelaDesmarcacao(const char *serie, int *t, int *e, long long re
 }
 // Os ids que ele moveu nesta montagem; montarContinuar os publica (cwordem.c)
 // antes de perguntar quem e "a seguir".
-static char ajustadosIds[CONT_MAX * 3][sizeof(((CatItem *)0)->imdb)];
+static char ajustadosIds[CAT_MAX][sizeof(((CatItem *)0)->imdb)];
 static int nAjustados;
 static void ajustarASeguir(CatItem *it) {
   char serie[sizeof it->imdb], velho[sizeof it->imdb];
@@ -3268,7 +3269,7 @@ static void ajustarASeguir(CatItem *it) {
 // ficaram. `aSeguir` diz quais itens sao "a seguir" (entram com 0%).
 static int filtrarRemoto(CatItem *v, int n, int (*aSeguir)(const char *),
                          int *fora) {
-  int i, w, k = prog_ler(contRegs, PROG_MAX);
+  int i, w, k = contRegCount;
   for (i = 0, w = 0; i < n; i++) {
     // "A SEGUIR" (issue #66) entra com 0%: e o proximo episodio de uma serie
     // cujo ultimo terminou. Nao e "pausado", mas e "continuar".
@@ -3465,22 +3466,26 @@ static int contaASeguir(CatItem *lista, int n, int max, int comOutraFonte) {
 }
 
 
-static int montarContinuar(CatItem *saida, int max) {
-  // Discovery also runs for tracker-only users, without Nuvio cloud sync.
+// The bounded entry point is also used by existing test fixtures. Production
+// obtains provider arrays sized from the fetched metadata in a single request.
+extern int trakt_continuar_alocado(CatItem **) __attribute__((weak));
+extern int simkl_continuar_alocado(CatItem **) __attribute__((weak));
+static int lerFonteContinuar(CatItem **items, int max, int (*readAll)(CatItem **),
+                             int (*readBounded)(CatItem *,int)) {
+  if (readAll) return readAll(items);
+  *items = malloc(sizeof **items * (size_t)max);
+  return *items ? readBounded(*items,max) : -1;
+}
+static int montarContinuarAlocado(CatItem **result, int max) {
   if (contapend_reenviar) contapend_reenviar();
-  // static: dois lotes de 40 CatItem passam de 1,3 MB e montar() roda uma vez,
-  // num fio so — a mesma razao do vetor de Decl mais abaixo.
-  static CatItem doTrakt[CONT_MAX], daConta[CONT_MAX];
-  // Tres fontes: conta, Trakt e Simkl, cada uma com ate CONT_MAX.
-  static Cand juntos[CONT_MAX * 3];
-  // Os REMOTOS numa lista so (Trakt e Simkl), por ponteiro. E ela que a conta
-  // enfrenta abaixo: para a regra "a mesma obra entra uma vez, a mais recente
-  // ganha", Trakt e Simkl sao a mesma pergunta feita a dois servicos.
-  static CatItem *remotos[CONT_MAX * 2];
-  // O lote do Simkl vai no HEAP e so quando e pedido: 12 CatItem sao ~190 KB,
-  // e na Samsung (teto de 128 MiB do WebAssembly) nao se paga isso em BSS para
-  // quem nunca vinculou o Simkl.
-  CatItem *doSimkl = NULL;
+  CatItem *doTrakt = NULL, *doSimkl = NULL, *daConta = NULL, *saida = NULL;
+  CatItem **remotos = NULL;
+  Cand *juntos = NULL, *ordenados = NULL;
+  CwoItem *cwo = NULL;
+  int *perm = NULL, *pularLocal = NULL;
+  const char **futIds = NULL;
+  int count = -1;
+  *result = NULL;
   int nT, nS = 0, nR = 0, nL, nJ = 0, i, j, fora = 0, repetidos = 0;
 
   // FONTE ESCOLHIDA EM AJUSTES (AJ_CWF_*). 0 = todas, 1 = so a conta Nuvio,
@@ -3503,23 +3508,41 @@ static int montarContinuar(CatItem *saida, int max) {
   int querTrakt = fonte == AJ_CWF_AMBAS || fonte == AJ_CWF_TRAKT;
   int querSimkl = (fonte == AJ_CWF_AMBAS || fonte == AJ_CWF_SIMKL) && simkl_ativo();
 
-  if (max > CONT_MAX) max = CONT_MAX;
+  if (max > CAT_MAX) max = CAT_MAX;
   __atomic_add_fetch(&cwGer, 1u, __ATOMIC_RELAXED);
   nAjustados = 0;
+  contRegCount = prog_ler(NULL,0);
+  if (contRegCount) {
+    contRegs = malloc(sizeof *contRegs * (size_t)contRegCount);
+    if (!contRegs) goto cleanup;
+    contRegCount = prog_ler(contRegs,contRegCount);
+  }
   // O sync de vistos alimenta os cartazes mesmo quando outra fonte de CW foi escolhida.
-  nT = trakt_ativo() ? trakt_continuar(doTrakt, CONT_MAX) : 0;
+  nT = trakt_ativo() ? lerFonteContinuar(&doTrakt,max,trakt_continuar_alocado,trakt_continuar) : 0;
+  if (nT < 0) goto cleanup;
   if (!querTrakt) nT = 0;
   // Os limites AGORA valem para todas as fontes. Sem isto, o /sync/playback
   // devolve o que qualquer cliente pausou uma vez — inclusive titulos em 0% e
   // titulos praticamente terminados, que e o "nunca assisti isso" do relato.
   nT = filtrarRemoto(doTrakt, nT, trakt_e_a_seguir, &fora);
   if (querSimkl) {
-    doSimkl = (CatItem *)malloc(sizeof(CatItem) * CONT_MAX);
-    if (doSimkl) {
-      nS = simkl_continuar(doSimkl, CONT_MAX);
-      nS = filtrarRemoto(doSimkl, nS, simkl_e_a_seguir, &fora);
-    }
+    nS = lerFonteContinuar(&doSimkl,max,simkl_continuar_alocado,simkl_continuar);
+    if (nS < 0) goto cleanup;
+    nS = filtrarRemoto(doSimkl,nS,simkl_e_a_seguir,&fora);
   }
+  int localSlots = querConta ? contRegCount + PROX_MAX_BUSCAS : 0;
+  if (localSlots > max) localSlots = max;
+  int slots = nT + nS + localSlots + 1;
+  if (localSlots) daConta = malloc(sizeof *daConta * (size_t)localSlots);
+  remotos = malloc(sizeof *remotos * (size_t)(nT+nS+1));
+  juntos = malloc(sizeof *juntos * (size_t)slots);
+  ordenados = malloc(sizeof *ordenados * (size_t)slots);
+  cwo = malloc(sizeof *cwo * (size_t)slots);
+  perm = malloc(sizeof *perm * (size_t)slots);
+  futIds = malloc(sizeof *futIds * (size_t)(slots > nAjustados ? slots : nAjustados));
+  pularLocal = calloc((size_t)localSlots+1,sizeof *pularLocal);
+  if ((localSlots && !daConta) || !remotos || !juntos || !ordenados ||
+      !cwo || !perm || !futIds || !pularLocal) goto cleanup;
   if (fonte == AJ_CWF_SIMKL && !simkl_ativo())
     printf("[desc] continuar assistindo: fonte Simkl sem vinculo; fileira vazia\n");
 
@@ -3547,17 +3570,17 @@ static int montarContinuar(CatItem *saida, int max) {
     if (candidatoVence(&doSimkl[i], remotos[achou]))
       remotos[achou] = &doSimkl[i];
   }
-  nL = querConta ? continuarLocal(daConta, CONT_MAX) : 0;
+  nL = querConta ? continuarLocal(daConta, localSlots) : 0;
   // Fonte "Conta" escolhida: a conta da o "a seguir" mesmo com Trakt/Simkl
   // vinculado (decisao do dono). Em "Ambas" ele continua sendo do vinculo.
   if (querConta && (fonte == AJ_CWF_CONTA || (!trakt_ativo() && !simkl_ativo())))
-    nL = contaASeguir(daConta, nL, CONT_MAX, trakt_ativo() || simkl_ativo());
+    nL = contaASeguir(daConta, nL, localSlots, trakt_ativo() || simkl_ativo());
   else
     descCwoDefinir(cwo_conta_definir, NULL, 0);
 
   // Os "a seguir" que a desmarcacao moveu (Trakt/Simkl acima; a conta, que ja
   // foi montada em contaASeguir, entra pelo seu proprio registro e pelo id novo).
-  { const char *aj[CONT_MAX * 3];
+  { const char **aj = futIds;
     int k;
     for (k = 0; k < nAjustados; k++) aj[k] = ajustadosIds[k];
     descCwoDefinir(cwo_ajustados_definir, aj, nAjustados); }
@@ -3569,21 +3592,20 @@ static int montarContinuar(CatItem *saida, int max) {
   //
   // Uma sugestao so substitui o pausado da conta com conclusao confirmada
   // posterior daquele episodio. Recencia sozinha nao prova conclusao.
-  { static int pularLocal[CONT_MAX];
-    memset(pularLocal, 0, sizeof pularLocal);
+  {
     for (i = 0; i < nR; i++)
       for (j = 0; j < nL; j++)
         if (mesmaObra(remotos[i], &daConta[j]) &&
             candidatoVence(remotos[i], &daConta[j]))
           pularLocal[j] = 1;
-  for (i = 0; i < nL && nJ < (int)(sizeof juntos / sizeof *juntos); i++) {
+  for (i = 0; i < nL; i++) {
     if (pularLocal[i]) continue;
     juntos[nJ].item = &daConta[i];
     juntos[nJ].ms   = instanteDaConta(&daConta[i]);
     juntos[nJ].ord  = i;
     nJ++;
   }
-  for (i = 0; i < nR && nJ < (int)(sizeof juntos / sizeof *juntos); i++) {
+  for (i = 0; i < nR; i++) {
     int repetido = 0;
     for (j = 0; j < nL; j++)
       if (!pularLocal[j] && mesmaObra(remotos[i], &daConta[j])) { repetido = 1; break; }
@@ -3653,10 +3675,7 @@ static int montarContinuar(CatItem *saida, int max) {
   // "Proximos episodios" com eles. `showUnairedNextUp` desligado os tira de vez
   // (shouldShowNextUpEpisodeForContinueWatching do web): antes esta preferencia
   // tambem nao era lida por ninguem.
-  { static CwoItem cwo[CONT_MAX * 3];
-    static Cand ordenados[CONT_MAX * 3];
-    static int perm[CONT_MAX * 3];
-    static const char *futIds[CONT_MAX * 3];
+  {
     long long agora = (long long)time(NULL) * 1000LL;
     int modo = ajustes_cw_ordem(), naoExibidos = ajustes_cw_mostrar_nao_exibidos();
     int proxFora = 0, escondidos = 0, semData = 0, principal, nFut = 0, mp, mf, w = 0;
@@ -3738,7 +3757,10 @@ static int montarContinuar(CatItem *saida, int max) {
   // card a mao nao passa por aqui (desc_tirar_continuar tira do publicado), e
   // o ciclo seguinte com o Trakt de volta refaz a fileira normalmente.
   if (nJ == 0 && querTrakt && trakt_continuar_falhou()) {
-    int k = cat_copiar_fileira("continue_watching", saida, max, NULL);
+    int available = cat_copiar_fileira("continue_watching",NULL,0,NULL);
+    if (available > max) available = max;
+    if (available && !(saida = malloc(sizeof *saida * (size_t)available))) goto cleanup;
+    int k = available ? cat_copiar_fileira("continue_watching",saida,available,NULL) : 0;
     if (!ajustes_cw_proximo()) {
       int w = 0;
       for (i = 0; i < k; i++)
@@ -3759,18 +3781,14 @@ static int montarContinuar(CatItem *saida, int max) {
       printf("[desc] continuar assistindo: Trakt sem resposta e lista vazia; "
              "mantidos os %d card(s) da tela\n", k);
       fflush(stdout);
-      free(doSimkl);
-      return k;
+      count = k; goto cleanup;
     }
   }
+  if (nJ && !(saida = malloc(sizeof *saida * (size_t)nJ))) goto cleanup;
   for (i = 0; i < nJ; i++) {
     saida[i] = *juntos[i].item;
     if (getenv("NUVIO_CW_LOG"))
-      printf("[desc] cw[%d] %s T%dE%d %d%% ms=%lld %s\n", i, saida[i].imdb, saida[i].temporada,
-             saida[i].episodio, saida[i].progresso, juntos[i].ms,
-             juntos[i].item >= daConta && juntos[i].item < daConta + CONT_MAX ? "conta"
-             : doSimkl && juntos[i].item >= doSimkl && juntos[i].item < doSimkl + CONT_MAX ? "simkl"
-             : "trakt");
+      printf("[desc] cw[%d] %s %d%% ms=%lld\n", i, saida[i].imdb, saida[i].progresso, juntos[i].ms);
   }
   // O que ja foi localizado antes entra AQUI, sem rede: a fileira nao pisca em
   // ingles a cada refazagem. O que falta e buscado depois de publicada
@@ -3781,8 +3799,22 @@ static int montarContinuar(CatItem *saida, int max) {
          nT, nS, fora, nL, repetidos, nJ);
   fflush(stdout);
   // O lote do Simkl ja foi COPIADO para `saida` acima; nada mais aponta nele.
-  free(doSimkl);
-  return nJ;
+  count = nJ;
+cleanup:
+  free(contRegs); contRegs = NULL; contRegCount = 0;
+  free(daConta); free(doSimkl); free(doTrakt); free(remotos); free(juntos);
+  free(ordenados); free(cwo); free(perm); free(futIds); free(pularLocal);
+  if (count < 0) free(saida); else *result = saida;
+  return count;
+}
+
+// Retain explicit bounded merging for embedded callers and regression fixtures.
+static __attribute__((unused)) int montarContinuar(CatItem *out, int capacity) {
+  CatItem *items;
+  int n = montarContinuarAlocado(&items,capacity);
+  if (n > 0) memcpy(out,items,sizeof *items * (size_t)n);
+  free(items);
+  return n > 0 ? n : 0;
 }
 
 // --- REFAZER "CONTINUAR ASSISTINDO" FORA DO CICLO (issue #38) -----------------
@@ -3804,7 +3836,7 @@ void desc_refazer_continuar(void);
 
 static void *fioContinuar(void *u) {
   // static: 40 CatItem sao ~680 KB; um fio de refazagem por vez (cwVivo).
-  static CatItem lote[CONT_MAX];
+  CatItem *lote = NULL;
   int n;
   unsigned minhaGer;
   NvPerfilSessao sessao = u ? *(NvPerfilSessao *)u : nv_perfil_sessao_ler();
@@ -3812,12 +3844,12 @@ static void *fioContinuar(void *u) {
   if (!descSessaoVincular(sessao)) goto fim;
   pthread_mutex_lock(&contTrava);
   if (!descSessaoAtual()) { pthread_mutex_unlock(&contTrava); goto fim; }
-  n = montarContinuar(lote, CONT_MAX);
+  n = montarContinuarAlocado(&lote,CAT_MAX);
   minhaGer = __atomic_load_n(&cwGer, __ATOMIC_RELAXED);
   pthread_mutex_unlock(&contTrava);
   if (nv_perfil_sessao_travar(sessao)) {
     pthread_mutex_lock(&cwPubTrava);
-    if (minhaGer >= cwGerNaTela) {
+    if (n >= 0 && minhaGer >= cwGerNaTela) {
       cat_trocar_continuar(lote, n);
       cwGerNaTela = minhaGer;
     }
@@ -3826,6 +3858,7 @@ static void *fioContinuar(void *u) {
     localizarContinuarPublicado();
   }
 fim:
+  free(lote);
   pthread_mutex_lock(&cwFilaTrava);
   int repetir = cwDeNovo;
   cwVivo = cwDeNovo = 0;
@@ -3862,7 +3895,7 @@ void desc_refazer_continuar(void) {
 // refacao — um montar() em curso reaplica esta janela em vez de devolver a
 // fileira velha (cwAntesDePublicar).
 int desc_continuar_otimista(int indice) {
-  static CatItem atual[CONT_MAX], saida[CONT_MAX];
+  CatItem *atual, *saida;
   CatItem novo;
   const CatItem *ci = cat_item(indice);
   int n, k, mudou, travou;
@@ -3876,12 +3909,19 @@ int desc_continuar_otimista(int indice) {
     snprintf(novo.imdb, sizeof novo.imdb, "%s:%d:%d", base, novo.temporada, novo.episodio);
   }
   travou = pthread_mutex_trylock(&cwPubTrava) == 0;
-  n = cat_copiar_fileira("continue_watching", atual, CONT_MAX, NULL);
-  k = cw_frente_compor(atual, n, &novo, saida, CONT_MAX, &mudou);
+  int cap = cat_copiar_fileira("continue_watching",NULL,0,NULL) + 1;
+  if (cap > CAT_MAX) cap = CAT_MAX;
+  atual = malloc(sizeof *atual * (size_t)cap); saida = malloc(sizeof *saida * (size_t)cap);
+  if (!atual || !saida) {
+    free(atual); free(saida); if (travou) pthread_mutex_unlock(&cwPubTrava); return 0;
+  }
+  n = cat_copiar_fileira("continue_watching", atual, cap, NULL);
+  k = cw_frente_compor(atual, n, &novo, saida, cap, &mudou);
   if (mudou) {
     cat_trocar_continuar(saida, k);
     if (travou) cwGerNaTela = __atomic_add_fetch(&cwGer, 1u, __ATOMIC_RELAXED);
   }
+  free(atual); free(saida);
   if (travou) pthread_mutex_unlock(&cwPubTrava);
   printf("[desc] continuar assistindo: %s %s ao sair do player (local; a refacao confirma)\n",
          novo.imdb, mudou ? "na frente" : "ja estava na frente");
@@ -3898,9 +3938,11 @@ static CatItem *cwAntesDePublicar(int *k) {
   CatItem *c = NULL;
   *k = 0;
   pthread_mutex_lock(&cwPubTrava);
-  if (cwGerNaTela > __atomic_load_n(&cwGerMontar, __ATOMIC_RELAXED) &&
-      (c = malloc(sizeof(CatItem) * CONT_MAX)))
-    *k = cat_copiar_fileira("continue_watching", c, CONT_MAX, NULL);
+  if (cwGerNaTela > __atomic_load_n(&cwGerMontar,__ATOMIC_RELAXED)) {
+    int count = cat_copiar_fileira("continue_watching",NULL,0,NULL);
+    c = malloc(sizeof *c * (size_t)(count ? count : 1));
+    if (c && count) *k = cat_copiar_fileira("continue_watching",c,count,NULL);
+  }
   return c;
 }
 static void cwDepoisDePublicar(CatItem *c, int k) {
@@ -4604,7 +4646,16 @@ static void *montar(void *u) {
   // faz parte deste lote e precisa sobreviver a cada publicacao dos catalogos.
   if (nv_perfil_sessao_travar(descSessao())) {
     pthread_mutex_lock(&cwPubTrava);
-    nContinuar = cat_copiar_fileira("continue_watching", lote, CONT_MAX, NULL);
+    int available = cat_copiar_fileira("continue_watching",NULL,0,NULL);
+    if (available > cap) {
+      CatItem *more = realloc(lote,sizeof *lote * (size_t)available);
+      if (!more) {
+        pthread_mutex_unlock(&cwPubTrava); nv_perfil_sessao_destravar();
+        free(lote); buscandoSoltar(); return NULL;
+      }
+      lote = more; cap = available;
+    }
+    nContinuar = cat_copiar_fileira("continue_watching", lote, cap, NULL);
     __atomic_store_n(&cwGerMontar, cwGerNaTela, __ATOMIC_RELAXED);
     pthread_mutex_unlock(&cwPubTrava);
     nv_perfil_sessao_destravar();

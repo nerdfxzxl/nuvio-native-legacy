@@ -33,7 +33,6 @@ extern int trakt_enfeitar_lote_sessao(CatItem *, int, uint64_t) NV_PERFIL_OPCION
 #define SMK_API "https://api.simkl.com"
 // Retomada: o mesmo teto da fileira (CONT_MAX de descoberta.c) com folga para
 // o "a seguir" disputar lugar com os pausados.
-#define SMK_PLAY_MAX 64
 // Plan to Watch conhecido, para a guarda do "-". 400 ids x 24 B = ~10 KB; a
 // lista de "quero ver" de uma pessoa real cabe com sobra.
 #define SMK_PTW_MAX 400
@@ -742,9 +741,9 @@ static uint64_t listaSessao;
 // Registros de playback da ultima leitura (chave composta -> id), para o
 // DELETE, e os ids "tt:S:E" que sao "a seguir". Tabelas laterais pela mesma
 // razao de trakt.c: sizeof(CatItem) e o cabecalho do cache em disco.
-static struct { char chave[28]; long long id; } play[SMK_PLAY_MAX];
+static struct { char chave[28]; long long id; } play[CAT_MAX];
 static int nPlay;
-static char proxIds[SMK_PLAY_MAX][28];
+static char proxIds[CAT_MAX][28];
 static int nProx;
 // Plan to Watch conhecido: o que a ultima leitura trouxe e o que o "+" daqui
 // pos depois dela. E so a guarda do "-" (ver simkl.h).
@@ -806,16 +805,16 @@ static int mesmaSerie(const char *a, const char *b) {
   return la == lb && !strncmp(a, b, la);
 }
 
-int simkl_continuar(CatItem *saida, int max) {
+static int continuarPedido(CatItem *saida, int max, CatItem **allocated) {
   CatItem *prox;
-  long long ids[SMK_PLAY_MAX];
+  long long *ids;
   unsigned long h;
   char *cPlay = NULL, *cAssist = NULL, *cAnime = NULL;
-  char proxLocal[SMK_PLAY_MAX][28]; int nProxLocal = 0;
+  char (*proxLocal)[28]; int nProxLocal = 0;
   int n, nP, nA, i, k;
   SmkPedido pedido = pedidoCapturar();
-  if (!saida || max <= 0 || !pedido.aut[0]) return 0;
-  if (max > SMK_PLAY_MAX) max = SMK_PLAY_MAX;
+  if ((!saida && !allocated) || max <= 0 || !pedido.aut[0]) return 0;
+
   h = atividades(pedido);
   if (!pedidoTravar(pedido)) return 0;
   if (h && h == assCw && corpoPlay && corpoAssist && corpoAssistAnime) {
@@ -841,16 +840,32 @@ int simkl_continuar(CatItem *saida, int max) {
     }
   }
   if (!pedidoAtual(pedido)) { free(cPlay); free(cAssist); free(cAnime); return 0; }
+  int paused = js_contar_objetos(cPlay ? js_raiz_array(cPlay) : NULL,CAT_MAX);
+  int next = 0;
+  const char *feeds[] = {cAssist,cAnime};
+  for (int f = 0; ajustes_cw_proximo() && f < 2; f++) if (feeds[f]) {
+    next += js_contar_objetos(js_array(feeds[f],NULL,"shows"),CAT_MAX-next);
+    next += js_contar_objetos(js_array(feeds[f],NULL,"anime"),CAT_MAX-next);
+  }
+  if (max > paused + next) max = paused + next;
+  int slots = max > 0 ? max : 1;
+  if (allocated) saida = *allocated = malloc(sizeof *saida * (size_t)slots);
+  ids = calloc((size_t)slots,sizeof *ids);
+  proxLocal = calloc((size_t)slots,sizeof *proxLocal);
+  if (!saida || !ids || !proxLocal) {
+    free(ids); free(proxLocal); free(cPlay); free(cAssist); free(cAnime);
+    return -1;
+  }
   n = simkl_ler_playback(cPlay, saida, ids, max);
   int nPausados = n;
-  prox = malloc(sizeof(CatItem) * SMK_PLAY_MAX);
-  nP = prox && ajustes_cw_proximo() ? simkl_ler_assistindo(cAssist, prox, SMK_PLAY_MAX) : 0;
+  prox = malloc(sizeof(CatItem) * (size_t)next);
+  nP = prox && ajustes_cw_proximo() ? simkl_ler_assistindo(cAssist, prox, next) : 0;
   // O mesmo leitor aceita a raiz "anime"; funde aqui, dedup por serie, para
   // nao repetir um titulo que o endpoint de shows ja tenha trazido.
   if (!prox || !ajustes_cw_proximo())
     printf("[simkl] anime watching: skipped (%s)\n", prox ? "next-up disabled" : "allocation failed");
   if (prox && ajustes_cw_proximo()) {
-    nA = simkl_ler_assistindo(cAnime, prox + nP, SMK_PLAY_MAX - nP);
+    nA = simkl_ler_assistindo(cAnime, prox + nP, next - nP);
     for (k = nP; k < nP + nA; k++) {
       int j, ja = 0;
       for (j = 0; j < nP && !ja; j++) ja = mesmaSerie(prox[j].imdb, prox[k].imdb);
@@ -882,19 +897,21 @@ int simkl_continuar(CatItem *saida, int max) {
       alvo = vel;
     }
     saida[alvo] = prox[k];
-    if (nProxLocal < SMK_PLAY_MAX)
+    if (nProxLocal < max)
       snprintf(proxLocal[nProxLocal++], sizeof proxLocal[0], "%s", prox[k].imdb);
   }
   free(prox); free(cPlay); free(cAssist); free(cAnime);
-  if (!pedidoTravar(pedido)) return 0;
+  if (!pedidoTravar(pedido)) { free(ids); free(proxLocal); return 0; }
   nPlay = 0;
   for (i = 0; i < nPausados; i++)
-    if (ids[i] > 0 && nPlay < SMK_PLAY_MAX) {
+    if (ids[i] > 0 && nPlay < max) {
       snprintf(play[nPlay].chave, sizeof play[nPlay].chave, "%s", saida[i].imdb);
       play[nPlay++].id = ids[i];
     }
+  free(ids);
   nProx = nProxLocal;
   memcpy(proxIds, proxLocal, sizeof proxIds[0] * (size_t)nProx);
+  free(proxLocal);
   pedidoDestravar();
   { int a, b;
     for (a = 1; a < n; a++) {
@@ -909,6 +926,15 @@ int simkl_continuar(CatItem *saida, int max) {
   if (n) n = trakt_enfeitar_lote_sessao ? trakt_enfeitar_lote_sessao(saida, n, pedido.sessao)
                                        : trakt_enfeitar_lote(saida, n);
   return pedidoAtual(pedido) ? n : 0;
+}
+
+int simkl_continuar(CatItem *saida, int max) {
+  int n = continuarPedido(saida,max,NULL);
+  return n > 0 ? n : 0;
+}
+int simkl_continuar_alocado(CatItem **saida) {
+  *saida = NULL;
+  return continuarPedido(NULL,CAT_MAX,saida);
 }
 
 int simkl_plantowatch(CatItem *saida, int max) {

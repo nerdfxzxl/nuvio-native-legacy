@@ -62,6 +62,7 @@ void prog_chave(char *dst, unsigned n, const char *contentId, int temporada, int
 void prog_content_id(char *dst, unsigned n, const char *imdb, int *temporada, int *episodio);
 
 // Registros do PERFIL ATIVO, do mais recente para o mais antigo. Devolve quantos.
+// NULL with max=0 reports the number of records for this profile.
 int  prog_ler(ProgRegistro *saida, int max);
 
 // O item mais recente AINDA NAO TERMINADO de um perfil qualquer (ativo ou nao),

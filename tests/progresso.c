@@ -271,6 +271,23 @@ static void limiteEscolheOsMaisNovos(void) {
   puts("ok  leitura limitada inclui os mais novos antes de truncar");
 }
 
+static void longHistory(void) {
+  zerar(NULL);
+  char id[24];
+  for (int i=0;i<620;i++) {
+    snprintf(id,sizeof id,"tt%07d",i);
+    agora = 1000+i;
+    assert(prog_gravar_local(id,0,0,120,600,-1));
+  }
+  prog_invalidar();
+  assert(prog_ler(NULL,0)==620);
+  ProgRegistro *all = calloc(620,sizeof *all);
+  assert(all && prog_ler(all,620)==620);
+  assert(!strcmp(all[0].contentId,"tt0000619") && !strcmp(all[619].contentId,"tt0000000"));
+  free(all);
+  puts("PASS: 620 distinct titles retained through reload in watch-history order");
+}
+
 int main(void) {
   prog_definir_relogio(relogio);
   chaveIgualAoWeb();
@@ -283,6 +300,7 @@ int main(void) {
   sobreviveAoDisco();
   temposInvalidosNaoEntram();
   limiteEscolheOsMaisNovos();
+  longHistory();
   puts("progresso: tudo ok");
   return 0;
 }

@@ -113,6 +113,7 @@ int trakt_playback_remover(const char *imdb);
 int trakt_episodios_marcar(const char *imdb, const VistoPar *pares, int qtd,
                            int visto);
 int  trakt_continuar(CatItem *saida, int max);
+int trakt_continuar_alocado(CatItem **saida);
 // 1 quando a ULTIMA trakt_continuar nao teve resposta (rede, HTTP 5xx): o 0
 // que ela devolveu e "nao sei", e nao "nada em andamento" (#151).
 int  trakt_continuar_falhou(void);

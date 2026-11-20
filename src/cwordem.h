@@ -1,5 +1,4 @@
-// Teto de "Continuar assistindo" (issue #205). descoberta.c (CONT_MAX) e
-// home.c (CW_TETO) repetem este numero; a tabela de futuros tambem.
+// Legacy bounded merge fixture size. The runtime row uses actual history length.
 #define CWO_FILEIRA_MAX 40
 
 // ORDENACAO DE "CONTINUAR ASSISTINDO" (issue #127).
