@@ -156,7 +156,7 @@ static const Item TELA[] = {
     ROT("Rows"),
       OPC(AJ_FIL_ORDEM), OPC(AJ_FIL_LIMITE), OPC(AJ_ITENS_FILEIRA),
       OPC(AJ_ESPACO_FILEIRAS), OPC(AJ_ESPACO_TITULOS),
-      OPC(AJ_OCULTAR_NLANC), OPC(AJ_NOTAS_HOME), OPC(AJ_SELO_VISTO), OPC(AJ_ABAS_ESTILO),
+      OPC(AJ_OCULTAR_NLANC), OPC(AJ_SELO_VISTO), OPC(AJ_ABAS_ESTILO),
       OPC(AJ_OCULTAR_FILMES_VISTOS), OPC(AJ_BIB_HOME), OPC(AJ_AMIGOS_ESTILO),
       // A curadoria da fileira Herói (#205): a fonte do cartão único.
       OPC(AJ_CURADORIA_URL),
@@ -226,6 +226,8 @@ static const Item TELA[] = {
   SEC("Posters and trailers", "Focused poster, artwork sources and trailers", "aj_clapperboard"),
     ROT("Focused poster"),
       OPC(AJ_EXPANDIR), OPC(AJ_FOCO_INSTANTANEO), OPC(AJ_EXPANDIR_ATRASO), OPC(AJ_BORDA_FOCO), OPC(AJ_MENU_CARTAZ),
+    ROT("Poster information"),
+      OPC(AJ_POSTER_GENERO), OPC(AJ_NOTAS_HOME),
     ROT("Shape"),
       OPC(AJ_RAIO_DP), OPC(AJ_PROF),
     ROT("Artwork source"),
