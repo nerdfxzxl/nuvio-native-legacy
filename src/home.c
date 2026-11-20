@@ -1670,8 +1670,8 @@ static void desenhaFaixaAberta(const CatItem *ci, int r, float px, float py,
   // no card aberto e o cartaz tem 24, entao os cantos de baixo do veu
   // passavam por fora da curva (MEDIDO em homelayouts_shot, 01/10/2026: ~50
   // px escurecidos fora do card). E o mesmo defeito do #144 no Continuar.
-  gfx_veu_base((GfxRect){ px, py, w, h }, raioDe(w, h), NV_ABERTA_VEU_F,
-               NV_ABERTA_VEU_A * abre);
+  // The broad expanded-card veil was darkening artwork under the logo.
+  // The individual age and IMDb chips already have their own backgrounds.
   // Preserve verified IMDb/year/age details, without speculative trending
   // arrows or "New" labels that depend on incomplete ranking history.
   // Classificacao etaria.
@@ -1698,7 +1698,8 @@ static void desenhaFaixaAberta(const CatItem *ci, int r, float px, float py,
   // Sem ID nao ha como atribuir a nota ao IMDb; em itens `tmdb:` a nota pode
   // ser do TMDB e o rotulo amarelo seria enganoso. O restante da faixa segue
   // independente e continua aparecendo quando existe.
-  int imdbRating = imdbnota_obter(ci->imdb, ci->nota, !strcmp(ci->tipo,"series"));
+  int imdbRating = ajustes_notas_home()
+    ? imdbnota_obter(ci->imdb, ci->nota, !strcmp(ci->tipo,"series")) : 0;
   if (imdbRating > 0) {
     float bw = badge_imdb_largura(imdbRating);
     float xMin = px + pad + (ci->logo[0] ? w * 0.34f : 0.0f);
@@ -6827,7 +6828,7 @@ static void desenhaPosterGrande(const CatItem *ci, const char *caminho,
   // classificacao — o mesmo chip do card aberto (desenhaFaixaAberta), na tinta.
   y -= 46.0f;
   yLogo = semMeta ? py + h - pad : y - 18.0f;   // base do logo
-  if (!semMeta && ci->genero[0]) {
+  if (!semMeta && ajustes_poster_genero() && ci->genero[0]) {
     // O selo mora a direita do genero, DENTRO do card: o genero cede a largura
     // dele (e ganha reticencias), em vez de empurrar o selo para fora.
     TxtLinha cl = { 0 };
@@ -7073,11 +7074,14 @@ static int veuRotulo(const CatItem *cItem, TipoFileira tipo, int deitado, float 
 static void veusDoCard(const CatItem *cItem, TipoFileira tipo, int deitado, float abre,
                        int comCw) {
   float fVeu;
-  if (veuRotulo(cItem, tipo, deitado, &fVeu)) gfx_veu_card_por(fVeu, NV_ROTULO_VEU_A);
+  // The landscape title/caption no longer darkens the whole lower half.
+  // Do not bake that old veil into the artwork shader either.
+  (void)fVeu;
   if (comCw && (tipo == FILEIRA_CONTINUE || tipo == FILEIRA_RETORNO) && cItem)
     gfx_veu_card_por(NV_CW_VEU_F, NV_CW_VEU_A);
   if (abre > 0.01f && cItem) gfx_veu_card_por(NV_ABERTA_VEU_F, NV_ABERTA_VEU_A * abre);
-  if (editorial(tipo)) gfx_veu_card_por(NV_EDITORIAL_VEU_F, NV_EDITORIAL_VEU_A);
+  // No wide dark ramp below editorial title artwork: keep every pixel of
+  // the background visible. Preserve Continue Watching and focus overlays.
 }
 
 // A legenda do cartaz (dentro do deitado, abaixo do cartaz em pe).
@@ -7087,7 +7091,7 @@ static void desenhaRotuloCard(const CatItem *cItem, TipoFileira tipo, int deitad
   if (tipo != FILEIRA_CONTINUE && tipo != FILEIRA_RETORNO && !editorial(tipo) &&
       (ajustes_rotulos_poster() || tipo == FILEIRA_LARGA || tipo == FILEIRA_HEROI_DIVIDIDO) && cItem) {
     const char *nome = cItem->titulo[0] ? cItem->titulo : NULL;
-    const char *sub  = cItem->genero[0] ? cItem->genero : NULL;
+    const char *sub  = ajustes_poster_genero() && cItem->genero[0] ? cItem->genero : NULL;
     if (deitado && nome) {
       // VEU SO VERTICAL, que chega a ZERO no topo do retangulo. Era o
       // GFX_VEU (base + ESQUERDA): a rampa da esquerda ja vale 0,78 no
@@ -7100,8 +7104,8 @@ static void desenhaRotuloCard(const CatItem *cItem, TipoFileira tipo, int deitad
       // gfx_veu_base e o mesmo retangulo, o mesmo raio e o mesmo fill; com a
       // arte na tela ele ja saiu dentro dela (veusDoCard) e aqui nao repete.
       const int larga = tipo == FILEIRA_LARGA;
-      const float fVeu = larga ? NV_DIN_LARGA_VEU : NV_LAND_VEU;
-      gfx_veu_base((GfxRect){ px, py, w, h }, raio, fVeu, NV_ROTULO_VEU_A);
+      // The old 54% bottom veil obscured nearly half the thumbnail and logo.
+      // The caption uses only its natural white text, no full-card gradient.
       float maxW = w * NV_LAND_COPY_MAXW;
       float bx = px + (larga ? NV_DIN_LARGA_PAD : NV_LAND_COPY_PAD);
       float base = larga ? NV_DIN_LARGA_PAD - 4.0f : NV_LAND_COPY_BASE;
@@ -7122,7 +7126,8 @@ static void desenhaRotuloCard(const CatItem *cItem, TipoFileira tipo, int deitad
       }
     } else if (tipo == FILEIRA_HEROI_DIVIDIDO) {
       char l[64]; const char *e = strstr(cItem->meta, " \xc2\xb7 ");
-      int nota = imdbnota_obter(cItem->imdb, cItem->nota, !strcmp(cItem->tipo, "series"));
+      int nota = ajustes_notas_home()
+        ? imdbnota_obter(cItem->imdb, cItem->nota, !strcmp(cItem->tipo, "series")) : 0;
       size_t n = e ? (size_t)(e - cItem->meta) : strlen(cItem->meta);
       if (n > 12) n = 12;
       snprintf(l, sizeof l, "%.*s%s", (int)n, cItem->meta, n && nota > 0 ? " · " : "");
@@ -7166,7 +7171,8 @@ static void desenhaEditorialCard(const CatItem *cItem, TipoFileira tipo, float p
   // Base e nao cartao inteiro: logo, nome e genero moram no terco de
   // baixo. O GFX_VEU inteiro era 1,18 tela na "AI for you" e a C9
   // parada nela ficava a 48 fps; sem ele, 60 (29/09).
-  gfx_veu_base((GfxRect){ px, py, w, h }, raio, NV_EDITORIAL_VEU_F, NV_EDITORIAL_VEU_A);
+  // Deliberately no lower-half dark gradient: the title logo, genre and
+  // rating float over the full-resolution artwork without covering its image.
 
 
   // Logo do titulo, como no aparelho: cada producao tem tipografia
@@ -7182,7 +7188,7 @@ static void desenhaEditorialCard(const CatItem *cItem, TipoFileira tipo, float p
   // fileiras COLECAO/SERVICO/SOCIAL nao sao destaque e ficam como estao.
   const int semMeta = (tipo == FILEIRA_DESTAQUE || tipo == FILEIRA_DESTAQUE_QUADRADO)
                     && !ajustes_hero_genero();
-  const char *genero = semMeta ? NULL
+  const char *genero = (semMeta || !ajustes_poster_genero()) ? NULL
                       : (ci && ci->genero[0]) ? ci->genero
                       : ci ? i18n(!strcmp(ci->tipo, "series") ? "Série" : "Filme") : NULL;
   TxtLinha tg = genero
@@ -7227,7 +7233,8 @@ static void desenhaEditorialCard(const CatItem *cItem, TipoFileira tipo, float p
   // da linha (a referencia nao a tem); sem nota atribuivel ao IMDb
   // (sem ID, ou `tmdb:` sem vínculo IMDb verificado), a classificacao volta como antes.
   int notaFeita = 0;
-  int imdbRating = orig && ci && !semMeta ? imdbnota_obter(ci->imdb, ci->nota, !strcmp(ci->tipo,"series")) : 0;
+  int imdbRating = orig && ci && ajustes_notas_home()
+    ? imdbnota_obter(ci->imdb, ci->nota, !strcmp(ci->tipo,"series")) : 0;
   if (imdbRating > 0) {
     float bx = px + pad + tg.w + (genero ? 14.0f : 0.0f);
     if (bx + badge_imdb_largura(imdbRating) < px + w - pad) {
