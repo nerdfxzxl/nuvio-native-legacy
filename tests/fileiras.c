@@ -1526,26 +1526,34 @@ int main(void) {
   usaArquivo=1; fil_definir_perfil(120);
   fil_registrar("catA","A","Cinemeta","movie",1);
   fil_registrar("catB","B","Cinemeta","movie",1);
-  fil_preview_dp("catA",FIL_TIPO_SERVICO,185,1);
+  assert(fil_size_max_dp(FIL_TIPO_CARTAZ)==300);
+  assert(fil_size_max_dp(FIL_TIPO_POSTER_GRANDE_G)==340);
+  assert(fil_size_max_dp(FIL_TIPO_SERVICO)==280);
+  assert(fil_size_max_dp(FIL_TIPO_LARGA)==260);
+  assert(fil_size_max_dp(FIL_TIPO_DESTAQUE_QUADRADO_G)==300);
+  fil_preview_dp("catA",FIL_TIPO_SERVICO,280,1);
   fil_preview_dp("catB",FIL_TIPO_SERVICO,145,1);
-  fil_preview_dp("catA",FIL_TIPO_CARTAZ,93,1);
+  fil_preview_dp("catA",FIL_TIPO_CARTAZ,290,1);
   // Every row and every style is separate: previously FEATURE/COLLECTION
   // aliased SERVICE and large-poster variants aliased the base style.
-  fil_preview_dp("catA",FIL_TIPO_DESTAQUE,175,1);
-  fil_preview_dp("catA",FIL_TIPO_COLECAO,162,1);
-  fil_preview_dp("catA",FIL_TIPO_POSTER_GRANDE_P,174,1);
-  fil_preview_dp("catA",FIL_TIPO_POSTER_GRANDE_G,153,1);
+  fil_preview_dp("catA",FIL_TIPO_DESTAQUE,260,1);
+  fil_preview_dp("catA",FIL_TIPO_COLECAO,245,1);
+  fil_preview_dp("catA",FIL_TIPO_POSTER_GRANDE_P,315,1);
+  fil_preview_dp("catA",FIL_TIPO_POSTER_GRANDE_G,340,1);
+  // Invalid values must never overwrite another row/style or wrap the value.
+  fil_preview_dp("catA",FIL_TIPO_POSTER_GRANDE_G,341,1);
+  fil_preview_dp("catA",FIL_TIPO_DESTAQUE,261,1);
   assert(fil_definir_tipo("catA",FIL_TIPO_CARTAZ));
   assert(fil_definir_tipo("catA",FIL_TIPO_SERVICO));
   fil_recarregar();
-  assert(fil_size_dp("catA",FIL_TIPO_SERVICO)==185);
+  assert(fil_size_dp("catA",FIL_TIPO_SERVICO)==280);
   assert(fil_size_dp("catB",FIL_TIPO_SERVICO)==145);
-  assert(fil_size_dp("catA",FIL_TIPO_CARTAZ)==93);
+  assert(fil_size_dp("catA",FIL_TIPO_CARTAZ)==290);
   assert(fil_size_dp("catB",FIL_TIPO_CARTAZ)==126);
-  assert(fil_size_dp("catA",FIL_TIPO_DESTAQUE)==175);
-  assert(fil_size_dp("catA",FIL_TIPO_COLECAO)==162);
-  assert(fil_size_dp("catA",FIL_TIPO_POSTER_GRANDE_P)==174);
-  assert(fil_size_dp("catA",FIL_TIPO_POSTER_GRANDE_G)==153);
+  assert(fil_size_dp("catA",FIL_TIPO_DESTAQUE)==260);
+  assert(fil_size_dp("catA",FIL_TIPO_COLECAO)==245);
+  assert(fil_size_dp("catA",FIL_TIPO_POSTER_GRANDE_P)==315);
+  assert(fil_size_dp("catA",FIL_TIPO_POSTER_GRANDE_G)==340);
   assert(fil_size_dp("catB",FIL_TIPO_POSTER_GRANDE_G)==126);
   float savedScale=fil_escala("catA");
   float otherScale=fil_escala("catB");
@@ -1554,7 +1562,7 @@ int main(void) {
   assert(fil_escala("catB")==otherScale);   // preview touches only A
   fil_preview_dp("catA",FIL_TIPO_SERVICO,0,0);
   assert(fil_escala("catA")==savedScale);
-  assert(fil_size_dp("catA",FIL_TIPO_DESTAQUE)==175); // other style untouched
+  assert(fil_size_dp("catA",FIL_TIPO_DESTAQUE)==260); // other style untouched
   fil_hero_select(NULL,1); fil_hero_select("catA",0);
   fil_recarregar();
   assert(!fil_hero_selected("catA") && fil_hero_selected("catB"));
