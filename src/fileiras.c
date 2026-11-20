@@ -2121,19 +2121,21 @@ static float escalaCom(int tam, int t) {
   if (f > 1.0f && v > FATOR_4_3_G) v = FATOR_4_3_G;
   return v;
 }
-static int styleFamily(int t) {
-  switch(t) {
-    case FIL_TIPO_COLECAO: case FIL_TIPO_DESTAQUE: return FIL_TIPO_SERVICO;
-    case FIL_TIPO_DESTAQUE_QUADRADO_M: case FIL_TIPO_DESTAQUE_QUADRADO_G: return FIL_TIPO_DESTAQUE_QUADRADO;
-    case FIL_TIPO_POSTER_GRANDE_P: case FIL_TIPO_POSTER_GRANDE_G: return FIL_TIPO_POSTER_GRANDE;
-    default: return t;
-  }
-}
+// A numeric size belongs to the exact row key AND exact selectable style.
+// Build 121 aliased distinct styles (Service/Collection/Feature, small/large
+// poster variants) to a single setting, so changing one silently changed the
+// others. styleDp[FIL_TIPO_N] already stores every style independently.
+static int styleFamily(int t) { return t; }
 int fil_resizable(int t) {
-  t=styleFamily(t);
-  return t==FIL_TIPO_CARTAZ || t==FIL_TIPO_SERVICO || t==FIL_TIPO_LARGA ||
-         t==FIL_TIPO_DESTAQUE_QUADRADO || t==FIL_TIPO_RANKING ||
-         t==FIL_TIPO_LINHA_TEMPO || t==FIL_TIPO_POSTER_GRANDE;
+  switch (t) {
+    case FIL_TIPO_CARTAZ: case FIL_TIPO_SERVICO: case FIL_TIPO_COLECAO:
+    case FIL_TIPO_DESTAQUE: case FIL_TIPO_LARGA:
+    case FIL_TIPO_DESTAQUE_QUADRADO: case FIL_TIPO_DESTAQUE_QUADRADO_M:
+    case FIL_TIPO_DESTAQUE_QUADRADO_G: case FIL_TIPO_RANKING:
+    case FIL_TIPO_LINHA_TEMPO: case FIL_TIPO_POSTER_GRANDE:
+    case FIL_TIPO_POSTER_GRANDE_P: case FIL_TIPO_POSTER_GRANDE_G: return 1;
+    default: return 0;
+  }
 }
 static char previewRow[FIL_CHAVE];
 static int previewStyle, previewDp, previewProfile;
