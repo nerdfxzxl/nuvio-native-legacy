@@ -196,9 +196,6 @@ int  ilha_ponto_pediu(void);
 // Onde o relogio pode ficar, decidido por quadro por app.c (a home tem o topo
 // esquerdo livre; Ajustes e Explorar tem titulo ali).
 void ilha_relogio_visivel(int visivel);
-// 0..1, displayed using the exact Dynamic Clock CH+ hold-fill artwork.
-// The Home supplies delayed poster-OK progress; the clock never owns its timer.
-void ilha_segurar_cartaz(float progresso);
 // O roteador concede foco ao sair pelo topo de uma pagina; nao altera os
 // cartoes nem o caminho existente de toque/AZUL/CH+.
 void ilha_relogio_focar(int foco);
