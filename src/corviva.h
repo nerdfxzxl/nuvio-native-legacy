@@ -68,6 +68,11 @@ typedef struct {
   float tx[4];
   float txY[2];
   float txMedia[3];
+  // Independent portrait focal point from decode-time visual saliency.
+  // NEVER derive portrait framing from tx[]: that region is optimized for
+  // colorful Dynamic Clock pill textures, not people or visual composition.
+  int cropOk;
+  float cropFocal; // normalized horizontal subject centre [0,1]
 } CorvivaPaleta;
 
 // AS QUATRO CORES QUE SAEM DE UM DESTAQUE (acentos-mockup.html, C.tok): a
