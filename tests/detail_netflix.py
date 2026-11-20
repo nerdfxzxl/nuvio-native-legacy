@@ -158,4 +158,36 @@ need("Size editor release resets held movement",
      "if (pagina==3 && e->type==SDL_KEYUP)" in ctx and
      "sizeHoldDir==-1 && key==SDLK_LEFT" in ctx and
      "sizeHoldDir==1 && key==SDLK_RIGHT" in ctx)
-print("PASS: Netflix detail refinements, row editor, acceleration and per-style maxes")
+# Build 124: preserve title artwork while removing only the Home poster
+# bottom fade, and keep the new metadata toggles independent and persisted.
+settings_ui = Path("src/ajustes_ux_tela.inc").read_text()
+settings_defaults = Path("src/ajustes_ux_padrao.inc").read_text()
+settings_header = Path("src/ajustes.h").read_text()
+need("Independent poster metadata switches are in Posters and trailers",
+     'ROT("Poster information"),' in settings_ui
+     and "OPC(AJ_POSTER_GENERO), OPC(AJ_NOTAS_HOME)" in settings_ui
+     and settings_ui.count("OPC(AJ_NOTAS_HOME)") == 1
+     and settings_ui.count("OPC(AJ_POSTER_GENERO)") == 1)
+need("Poster genre is an append-only persisted setting, on by default",
+     "AJ_POSTER_GENERO," in settings
+     and '"posterGenreLocal"' in settings
+     and 'ESC("Genre on posters", V_LIGA, 2)' in settings
+     and "Genre on Home posters: On by default" in settings_defaults
+     and "int   ajustes_poster_genero(void)" in settings_header)
+need("Genre and IMDb on posters independently control drawing",
+     "ajustes_poster_genero()" in home
+     and "ajustes_notas_home()" in home
+     and 'const char *genero = (semMeta || !ajustes_poster_genero()) ? NULL' in home
+     and "int imdbRating = orig && ci && ajustes_notas_home()" in home)
+need("Wide poster artwork no longer receives lower-half gradient",
+     "if (editorial(tipo)) gfx_veu_card_por(NV_EDITORIAL_VEU_F" not in home
+     and "if (abre > 0.01f && cItem) gfx_veu_card_por" not in home
+     and "const float fVeu = larga ? NV_DIN_LARGA_VEU" not in home
+     and 'No wide dark ramp below editorial title artwork' not in home)
+need("Episode list no longer exposes top bar or prior card sliver",
+     "#define DET_EP_ROWS_TOP 48.0f" in episode
+     and "#define DET_EP_FOCUS_TOP_GAP 36.0f" in episode
+     and "rowsTop=DET_EP_ROWS_TOP" in episode
+     and "detEpRow*step-DET_EP_FOCUS_TOP_GAP" in episode
+     and "logotitulo_desenhar(ci,seriesName,TXT_HEADLINE," in episode)
+print("PASS: Netflix detail refinements, Home poster metadata and upper episode strip")
