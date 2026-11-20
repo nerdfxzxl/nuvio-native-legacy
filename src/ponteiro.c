@@ -223,8 +223,17 @@ void ponteiro_diag(const SDL_Event *e) {
   fflush(stdout);
 }
 
+// Ignore zero-displacement mouse-position synchronization on Android TV
+// startup/resume. A genuine movement or click enables pointer interaction.
+static int esperaMovimentoReal = 1;
+
 void ponteiro_iniciar(void) {
   cancelarToque();
+  esperaMovimentoReal = 1;
+#ifdef NV_ANDROID
+  // Android SDL's system cursor is redundant: ponteiro_desenhar owns the cursor.
+  SDL_ShowCursor(SDL_DISABLE);
+#endif
   quadroSessaoPendente = 0;
   nLista[0] = nLista[1] = 0;
   listaRolagem[0] = listaRolagem[1] = NULL;
@@ -476,6 +485,9 @@ static void invalidarToque(void) {
 void ponteiro_cancelar_toque(void) { cancelarToque(); }
 
 void ponteiro_abrir_sessao(void) {
+  // A profile/session switch never inherits the previous screen's pointer.
+  esconder("perfil");
+  esperaMovimentoReal = 1;
   // CANCELAR ainda vai para a tela que sai. Ela continua dona do gesto aqui;
   // so depois o app limpa seus offsets e troca a identidade do perfil.
   cancelarToque();
@@ -729,8 +741,18 @@ int ponteiro_evento(const SDL_Event *e, void (*entregar)(const SDL_Event *)) {
       return eventoToque(e, entregar);
     case SDL_APP_WILLENTERBACKGROUND:
       cancelarToque();
+      esconder("suspenso");
+      esperaMovimentoReal = 1;
+      return 0;
+    case SDL_APP_DIDENTERFOREGROUND:
+      esconder("retomada");
+      esperaMovimentoReal = 1;
       return 0;
     case SDL_WINDOWEVENT:
+      if (e->window.event == SDL_WINDOWEVENT_FOCUS_GAINED) {
+        esconder("foco-recuperado");
+        esperaMovimentoReal = 1;
+      }
 #ifdef NV_TOUCH_UI
       if (e->window.event == SDL_WINDOWEVENT_RESIZED ||
           e->window.event == SDL_WINDOWEVENT_SIZE_CHANGED) toqueQuadroPronto = 0;
@@ -741,6 +763,11 @@ int ponteiro_evento(const SDL_Event *e, void (*entregar)(const SDL_Event *)) {
       return 0;
     case SDL_MOUSEMOTION:
       if (e->motion.which == SDL_TOUCH_MOUSEID) return 1;
+      // Some TV devices inject a stationary mouse-position event at (0,0)
+      // or at the previous Recents position when focus returns. This is not
+      // an intentional pointer gesture and must not draw the white ring.
+      if (esperaMovimentoReal && e->motion.xrel == 0 && e->motion.yrel == 0) return 1;
+      esperaMovimentoReal = 0;
       converter(e->motion.windowID, e->motion.x, e->motion.y);
       primeiro(0, "movimento", e->motion.x, e->motion.y);
       if (tremorDaSeta(agora)) return 1;
@@ -751,6 +778,7 @@ int ponteiro_evento(const SDL_Event *e, void (*entregar)(const SDL_Event *)) {
 
     case SDL_MOUSEBUTTONDOWN: {
       if (e->button.which == SDL_TOUCH_MOUSEID) return 1;
+      esperaMovimentoReal = 0;
       invalidarToque();
       converter(e->button.windowID, e->button.x, e->button.y);
       primeiro(1, "clique", e->button.x, e->button.y);
