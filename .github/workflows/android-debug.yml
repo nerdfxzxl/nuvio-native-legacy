@@ -71,6 +71,10 @@ jobs:
 
       - name: Cache Gradle dependencies for early Android graphics tests
         uses: gradle/actions/setup-gradle@v4
+        with:
+          # This long-lived feature branch must write caches too. setup-gradle
+          # defaults to read-only outside the repository's default branch.
+          cache-read-only: false
 
       - name: Check stream-card wrapping and color emoji with Android graphics
         run: |
@@ -100,6 +104,8 @@ jobs:
 
       - name: Cache Gradle wrapper and downloaded dependencies
         uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: false
 
       - name: Install Android build components and host tools
         shell: bash
