@@ -1126,7 +1126,7 @@ void ctx_evento(const SDL_Event *e) {
   if (pagina==1 && styleHeld && e->type==SDL_KEYUP && teclaOk(e->key.keysym.sym)) {
     styleHeld=0;
     if (SDL_GetTicks()-styleDown<NV_HOLD_MS || !fil_resizable(estTipo(estFoco))) aplicarEstilo();
-    else { estAoVivo(); sizeDp=fil_size_dp(filChave,estTipo(estFoco)); sizeReset=0; pagina=3; }
+    else { estSel=estFoco; estAoVivo(); sizeDp=fil_size_dp(filChave,estTipo(estFoco)); sizeReset=0; pagina=3; }
     return;
   }
   if (e->type == SDL_KEYUP && teclaOk(e->key.keysym.sym)) esperandoSoltura = 0;
@@ -1146,7 +1146,17 @@ void ctx_evento(const SDL_Event *e) {
       fil_preview_dp(filChave,t,sizeDp,0);
     } else if (teclaOk(k)) {
       if (sizeReset) { sizeDp=126; sizeReset=0; fil_preview_dp(filChave,t,sizeDp,0); }
-      else { fil_preview_dp(filChave,t,sizeDp,1); pagina=1; esperandoSoltura=1; }
+      else {
+        // Saving a style-size edit commits BOTH the chosen style and this row's
+        // family-specific size. A later Back must not undo this confirmed edit.
+        estSel = estFoco;
+        fil_definir_tipo(filChave,t);
+        fil_preview_dp(filChave,t,sizeDp,1);
+        estOrigTipo = fil_tipo(filChave);
+        estOrigOrdem = fil_ordem(filChave);
+        estVivo = 0;
+        pagina=1; esperandoSoltura=1;
+      }
     }
     return;
   }
@@ -1212,7 +1222,7 @@ void ctx_atualizar(float dt, Uint32 agora) {
   int i;
   int atual;
   if (aberto && pagina==1 && styleHeld && agora-styleDown>=NV_HOLD_MS) {
-    styleHeld=0; sizeReset=0; estAoVivo(); sizeDp=fil_size_dp(filChave,estTipo(estFoco));
+    styleHeld=0; sizeReset=0; estSel=estFoco; estAoVivo(); sizeDp=fil_size_dp(filChave,estTipo(estFoco));
     pagina=3; esperandoSoltura=1;
   }
   if (!holdObservador) {
@@ -1262,7 +1272,12 @@ void ctx_atualizar(float dt, Uint32 agora) {
       ? (ordemLinha && estFoco == nEstilos ? 1.0f : 0.0f)
       : anim_mola(ordemAnim, ordemLinha && estFoco == nEstilos ? 1.0f : 0.0f,
                   dt, NV_MOLA_FOCO);
-  } else if (estVivo) estRestaurar();
+  } else if (estVivo && (!aberto || (pagina != 1 && pagina != 3))) {
+    // Page 3 is the live resize editor, NOT a cancellation of the style menu.
+    // Restoring here on every frame was reverting the row style while the
+    // slider was still changing, making preview and confirmation appear inert.
+    estRestaurar();
+  }
 
   atual = indiceAtual();
   if (aberto && !soFileira && !doLista && !itemAtual()) { aberto = 0; return; }
@@ -1568,7 +1583,7 @@ static void desenhaEstilos(float a) {
   GfxRect m;
   if ((float)n * (lin + EST_GAP) - EST_GAP > disp) lin = disp / (float)n - EST_GAP;
   // The discovery hint gets its own footer, never the style's text area.
-  float hintH = estFoco >= 0 && estFoco < nEstilos && fil_resizable(estTipo(estFoco)) ? 30.0f : 0.0f;
+  float hintH = estFoco >= 0 && estFoco < nEstilos && fil_resizable(estTipo(estFoco)) ? 44.0f : 0.0f;
   m = estIlha(2.0f * EST_PAD + (float)n * (lin + EST_GAP) - EST_GAP + hintH);
   estIlhaRect = m;
   m.y += (1.0f - a) * 12.0f;
@@ -1602,9 +1617,11 @@ static void desenhaEstilos(float a) {
     }
   }
   if (hintH > 0.0f) {
-    TxtLinha hint = txt_linha(TXT_MINI, "Hold OK to resize", 152, 152, 152, 255);
+    // Dedicated footer: readable regular-weight hint, never on top of a style.
+    TxtLinha hint = txt_linha(TXT_MINI, "Hold for options", 220, 220, 220, 255);
     float hx = m.x + (m.w - hint.w) * 0.5f;
-    txt_desenhar_alpha(hint, hx, m.y + m.h - EST_PAD - hint.h * 0.75f, a * 0.75f);
+    float hy = m.y + m.h - hintH + (hintH - hint.h) * 0.5f;
+    txt_desenhar_alpha(hint, hx, hy, a);
   }
 }
 
