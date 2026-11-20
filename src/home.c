@@ -1624,8 +1624,16 @@ static float fileiraGapBase(void) {
 // termina com canto reto na horizontal e redondo na vertical.
 float home_crop_bias(const char *url) {
   CorvivaPaleta pal;
-  if (!url || !corviva_paleta(url,&pal) || !pal.ok || !pal.txOk) return 0;
-  return fminf(0.18f,fmaxf(-0.18f,pal.tx[0] + pal.tx[2]*0.5f - 0.5f));
+  if (!url || !corviva_paleta(url,&pal)) return 0.0f;
+  // gfx.c's forced-cover sampler accepts a [-.5,+.5] shift as a share of
+  // the horizontal excess. The colour-pill texture window (tx[]) is NOT a
+  // subject detector; using it cut people off in Dead End Job/Between Steps.
+  if (pal.cropOk)
+    return fminf(.5f, fmaxf(-.5f, (pal.cropFocal-.5f)/.65f));
+  // Old colour palettes stay readable until this image is decoded again.
+  if (pal.txOk)
+    return fminf(.18f, fmaxf(-.18f, pal.tx[0]+pal.tx[2]*.5f-.5f));
+  return 0.0f;
 }
 
 static float raioDe(float w, float h) {
