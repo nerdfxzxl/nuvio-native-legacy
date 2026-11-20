@@ -485,6 +485,7 @@ static int   carCheia;
 static float carTxt = 1.0f, carTxtVel;
 static GfxRect carOrigem;           // cartaz da fileira (abrir e fechar)
 static int sharedFromHome;
+static int sharedReturnCaptured; // freeze the exact Home target once on Back
 static Uint32 sharedArtReady;
 static char sharedPosterUrl[NV_TEX_URL_MAX]; // stable original artwork for flight
 static float heroDx;                // deslocamento horizontal do bloco do heroi
@@ -1580,7 +1581,10 @@ static float suave(float x) {
   return 1.0f - (1.0f - x) * (1.0f - x) * (1.0f - x);
 }
 static float flightProgress(void) {
-  return t * t * (3.0f - 2.0f * t);
+  // Quintic smoothstep gives both edges zero speed at the boundaries,
+  // avoiding the abrupt implosion visible in the previous reverse flight.
+  float p = anim_clamp(t, 0.0f, 1.0f);
+  return p*p*p*(p*(6.0f*p-15.0f)+10.0f);
 }
 static float fase2(void) { return suave((t - 0.45f) / 0.55f); }
 
@@ -1632,6 +1636,7 @@ static void abrirInterno(const HomeItem *it) {
   trocaarte_fechar();
   audAberta = 0; audTempAberta = -1; audTempVista = -1; frasesAberta = 0;
   sharedFromHome = 0;
+  sharedReturnCaptured = 0;
   sharedArtReady = 0;
   item = *it;
   // Freeze the launch artwork URL: Home may refresh its row during the
@@ -1909,7 +1914,10 @@ void detail_abrir(const HomeItem *it) {
 
 // Home reports screen coordinates. Detail lays out in its text-scaled viewport.
 static GfxRect homeRectDetalhe(GfxRect r) {
-  float scale = gfx_escala_tela_txt();
+  // home_item_focado already returns physical/text-scaled layout coordinates.
+  // The active gfx layer may be neutral during input handling; querying its
+  // conditional scale there misplaces a card away from the centre.
+  float scale = gfx_escala_txt();
   if (scale > 0) {
     r.x /= scale; r.y /= scale; r.w /= scale; r.h /= scale;
   }
@@ -3984,7 +3992,8 @@ static float blocoAnt[3] = { -1.0f, -1.0f, -1.0f };   // Notas / Numeros / Progr
 static void detail_atualizar_(float dt, Uint32 agora) {
   if (musicaui_aberta()) { musicaui_atualizar(agora); return; }
   if (aberto) revalidarIdx();
-  if (saindo && sharedFromHome) {
+  if (saindo && sharedFromHome && !sharedReturnCaptured) {
+    sharedReturnCaptured = 1; // destination is fixed throughout the reverse flight
     HomeItem current;
     if (home_item_focado(&current)) {
       const CatItem *title = current.indice >= 0 && current.indice < cat_n() ? cat_item(current.indice) : NULL;
@@ -4302,7 +4311,7 @@ static void detail_atualizar_(float dt, Uint32 agora) {
   recalcularLayout();
   if (carro) t = anim_mola(t, saindo ? 0.0f : 1.0f, dt, NV_MOLA_TELA);
   else if (ajustes_animacoes_reduzidas()) t = saindo ? 0.0f : 1.0f;
-  else t = anim_clamp(t + (saindo ? -dt : dt) / .38f, 0.0f, 1.0f);
+  else t = anim_clamp(t + (saindo ? -dt / 0.60f : dt / 0.52f), 0.0f, 1.0f);
   // Rigidez propria: o web leva 0.8s para apagar o backdrop (cubic-bezier
   // .4,0,.2,1), e a mola de NV_MOLA_TELA assenta em ~330ms.
   // Temporadas e episodios da serie moram na PRIMEIRA tela (Glass UI): com o
@@ -7480,10 +7489,10 @@ static void desenhaComentarios(float x, float y, float a) {
   if (n == 0) {
     const char *msg = ((!daSerie && extras_comentarios_ep_carregando()) ||
                        (daSerie && extras_carregando()))
-                    ? "Carregando comentários…"
+                    ? i18n("Loading Trakt comments...")
                     : extras_falta_chave_trakt()
-                     ? "Comentários Trakt indisponíveis: chave do app não configurada."
-                     : "Nenhum comentário disponível.";
+                     ? i18n("Trakt comments unavailable: application API key is not configured.")
+                     : i18n("No Trakt comments available.");
     TxtLinha l = txt_linha(TXT_DET_META2, msg, 150, 154, 163, 255);
     txt_desenhar_alpha(l, x, y, a * 0.9f);
     return;
@@ -7626,26 +7635,16 @@ static void desenhaNumeros(float x, float y, float a) {
 // 12 series; a ficha do Wikidata quase sempre tem algum campo —, e e por isso
 // que elas ficam lado a lado e nao uma sob a outra: a coluna da direita e o que
 // impede a secao de ser uma tela inteira com uma linha de "nao tem" no meio.
-static GfxRect frasesColuna(float x, float y, float hq, int fatos) {
-  if (detalheRetrato())
-    return (GfxRect){x, y + (fatos ? hq + 48.0f : 0), NV_TELA_W - ANC(NV_DETP_X) * 2, 0};
-  return (GfxRect){x + (fatos ? FR_COL_W + FR_COL_GAP : 0), y,
-    fatos ? NV_TELA_W - ANC(NV_DETP_X) * 2 - FR_COL_W - FR_COL_GAP : FR_COL_W, 0};
-}
+// Quotes remain their own section. Wikidata production facts are already
+// incorporated by montarDetalhes above; rendering them again beside quotes
+// produces a second redundant table ("Production facts").
 static float desenhaFrases(float x, float y, float a) {
-  // 1.7.4: o componente antigo (frases | ficha de producao), em filme e serie.
-  GfxRect q = frasesColuna(x, y, 0, 0), f;
-  float hq, hf;
+  GfxRect quote = { x, y, fminf(1000.0f, NV_TELA_W - ANC(NV_DETP_X)*2.0f), 0 };
   if (!frasesAberta)
-    return desenhaChamada(x, y, "Frases e ficha de produção",
-                          "Wikiquote e Wikidata — nada escrito por nós",
-                          "Duas consultas: carrega quando você desce até aqui",
-                          a);
-  hq = seriefrases_desenhar(q);
-  f = frasesColuna(x, y, hq, 1);
-  hf = seriefrases_desenhar_fatos(f);
-  if (detalheRetrato()) return hq + 48.0f + hf;
-  return hq > hf ? hq : hf;
+    return desenhaChamada(x, y, "Quotes",
+                          "Wikiquote — quotations may be trimmed",
+                          "Fetched when you scroll to this section", a);
+  return seriefrases_desenhar(quote);
 }
 
 // PONTEIRO (#99). r < 0 = botao `c` do hero (nivel 0); senao secao r, coluna
