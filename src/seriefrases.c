@@ -200,7 +200,7 @@ static void wikiEntidades(char *s) {
     else if (!strncmp(in, "&#160;", 6)) { replacement = " "; n = 6; }
     else if (!strncmp(in, "&#xA0;", 6) || !strncmp(in, "&#xa0;", 6)) { replacement = " "; n = 6; }
     else if (!strncmp(in, "&amp;", 5)) { replacement = "&"; n = 5; }
-    else if (!strncmp(in, "&quot;", 6)) { replacement = "\\\""; n = 6; }
+    else if (!strncmp(in, "&quot;", 6)) { replacement = "\\x22"; n = 6; }
     else if (!strncmp(in, "&apos;", 6) || !strncmp(in, "&#39;", 5)) { replacement = "'"; n = in[1] == '#' ? 5 : 6; }
     if (replacement) { *out++ = *replacement; in += n; }
     else *out++ = *in++;
