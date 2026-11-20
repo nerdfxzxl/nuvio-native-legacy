@@ -514,7 +514,8 @@ void  ajustes_espelhar_enquetes(int ligado);
 // Fonte do destaque (ARTEHERO_*) e "Destaque com outra arte", gravados na hora.
 void  ajustes_definir_destaque(int fonte, int diferente);
 // homeImdbRatingsVisibility: 0 SHOW_ALL, 1 HIDE_ALL
-int   ajustes_notas_home(void);
+int   ajustes_notas_home(void);       // Home poster IMDb visibility
+int   ajustes_poster_genero(void);   // Independent Home poster genre visibility
 // discoverLocation: 0 in_search, 1 in_sidebar, 2 off
 int   ajustes_local_descobrir(void);
 int   ajustes_descobrir_na_busca(void); // searchDiscoverEnabled (derivado)
