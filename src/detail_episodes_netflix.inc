@@ -70,7 +70,7 @@ static int detEpTouchScroll(const PonteiroRolagem *e) {
     detEpGestureActive=0;
   return 1;
 }
-#define DET_EP_STEP 336.0f
+#define DET_EP_STEP 380.0f
 #define DET_SEASON_STEP 84.0f
 
 static void detEpRebuild(int targetSeason, int targetEpisode) {
@@ -269,19 +269,21 @@ static void detEpDesenhar(Uint32 agora) {
   for (int s = 0; s < detEpNSeasons; s++) {
     float y=315.0f+s*DET_SEASON_STEP-detEpSeasonScroll;
     if(y+66<300||y>screenH-15)continue;
-    int focused=s==detEpSzn&&detEpCol==0;
+    // Selection remains visible while focus navigates this season's episodes.
+    // The episode highlight independently shows which item has D-pad focus.
+    int selected = s == detEpSzn;
     char season[60],count[48];
     snprintf(season,sizeof season,"Season %d",detEpSeasons[s]);
     snprintf(count,sizeof count,"%d episodes",detEpCounts[s]);
-    TxtLinha st=txt_linha(TXT_CALLOUT,season,focused?15:245,focused?15:245,focused?15:245,255);
-    TxtLinha ct=txt_linha(TXT_CAPTION2,count,focused?96:171,focused?96:171,focused?96:171,255);
+    TxtLinha st=txt_linha(TXT_CALLOUT,season,selected?15:245,selected?15:245,selected?15:245,255);
+    TxtLinha ct=txt_linha(TXT_CAPTION2,count,selected?96:171,selected?96:171,selected?96:171,255);
     float gap=52.0f,total=st.w+gap+ct.w;
     float pw=fminf(leftW-84.0f,total+55.0f);
     GfxRect pill={(leftW-pw)*.5f,y,pw,66.0f};
-    if(focused)gfx_cor(pill,.5f,.98f,.98f,.98f,1);
+    if(selected)gfx_cor(pill,.5f,.98f,.98f,.98f,1);
     float tx=pill.x+(pill.w-total)*.5f;
     txt_desenhar_alpha(st,tx,pill.y+(pill.h-st.h)*.5f,1);
-    txt_desenhar_alpha(ct,tx+st.w+gap,pill.y+(pill.h-ct.h)*.5f,focused?.86f:.69f);
+    txt_desenhar_alpha(ct,tx+st.w+gap,pill.y+(pill.h-ct.h)*.5f,selected?.86f:.69f);
     if(ponteiro_ativo())
       ponteiro_alvo_faixa(pill.x,pill.y,pill.w,pill.h,300.0f,screenH-15.0f,
                          detEpTouchSeason,NULL,s,0);
@@ -295,7 +297,10 @@ static void detEpDesenhar(Uint32 agora) {
     if (y > screenH || y + DET_EP_STEP < rowsTop) continue;
     int focused = detEpCol == 1 && r == detEpRow;
     GfxRect card={startX,y,screenW-startX-26.0f,DET_EP_STEP-13.0f};
-    GfxRect thumb={startX+13.0f,y+17.0f,480.0f,270.0f};
+    // Larger TV thumbnail (560x315 at 1920); preserve 16:9 and reserve text
+    // space on the narrower virtual canvas used by Android phone layouts.
+    float thumbW=fminf(560.0f,fmaxf(280.0f,card.w*0.51f));
+    GfxRect thumb={startX+13.0f,y+17.0f,thumbW,thumbW*9.0f/16.0f};
     const char *art=ep->thumb[0] ? ep->thumb
       : ci && ci->backdrop[0] ? ci->backdrop : NULL;
     GLuint tex=art?tex_obter_larg(art,thumb.w*1.55f):0;
@@ -320,10 +325,11 @@ static void detEpDesenhar(Uint32 agora) {
     }
     // Dark liquid-glass episode identifier; no white focus rectangle.
     char id[40]; snprintf(id,sizeof id,"S%dE%d",ep->temporada,ep->episodio);
-    TxtLinha idText=txt_linha(TXT_CAPTION2,id,251,253,255,255);
-    GfxRect epBadge={thumb.x+10,thumb.y+10,(float)idText.w+24.0f,28.0f};
-    gfx_cor(epBadge,.5f,0,0,0,.23f);
-    gfx_anel_fora(epBadge,.5f,0,1.0f,1,1,1,.15f);
+    TxtLinha idText=txt_linha(TXT_CALLOUT,id,251,253,255,255);
+    GfxRect epBadge={thumb.x+12.0f,thumb.y+12.0f,(float)idText.w+36.0f,42.0f};
+    // Darker liquid-glass identifier: readable against bright episode stills.
+    gfx_cor(epBadge,.5f,.025f,.028f,.035f,.82f);
+    gfx_anel_fora(epBadge,.5f,0,1.0f,1,1,1,.16f);
     if (watched) {
       GfxRect marker={thumb.x+thumb.w-43,thumb.y+10,31,31};
       gfx_cor(marker,.5f,1,1,1,1);
