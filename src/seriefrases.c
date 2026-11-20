@@ -187,6 +187,27 @@ static void addFato(const char *rotulo, const char *valor) {
 // comprimento depois e descarta a fala longa demais em vez de mostrar meia
 // frase. A primeira versao truncava aqui dentro e o resultado aparecia na tela
 // como "…os que est o f" — uma frase cortada no meio de uma palavra.
+// Decode the small subset of HTML character references found in Wikiquote.
+// The operation only shrinks the original string; it is safe for old cached
+// quotes too and does not require a second network fetch.
+static void wikiEntidades(char *s) {
+  const char *in = s;
+  char *out = s;
+  while (*in) {
+    const char *replacement = NULL;
+    size_t n = 0;
+    if (!strncmp(in, "&nbsp;", 6)) { replacement = " "; n = 6; }
+    else if (!strncmp(in, "&#160;", 6)) { replacement = " "; n = 6; }
+    else if (!strncmp(in, "&#xA0;", 6) || !strncmp(in, "&#xa0;", 6)) { replacement = " "; n = 6; }
+    else if (!strncmp(in, "&amp;", 5)) { replacement = "&"; n = 5; }
+    else if (!strncmp(in, "&quot;", 6)) { replacement = "\\\""; n = 6; }
+    else if (!strncmp(in, "&apos;", 6) || !strncmp(in, "&#39;", 5)) { replacement = "'"; n = in[1] == '#' ? 5 : 6; }
+    if (replacement) { *out++ = *replacement; in += n; }
+    else *out++ = *in++;
+  }
+  *out = 0;
+}
+
 static void limparWiki(char *s, size_t tam) {
   char saida[1400];
   size_t k = 0, i = 0, n = strlen(s);
@@ -252,6 +273,7 @@ static void limparWiki(char *s, size_t tam) {
     size_t w = strlen(a);
     if (w >= 2 && a[0] == '"' && a[w - 1] == '"') { a[w - 1] = 0; a++; }
     snprintf(s, tam, "%s", a); }
+  wikiEntidades(s);
 }
 
 // O wikitexto vem como UMA string JSON gigante em parse.wikitext.* — dezenas de
@@ -506,6 +528,7 @@ static int aplicarCache(char *b, const char *imdb) {
         if (nb >= SF_TEXTO) nb = SF_TEXTO - 1;
         memcpy(frases[nFrases].quem, a + 1, na); frases[nFrases].quem[na] = 0;
         memcpy(frases[nFrases].texto, bb + 1, nb); frases[nFrases].texto[nb] = 0;
+        wikiEntidades(frases[nFrases].texto);
         nFrases++;
       }
     }
