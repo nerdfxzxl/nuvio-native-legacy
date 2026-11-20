@@ -102,3 +102,18 @@ Workflow .github/workflows/android-debug.yml already has Gradle setup caching, t
 - Artifact: [nuvio-native-legacy-android-debug, ID 14614982627](https://github.com/nerdfxzxl/nuvio-native-legacy/actions/runs/44705517243/artifacts/14614982627), uploaded successfully; GitHub artifact expiry 2026-12-04.
 - Real cache log confirms `Cache hit for: native-android-r27c-v1-c11d5d6...` and `Cache hit for: p2p-r27c-v1-54d2a5...`, both restored. P2P build skipped. Reuse preserved; don't change dependency hash keys without reason.
 - Source construction is verified, but physical TV/phone visual behavior and review-language preference remain acceptance items. Keep post-120 fixes in place. No additional APK build is needed until TV test evidence identifies a regression.
+
+
+### Build 122 corrections — after physical Build 121 TV test
+
+The owner reported that #121 did **not** fix row sizing, poster-hold feedback, or all poster crops. The TV test supersedes CI syntax success. New requirements: enlarge the full-screen Netflix episode stills and S#E# pill, darken its glass, and keep the selected season's white background when focus moves into episodes.
+
+Implementation sequence (on this same branch):
+- `src/ctxmenu.c`: fixed the page-3 live size editor reverting the row style in `ctx_atualizar` (it previously called `estRestaurar` whenever `pagina!=1`, including the active slider). Selected style is now applied before resize, and OK explicitly commits style + exact row/style size and updates the committed context-menu origin so Back cannot silently undo it. Restored a visible normal-weight `Hold for options` hint in its own footer.
+- `src/fileiras.c`: removed the incorrect `styleFamily` aliasing between independent choices, including Service vs Feature/Collection and larger/smaller variants; each `styleDp[t]` now belongs to the exact style `t` within the exact per-profile row key. Existing per-row local-file serialization and reload retained.
+- `src/home.c` and `src/ilha.c/.h`: removed Build 121's special poster fill over the resting clock pill. Poster long OK now feeds the **existing** `ilha_atividade` feedback with the same 200ms delay and progress track as the primary Play hold in `src/detail.c`. No new clock animation renderer.
+- `src/detail_episodes_netflix.inc`: 16:9 still grows to 560x315 at 1920, responsiveness preserved on narrower viewports, step increases from 336 to 380, S#E# text is larger with a 42px dark glass badge. The active season remains white whether focus is in season or episodes column.
+- `tests/fileiras.c` now tests persistent A/B row size and independent per-style variants, and `tests/detail_netflix.py` adds guards for the editor, island, and episode UI. The cheap native preflight and full APK mandatory early gate now run both suites.
+- Cropping research (not yet installed in this APK): libvips attention/entropy crops improve traditional saliency, but near-perfect framing needs face detection (Google ML Kit) plus object detection (MediaPipe) weighted against readable poster artwork/title regions. Integrate only as **offline/asynchronous once per unique artwork** with cached focal coordinates, never per frame; assess native/Java bridge, model size, fallback and TV CPU before adopting. No claim that current heuristics are nearly perfect.
+
+Next: run native-only #15-style preflight via `docs/ci/trigger-netflix-native-preflight.txt` and inspect tests; fix any failures. Then trigger **one** full Android debug APK using existing `docs/ci/trigger-netflix-detail-once.txt` with cache intact. Confirm the artifact, record the SHA and run, and get physical TV acceptance before claiming visual correctness.
