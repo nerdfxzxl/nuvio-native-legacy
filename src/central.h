@@ -47,6 +47,7 @@ int  central_tecla_ocupada(void);
 // own.
 float central_segurar_progresso(Uint32 agora);
 void central_segurar_desenhar(GfxRect r, float raio, float a, Uint32 agora);
+void central_segurar_pintar(GfxRect r, float raio, float a, float progresso);
 
 // A previa do cartao de novidades: o painel aberto com os atalhos de fabrica,
 // em (x, y), largura CENTRAL_PREVIA_W. `foco` = botao em foco (-1 nenhum);
