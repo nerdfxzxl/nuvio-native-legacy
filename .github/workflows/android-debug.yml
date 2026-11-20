@@ -54,6 +54,8 @@ jobs:
           bash tests/selospacote.sh
           bash tests/celular.sh
           bash tests/detail_acoes_gap.sh
+          python3 tests/detail_netflix.py
+          bash tests/fileiras.sh
 
       - name: Stage and validate Android artwork before native dependencies or P2P
         shell: bash
