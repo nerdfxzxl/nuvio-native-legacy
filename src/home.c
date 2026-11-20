@@ -6796,8 +6796,8 @@ static void desenhaPosterGrande(const CatItem *ci, const char *caminho,
   CorvivaTokens tk;
   int tem, tr, tg, tb, sr, sg, sb, linhas = fator < 0.9f ? 1 : fator > 1.1f ? 3 : 2;
   float cr, cg, cb, pad = fator < 0.9f ? 26.0f : 34.0f, veuTopo, veuF, y, logoMaxH, yLogo;
-  // "Mostrar genero no destaque" desligado: so arte e logo, sem sinopse nem
-  // linha de genero/classificacao (dono: TV Samsung, interface limpa).
+  // Preserve existing synopsis/extra-detail behavior for the large-poster
+  // style, but keep the new Genre on posters switch independent of Hero genre.
   const int semMeta = !ajustes_hero_genero();
   if (!ci) return;
   veuF = NV_POSTER_G_VEU_F;
@@ -6827,8 +6827,9 @@ static void desenhaPosterGrande(const CatItem *ci, const char *caminho,
   // Linha de meta: o genero ("Filme · Terror · Suspense") e, ao lado, o selo da
   // classificacao — o mesmo chip do card aberto (desenhaFaixaAberta), na tinta.
   y -= 46.0f;
-  yLogo = semMeta ? py + h - pad : y - 18.0f;   // base do logo
-  if (!semMeta && ajustes_poster_genero() && ci->genero[0]) {
+  int mostrarGenero = ajustes_poster_genero() && ci->genero[0];
+  yLogo = (semMeta && !mostrarGenero) ? py + h - pad : y - 18.0f;
+  if (mostrarGenero) {
     // O selo mora a direita do genero, DENTRO do card: o genero cede a largura
     // dele (e ganha reticencias), em vez de empurrar o selo para fora.
     TxtLinha cl = { 0 };
@@ -7159,12 +7160,9 @@ static void desenhaEditorialCard(const CatItem *cItem, TipoFileira tipo, float p
   // Sem dado, sem texto — nao a lista de demonstracao que ficava
   // aqui e carimbava nome e genero de outro titulo no card.
   const char *nome   = (ci && ci->titulo[0]) ? ci->titulo : NULL;
-  // "Mostrar genero no destaque" desligado: so arte e logo no DESTAQUE —
-  // a linha de baixo inteira (genero, IMDb, classificacao) sai. As
-  // fileiras COLECAO/SERVICO/SOCIAL nao sao destaque e ficam como estao.
-  const int semMeta = (tipo == FILEIRA_DESTAQUE || tipo == FILEIRA_DESTAQUE_QUADRADO)
-                    && !ajustes_hero_genero();
-  const char *genero = (semMeta || !ajustes_poster_genero()) ? NULL
+  // Hero genre controls the top-of-Home Hero, not these independently
+  // configurable row cards. Genre and IMDb can now be toggled separately.
+  const char *genero = !ajustes_poster_genero() ? NULL
                       : (ci && ci->genero[0]) ? ci->genero
                       : ci ? i18n(!strcmp(ci->tipo, "series") ? "Série" : "Filme") : NULL;
   TxtLinha tg = genero
@@ -7224,7 +7222,7 @@ static void desenhaEditorialCard(const CatItem *cItem, TipoFileira tipo, float p
   // todo card sem classificacao, e o selo vermelho tem cara de aviso
   // oficial — e o mesmo defeito do "14" cravado em descoberta.c, so
   // que na home.
-  if (!notaFeita && !semMeta && ci && ci->classificacao[0] && tg.w + BADGE_H + 24.0f < w - pad*2) {
+  if (!notaFeita && ci && ci->classificacao[0] && tg.w + BADGE_H + 24.0f < w - pad*2) {
     char clas[8];
     snprintf(clas, sizeof clas, "%s%s", (ci->classificacao[0] >= '0' && ci->classificacao[0] <= '9') ? "A" : "", ci->classificacao);
     { float bx = px + pad + tg.w + (genero ? 14.0f : 0.0f);
