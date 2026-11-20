@@ -13,3 +13,5 @@ Build 120 integrated native Home, history, cache and detail verification.
 Build 120 TV regression repair: profile pointer, size editor, Dynamic Clock hold, shared-element easing, detail facts/reviews, cached Wikiquote entities, subject-aware crop, persistent image cache. Run native-only ARM64 compile gate; do not build APK in this workflow.
 
 Build 122 no-APK validation: row/style size persistence and preview transaction, original Play Dynamic Clock feedback for poster hold, larger responsive Netflix episode stills and badges, persistent selected-season focus. Tests now run fileiras.sh plus detail_netflix.py. No full APK until green.
+
+Build 123 no-APK native gate — progressive time-based left/right row-size acceleration, moderate per-style max 260/280/300/340, 16-bit saved sizes, exact style and row isolation, and dynamic slider labels. No APK in this workflow.
