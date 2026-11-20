@@ -14,3 +14,4 @@ Build requested: five poster/title/immersive/detail refinements + optimized Pill
 No-APK preflight #11 (44525638397) PASSED on source commit f5285348c4b0505fdaf61b24138e015d28ded5d8; full workflow retains its own mandatory early C and artwork gate.
 
 Eight-refinement APK build 2026-11-19T16:49:39.701Z: full source head 4f35bb3e8da9908a5636e830904ed28f138e5db5. No-APK ARM64 C and asset preflight 44569527598 success. Final branch also includes portrait sizing row variants and second-tap drift guard. Mandatory Android APK early preflight and cached P2P/Gradle enabled. Verify artifact and final status.
+Build 120 Android debug APK. Integrated Home, detail, row sizing, input, history and artwork cache refinements.

@@ -359,6 +359,7 @@ static void publicarItemFoco(void) {
   temItemFoco = 1;
 }
 static float animFoco[MAX_FIL][MAX_CARDS];
+static float expandLeft[MAX_FIL], expandTotal[MAX_FIL];
 static float expansion[MAX_FIL][MAX_CARDS], expansionStart[MAX_FIL][MAX_CARDS];
 // O TITULO DA FILEIRA acende (branco) quando a fileira e a focada e volta ao
 // cinza secundario quando nao e (dono, 14/10: "quando a fileira nao tiver
@@ -1042,7 +1043,8 @@ static int heroSetCat, heroSetNFil;
 // que so muda quando a lista e refeita. Sortear a cada quadro daria um destaque
 // diferente por quadro; sortear uma vez por arranque e o que "lista aleatoria"
 // quer dizer para quem esta no sofa.
-static unsigned heroSemente;
+static unsigned heroSemente, heroSources;
+static char heroSaved[HOME_HERO_LISTA][sizeof(((CatItem *)0)->imdb)];
 
 static const CatItem *cat_item_exato(int i);
 static unsigned heroRandom(unsigned *state) {
@@ -1062,15 +1064,41 @@ static int heroAddTitle(int idx) {
 }
 static void heroMontarSet(void) {
   int rows[CAT_FIL_MAX], offset[CAT_FIL_MAX], visited[CAT_FIL_MAX]={0}, count=0;
-  if (!heroSemente) heroSemente=(unsigned)time(NULL) ^ (unsigned)SDL_GetPerformanceCounter() | 1u;
+  if (!heroSemente) {
+    heroSemente = ((unsigned)time(NULL) ^ (unsigned)SDL_GetPerformanceCounter()) | 1u;
+    heroSources = 0;
+  }
   unsigned random=heroSemente;
   int automatic=!fil_hero_fonte()[0];
+  unsigned signature = 2166136261u;
   heroSetN=0;
   for (int i=0; i<cat_n_fileiras() && count<CAT_FIL_MAX; ++i) {
     const CatFileira *row=cat_fileira(i);
     if (!row || row->n<1 || !(automatic ? row->base[0]!=0 : fil_hero_selected(row->chave))) continue;
     rows[count++]=i;
+    for (const unsigned char *p=(const unsigned char *)row->chave; *p; p++)
+      signature=(signature ^ *p)*16777619u;
+    signature *= 16777619u;
   }
+  // A metadata refresh can move items without changing the chosen sources.
+  // Resolve the session's ten stable identities before drawing another lottery.
+  if (count && signature == heroSources) {
+    for (int j=0; j<HOME_HERO_LISTA && heroSaved[j][0]; j++) {
+      int index = -1;
+      for (int r=0; r<count && index<0; r++) {
+        const CatFileira *row=cat_fileira(rows[r]);
+        if (!row) continue;
+        for (int c=0;c<row->n;c++) {
+          const CatItem *ci=cat_item_exato(row->ini+c);
+          if (ci && !strcmp(ci->imdb,heroSaved[j])) { index=row->ini+c; break; }
+        }
+      }
+      if (index < 0 || !heroAddTitle(index)) break;
+    }
+    if (heroSetN == HOME_HERO_LISTA) return;
+    heroSetN = 0;
+  }
+  heroSources = signature;
   for (int i=count-1;i>0;--i) {
     int k=heroRandom(&random)%(i+1), tmp=rows[k]; rows[k]=rows[i]; rows[i]=tmp;
   }
@@ -1089,6 +1117,11 @@ static void heroMontarSet(void) {
   if (!heroSetN) {
     int total=cat_n(), start=total ? heroRandom(&random)%total : 0;
     for (int i=0;i<total && heroSetN<HOME_HERO_LISTA;++i) heroAddTitle((start+i)%total);
+  }
+  memset(heroSaved,0,sizeof heroSaved);
+  for (int j=0;j<heroSetN;j++) {
+    const CatItem *ci=cat_item_exato(heroSet[j]);
+    if (ci) snprintf(heroSaved[j],sizeof heroSaved[j],"%s",ci->imdb);
   }
 }
 
@@ -1963,6 +1996,7 @@ static float alvoScrollFil(int r, int col, float atual, float abre) {
       dir += larguraFil(r) * NV_PALCO_VIZ + gapDe(FILEIRA_PALCO);
   }
   float folga = sobraDireitaFoco(r, abre);
+  if (col > 0) folga -= .5f * (sobraDireitaFoco(r,abre)-sobraDireitaFoco(r,0));
   float alvo  = atual;
   // HERÓI DIVIDIDO: o card em foco É o painel; a fila ao lado dele começa no
   // PRÓXIMO título (o do foco sai dela, atrás do painel).
@@ -4009,6 +4043,7 @@ static void home_atualizar_(float dt, Uint32 agora) {
   // meio de qualquer teste.
 
   for (int r = 0; r < nFileiras; r++) {
+    expandLeft[r] = expandTotal[r] = 0;
     int first = historyFirst(r), end = historyEnd(r,first);
     for (int c = first; c < end; c++) {
       int slot = historySlot(r,c);
@@ -4023,6 +4058,13 @@ static void home_atualizar_(float dt, Uint32 agora) {
                      ? alvo
                      : anim_mola(animFoco[r][slot], alvo, dt,
                                  alvo > animFoco[r][slot] ? NV_MOLA_FOCO : NV_MOLA_DESFOCO);
+      if (expansion[r][slot] > 0) {
+        float scale = 1.0f + escalaDe(fileiras[r].tipo) * animFoco[r][slot];
+        if (r == foco.fileira && c == foco.coluna) scale *= okDip;
+        float extra = (alturaFil(r)*NV_EXP_ASPECTO - larguraFil(r))*scale*expansion[r][slot];
+        expandTotal[r] += extra;
+        if (c > 0) expandLeft[r] += extra*.5f;
+      }
     }
     { float alvoFil = (!focoHero && foco.fileira == r) ? 1.0f : 0.0f;
       animFocoFil[r] = motionReduzido ? alvoFil
@@ -7675,9 +7717,12 @@ static void pintarCartao(const CartaoFoco *k, float raio) {
           // On a compact/expanded portrait row, the title is drawn by
           // desenhaLogoCartao INSIDE both states. Other rows retain their
           // existing labels, but don't duplicate the title when a logo exists.
+          int embeddedTitle = cItem && caminho &&
+            ((cItem->poster[0] && !strcmp(caminho,cItem->poster)) || posterprov_e_provedor(caminho));
+          int drawTitle = cItem && caminho && cartaoLogoElegivel(tipo) && !embeddedTitle;
           if (!(ajustes_expandir_poster() && podeExpandir(r)))
             desenhaRotuloCard(cItem, tipo, deitado,
-                              cartaoLogoElegivel(tipo) && cItem && cItem->logo[0],
+                              drawTitle || embeddedTitle,
                               rotuloFora, px, py, w, h, raio);
 
           // PÔSTER GRANDE: a ficha na base, sobre o veu da cor predominante.
@@ -7715,9 +7760,7 @@ static void pintarCartao(const CartaoFoco *k, float raio) {
           // compact, left-aligned when wide, without a second artwork download.
           // Keep the mark hidden under an active video trailer.
           gfx_opacidade_grupo = ogCartao * (1.0f - k->trailer);
-          if (cItem && cartaoLogoElegivel(tipo) && caminho &&
-              (!cItem->poster[0] || strcmp(caminho,cItem->poster)) &&
-              !(tipo == FILEIRA_POSTER_GRANDE || tipo == FILEIRA_DESTAQUE))
+          if (drawTitle)
             desenhaLogoCartao(cItem,px,py,w,h,w >= h);
           gfx_opacidade_grupo = ogCartao;
   gfx_opacidade_grupo = ogCartao * (1.0f - k->trailer);
@@ -8085,7 +8128,7 @@ static void home_desenhar_(Uint32 agora) {
         float f = animFoco[r][historySlot(r,c)];
         float esc = 1.0f + escalaDe(tipo) * f;
         float w = lw * esc, h = artH * esc;
-        float cx = homeFileiraX(r, c) + lw * 0.5f + xOffTipo(tipo);
+        float cx = homeFileiraX(r, c) + lw * 0.5f + xOffTipo(tipo) + expandTotal[r] - expandLeft[r];
         float cy = cardY + artH * 0.5f;
         if (tipo == FILEIRA_PALCO) { float s; palcoGeo(r, c, lw, &cx, &s); w = lw * s; h = artH * s; }
         if (cx > -lw * 1.5f && cx < NV_TELA_W + lw) {
@@ -8137,7 +8180,7 @@ static void home_desenhar_(Uint32 agora) {
         gfx_recorte(left, corte, divididoDireita() - left, NV_TELA_H - corte);
       }
       for (int passe = 1; passe < 2; passe++) {
-        float neighborOffset = 0.0f;
+        float neighborOffset = -expandLeft[r];
         for (int c = historyFirst(r), end = historyEnd(r,c); c < end && c < fileiras[r].n; c++) {
           float f = animFoco[r][historySlot(r,c)];
           if (passe == 0 && f < 0.01f) continue;
