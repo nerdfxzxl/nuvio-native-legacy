@@ -294,6 +294,11 @@ static float confAnim[2];// A PAGINA DE ESTILOS E UM MENU CONTEXTUAL pequeno ao 
 static FilEstiloLinha estLin[FIL_TIPO_N];
 static int sizeDp, sizeReset, styleHeld;
 static Uint32 styleDown;
+// Held Left/Right is driven by the frame clock, never by OS key-repeat speed.
+// Taps remain 1 dp; held motion eases into fast continuous adjustment.
+static int sizeHoldDir;
+static Uint32 sizeHoldSince, sizeHoldLast;
+static float sizeHoldFraction;
 static int   nEstilos, estFoco, estTam[FIL_TIPO_N];
 // A ultima FORMA tocada fica guardada fora do foco: indo ate a linha Ordem e
 // voltando, o OK aplica a ultima forma escolhida, nao a que teve foco por ultimo.
@@ -856,6 +861,37 @@ static int estTipo(int i) {
   if (j < 0 || j >= estLin[i].n) j = 0;
   return estLin[i].tipos[j];
 }
+static void sizeHoldStop(void) {
+  sizeHoldDir=0; sizeHoldSince=sizeHoldLast=0; sizeHoldFraction=0.0f;
+}
+static void sizeMove(int delta) {
+  int max=fil_size_max_dp(estTipo(estFoco));
+  int next=sizeDp+delta;
+  if (next<FIL_SIZE_DP_MIN) next=FIL_SIZE_DP_MIN;
+  if (next>max) next=max;
+  if (next==sizeDp) return;
+  sizeDp=next; sizeReset=0;
+  fil_preview_dp(filChave,estTipo(estFoco),sizeDp,0);
+}
+// A one-press action always changes 1 dp. Holding keeps the original
+// 350ms precision window and accelerates smoothly to ~230 dp/second.
+static void sizeHoldFrame(Uint32 now) {
+  if (sizeHoldDir==0) return;
+  Uint32 elapsed=now-sizeHoldSince, interval=now-sizeHoldLast;
+  sizeHoldLast=now;
+  if (elapsed<=350u || !interval) return;
+  // Avoid jumps after an Android pause, focus loss or a slow rendering frame.
+  float dt=(float)(interval>80u?80u:interval)/1000.0f;
+  float ramp=((float)elapsed-350.0f)/1100.0f;
+  if(ramp>1.0f)ramp=1.0f;
+  float speed=9.0f+221.0f*ramp*ramp;
+  sizeHoldFraction+=speed*dt;
+  int steps=(int)sizeHoldFraction;
+  if(steps>0) {
+    sizeHoldFraction-=(float)steps;
+    sizeMove(sizeHoldDir*steps);
+  }
+}
 // O passo do menu: grava a forma e a ordem em foco na hora (a home remonta pela
 // revisao de fileiras.c e a fileira mostra o resultado); o setter nao faz nada
 // quando o valor nao mudou.
@@ -1126,10 +1162,15 @@ void ctx_evento(const SDL_Event *e) {
   if (pagina==1 && styleHeld && e->type==SDL_KEYUP && teclaOk(e->key.keysym.sym)) {
     styleHeld=0;
     if (SDL_GetTicks()-styleDown<NV_HOLD_MS || !fil_resizable(estTipo(estFoco))) aplicarEstilo();
-    else { estSel=estFoco; estAoVivo(); sizeDp=fil_size_dp(filChave,estTipo(estFoco)); sizeReset=0; pagina=3; }
+    else { sizeHoldStop(); estSel=estFoco; estAoVivo(); sizeDp=fil_size_dp(filChave,estTipo(estFoco)); sizeReset=0; pagina=3; }
     return;
   }
   if (e->type == SDL_KEYUP && teclaOk(e->key.keysym.sym)) esperandoSoltura = 0;
+  if (pagina==3 && e->type==SDL_KEYUP) {
+    int key=e->key.keysym.sym;
+    if ((sizeHoldDir==-1 && key==SDLK_LEFT) ||
+        (sizeHoldDir==1 && key==SDLK_RIGHT)) sizeHoldStop();
+  }
   if (e->type != SDL_KEYDOWN) return;
   k = e->key.keysym.sym;
   // Repeticao automatica NUNCA e uma segunda escolha: quem quer clicar duas
@@ -1139,13 +1180,22 @@ void ctx_evento(const SDL_Event *e) {
   if (pagina==3) {
     int t=estTipo(estFoco);
     if (k==SDLK_ESCAPE || k==SDLK_AC_BACK || k==SDLK_BACKSPACE || e->key.keysym.scancode==NV_SCANCODE_BACK) {
+      sizeHoldStop();
       fil_preview_dp(filChave,t,0,0); pagina=1;
-    } else if (k==SDLK_UP || k==SDLK_DOWN) sizeReset=!sizeReset;
-    else if (k==SDLK_LEFT || k==SDLK_RIGHT) {
-      sizeReset=0; sizeDp+=(k==SDLK_LEFT?-1:1); if (sizeDp<72) sizeDp=72; if (sizeDp>200) sizeDp=200;
-      fil_preview_dp(filChave,t,sizeDp,0);
+    } else if (k==SDLK_UP || k==SDLK_DOWN) {
+      sizeHoldStop(); sizeReset=!sizeReset;
+    } else if (k==SDLK_LEFT || k==SDLK_RIGHT) {
+      int dir=k==SDLK_LEFT?-1:1;
+      // OS repeat events don't speed up a tap. A held key is stepped using
+      // elapsed time in ctx_atualizar, with no double counting here.
+      if (sizeHoldDir!=dir) {
+        sizeHoldStop();
+        sizeHoldDir=dir; sizeHoldSince=sizeHoldLast=SDL_GetTicks();
+        sizeMove(dir); // initial single press = exactly 1 dp
+      }
     } else if (teclaOk(k)) {
-      if (sizeReset) { sizeDp=126; sizeReset=0; fil_preview_dp(filChave,t,sizeDp,0); }
+      sizeHoldStop();
+      if (sizeReset) { sizeDp=FIL_SIZE_DP_DEFAULT; sizeReset=0; fil_preview_dp(filChave,t,sizeDp,0); }
       else {
         // Saving a style-size edit commits BOTH the chosen style and this row's
         // family-specific size. A later Back must not undo this confirmed edit.
@@ -1222,9 +1272,11 @@ void ctx_atualizar(float dt, Uint32 agora) {
   int i;
   int atual;
   if (aberto && pagina==1 && styleHeld && agora-styleDown>=NV_HOLD_MS) {
-    styleHeld=0; sizeReset=0; estSel=estFoco; estAoVivo(); sizeDp=fil_size_dp(filChave,estTipo(estFoco));
+    styleHeld=0; sizeHoldStop(); sizeReset=0; estSel=estFoco; estAoVivo(); sizeDp=fil_size_dp(filChave,estTipo(estFoco));
     pagina=3; esperandoSoltura=1;
   }
+  if (!aberto || pagina!=3) sizeHoldStop();
+  else sizeHoldFrame(agora);
   if (!holdObservador) {
     SDL_AddEventWatch(observarHold, NULL);
     holdObservador = 1;
@@ -2047,15 +2099,18 @@ static void ctx_desenharCorpo_(Uint32 agora) {
     float y=panel.y+224,x=panel.x+88,track=w-176;
     // Match Legacy's PS5-inspired inspector: warm progress, gray remainder,
     // no draggable dot. Mark the true endpoints and the factory default.
-    const float f=(sizeDp-72)/128.0f;
-    const float df=(126.0f-72.0f)/128.0f;
+    const int styleMax=fil_size_max_dp(estTipo(estFoco));
+    const float range=(float)(styleMax-FIL_SIZE_DP_MIN);
+    const float f=(float)(sizeDp-FIL_SIZE_DP_MIN)/range;
+    const float df=(float)(FIL_SIZE_DP_DEFAULT-FIL_SIZE_DP_MIN)/range;
     gfx_cor((GfxRect){x,y,track,8},.5f,.30f,.30f,.30f,a);
     if (f>0) gfx_cor((GfxRect){x,y,track*f,8},.5f,.91f,.73f,.42f,a);
     gfx_cor((GfxRect){x+track*df-1.0f,y-2.0f,2.0f,12.0f},.4f,.90f,.90f,.90f,.8f*a);
     gfx_icone((GfxRect){panel.x+36,y-12,32,32},"aj_minus",.88f,.88f,.88f,a);
     gfx_icone((GfxRect){panel.x+w-68,y-12,32,32},"aj_plus",.88f,.88f,.88f,a);
+    char maxLabel[12]; snprintf(maxLabel,sizeof maxLabel,"%d",styleMax);
     TxtLinha low=txt_linha(TXT_MINI,"72",142,142,142,255);
-    TxtLinha high=txt_linha(TXT_MINI,"200",142,142,142,255);
+    TxtLinha high=txt_linha(TXT_MINI,maxLabel,142,142,142,255);
     TxtLinha def=txt_linha(TXT_MINI,"default 126 dp",142,142,142,255);
     txt_desenhar_alpha(low,x,y+23,a);
     txt_desenhar_alpha(high,x+track-high.w,y+23,a);
