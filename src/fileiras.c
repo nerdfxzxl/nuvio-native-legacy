@@ -73,7 +73,8 @@ typedef struct {
   // formato posicional da linha `linha` nao muda e o arquivo de quem ja usa
   // o app continua valendo byte a byte.
   int  ordem;
-  unsigned char styleDp[FIL_TIPO_N];
+  // A wider value is required for exact per-style limits above 255 dp.
+  unsigned short styleDp[FIL_TIPO_N];
   int heroException; /* include in manual mode, exclude in Select All mode */
 } Linha;
 
@@ -414,7 +415,8 @@ static void carregar(void) {
       snprintf(heroFonte, sizeof heroFonte, "%s", buf + 5);
     } else if (!strncmp(buf, "styleDp ", 8)) {
       int t,dp,n=0;
-      if (sscanf(buf+8,"%d %d %n",&t,&dp,&n)==2 && t>=0 && t<FIL_TIPO_N && dp>=72 && dp<=200)
+      if (sscanf(buf+8,"%d %d %n",&t,&dp,&n)==2 && t>=0 && t<FIL_TIPO_N &&
+          fil_resizable(t) && dp>=FIL_SIZE_DP_MIN && dp<=fil_size_max_dp(t))
         for (int i=0;i<nLinhas;i++) if (!strcmp(linhas[i].chave,buf+8+n)) linhas[i].styleDp[t]=dp;
     } else if (!strncmp(buf, "heropick ", 9)) {
       for (int i=0; i<nLinhas; ++i)
@@ -2126,6 +2128,27 @@ static float escalaCom(int tam, int t) {
 // poster variants) to a single setting, so changing one silently changed the
 // others. styleDp[FIL_TIPO_N] already stores every style independently.
 static int styleFamily(int t) { return t; }
+// Maximums are slider units, NOT pixel heights: a chosen value scales the
+// native card dimensions relative to the 126 dp default. Keep these moderate
+// and dependent on card shape, with comfortable headroom over typical choices.
+int fil_size_max_dp(int t) {
+  switch (t) {
+    case FIL_TIPO_CARTAZ:
+    case FIL_TIPO_RANKING:
+    case FIL_TIPO_LINHA_TEMPO: return 300;  // regular portrait
+    case FIL_TIPO_POSTER_GRANDE:
+    case FIL_TIPO_POSTER_GRANDE_P:
+    case FIL_TIPO_POSTER_GRANDE_G: return 340; // large portrait
+    case FIL_TIPO_SERVICO: return 280; // compact landscape
+    case FIL_TIPO_DESTAQUE:
+    case FIL_TIPO_COLECAO:
+    case FIL_TIPO_LARGA: return 260; // wide artwork and banners
+    case FIL_TIPO_DESTAQUE_QUADRADO:
+    case FIL_TIPO_DESTAQUE_QUADRADO_M:
+    case FIL_TIPO_DESTAQUE_QUADRADO_G: return 300; // square / 4:3
+    default: return 200; // old safe range for any future/unhandled style
+  }
+}
 int fil_resizable(int t) {
   switch (t) {
     case FIL_TIPO_CARTAZ: case FIL_TIPO_SERVICO: case FIL_TIPO_COLECAO:
@@ -2143,15 +2166,15 @@ int fil_size_dp(const char *key,int t) {
   pthread_mutex_lock(&trava); garantir();
   int i=achar(key), dp=i>=0 && fil_resizable(t) ? linhas[i].styleDp[styleFamily(t)] : 0;
   pthread_mutex_unlock(&trava);
-  return dp ? dp : 126;
+  return dp ? dp : FIL_SIZE_DP_DEFAULT;
 }
 void fil_preview_dp(const char *key,int t,int dp,int save) {
   pthread_mutex_lock(&trava); garantir();
   int i=achar(key);
-  if (i>=0 && fil_resizable(t) && dp>=72 && dp<=200) {
+  if (i>=0 && fil_resizable(t) && dp>=FIL_SIZE_DP_MIN && dp<=fil_size_max_dp(t)) {
     previewProfile=perfil; previewStyle=styleFamily(t); previewDp=dp;
     snprintf(previewRow,sizeof previewRow,"%s",key);
-    if (save) { linhas[i].styleDp[previewStyle]=dp==126?0:dp; previewRow[0]=0; gravar(); }
+    if (save) { linhas[i].styleDp[previewStyle]=dp==FIL_SIZE_DP_DEFAULT?0:dp; previewRow[0]=0; gravar(); }
   } else previewRow[0]=0;
   revisao++;
   pthread_mutex_unlock(&trava);
@@ -2161,7 +2184,7 @@ static float styleScale(const Linha *row,int t) {
   if (!fil_resizable(t)) return base;
   int family=styleFamily(t), dp=row->styleDp[family];
   if (previewProfile==perfil && previewStyle==family && !strcmp(row->chave,previewRow)) dp=previewDp;
-  return dp ? base*(float)dp/126.0f : base;
+  return dp ? base*(float)dp/(float)FIL_SIZE_DP_DEFAULT : base;
 }
 float fil_escala_tipo(const char *key,int t) {
   pthread_mutex_lock(&trava); garantir();
