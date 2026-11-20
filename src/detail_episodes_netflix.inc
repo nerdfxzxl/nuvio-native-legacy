@@ -72,6 +72,10 @@ static int detEpTouchScroll(const PonteiroRolagem *e) {
 }
 #define DET_EP_STEP 380.0f
 #define DET_SEASON_STEP 84.0f
+// Episode cards use the right-hand column only. Start near the top so the
+// empty black header band disappears, without moving or clipping the logo.
+#define DET_EP_ROWS_TOP 48.0f
+#define DET_EP_FOCUS_TOP_GAP 36.0f
 
 static void detEpRebuild(int targetSeason, int targetEpisode) {
   const CatItem *ci = cat_item(idx);
@@ -174,8 +178,11 @@ static void detEpAtualizar(float dt) {
     detEpRebuild(season, episode);
   }
   const float step = DET_EP_STEP, seasonStep = DET_SEASON_STEP;
-  float maxScroll=fmaxf(0,detEpRows*step-(NV_TELA_H-180.0f));
-  float target=fminf(maxScroll,fmaxf(0,detEpRow*step-75.0f));
+  float maxScroll=fmaxf(0,detEpRows*step-(NV_TELA_H-DET_EP_ROWS_TOP-10.0f));
+  // Build #123's 75dp extra offset left a thin, clipped slice of the prior
+  // episode thumbnail above the focused item. Keep enough headroom for the
+  // focused card, but ensure the preceding thumbnail ends ABOVE the clip.
+  float target=fminf(maxScroll,fmaxf(0,detEpRow*step-DET_EP_FOCUS_TOP_GAP));
   float maxSeason=fmaxf(0,detEpNSeasons*seasonStep-(NV_TELA_H-340.0f));
   float targetSeason=fminf(maxSeason,fmaxf(0,detEpSzn*seasonStep-76.0f));
   detEpScroll=anim_mola2(&detEpVel,detEpScroll,target,dt,NV_MOLA2_SCROLL);
@@ -248,7 +255,7 @@ static void detEpDesenhar(Uint32 agora) {
   (void)agora;
   const CatItem *ci = cat_item(idx);
   const float screenW = NV_TELA_W, screenH = NV_TELA_H;
-  const float leftW=screenW*.40f,startX=leftW+18.0f,rowsTop=134.0f;
+  const float leftW=screenW*.40f,startX=leftW+18.0f,rowsTop=DET_EP_ROWS_TOP;
   gfx_sem_recorte();
   // True AMOLED-black columns, without a colour halo or grey panel.
   gfx_cor((GfxRect){0,0,screenW,screenH},0,0,0,0,1);
