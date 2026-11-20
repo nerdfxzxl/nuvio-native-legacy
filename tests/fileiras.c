@@ -1529,17 +1529,32 @@ int main(void) {
   fil_preview_dp("catA",FIL_TIPO_SERVICO,185,1);
   fil_preview_dp("catB",FIL_TIPO_SERVICO,145,1);
   fil_preview_dp("catA",FIL_TIPO_CARTAZ,93,1);
+  // Every row and every style is separate: previously FEATURE/COLLECTION
+  // aliased SERVICE and large-poster variants aliased the base style.
+  fil_preview_dp("catA",FIL_TIPO_DESTAQUE,175,1);
+  fil_preview_dp("catA",FIL_TIPO_COLECAO,162,1);
+  fil_preview_dp("catA",FIL_TIPO_POSTER_GRANDE_P,174,1);
+  fil_preview_dp("catA",FIL_TIPO_POSTER_GRANDE_G,153,1);
   assert(fil_definir_tipo("catA",FIL_TIPO_CARTAZ));
   assert(fil_definir_tipo("catA",FIL_TIPO_SERVICO));
   fil_recarregar();
   assert(fil_size_dp("catA",FIL_TIPO_SERVICO)==185);
   assert(fil_size_dp("catB",FIL_TIPO_SERVICO)==145);
   assert(fil_size_dp("catA",FIL_TIPO_CARTAZ)==93);
+  assert(fil_size_dp("catB",FIL_TIPO_CARTAZ)==126);
+  assert(fil_size_dp("catA",FIL_TIPO_DESTAQUE)==175);
+  assert(fil_size_dp("catA",FIL_TIPO_COLECAO)==162);
+  assert(fil_size_dp("catA",FIL_TIPO_POSTER_GRANDE_P)==174);
+  assert(fil_size_dp("catA",FIL_TIPO_POSTER_GRANDE_G)==153);
+  assert(fil_size_dp("catB",FIL_TIPO_POSTER_GRANDE_G)==126);
   float savedScale=fil_escala("catA");
+  float otherScale=fil_escala("catB");
   fil_preview_dp("catA",FIL_TIPO_SERVICO,72,0);
   assert(fil_escala("catA")<savedScale);
+  assert(fil_escala("catB")==otherScale);   // preview touches only A
   fil_preview_dp("catA",FIL_TIPO_SERVICO,0,0);
   assert(fil_escala("catA")==savedScale);
+  assert(fil_size_dp("catA",FIL_TIPO_DESTAQUE)==175); // other style untouched
   fil_hero_select(NULL,1); fil_hero_select("catA",0);
   fil_recarregar();
   assert(!fil_hero_selected("catA") && fil_hero_selected("catB"));
@@ -1551,6 +1566,10 @@ int main(void) {
   fil_preview_dp("catA",FIL_TIPO_SERVICO,126,1);
   fil_preview_dp("catB",FIL_TIPO_SERVICO,126,1);
   fil_preview_dp("catA",FIL_TIPO_CARTAZ,126,1);
+  fil_preview_dp("catA",FIL_TIPO_DESTAQUE,126,1);
+  fil_preview_dp("catA",FIL_TIPO_COLECAO,126,1);
+  fil_preview_dp("catA",FIL_TIPO_POSTER_GRANDE_P,126,1);
+  fil_preview_dp("catA",FIL_TIPO_POSTER_GRANDE_G,126,1);
   fil_definir_tipo("catA",FIL_TIPO_AUTO);
   puts("ok  independent row/style sizes, preview cancel and Hero selection survive reload");
   remove(nvt("/fileirasui-p120.txt"));
