@@ -736,6 +736,9 @@ typedef enum {
   AJ_HOME_ROW_LAYOUTS, // Action: only enabled and visible catalog rows
   AJ_TAM_GRANDE_DP, AJ_TAM_PAISAGEM_DP, // append-only: independent row poster dimensions
   AJ_FOCO_INSTANTANEO,
+  // Append only: independent Home poster genre visibility. The existing
+  // AJ_NOTAS_HOME option owns poster IMDb visibility and keeps its saved key.
+  AJ_POSTER_GENERO,
   AJ_N
 } OpcaoId;
 _Static_assert(DEBRID_RD == 0 && DEBRID_TB == 1 && DEBRID_PM == 2 && DEBRID_AD == 3,
@@ -1886,6 +1889,7 @@ static const Opcao OPCOES[AJ_N] = {
   NUM("Large poster size",            72, 200, 2, " dp"),
   NUM("Landscape poster size",        72, 200, 2, " dp"),
   ESC("Poster focus", V_FOCO_POSTER, 2),
+  ESC("Genre on posters", V_LIGA, 2),
   };
 
 // Nome de cada opcao no arquivo. O formato era POSICIONAL — uma linha por
@@ -2228,6 +2232,7 @@ static const char *CHAVE[] = {
   "-homeRowLayouts",
   "posterLargeSizeLocal", "posterLandscapeSizeLocal",
   "posterFocusInstantLocal",
+  "posterGenreLocal",
 };
 // QUATRO VETORES PARALELOS indexados pelo mesmo enum AJ_*: OPCOES, CHAVE,
 // valor e as secoes. OPCOES ja e declarado [AJ_N], e `valor` aceita inicializacao
@@ -3824,6 +3829,7 @@ void ajustes_definir_destaque(int fonte, int diferente) {
   AJ_COM_ORIGEM(AJLOG_CENTRAL, gravar());
 }
 int ajustes_notas_home(void)          { return valor[AJ_NOTAS_HOME] == 0; }
+int ajustes_poster_genero(void)       { return lig(AJ_POSTER_GENERO); }
 int ajustes_local_descobrir(void)     { return valor[AJ_DESCOBRIR]; }
 int ajustes_descobrir_na_busca(void)  { return valor[AJ_DESCOBRIR] == 0; }
 
@@ -6254,6 +6260,7 @@ static int somenteDesteAparelho(int op) {
     case AJ_PALCO_FUNDO:   /* Stage background belongs to this device */
     case AJ_TITULO_FIL:    /* local row title presentation */
     case AJ_MURAL_TITULOS: /* #521: idem */
+    case AJ_POSTER_GENERO: /* Home poster metadata belongs to this TV */
     case AJ_MIC_BUSCA:     /* o microfone e o controle sao desta TV */
     case AJ_TECLADO_ANDROID: /* o web nao tem; o teclado e deste aparelho */
     case AJ_LEG_SYNC_AUDIO: /* PCM e passthrough sao desta TV; o web nao tem */
@@ -7087,7 +7094,8 @@ static const char *rotuloNovo(int op) {
     case AJ_LIVETV_PROXY: return "Repassar o canal pelo app (proxy)";
     case AJ_LIVETV_MODO: return "Modo do player dos canais";
     case AJ_ESPACO: return "Imagens guardadas na memória";
-    case AJ_NOTAS_HOME: return "Nota do IMDb nos cartazes";
+    case AJ_NOTAS_HOME: return "IMDb rating on posters";
+    case AJ_POSTER_GENERO: return "Genre on posters";
     case AJ_SUFIXO_TIPO: return "Filme ou série no nome da fileira";
     case AJ_NOME_ADDON: return "Nome do addon na fileira";
     // English labels for Title page, metadata and episode controls.
@@ -8055,7 +8063,8 @@ static const char *ajudaOpcaoBase(int op) {
     case AJ_NOME_ADDON: return "Acrescenta o nome do addon ao título da fileira, para separar dois catálogos com o mesmo nome.";
     case AJ_SUFIXO_TIPO: return "Acrescenta \"Filme\" ou \"Série\" ao título da fileira, para separar as duas versões do mesmo catálogo.";
     case AJ_OCULTAR_NLANC: return "Esconde das fileiras o que ainda não estreou. Título sem fonte nenhuma ocupa lugar e não abre.";
-    case AJ_NOTAS_HOME: return "Mostra a nota do IMDb no canto dos cartazes da Home.";
+    case AJ_NOTAS_HOME: return "Show or hide IMDb rating badges on Home poster cards without affecting the genre or ratings on the title page.";
+    case AJ_POSTER_GENERO: return "Show or hide the genre line on Home poster cards independently of their IMDb rating and title artwork.";
     case AJ_GRAD_CLASSICO: return "Volta ao degradê antigo sob o cartaz em foco, no lugar do realce atual.";
 
     // --- Continuar assistindo
@@ -11069,7 +11078,7 @@ static AjPreview familiaPreviaOpcao(int op) {
     case AJ_HERO_SINOPSE: case AJ_HERO_NOTAS: case AJ_HERO_ANO: case AJ_HERO_DURACAO:
     case AJ_PS_FUNDO: case AJ_PS_CONTINUAR: case AJ_DESCOBRIR: case AJ_ROTULOS:
     case AJ_NOME_ADDON: case AJ_SUFIXO_TIPO: case AJ_OCULTAR_NLANC: case AJ_MURAL_TITULOS:
-    case AJ_NOTAS_HOME: case AJ_GRAD_CLASSICO: case AJ_SELO_VISTO: case AJ_OCULTAR_FILMES_VISTOS: case AJ_BIB_HOME: case AJ_TITULO_FIL:
+    case AJ_NOTAS_HOME: case AJ_POSTER_GENERO: case AJ_GRAD_CLASSICO: case AJ_SELO_VISTO: case AJ_OCULTAR_FILMES_VISTOS: case AJ_BIB_HOME: case AJ_TITULO_FIL:
       return AJPV_HOME;
     case AJ_CW_LIGADO: case AJ_CW_OK: case AJ_CW_FONTE:
     case AJ_CW_ESTILO: case AJ_CW_THUMB: case AJ_CW_BLUR_PROX:
