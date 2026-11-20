@@ -1126,7 +1126,7 @@ void ctx_evento(const SDL_Event *e) {
   if (pagina==1 && styleHeld && e->type==SDL_KEYUP && teclaOk(e->key.keysym.sym)) {
     styleHeld=0;
     if (SDL_GetTicks()-styleDown<NV_HOLD_MS || !fil_resizable(estTipo(estFoco))) aplicarEstilo();
-    else { sizeDp=fil_size_dp(filChave,estTipo(estFoco)); sizeReset=0; pagina=3; }
+    else { estAoVivo(); sizeDp=fil_size_dp(filChave,estTipo(estFoco)); sizeReset=0; pagina=3; }
     return;
   }
   if (e->type == SDL_KEYUP && teclaOk(e->key.keysym.sym)) esperandoSoltura = 0;
@@ -1212,7 +1212,7 @@ void ctx_atualizar(float dt, Uint32 agora) {
   int i;
   int atual;
   if (aberto && pagina==1 && styleHeld && agora-styleDown>=NV_HOLD_MS) {
-    styleHeld=0; sizeReset=0; sizeDp=fil_size_dp(filChave,estTipo(estFoco));
+    styleHeld=0; sizeReset=0; estAoVivo(); sizeDp=fil_size_dp(filChave,estTipo(estFoco));
     pagina=3; esperandoSoltura=1;
   }
   if (!holdObservador) {
@@ -1567,7 +1567,9 @@ static void desenhaEstilos(float a) {
   float lin = EST_LINHA;
   GfxRect m;
   if ((float)n * (lin + EST_GAP) - EST_GAP > disp) lin = disp / (float)n - EST_GAP;
-  m = estIlha(2.0f * EST_PAD + (float)n * (lin + EST_GAP) - EST_GAP);
+  // The discovery hint gets its own footer, never the style's text area.
+  float hintH = estFoco >= 0 && estFoco < nEstilos && fil_resizable(estTipo(estFoco)) ? 30.0f : 0.0f;
+  m = estIlha(2.0f * EST_PAD + (float)n * (lin + EST_GAP) - EST_GAP + hintH);
   estIlhaRect = m;
   m.y += (1.0f - a) * 12.0f;
   if (aberto && pagina == 1 && a > 0.5f && ponteiro_ativo()) {
@@ -1588,10 +1590,7 @@ static void desenhaEstilos(float a) {
       if (aberto && pagina == 1 && a > 0.5f)
         ponteiro_alvo(r.x, r.y, r.w, r.h, ponteiroEstFoco, ponteiroEstOk, i, 0);
       linhaEstilo(r, estLin[i].rotulo, estTipo(i), estAnim[i], a);
-      if (fil_resizable(estTipo(i)) && i==estFoco) {
-        TxtLinha hint=txt_linha(TXT_MINI,"Hold OK to resize",50,50,50,255);
-        txt_desenhar_alpha(hint,r.x+r.w-hint.w-14,r.y+(r.h-hint.h)*.5f,a);
-      }
+
     } else {
       // A ORDEM dos itens da colecao: o valor que esquerda/direita escolhem; o
       // clique cicla (mouse e Magic Remote nao tem esquerda/direita).
@@ -1601,6 +1600,11 @@ static void desenhaEstilos(float a) {
         ponteiro_alvo(r.x, r.y, r.w, r.h, ponteiroEstFoco, ponteiroOrdemAtivar, nEstilos, 0);
       linhaEstilo(r, rot, -1, ordemAnim, a);
     }
+  }
+  if (hintH > 0.0f) {
+    TxtLinha hint = txt_linha(TXT_MINI, "Hold OK to resize", 152, 152, 152, 255);
+    float hx = m.x + (m.w - hint.w) * 0.5f;
+    txt_desenhar_alpha(hint, hx, m.y + m.h - EST_PAD - hint.h * 0.75f, a * 0.75f);
   }
 }
 
@@ -2024,12 +2028,21 @@ static void ctx_desenharCorpo_(Uint32 agora) {
     TxtLinha number=txt_linha(TXT_V2_NUM150,value,246,246,246,255);
     txt_desenhar_alpha(number,panel.x+40,panel.y+24,a);
     float y=panel.y+224,x=panel.x+88,track=w-176;
-    gfx_cor((GfxRect){x,y,track,10},.5f,.45f,.45f,.45f,a);
-    float f=(sizeDp-72)/128.0f;
-    if (f>0) gfx_cor((GfxRect){x,y,track*f,10},.5f,.96f,.96f,.96f,a);
-    gfx_cor((GfxRect){x+track*f-10,y-5,20,20},.5f,1,1,1,a);
-    gfx_icone((GfxRect){panel.x+36,y-12,32,32},"aj_minus",1,1,1,a);
-    gfx_icone((GfxRect){panel.x+w-68,y-12,32,32},"aj_plus",1,1,1,a);
+    // Match Legacy's PS5-inspired inspector: warm progress, gray remainder,
+    // no draggable dot. Mark the true endpoints and the factory default.
+    const float f=(sizeDp-72)/128.0f;
+    const float df=(126.0f-72.0f)/128.0f;
+    gfx_cor((GfxRect){x,y,track,8},.5f,.30f,.30f,.30f,a);
+    if (f>0) gfx_cor((GfxRect){x,y,track*f,8},.5f,.91f,.73f,.42f,a);
+    gfx_cor((GfxRect){x+track*df-1.0f,y-2.0f,2.0f,12.0f},.4f,.90f,.90f,.90f,.8f*a);
+    gfx_icone((GfxRect){panel.x+36,y-12,32,32},"aj_minus",.88f,.88f,.88f,a);
+    gfx_icone((GfxRect){panel.x+w-68,y-12,32,32},"aj_plus",.88f,.88f,.88f,a);
+    TxtLinha low=txt_linha(TXT_MINI,"72",142,142,142,255);
+    TxtLinha high=txt_linha(TXT_MINI,"200",142,142,142,255);
+    TxtLinha def=txt_linha(TXT_MINI,"default 126 dp",142,142,142,255);
+    txt_desenhar_alpha(low,x,y+23,a);
+    txt_desenhar_alpha(high,x+track-high.w,y+23,a);
+    txt_desenhar_alpha(def,x+track*df-def.w*.5f,y+23,a);
     GfxRect reset={panel.x+w-80,panel.y+36,48,48};
     if (sizeReset) gfx_cor(reset,.5f,1,1,1,a);
     float ink=sizeReset?.1f:1.0f;
