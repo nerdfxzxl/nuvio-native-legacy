@@ -9,3 +9,5 @@ Validate five Home/detail/immersive refinements, subject crop shader, fast Pillo
 
 Eight-refinement preflight: appended poster sizes, compact portrait art, shared-element flight, gesture and repeat boundaries, resume checkpoint bar. Verify full ARM64 C syntax, settings indexes, and regression tests. No APK.
 Build 120 integrated native Home, history, cache and detail verification.
+
+Build 120 TV regression repair: profile pointer, size editor, Dynamic Clock hold, shared-element easing, detail facts/reviews, cached Wikiquote entities, subject-aware crop, persistent image cache. Run native-only ARM64 compile gate; do not build APK in this workflow.
