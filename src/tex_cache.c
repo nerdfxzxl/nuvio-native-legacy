@@ -4353,7 +4353,10 @@ int tex_cores(const char *caminho, unsigned char out[16*16*4]) {
 void tex_publicar_paleta(const char *caminho) {
   CorvivaPaleta pal;
   int i, tem = 0;
-  if (!mtx || !caminho || !*caminho || corviva_paleta(caminho, &pal)) return;
+  if (!mtx || !caminho || !*caminho) return;
+  // An older p3 palette may have color but no independent portrait focal
+  // point. Refresh it from this already-decoded texture, without new network.
+  if (corviva_paleta(caminho, &pal) && pal.cropOk) return;
   BUSCA_MEDIDA(i, caminho, hashCaminho(caminho));
   if (i >= 0 && (itens[i].estado == DECODIFICADO || itens[i].estado == PRONTO)) {
     pal = itens[i].paleta;
