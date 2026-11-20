@@ -363,3 +363,4 @@
   126, /* Large poster size: 126dp keeps measured Legacy dimensions */
   126, /* Landscape poster size: 126dp keeps measured Legacy dimensions */
   0, /* Smooth poster focus */
+  0, /* Genre on Home posters: On by default (V_LIGA) */
