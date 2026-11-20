@@ -51,4 +51,5 @@ jobs:
         run: |
           set -euo pipefail
           python3 tests/detail_netflix.py
+          bash tests/fileiras.sh
           bash tests/ajustes_secoes.sh
