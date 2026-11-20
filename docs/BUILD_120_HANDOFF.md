@@ -137,3 +137,12 @@ The owner tested physical Build #122 and confirmed the existing row/style size s
 2. Moderate per-style slider maxima: regular portrait 300, large portrait 340, compact landscape 280, wide banners 260, and square/4:3 300 dp. Dynamic slider endpoint and default marker. `src/fileiras.c` defines maxima and validates bounds on preview, save and reload; local `styleDp` changed from 8-bit to `unsigned short` because 8-bit values wrap above 255. Old on-disk text remains compatible; the `styleDp <type> <dp> <row-key>` file format did not change. Additional `tests/fileiras.c` tests save 280/290/315/340, reject invalid 341/261, reload, and verify distinct rows and styles.
 
 Native preflight #16: [workflow 44719990267](https://github.com/nerdfxzxl/nuvio-native-legacy/actions/runs/44719990267), source `d4cceee7e436bcdc3d4942ed23a52869b5b45b1f`; results to record after completion. Trigger one `Android APK (debug)` full build only when native gate is green. Preserve existing Gradle/native/p2p/FFmpeg caches; no dependency key changes.
+
+
+### Build 123 — successful cached debug APK (2026-11-20)
+
+- Native-only preflight **#16 PASSED**: [run 44719990267](https://github.com/nerdfxzxl/nuvio-native-legacy/actions/runs/44719990267).
+- Full Android debug APK workflow **#123 PASSED**: [run 44720324672](https://github.com/nerdfxzxl/nuvio-native-legacy/actions/runs/44720324672). Exact APK source commit **`8bb3c7ca0a1c5d407456586c64dea3d9be090de8`** (the branch may advance with docs-only commits afterward). Mandatory early Android C/assets and graphics validation passed and full APK passed with `BUILD SUCCESSFUL in 3m 26s` for main Gradle assembly; `build/android/Nuvio-2.0.8-android-debug.apk`, about 82 MB.
+- Verified artifact: [nuvio-native-legacy-android-debug #14621946949](https://github.com/nerdfxzxl/nuvio-native-legacy/actions/runs/44720324672/artifacts/14621946949), about 79.46 MB compressed, expires 2026-12-04.
+- GitHub job logs confirm multiple Gradle cache hits (dependency, wrapper, transformed artifacts), **native-android-r27c cache HIT**, **p2p-r27c cache HIT**, and P2P compilation skipped. No need for another APK rebuild.
+- Owner acceptance testing PENDING: short tap must move 1dp, >350ms hold must accelerate and reverse/release reset; highest range and labels must match selected style; saving 300/340 must survive relaunch without overwriting another row or style. Successful CI cannot guarantee TV input feel or avoid visual clipping for very large styles.
