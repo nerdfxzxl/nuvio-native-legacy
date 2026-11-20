@@ -111,4 +111,33 @@ need("Review Season control animates from Episode without legacy hold hint",
      and "if (foco.coluna == 2) comentariosEscolher();" in detail
      and "COM_DICA_CHAVE" not in detail)
 need("No poster vignette baked over artwork", "gfx_rect(alvo,tex,GFX_CARD,0,0,0,0,1,1,1,alpha)" in detail)
-print("PASS: Netflix detail refinements and navigation invariants")
+# Build 122 regressions: the Build 121 editor restored the row style every
+# frame while its slider was open, cancelling preview and even saved results.
+ctx = Path("src/ctxmenu.c").read_text()
+rows = Path("src/fileiras.c").read_text()
+home = Path("src/home.c").read_text()
+clock = Path("src/ilha.c").read_text()
+need("Row-size page keeps current style alive",
+     'estVivo && (!aberto || (pagina != 1 && pagina != 3))' in ctx)
+need("Saving row size commits style, value and dialog origin",
+     'fil_definir_tipo(filChave,t);' in ctx and
+     'fil_preview_dp(filChave,t,sizeDp,1);' in ctx and
+     'estOrigTipo = fil_tipo(filChave);' in ctx)
+need("Style size persisted by exact row and exact style, without aliases",
+     'static int styleFamily(int t) { return t; }' in rows and
+     'linhas[i].styleDp[previewStyle]=dp==126?0:dp' in rows)
+need("Style menu shows dedicated unobstructed hold hint",
+     '"Hold for options"' in ctx and
+     'm.y + m.h - hintH + (hintH - hint.h) * 0.5f' in ctx)
+need("Poster long OK reuses Play native Dynamic Clock activity",
+     'ilha_atividade(i18n(p >= 1.0f ? "Solte para abrir opções" : "Segure para opções"), p);' in home and
+     'ilha_segurar_cartaz' not in home and 'posterHoldClock' not in clock)
+need("Netflix stills enlarge responsively, badge is bigger/darker",
+     '#define DET_EP_STEP 380.0f' in episode and
+     'thumbW*9.0f/16.0f' in episode and
+     'TXT_CALLOUT,id' in episode and
+     '.035f,.82f' in episode)
+need("Current season remains highlighted while its episodes have focus",
+     'int selected = s == detEpSzn;' in episode and
+     'if(selected)gfx_cor(pill,' in episode)
+print("PASS: Netflix detail refinements, row editor, poster-hold clock and episodes")
