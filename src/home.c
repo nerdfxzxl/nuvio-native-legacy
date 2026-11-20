@@ -31,6 +31,7 @@
 #include "proximo.h"
 #include "vertudo.h"
 #include "ctxmenu.h"
+#include "ilha.h"  // native Dynamic Clock long-OK progress
 #include "marco.h"
 #include "titulotempo.h"
 static TituloTempo heroTempo;
@@ -3811,6 +3812,17 @@ static void home_atualizar_(float dt, Uint32 agora) {
     okHold = anim_clamp((agora - okDesde) / (float)NV_HOLD_MS, 0.0f, 1.0f);
   else if (!okPressionando)
     okHold = 0.0f;
+  // The original poster hold affordance belongs INSIDE the Dynamic Clock.
+  // Ignore the first 150 ms so a short OK does not flash the pill. Feedback
+  // catches up before the original NV_HOLD_MS activation threshold; the
+  // short-OK action still runs on release without any added delay.
+  if (okPressionando && foco_pode_pressao_longa() && okDesde) {
+    const Uint32 elapsed = agora - okDesde;
+    const Uint32 feedbackDelay = NV_HOLD_MS > 200u ? 150u : 0u;
+    float progress = elapsed > feedbackDelay ?
+      anim_clamp((float)(elapsed-feedbackDelay)/(float)(NV_HOLD_MS-feedbackDelay),0.0f,1.0f) : 0.0f;
+    ilha_segurar_cartaz(progress);
+  } else ilha_segurar_cartaz(0.0f);
   okDip = pressdip_passo(okDip, okPressionando && !focoHero, dt);
   if (okPressionando && okHold >= 1.0f && !okLongDisparado) {
     okLongDisparado = 1;
