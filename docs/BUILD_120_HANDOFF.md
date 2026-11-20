@@ -156,3 +156,11 @@ Owner tested #123 and supplied two screenshots. Requests:
 3. Remove the empty top band and thin slice of the previous episode thumbnail above the Netflix episode list, without changing the left logo or season column. `src/detail_episodes_netflix.inc` defines `DET_EP_ROWS_TOP 48.0f`, `DET_EP_FOCUS_TOP_GAP 36.0f`, and calculates the right column scroll/clip from these. The `logotitulo_desenhar` coordinates and left season list are preserved.
 
 `tests/detail_netflix.py` now guards settings uniqueness, persistence, defaults, Home genre/IMDb rendering and episode logo/scroll constants. Native ARM64 preflight **#17 PASSED**: [run 44727340640](https://github.com/nerdfxzxl/nuvio-native-legacy/actions/runs/44727340640) on `f5e16bca5eca77c149411d0b1212f303c045b3c9`. Logs confirm static tests and fileiras tests passed. The full debug APK (Build #124) must still run its mandatory preflight. The physical TV appearance and potential metadata contrast over bright art need testing before claiming visual acceptance; moving to Player customization follows owner review. Preserve current native/P2P/Gradle cache keys. 
+
+
+### Build 124 — verified successful cached APK
+
+- Full workflow: [Android APK (debug) #124, run 44727752551](https://github.com/nerdfxzxl/nuvio-native-legacy/actions/runs/44727752551), source SHA **`cfa679c33655c742a7e75d5d074b0597d8bf748e`**. Early Android C, settings and asset validation: SUCCESS. Android graphics tests: SUCCESS. Full debug APK job: SUCCESS, `BUILD SUCCESSFUL in 2m 28s`.
+- Verified artifact: [nuvio-native-legacy-android-debug #14625890403](https://github.com/nerdfxzxl/nuvio-native-legacy/actions/runs/44727752551/artifacts/14625890403), ZIP ~79.46 MB, contains `Nuvio-2.0.8-android-debug.apk` ~82 MB. Created Nov 20 11:34 UTC, expires **2026-12-04**.
+- Logs confirm Gradle cache hits (wrapper and dependencies), native Android dependency cache **HIT ~100 MB**, P2P engine cache **HIT ~71 MB**, P2P recompilation SKIPPED. No unnecessary second APK build.
+- On-TV acceptance remains pending for actual appearance: landscape/editorial full-artwork visibility with readable title logos; changing Genre independently of IMDb under Posters and trailers; no duplicate IMDb control under Home rows; episode list top gap/sliver removed but **left title artwork still intact**. Physical TV runtime acceptance cannot be inferred from CI.
