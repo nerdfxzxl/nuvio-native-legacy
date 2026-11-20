@@ -7049,45 +7049,21 @@ static void desenhaArteCard(GfxRect card, TipoFileira tipo, const char *caminho,
   }
 }
 
-// O veu da legenda do cartaz DEITADO: 1 e a fracao em `fVeu` se este card leva
-// (as mesmas condicoes de desenhaRotuloCard, que o desenha). Separado para o
-// laco da fileira saber o veu ANTES da arte (veusDoCard).
-static int veuRotulo(const CatItem *cItem, TipoFileira tipo, int deitado, float *fVeu) {
-  if (tipo == FILEIRA_CONTINUE || tipo == FILEIRA_RETORNO || editorial(tipo) ||
-      !(ajustes_rotulos_poster() || tipo == FILEIRA_LARGA) || !cItem ||
-      !deitado || !cItem->titulo[0]) return 0;
-  *fVeu = tipo == FILEIRA_LARGA ? NV_DIN_LARGA_VEU : NV_LAND_VEU;
-  return 1;
-}
-#define NV_ROTULO_VEU_A 0.86f
-
-// OS VEUS DA BASE VAO DENTRO DA ARTE (gfx.h, gfx_veu_card_atual). Fotos do dono
-// (01/10/2026): "o card da fileira ta com o overlay sobrando um pouco na borda
-// inferior". MEDIDO em homelayouts_shot: a arte e o veu, cada um com a sua
-// cobertura de borda, no pixel da borda deixavam a arte com menos da metade
-// do veu — a ultima linha do card saia MAIS CLARA que a de cima (45 contra 37
-// num card aberto sobre fundo 6), um fio da arte por baixo do veu, que na TV
-// (720p esticada para o painel) vira traco. Com o veu no mesmo fragmento a
-// arte e escurecida inteira e so depois a borda recorta. As condicoes sao as
-// de quem desenha cada legenda; gfx_veu_base pula so o veu que estiver aqui.
-// `comCw`: o card leva o conteudo de continuar_desenhar (so o laco da home).
+// Only Continue Watching keeps its existing progress-reading overlay. Home
+// artwork with title marks no longer receives a broad bottom fade in the art
+// shader, including when a poster is focused or expanded.
 static void veusDoCard(const CatItem *cItem, TipoFileira tipo, int deitado, float abre,
                        int comCw) {
-  float fVeu;
-  // The landscape title/caption no longer darkens the whole lower half.
-  // Do not bake that old veil into the artwork shader either.
-  (void)fVeu;
+  (void)deitado; (void)abre;
   if (comCw && (tipo == FILEIRA_CONTINUE || tipo == FILEIRA_RETORNO) && cItem)
     gfx_veu_card_por(NV_CW_VEU_F, NV_CW_VEU_A);
-  if (abre > 0.01f && cItem) gfx_veu_card_por(NV_ABERTA_VEU_F, NV_ABERTA_VEU_A * abre);
-  // No wide dark ramp below editorial title artwork: keep every pixel of
-  // the background visible. Preserve Continue Watching and focus overlays.
 }
 
 // A legenda do cartaz (dentro do deitado, abaixo do cartaz em pe).
 static void desenhaRotuloCard(const CatItem *cItem, TipoFileira tipo, int deitado,
                               int logoCard, int rotuloFora, float px, float py, float w, float h,
                               float raio) {
+  (void)raio; // No lower-half artwork veil remains in this text renderer.
   if (tipo != FILEIRA_CONTINUE && tipo != FILEIRA_RETORNO && !editorial(tipo) &&
       (ajustes_rotulos_poster() || tipo == FILEIRA_LARGA || tipo == FILEIRA_HEROI_DIVIDIDO) && cItem) {
     const char *nome = cItem->titulo[0] ? cItem->titulo : NULL;
@@ -7453,11 +7429,13 @@ static void desenhaLogoCartao(const CatItem *ci, float px, float py,
 static float heroiMeta(const CatItem *ci, float x, float y, float w) {
   char linha[256];
   if (!ci) return BADGE_H;
-  int nota = imdbnota_obter(ci->imdb, ci->nota, !strcmp(ci->tipo, "series"));
-  float bw = badge_imdb_largura(nota);
+  const char *genero = ajustes_poster_genero() ? ci->genero : "";
+  int nota = ajustes_notas_home()
+    ? imdbnota_obter(ci->imdb, ci->nota, !strcmp(ci->tipo, "series")) : 0;
+  float bw = nota > 0 ? badge_imdb_largura(nota) : 0.0f;
   snprintf(linha, sizeof linha, "%s%s%s%s", ci->meta,
-           ci->meta[0] && ci->genero[0] ? " · " : "", ci->genero,
-           nota > 0 && (ci->meta[0] || ci->genero[0]) ? " · " : "");
+           ci->meta[0] && genero[0] ? " · " : "", genero,
+           nota > 0 && (ci->meta[0] || genero[0]) ? " · " : "");
   TxtLinha m = txt_linha_corta(TXT_CW_META, linha, 218, 222, 232, 255,
                                fmaxf(0.0f, w - bw - 8.0f));
   float h = fmaxf(34.0f, fmaxf(m.h, BADGE_H));
