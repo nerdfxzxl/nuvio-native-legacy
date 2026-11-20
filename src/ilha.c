@@ -77,6 +77,7 @@ static Uint32 atvVisto;         // SDL_GetTicks da ultima renovacao
 
 static int relogioQuer;
 static int relogioFocado;
+static float posterHoldClock; // poster OK gesture uses the original clock-pill fill
 // Bolinha de acento no relogio em repouso: "ha enquete aberta" (enquete.c).
 static int pontoEnquete;
 static int pontoPediu;
@@ -423,6 +424,9 @@ void ilha_relogio_visivel(int visivel) {
 static void desenharFocoRelogio(GfxRect r, float raio, float alpha) {
   if (relogioFocado && relogioQuer && modalT <= 0.0f && corpoT <= 0.0f)
     gfx_anel_fora(r, raio, 4.0f, 3.0f, 1.0f, 1.0f, 1.0f, alpha);
+}
+void ilha_segurar_cartaz(float progress) {
+  posterHoldClock = fmaxf(0.0f, fminf(1.0f, progress));
 }
 void ilha_relogio_focar(int foco) { relogioFocado = foco ? 1 : 0; }
 int ilha_relogio_focado(void) { return relogioFocado; }
@@ -2078,7 +2082,7 @@ static void ilha_desenharCorpo_(Uint32 agora) {
       corpoWa = molaIlha(&corpoVw, corpoWa, corpoW, dt);
       corpoHa = molaIlha(&corpoVh, corpoHa, corpoH, dt);
     } }
-  vis = alvo != M_RELOGIO || relogioQuer || central_segurar_progresso(agora) > 0.0f ||
+  vis = alvo != M_RELOGIO || relogioQuer || central_segurar_progresso(agora) > 0.0f || posterHoldClock > 0.0f ||
         (modalAviso && (modalAberto || modalT > 0.01f)) || corpoT > 0.0f;
   // O MEDIDOR so ocupa a ilha LIVRE: com aviso, atividade, modal, voo ou o
   // TRAILER tocando (destaque da home, pagina do titulo — dono no S18, 2.0.6)
@@ -2285,6 +2289,8 @@ static void ilha_desenharCorpo_(Uint32 agora) {
       if (tipoLuz >= 0 || (!repouso && !ajustes_vidro()))
         gfx_luz_canto(R, raio, R.w * 0.25f, -R.h * 0.9f, R.w * 0.85f, cr, cg, cb, luz * A); }
     central_segurar_desenhar(R, raio, A, agora);
+    if (relogioQuer && posterHoldClock > 0.0f)
+      central_segurar_pintar(R, raio, A, posterHoldClock);
     gfx_recorte(R.x + 6.0f, R.y, R.w - 12.0f, R.h);
     if (aPil > 0.0f) {
       if (mostra == M_CARTAO) desenharCartao(&mostraC, mostraQual, r, A * conteudoA * aPil);
@@ -2347,6 +2353,7 @@ void ilha_abrir_sessao(void) {
   vooDesde = svooDesde = pousouEm = altBase = 0; vooT = svooT = 0.0f;
   vooArte[0] = vooCapa[0] = svooPoster[0] = 0; svooIconeA = 1.0f;
   pontoEnquete = pontoPediu = coberta = ultRectOk = relogioFocado = 0;
+  posterHoldClock = 0.0f;
   W = vW = H = vH = A = conteudoA = 0.0f; ultQuadro = 0;
   dsMostra = dsVez = dsCartao = 0;
 #ifdef NV_TOUCH_UI
