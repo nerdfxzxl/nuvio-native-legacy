@@ -373,14 +373,19 @@ float central_segurar_progresso(Uint32 agora) {
   return 0.0f;
 }
 
-// Both clock islands draw the fill before their text, within their own scale.
-void central_segurar_desenhar(GfxRect r, float raio, float a, Uint32 agora) {
-  float p = central_segurar_progresso(agora), cr, cg, cb;
+// Reusable native Dynamic Clock fill shared by CH+ and poster long-OK.
+// This paints the existing accent reveal; callers retain their own hold timer.
+void central_segurar_pintar(GfxRect r, float raio, float a, float p) {
+  float cr, cg, cb;
   if (p <= 0.0f || a <= 0.0f) return;
   ajustes_acento(&cr, &cg, &cb);
   gfx_recorte(r.x, r.y, r.w * p, r.h);
   gfx_cor(r, raio, cr, cg, cb, a);
   gfx_sem_recorte();
+}
+
+void central_segurar_desenhar(GfxRect r, float raio, float a, Uint32 agora) {
+  central_segurar_pintar(r, raio, a, central_segurar_progresso(agora));
 }
 
 int central_tecla(const SDL_Event *e, int pode) {
