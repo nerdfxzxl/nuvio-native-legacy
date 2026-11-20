@@ -177,7 +177,7 @@ need("Poster genre is an append-only persisted setting, on by default",
 need("Genre and IMDb on posters independently control drawing",
      "ajustes_poster_genero()" in home
      and "ajustes_notas_home()" in home
-     and 'const char *genero = (semMeta || !ajustes_poster_genero()) ? NULL' in home
+     and 'const char *genero = !ajustes_poster_genero() ? NULL' in home
      and "int imdbRating = orig && ci && ajustes_notas_home()" in home)
 need("Wide poster artwork no longer receives lower-half gradient",
      "if (editorial(tipo)) gfx_veu_card_por(NV_EDITORIAL_VEU_F" not in home
