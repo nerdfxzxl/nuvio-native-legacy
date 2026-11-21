@@ -153,6 +153,9 @@ int cacheboost_buffer_mb(int opcao, long livreMb) {
 }
 
 #ifndef NV_ANDROID
+void cacheboost_backend_audioajuste(int a, int b, int c, int n) {
+  (void)a; (void)b; (void)c; (void)n;
+}
 void cacheboost_backend_ganho(int pct) { (void)pct; }
 void cacheboost_backend_cache(int mb) { (void)mb; }
 void cacheboost_backend_titulo(const char *id) { (void)id; }

@@ -68,7 +68,7 @@ static jmethodID mPararMantendoPreparo;
 static unsigned preparoAdotar;
 // F07 (optional, like abrirPosicao): cache(mb) and ganho(pct). A shell without
 // them simply has no seek cache and no boost.
-static jmethodID mCache, mGanho, mBuffer, mKbps;
+static jmethodID mCache, mGanho, mBuffer, mKbps, mAudioAjustes;
 // Warm resume (#492, optional too): titulo(id) and descartarGuardado().
 static jmethodID mTitulo, mDescartar, mMorno, mQuadro;
 // #202 (opcional, como os de cima): velocidade(centesimos). Casca sem ele =
@@ -109,6 +109,8 @@ static int resolverMetodos(JNIEnv *env) {
   if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); mKbps = NULL; }
   mGanho = (*env)->GetStaticMethodID(env, gCls, "ganho", "(I)V");
   if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); mGanho = NULL; }
+  mAudioAjustes = (*env)->GetStaticMethodID(env, gCls, "audioAdjustments", "(IIII)V");
+  if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); mAudioAjustes = NULL; }
   mVelocidade = (*env)->GetStaticMethodID(env, gCls, "velocidade", "(I)V");
   if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); mVelocidade = NULL; }
   mPreparar = (*env)->GetStaticMethodID(env, gCls, "preparar", "(Ljava/lang/String;Ljava/lang/String;IIIIILjava/lang/String;I)V");
@@ -951,6 +953,13 @@ void cacheboost_backend_ganho(int pct) {
   if (!mGanho || !ativo || pct == ganhoEnviado) return;
   ganhoEnviado = pct;
   kInt(mGanho, pct);
+}
+void cacheboost_backend_audioajuste(int amplificacaoDb, int baixoDb, int centroDb, int noite) {
+  JNIEnv *env = ambiente();
+  if (!env || !mAudioAjustes) return;
+  (*env)->CallStaticVoidMethod(env, gCls, mAudioAjustes,
+    (jint)amplificacaoDb, (jint)baixoDb, (jint)centroDb, (jint)noite);
+  fimChamada(env);
 }
 int video_tocar(const char *u) { return video_tocar_posicao(u, 0.0); }
 

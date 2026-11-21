@@ -75,6 +75,9 @@ double cacheboost_volume_db(int pct);
 // --- backend hooks -------------------------------------------------------------
 // Implemented by video_android.c; the other targets get the no-ops in
 // cacheboost.c. `pct` 0..200; `mb` = cache limit for the NEXT open (0 = off).
+// Live PCM adjustments: independent broadband amplification, bass shelving,
+// center channel balance and night compression. Passthrough stays untouched.
+void cacheboost_backend_audioajuste(int amplificacaoDb, int baixoDb, int centroDb, int noite);
 void cacheboost_backend_ganho(int pct);
 void cacheboost_backend_cache(int mb);
 // Warm resume (#492): the title of the NEXT open (arms with the cache; empty =

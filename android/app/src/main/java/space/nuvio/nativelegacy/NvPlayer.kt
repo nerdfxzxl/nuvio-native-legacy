@@ -280,6 +280,10 @@ object NvPlayer {
     private var cacheTiques = 0
     // Volume of this open (0..200) and the processor of its audio sink.
     private var ganhoPct = 100
+    @Volatile private var amplificacaoDb = 0
+    @Volatile private var baixoDb = 0
+    @Volatile private var centroDb = 0
+    @Volatile private var noiteNivel = 0
     // With bitstream (passthrough) the processor is bypassed by the sink, so
     // its gain needs no passthrough state here; C caps the row at 100%.
     private var processador: GanhoAudioProcessor? = null
@@ -297,6 +301,10 @@ object NvPlayer {
     private fun aplicarGanho() {
         player?.volume = GanhoMath.volumePlayer(ganhoPct)
         processador?.ganho = GanhoMath.reforco(ganhoPct)
+        processador?.amplificacaoDb = amplificacaoDb
+        processador?.baixoDb = baixoDb
+        processador?.centroDb = centroDb
+        processador?.noiteNivel = noiteNivel
     }
 
     // StreamFit passivo (PassivoMedidor.kt). Entrega de qualquer fio (os
@@ -1135,6 +1143,18 @@ object NvPlayer {
     @JvmStatic fun descartarGuardado() { principal.post { CacheMidia.descartar("profile switch"); esquecerQuadro() } }
     @JvmStatic fun ganho(pct: Int) {
         principal.post { ganhoPct = GanhoMath.pct(pct); aplicarGanho() }
+    }
+
+    // Live adjustments persist only while requested by the native Audio panel.
+    // The processor is bypassed entirely for bitstream passthrough.
+    @JvmStatic fun audioAdjustments(amp: Int, bass: Int, center: Int, night: Int) {
+        principal.post {
+            amplificacaoDb = amp.coerceIn(0, 10)
+            baixoDb = bass.coerceIn(-12, 6)
+            centroDb = center.coerceIn(-10, 30)
+            noiteNivel = night.coerceIn(0, 3)
+            aplicarGanho()
+        }
     }
     // C reapplies speed after each open; keep PCM policy with that player.
     @JvmStatic fun velocidade(centesimos: Int) {
