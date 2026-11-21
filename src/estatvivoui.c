@@ -93,28 +93,10 @@ static int playerInfoFocused;
 static EvInfoLinha playerInfoLinhas[48];
 static int playerInfoN;
 static void playerInfoMontarLinhas(void);
-static float playerInfoLinhaH(const EvInfoLinha *l) {
-  if (l->secao) return 40.0f;
-  if (!strcmp(l->rotulo, "File")) {
-    int chars = (int)strlen(l->valor);
-    int rows = (chars + 43) / 44;
-    if (rows < 2) rows = 2;
-    if (rows > 13) rows = 13;
-    return 14.0f + rows * 27.0f;
-  }
-  return 34.0f;
-}
-static float playerInfoAlturaTotal(void) {
-  float total = 0.0f;
-  for (int i = 0; i < playerInfoN; i++) total += playerInfoLinhaH(&playerInfoLinhas[i]);
-  return total;
-}
-static void playerInfoGarantirScroll(void) {
-  float visible = NV_VTELA_H - EVU_TOPO - 24.0f - 178.0f;
-  float max = playerInfoAlturaTotal() - visible;
-  if (max < 0) max = 0;
-  if (playerInfoScroll < 0) playerInfoScroll = 0;
-  if (playerInfoScroll > (int)max) playerInfoScroll = (int)max;
+static void playerInfoGarantirScroll(void);
+static int editando, focoEd, perfilTiles = -1, nTiles[EV_TAM_N], tiles[EV_TAM_N][6];
+static const char *const tileNome[] = {
+  "Velocidade", "Buffer à frente", "Fonte", "Conexões e servidor", "Erros e reconexões", "Quadros perdidos"
 };
 static const char *const tileIcone[] = {
   "aj_gauge", "aj_database", "aj_film", "aj_server", "aj_rotate-cw", "aj_monitor-play"
@@ -1447,19 +1429,30 @@ static void playerInfoAdicionar(int secao, const char *rotulo, const char *valor
   snprintf(l->rotulo, sizeof l->rotulo, "%s", rotulo ? rotulo : "");
   snprintf(l->valor, sizeof l->valor, "%s", valor && valor[0] ? valor : "—");
 }
+static float playerInfoLinhaH(const EvInfoLinha *l) {
+  if (l->secao) return 40.0f;
+  if (!strcmp(l->rotulo, "File")) {
+    int chars = (int)strlen(l->valor);
+    int rows = (chars + 43) / 44;
+    if (rows < 2) rows = 2;
+    if (rows > 13) rows = 13;
+    return 14.0f + rows * 27.0f;
+  }
+  return 34.0f;
+}
+static float playerInfoAlturaTotal(void) {
+  float total = 0.0f;
+  for (int i = 0; i < playerInfoN; i++) total += playerInfoLinhaH(&playerInfoLinhas[i]);
+  return total;
+}
 static void playerInfoGarantirScroll(void) {
-  int visiveis = 26, max;
-  if (playerInfoFoco < 0) playerInfoFoco = 0;
-  if (playerInfoFoco >= playerInfoN) playerInfoFoco = playerInfoN ? playerInfoN - 1 : 0;
-  max = playerInfoN - visiveis;
+  float visible = NV_VTELA_H - EVU_TOPO - 24.0f - 178.0f;
+  float max = playerInfoAlturaTotal() - visible;
   if (max < 0) max = 0;
   if (playerInfoScroll < 0) playerInfoScroll = 0;
-  if (playerInfoScroll > max) playerInfoScroll = max;
-  if (!playerInfoHudFoco) {
-    if (playerInfoFoco < playerInfoScroll) playerInfoScroll = playerInfoFoco;
-    if (playerInfoFoco >= playerInfoScroll + visiveis) playerInfoScroll = playerInfoFoco - visiveis + 1;
-  }
+  if (playerInfoScroll > (int)max) playerInfoScroll = (int)max;
 }
+
 static void playerInfoMontarLinhas(void) {
   char b[512], pos[24], dur[24];
   playerInfoN = 0;
