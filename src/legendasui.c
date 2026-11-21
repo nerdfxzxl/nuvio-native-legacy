@@ -195,6 +195,13 @@ static LuiLinha linhas[LUI_MAX_LINHAS];
 static int nLinhasV;
 
 static int mais, alvo, aberto;
+static int fonteModo, fonteAtiva, fonteFoco, fonteBarraFoco, nFontes;
+static struct { int addon; char nome[64]; } fontes[ADDONS_MAX+1];
+static unsigned fontesVersao = ~0u;
+static int fontesEmbutidas = -1;
+static void montarFontes(void);
+static void montarLinhas(void);
+static void focarAtiva(void);
 static int menu, menuFoco, okPendente, okLongo;
 static Uint32 okDesde;
 static char menuVolta[96], verIdioma[16];
@@ -309,6 +316,37 @@ static void linhaCandidata(int i, int slot, const char *chave) {
   linhas[nLinhasV - 1].cand = i;
 }
 
+// Source IDs are installed addon indices, not subtitle-list positions.
+// Build a pill for every enabled subtitle addon even when it yielded no hits.
+static void montarFontes(void) {
+  int emb=0,previous=nFontes && fonteAtiva<nFontes?fontes[fonteAtiva].addon:-2;
+  unsigned versao=addons_versao();
+  for(int i=0;i<nCand;i++) if(cand[i].embutida) {emb=1;break;}
+  if(fontesVersao==versao && fontesEmbutidas==emb) return;
+  fontesVersao=versao; fontesEmbutidas=emb; nFontes=0;
+  if(emb) {
+    fontes[nFontes].addon=-1;
+    snprintf(fontes[nFontes++].nome,64,"Built-in");
+  }
+  for(int i=0;i<addons_n() && nFontes<ADDONS_MAX+1;i++) {
+    if(!addons_ativo(i) || (addons_sondado(i) && !addons_fornece(i,ADD_LEGENDA))) continue;
+    const char *nome=addons_nome(i);
+    fontes[nFontes].addon=i;
+    snprintf(fontes[nFontes].nome,64,"%s",nome&&*nome?nome:"Addon");
+    nFontes++;
+  }
+  fonteAtiva=0;
+  for(int i=0;i<nFontes;i++) if(fontes[i].addon==previous) {fonteAtiva=i;break;}
+  fonteFoco=fonteAtiva;
+}
+static void fonteEscolher(int i) {
+  if(i<0||i>=nFontes)return;
+  fonteAtiva=fonteFoco=i;
+  fonteBarraFoco=0; focoChave[0]=0; foco=0;
+  montarLinhas(); focarAtiva();
+}
+
+
 static void montarLinhas(void) {
   char prim[24];
   const char *sec = legenda2_identidade();
@@ -316,7 +354,20 @@ static void montarLinhas(void) {
   capturar();
   idPrimario(prim);
   nLinhasV = 0;
-  if (!mais && !ver) {
+  if(fonteModo) {
+    montarFontes();
+    // The off action remains available whichever source is selected.
+    linhaFixa(LR_NENHUMA,0,"source|off");
+    int origin=nFontes ? fontes[fonteAtiva].addon : -2;
+    for(i=0;i<nCand;i++) {
+      int match=origin==-1 ? cand[i].embutida :
+                origin>=0 && !cand[i].embutida && cand[i].leg.addonIndice==origin;
+      if(match) {
+        char key[96]; snprintf(key,sizeof key,"source|%s",cand[i].id);
+        linhaCandidata(i,0,key);
+      }
+    }
+  } else if (!mais && !ver) {
     uint64_t assin = recAssinatura();
     int p, q, ativa = -1;
     if (assin != recAssin) {
@@ -387,6 +438,18 @@ static void focar(int i) {
   foco = i; syncAcao = 0;
   snprintf(focoChave, sizeof focoChave, "%s", linhas[i].chave);
 }
+static void focarAtiva(void) {
+  char prim[24]; idPrimario(prim);
+  for(int i=0;i<nLinhasV;i++) {
+    if(prim[0] && linhas[i].tipo==LR_CAND && linhas[i].cand>=0 &&
+       !strcmp(cand[linhas[i].cand].id,prim)) {focar(i);return;}
+    if(!prim[0] && linhas[i].tipo==LR_NENHUMA) {focar(i);return;}
+  }
+  if(nLinhasV)focar(0);
+}
+void legendasui_focar_ativa(void) {
+  montarLinhas(); fonteBarraFoco=0; focarAtiva();
+}
 
 static void avisar(const char *s) {
   snprintf(aviso, sizeof aviso, "%s", s);
@@ -397,7 +460,15 @@ void legendasui_abrir(void) {
   char prim[24];
   int i;
   aberto = 1; mais = ajustes_legendas_todas() || !temPreferencia(); ver = 0; menu = okPendente = okLongo = 0; alvo = 0; rolagemZerar(); aviso[0] = 0;
+  fonteModo=1; fonteBarraFoco=0; fonteAtiva=fonteFoco=nFontes=0; fontesVersao=~0u; fontesEmbutidas=-1;
   focoChave[0] = 0; foco = 0;
+  capturar(); montarFontes(); idPrimario(prim);
+  // Open the provider containing the active subtitle, without changing it.
+  for(int c=0;c<nCand;c++)if(prim[0] && !strcmp(cand[c].id,prim)) {
+    int source=cand[c].embutida?-1:cand[c].leg.addonIndice;
+    for(int j=0;j<nFontes;j++)if(fontes[j].addon==source) {fonteAtiva=fonteFoco=j;break;}
+    break;
+  }
   montarLinhas();
   // Open on the row of the active primary, else on the first row.
   idPrimario(prim);
@@ -416,6 +487,7 @@ void legendasui_reiniciar(void) {
   legenda2_reiniciar();
   aberto = menu = okPendente = okLongo = 0;
   mais = 0; ver = 0; alvo = 0; focoChave[0] = 0; foco = 0; rolagemZerar(); aviso[0] = 0;
+  fonteModo=fonteBarraFoco=nFontes=0;
 }
 
 // --- choosing ----------------------------------------------------------------------
@@ -523,7 +595,7 @@ static void abrirMenu(void) {
   if (!temMenu(l)) return;
   menu = 1; menuFoco = 0; menuTipo = l->tipo;
   menuT = 0.0f; menuFocoA[0] = menuFocoA[1] = menuFocoA[2] = 0.0f;
-  menuRecomendada = !mais && !ver;
+  menuRecomendada = !fonteModo && !mais && !ver;
   memset(&menuCand, 0, sizeof menuCand);
   if (okPendente) {
     menuTipo = okLinha.tipo; menuCand = okCand;
@@ -606,13 +678,29 @@ int legendasui_evento(const SDL_Event *e) {
     return LEGUI_TRATADO;
   }
   if (k == SDLK_AC_BACK || k == SDLK_ESCAPE || k == SDLK_BACKSPACE) {
+    if (fonteBarraFoco) { fonteBarraFoco=0; return LEGUI_TRATADO; }
     if (ver) { ver = 0; rolagemZerar(); snprintf(focoChave, sizeof focoChave, "%s", verGrupo); montarLinhas(); return LEGUI_TRATADO; }
     if (mais && temPreferencia() && !ajustes_legendas_todas()) { mais = 0; snprintf(focoChave, sizeof focoChave, "mais"); rolagemZerar(); montarLinhas(); return LEGUI_TRATADO; }
     aberto = 0;
     return LEGUI_FECHAR;
   }
+  if(fonteModo && fonteBarraFoco) {
+    if(k==SDLK_UP)return LEGUI_ABAS;
+    if(k==SDLK_DOWN){fonteBarraFoco=0;return LEGUI_TRATADO;}
+    if(k==SDLK_LEFT&&fonteFoco>0)fonteFoco--;
+    else if(k==SDLK_RIGHT&&fonteFoco<nFontes-1)fonteFoco++;
+    else if(ok && !e->key.repeat)fonteEscolher(fonteFoco);
+    return LEGUI_TRATADO;
+  }
+  if(k==SDLK_UP && foco==0 && fonteModo) {
+    fonteBarraFoco=1;fonteFoco=fonteAtiva;return LEGUI_TRATADO;
+  }
   if (k == SDLK_UP)   { if (foco > 0) focar(foco - 1); return LEGUI_TRATADO; }
   if (k == SDLK_DOWN) { if (foco < nLinhasV - 1) focar(foco + 1); return LEGUI_TRATADO; }
+  if(fonteModo && (k==SDLK_LEFT||k==SDLK_RIGHT)) {
+    // Both directions go to Built-in / first addon, never select a source.
+    fonteBarraFoco=1;fonteFoco=0;return LEGUI_TRATADO;
+  }
   if (k == SDLK_LEFT || k == SDLK_RIGHT) {
     int d = k == SDLK_RIGHT ? 1 : -1;
     if (l && l->tipo == LR_ALVO) { alvo = d > 0; return LEGUI_TRATADO; }
@@ -703,15 +791,16 @@ int legendasui_teste_foco(int *alvoOut, int *syncOut) {
 }
 
 static int luVis(void) {
-  int n = (int)((NV_VTELA_H - 48.0f - 40.0f - 60.0f - 183.0f + 4.0f) / (LU_LN_H + LU_LN_VAO));
-  return n > 7 ? 7 : n < 2 ? 2 : n;
+  // Source pills consume a full row; keep a bounded native list for TVs.
+  int n = (int)((NV_VTELA_H-48.0f-40.0f-60.0f-183.0f-67.0f+4.0f)/(LU_LN_H+LU_LN_VAO));
+  return n>5?5:n<2?2:n;
 }
 
 float legendasui_altura(void) {
   int n;
   montarLinhas();
   n = nLinhasV < luVis() ? nLinhasV : luVis();
-  return LU_PAD_Y + LU_TIT_H + 14.0f + n * LU_LN_H + (n > 0 ? (n - 1) * LU_LN_VAO : 0.0f) +
+  return LU_PAD_Y + 126.0f + n * LU_LN_H + (n > 0 ? (n - 1) * LU_LN_VAO : 0.0f) +
          14.0f + LU_PE_H + LU_PAD_Y;
 }
 
@@ -1031,7 +1120,7 @@ static const char *menuRot(int i) {
 static const char *menuIcone(int i) { return i == 1 && menuTiraSecundaria() ? "pl_eye-off" : menuLin[i].icone; }
 static GfxRect menuGeo(GfxRect c) {
   CtxLinha l[3];
-  float ry = c.y + LU_PAD_Y + LU_TIT_H + 14.0f + (foco - rolagem) * (LU_LN_H + LU_LN_VAO);
+  float ry = c.y + LU_PAD_Y + (fonteModo ? 126.0f : LU_TIT_H + 14.0f) + (foco - rolagem) * (LU_LN_H + LU_LN_VAO);
   float w = 0.0f, h = LU_MENU_PAD * 2.0f + 3 * ctx_menu_passo() - 4.0f, y;
   for (int i = 0; i < 3; i++) { l[i].rot = menuRot(i); l[i].icone = menuIcone(i); }
   w = ctx_menu_largura(l, 3);
@@ -1060,25 +1149,37 @@ void legendasui_corpo(GfxRect c, float a) {
   int vis = luVis(), fim, i;
   montarLinhas();
   pont = !menu && a > 0.99f && ponteiro_ativo();
-  // Three consistent, underlined page tabs, shared with Audio; not segmented pills.
-  {
-    const char *tabs[3] = { "Subtitles", "Style", "Sync" };
-    float tw[3] = {134.0f, 91.0f, 76.0f};
-    float tx = x0 + w - (134.0f + 91.0f + 76.0f + 20.0f);
-    TxtLinha title = txt_linha(TXT_ILHA_PERGUNTA, "Subtitles", 243, 242, 239, 255);
-    txt_desenhar_alpha(title, x0 + 10.0f, y, a);
-    for (int k = 0; k < 3; k++) {
-      TxtLinha t = txt_linha(TXT_ILHA_SUB, tabs[k], k == 0 ? 245 : 162,
-                              k == 0 ? 245 : 174, k == 0 ? 248 : 190, 255);
-      txt_desenhar_alpha(t, tx + 8.0f, y + 12.0f, a);
-      gfx_cor((GfxRect){tx, y + 50.0f, tw[k] - 8.0f, k == 0 ? 3.0f : 1.0f},
-              0.0f, 1.0f, 1.0f, 1.0f, (k == 0 ? .86f : .16f) * a);
-      if (pont && k == 1) ponteiro_alvo(tx, y + 8.0f, tw[k], 50.0f, NULL, ponteiroAbaEstilo, 0, 0);
-      if (pont && k == 2) ponteiro_alvo(tx, y + 8.0f, tw[k], 50.0f, NULL, ponteiroAbaSync, 0, 0);
-      tx += tw[k];
-    }
+  faixas_legenda_tabs(x0,y,w,a);
+  if(pont) {
+    float cell=w/3.0f;
+    ponteiro_alvo(x0+cell,y,cell,58.0f,NULL,ponteiroAbaEstilo,0,0);
+    ponteiro_alvo(x0+2*cell,y,cell,58.0f,NULL,ponteiroAbaSync,0,0);
   }
-  y += LU_TIT_H + 14.0f;
+  // Provider tabs are views, not track selections; changing one never
+  // invokes the video or subtitle pipeline.
+  {
+    float sy=y+68.0f, width=136.0f, gap=7.0f, slot=0.0f;
+    int viewed=fonteBarraFoco?fonteFoco:fonteAtiva;
+    int first=viewed>2?viewed-2:0;
+    gfx_recorte(x0+6.0f,sy,w-12.0f,47.0f);
+    for(int k=first;k<nFontes;k++) {
+      float xx=x0+10.0f+slot*(width+gap);
+      if(xx>x0+w)break;
+      GfxRect pill={xx,sy+3.0f,width,36.0f};
+      int selected=k==fonteAtiva;
+      int focused=fonteBarraFoco&&k==fonteFoco;
+      if(selected)gfx_cor(pill,18.0f/pill.h,.97f,.975f,.99f,a);
+      else gfx_cor(pill,18.0f/pill.h,.15f,.17f,.20f,.53f*a);
+      if(focused)gfx_anel(pill,18.0f/pill.h,2.0f,
+                         selected?.24f:1.0f,selected?.30f:1.0f,selected?.40f:1.0f,a);
+      TxtLinha t=txt_linha_corta(TXT_ILHA_SUB,fontes[k].nome,
+                      selected?25:209,selected?30:214,selected?37:225,255,width-17.0f);
+      txt_desenhar_alpha(t,pill.x+(pill.w-t.w)*.5f,pill.y+(pill.h-t.h)*.5f,a);
+      slot+=1.0f;
+    }
+    gfx_recorte(c.x,c.y,c.w,c.h);
+  }
+  y+=126.0f;
 #ifdef NV_TOUCH_UI
   if (telefoneui_ativo()) {
     if (!toquerol_livre(&toqueLegendas)) {
@@ -1116,36 +1217,18 @@ void legendasui_corpo(GfxRect c, float a) {
     y += (fim - rolagem) * LU_LN_H + (fim - rolagem > 0 ? (fim - rolagem - 1) * LU_LN_VAO : 0.0f) + 14.0f;
   }
   gfx_cor((GfxRect){ x0, y, w, 1.0f }, 0.0f, 1, 1, 1, 0.07f * a);
-  { float yc = y + 16.0f + 15.0f;
+  {
+    float yc=y+31.0f; char q[48];
+    int n=nLinhasV;
+    snprintf(q,sizeof q,"%d of %d",n?foco+1:0,n);
     if (aviso[0] && (Sint32)(avisoAte - SDL_GetTicks()) > 0) {
-      TxtLinha l = txt_linha_corta(TXT_ILHA_APOIO, aviso, 255, 214, 120, 255, w - 20.0f);
-      txt_desenhar_alpha(l, x0 + 10.0f, yc - (float)l.h * 0.5f, a);
+      TxtLinha t=txt_linha_corta(TXT_ILHA_APOIO,aviso,255,214,120,255,w-20.0f);
+      txt_desenhar_alpha(t,x0+10.0f,yc-t.h*.5f,a);
     } else {
-      char q[32];
-      // "Segure OK" saiu daqui: a linha em foco ja diz (Mais opcoes).
-      const char *k[3] = { "OK", "\xe2\x86\x92", "Voltar" };
-      const char *rt[3] = { "Usar", "Estilo", mais || ver ? "Voltar" : "Fechar" };
-      const char *km[2] = { "OK", "Voltar" }, *rm[2] = { "Usar", "Fechar" };
-      int naSync = nLinhasV && linhas[foco].tipo == LR_SYNC, nf = 0, pf = 0;
-      // The AutoSync row is not a choice: it is left out of "N de M", which
-      // disappears on it, and the hints say what OK does there.
-      for (i = 0; i < nLinhasV; i++) if (linhas[i].tipo != LR_SYNC) { nf++; if (i <= foco) pf = nf; }
-      if (!naSync) {
-        snprintf(q, sizeof q, i18n("%d de %d"), nf ? pf : 0, nf);
-        { TxtLinha l = txt_linha(TXT_ILHA_APOIO, q, 243, 242, 239, 115);
-          txt_desenhar_alpha(l, x0 + 10.0f, yc - (float)l.h * 0.5f, a); }
-        if (menu) plrui_dicas(km, rm, 2, x0 + w - 10.0f, yc, 1, a);
-        else plrui_dicas(k, rt, 3, x0 + w - 10.0f, yc, 1, a);
-      } else {
-        const char *rot[4], *ks[3] = { "OK", "\xe2\x86\x90 \xe2\x86\x92", "Voltar" };
-        int n = nAcoes(linhas[foco].slot, rot, 4);
-        const char *rs[3] = { n ? rot[syncAcao < n ? syncAcao : 0] : "", "Op\xc3\xa7\xc3\xa3o", "Fechar" };
-        if (n == 1) { const char *k2[2] = { "OK", "Voltar" }, *r2[2] = { rot[0], "Fechar" };
-          plrui_dicas(k2, r2, 2, x0 + w - 10.0f, yc, 1, a); }
-        else if (n) plrui_dicas(ks, rs, 3, x0 + w - 10.0f, yc, 1, a);
-        else plrui_dicas(ks + 2, rs + 2, 1, x0 + w - 10.0f, yc, 1, a);
-      }
-    } }
+      TxtLinha t=txt_linha(TXT_ILHA_APOIO,q,243,242,239,115);
+      txt_desenhar_alpha(t,x0+10.0f,yc-t.h*.5f,a);
+    }
+  }
   if (menu) {
     // The island clips its body; the side menu extends outside that rectangle.
     gfx_sem_recorte(); desenharMenu(c, a);
