@@ -1955,6 +1955,7 @@ void player_abrir(int indiceCatalogo, const char *url) {
 #endif
   botao = PLR_PLAY;
   tempoFoco = infoPanelFoco = infoTeclaEmBaixo = infoSegurou = 0;
+  estatvivo_player_focar(0);
   memset(focoB, 0, sizeof focoB);
   memset(focoBV, 0, sizeof focoBV);
   estatvivo_player_nova_sessao();
@@ -4343,6 +4344,7 @@ void player_evento(const SDL_Event *e) {
       if (visivel || anim > 0.004f) {
         if (scrubbing) terminarSalto();
         infoPanelFoco = 0; tempoFoco = 0;
+        estatvivo_player_focar(0);
         esconderControles(); anim = 0.0f;
         intro_botao_esconder(monoSeg());
         return;
@@ -4512,6 +4514,7 @@ void player_evento(const SDL_Event *e) {
   if (infoPanelFoco) {
     if (k == SDLK_RETURN || k == SDLK_KP_ENTER || k == SDLK_SPACE) {
       if (!e->key.repeat) estatvivo_player_expandir();
+      estatvivo_player_focar(1);
       acordar(); return;
     }
     if (k == SDLK_UP || k == SDLK_DOWN || k == SDLK_PAGEUP || k == SDLK_PAGEDOWN) {
@@ -4520,6 +4523,7 @@ void player_evento(const SDL_Event *e) {
     }
     if (k == SDLK_LEFT) {
       infoPanelFoco = 0; barraFoco = 1; tempoFoco = 0;
+      estatvivo_player_focar(0);
       acordar(); return;
     }
   }
@@ -4559,6 +4563,7 @@ void player_evento(const SDL_Event *e) {
     if (!barraFoco) { barraFoco = 1; tempoFoco = 0; }
     else if (estatvivo_player_aberto()) {
       barraFoco = 0; tempoFoco = 0; infoPanelFoco = 1;
+      estatvivo_player_focar(1);
     }
     else if (trechoPulavel(NULL)) skipFoco = 1;
     else { esconderControles(); return; }

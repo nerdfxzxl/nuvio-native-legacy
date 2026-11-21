@@ -2003,9 +2003,9 @@ static void audioAjDesenhar(GfxRect c, float a) {
       GfxRect pr = {plus, yc - 19.0f, 38.0f, 38.0f};
       plrui_material(ml, 14.0f, 0, a * .82f);
       plrui_material(pr, 14.0f, 0, a * .82f);
-      gfx_icone((GfxRect){minus + 8.0f, yc - 11.0f, 22.0f, 22.0f}, "pl_minus",
+      gfx_icone((GfxRect){minus + 8.0f, yc - 11.0f, 22.0f, 22.0f}, "aj_minus",
                  1, 1, 1, a);
-      gfx_icone((GfxRect){plus + 8.0f, yc - 11.0f, 22.0f, 22.0f}, "pl_plus",
+      gfx_icone((GfxRect){plus + 8.0f, yc - 11.0f, 22.0f, 22.0f}, "aj_plus",
                  1, 1, 1, a);
       {
         TxtLinha value = txt_linha(TXT_ILHA_FORTE, text, 245, 246, 249, 255);
