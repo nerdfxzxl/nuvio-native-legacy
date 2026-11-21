@@ -26,6 +26,8 @@
 #include "legauto.h"
 #include "legmemoria.h"
 #include "cacheboost.h"
+#include "dados.h"
+#include "perfis.h"
 #include "velocidade.h"
 #include "faixasmkv.h"
 #define NV_ESCALA_TELA   // o arquivo inteiro mede pela tela virtual (escala.h)
@@ -44,6 +46,16 @@
 static int aberta, coluna, foco[3];
 // #202: foco na linha da velocidade e o ultimo valor pedido pela folha.
 static int velFoco, velPedidaUi = VEL_NORMAL;
+
+// Dedicated Audio Adjustments page. The track selector keeps its existing
+// volume row; bass EQ and dB amplification are independent controls.
+static int audioPagina, audioAjFoco = 1, audioAjNightFoco;
+static int audioAjAmp, audioAjBass, audioAjCenter, audioAjNight, audioAjPersist;
+static int audioAjPerfil = -1;
+static void audioAjCarregar(void);
+static void audioAjNovaSessao(void);
+static void audioAjEnviar(void);
+
 // ROLAGEM POR COLUNA, em LINHAS (nao em pixels): a folha desenhava todas as
 // faixas a partir do topo e o painel tem altura limitada — com muitas legendas
 // as ultimas caiam fora do painel e da tela. O foco chegava nelas, os olhos
@@ -430,6 +442,7 @@ static void reiniciarFaixas(int preservarPrebusca) {
   legendasui_reiniciar();   // F04: the second subtitle belongs to the session too
   // #202: speed is per playback: a new title starts at 1x.
   velFoco = 0; velPedidaUi = VEL_NORMAL; video_velocidade(VEL_NORMAL);
+  audioAjNovaSessao();
 }
 void faixas_reiniciar(void) { reiniciarFaixas(0); }
 #ifdef NV_ANDROID
@@ -479,10 +492,93 @@ static int volFocavel(void) { return cacheboost_suportado(); }
 // `velPedidaUi` is what the person last asked; if the platform refuses
 // (LG/.tpk answer later), the row goes away and one notice says why.
 // Live channel: no speed (the live edge cannot be outrun).
-static int velVisivel(void) { return video_velocidade_suportada() && !player_id_canal()[0]; }
+// Playback Speed is intentionally omitted from Audio (it belongs elsewhere).
+static int velVisivel(void) { return 0; }
 // Visible but dimmed and not focusable while the audio goes out as passthrough
 // (Android: ExoPlayer cannot change the tempo of a bitstream it does not decode).
 static int velFocavel(void) { return velVisivel() && !video_velocidade_bloqueada(); }
+
+
+#define AUDIO_AJ_N 5
+static void audioAjArquivo(char *b, size_t n) {
+  snprintf(b, n, "audio-ajustes-p%d.txt", perfis_ativo());
+}
+static void audioAjCarregar(void) {
+  char arq[64], *s;
+  int am=0, ba=0, ce=0, no=0, pe=0;
+  int perfil = perfis_ativo();
+  if (audioAjPerfil == perfil) return;
+  audioAjPerfil = perfil;
+  audioAjAmp = audioAjBass = audioAjCenter = audioAjNight = audioAjPersist = 0;
+  audioAjArquivo(arq, sizeof arq);
+  s = dados_ler(arq);
+  if (!s) return;
+  if (sscanf(s, "%d %d %d %d %d", &pe, &am, &ba, &ce, &no) == 5 && pe == 1) {
+    audioAjPersist = 1;
+    audioAjAmp = am < 0 ? 0 : am > 10 ? 10 : am;
+    audioAjBass = ba < -12 ? -12 : ba > 6 ? 6 : ba;
+    audioAjCenter = ce < -10 ? -10 : ce > 30 ? 30 : ce;
+    audioAjNight = no < 0 ? 0 : no > 3 ? 3 : no;
+  }
+  free(s);
+}
+static void audioAjSalvar(void) {
+  char arq[64], txt[80];
+  audioAjArquivo(arq, sizeof arq);
+  if (!audioAjPersist) { dados_apagar(arq); return; }
+  snprintf(txt, sizeof txt, "%d %d %d %d %d\n",
+           audioAjPersist, audioAjAmp, audioAjBass, audioAjCenter, audioAjNight);
+  dados_gravar(arq, txt);
+}
+static void audioAjEnviar(void) {
+  if (cacheboost_suportado())
+    cacheboost_backend_audioajuste(audioAjAmp, audioAjBass, audioAjCenter, audioAjNight);
+}
+static void audioAjNovaSessao(void) {
+  audioAjCarregar();
+  if (!audioAjPersist) audioAjAmp = audioAjBass = audioAjCenter = audioAjNight = 0;
+  audioPagina = 0; audioAjFoco = 1; audioAjNightFoco = audioAjNight;
+  audioAjEnviar();
+}
+static void audioAjPasso(int dir, int rep) {
+  int step = (rep >= 8 ? 2 : 1) * (dir > 0 ? 1 : -1);
+  int *v = audioAjFoco == 0 ? &audioAjAmp : audioAjFoco == 1 ? &audioAjBass : &audioAjCenter;
+  int min = audioAjFoco == 0 ? 0 : audioAjFoco == 1 ? -12 : -10;
+  int max = audioAjFoco == 0 ? 10 : audioAjFoco == 1 ? 6 : 30;
+  *v += step;
+  if (*v < min) *v = min;
+  if (*v > max) *v = max;
+  audioAjEnviar(); audioAjSalvar();
+}
+static void audioAjResetar(void) {
+  if (audioAjFoco == 0) audioAjAmp = 0;
+  else if (audioAjFoco == 1) audioAjBass = 0;
+  else if (audioAjFoco == 2) audioAjCenter = 0;
+  else if (audioAjFoco == 3) audioAjNight = audioAjNightFoco = 0;
+  audioAjEnviar(); audioAjSalvar();
+}
+static void audioAjTecla(SDL_Keycode k, int rep) {
+  int ok = k == SDLK_RETURN || k == SDLK_KP_ENTER;
+  if (k == SDLK_UP) { if (audioAjFoco > 0) audioAjFoco--; return; }
+  if (k == SDLK_DOWN) { if (audioAjFoco < AUDIO_AJ_N - 1) audioAjFoco++; return; }
+  if (audioAjFoco <= 2) {
+    if (k == SDLK_LEFT || k == SDLK_RIGHT) audioAjPasso(k == SDLK_RIGHT ? 1 : -1, rep);
+    else if (ok && !rep) audioAjResetar(); // separate reset icon at each slider
+  } else if (audioAjFoco == 3) {
+    if (k == SDLK_LEFT && audioAjNightFoco > 0) audioAjNightFoco--;
+    else if (k == SDLK_RIGHT && audioAjNightFoco < 3) audioAjNightFoco++;
+    else if (ok && !rep) {
+      audioAjNight = audioAjNightFoco;
+      audioAjEnviar(); audioAjSalvar();
+    }
+  } else if (ok && !rep) {
+    audioAjPersist = !audioAjPersist;
+    audioAjSalvar();
+  } else if (k == SDLK_LEFT || k == SDLK_RIGHT) {
+    audioAjPersist = k == SDLK_RIGHT;
+    audioAjSalvar();
+  }
+}
 
 void faixas_abrir(void) { faixas_abrir_em(0); }
 
@@ -494,6 +590,9 @@ void faixas_abrir(void) { faixas_abrir_em(0); }
 // existir); o que muda e onde o foco comeca.
 void faixas_abrir_em(int col) {
   int n;
+  audioAjCarregar();
+  audioPagina = 0;
+  audioAjFoco = 1;
   aberta = 1;
   modo = (col == 1) ? 1 : 0;
   coluna = modo;                 // audio -> col 0; legenda -> col 1
@@ -1220,6 +1319,14 @@ void faixas_evento(const SDL_Event *e) {
   }
   if (e->type != SDL_KEYDOWN) return;
   k = e->key.keysym.sym;
+  if (!modo && audioPagina) {
+    if (k == SDLK_AC_BACK || k == SDLK_ESCAPE || k == SDLK_BACKSPACE) {
+      audioPagina = 0;
+      return;
+    }
+    audioAjTecla(k, e->key.repeat);
+    return;
+  }
   // ESTILO: Voltar fecha antes o controle aberto (slider, paleta, fontes).
   if (coluna == FX_COL_ESTILO && estiloTecla(k, e->key.repeat)) return;
   if (k == SDLK_AC_BACK || k == SDLK_ESCAPE || k == SDLK_BACKSPACE) { aberta = 0; return; }
@@ -1247,16 +1354,23 @@ void faixas_evento(const SDL_Event *e) {
   }
   if (!modo && k == SDLK_UP && foco[0] == 0 && velFocavel()) { velFoco = 1; return; }
   if (!modo && k == SDLK_UP && foco[0] == 0 && volFocavel()) { volFoco = 1; return; }
-  // Esquerda/direita andam entre a LISTA e o ESTILO, e so na folha de legenda.
-  // Na de audio nao ha para onde ir — antes elas pulavam para a coluna de
-  // legenda, que e justamente o que fazia os dois botoes do player parecerem o
-  // mesmo botao.
+  // Right from any Audio track opens the distinct Audio Adjustments tab.
+  if (!modo && k == SDLK_RIGHT && !e->key.repeat) {
+    audioPagina = 1;
+    audioAjFoco = 1; // Bass defaults as first focused adjustment.
+    audioAjNightFoco = audioAjNight;
+    return;
+  }
   if (k == SDLK_LEFT || k == SDLK_RIGHT) return;
   if (k == SDLK_UP)    { if (foco[coluna] > 0) foco[coluna]--; ajustarRolagem(); return; }
   if (k == SDLK_DOWN)  { if (foco[coluna] < nLinhas(coluna) - 1) foco[coluna]++;
                          ajustarRolagem(); return; }
   if (k == SDLK_RETURN || k == SDLK_KP_ENTER) {
-    aplicar(); aberta = 0; return;
+    aplicar();
+    // Selecting an Audio track must not close the panel; other modes retain
+    // the existing subtitle-dismissal behavior.
+    if (modo) aberta = 0;
+    return;
   }
 }
 
@@ -1717,6 +1831,8 @@ static void linhaVelocidade(float x, float y, float w, float a) {
 }
 
 static float alturaLista(int col) {
+  if (!modo && audioPagina) return IL_PAD_Y * 2.0f + IL_TIT_H + 14.0f +
+      AUDIO_AJ_N * (IL_LN_H + IL_LN_VAO) + 30.0f + IL_PE_H;
   int n = visiveisLista(col);
   float h = IL_PAD_Y + IL_TIT_H + 14.0f;
   if (col == 0) h += IL_LN_H + VOL_VAO;
@@ -1734,6 +1850,94 @@ static void ponteiroFaixa(int i, int b) {
   coluna = 0; volFoco = velFoco = 0; foco[0] = i;
 }
 
+
+static void audioAjDesenhar(GfxRect c, float a) {
+  const char *rotulos[AUDIO_AJ_N] = {
+    "Amplification", "Bass", "Center Channel Mix", "Night Mode", "Remember adjustments"
+  };
+  const char *dicas[AUDIO_AJ_N] = {
+    "Overall +0 to +10 dB", "Low frequencies · -12 to +6 dB",
+    "Center PCM channel · -10 to +30 dB", "Choose one level", "Apply to future videos"
+  };
+  const char *niveis[4] = {"Off", "Light", "Medium", "Strong"};
+  const char *tabs[2] = {"Tracks", "Adjustments"};
+  int cont[2] = {-1, -1};
+  float x = c.x + IL_PAD_X, w = c.w - 2.0f * IL_PAD_X, y = c.y + IL_PAD_Y;
+  float larguraTabs;
+  TxtLinha title = txt_linha(TXT_ILHA_PERGUNTA, "Audio Adjustments", 243, 242, 239, 255);
+  txt_desenhar_alpha(title, x + 10.0f, y, a);
+  larguraTabs = plrui_seg(tabs, cont, 2, 1, 0, -1.0f, 0, a);
+  plrui_seg(tabs, cont, 2, 1, 0, x + w - 10.0f - larguraTabs,
+            y + title.h - 54.0f, a);
+  y += IL_TIT_H + 14.0f;
+  for (int i = 0; i < AUDIO_AJ_N; i++) {
+    float yc = y + IL_LN_H / 2.0f, left = x + 22.0f, right = x + w - 20.0f;
+    int selected = i == audioAjFoco;
+    GfxRect row = { x, y, w, IL_LN_H };
+    if (selected) plrui_linha_foco(row, 18.0f, a);
+    {
+      TxtLinha t = txt_linha_corta(TXT_ILHA_FORTE, rotulos[i], 237, 242, 248, 255, 270.0f);
+      TxtLinha sub = txt_linha_corta(TXT_ILHA_GENERO, dicas[i], 155, 168, 187, 255, 290.0f);
+      txt_desenhar_alpha(t, left, yc - 21.0f, a);
+      txt_desenhar_alpha(sub, left, yc + 9.0f, a);
+    }
+    if (i <= 2) {
+      int value = i == 0 ? audioAjAmp : i == 1 ? audioAjBass : audioAjCenter;
+      int lo = i == 0 ? 0 : i == 1 ? -12 : -10;
+      int hi = i == 0 ? 10 : i == 1 ? 6 : 30;
+      char num[24];
+      float trackW = 154.0f, bx = right - 58.0f - trackW;
+      float zero = (float)(0 - lo) / (float)(hi - lo);
+      float val = (float)(value - lo) / (float)(hi - lo);
+      if (i == 0) snprintf(num, sizeof num, "+%d dB", value);
+      else snprintf(num, sizeof num, "%+d dB", value);
+      gfx_cor((GfxRect){bx, yc + 14.0f, trackW, 5.0f}, 2.5f, 0.38f, 0.43f, 0.52f, 0.8f * a);
+      gfx_cor((GfxRect){bx + fminf(zero,val) * trackW, yc + 14.0f,
+              fmaxf(2.0f, fabsf(zero-val) * trackW), 5.0f},
+              2.5f, 0.35f, 0.68f, 1.0f, a);
+      gfx_cor((GfxRect){bx + val * trackW - 3.0f, yc + 8.0f, 7.0f, 17.0f},
+              3.0f, 0.88f, 0.94f, 1.0f, a);
+      {
+        TxtLinha v = txt_linha(TXT_ILHA_FORTE, num, 227, 238, 255, 255);
+        txt_desenhar_alpha(v, right - 58.0f - v.w, yc - 22.0f, a);
+      }
+      // Individual reset affordance: OK on the focused slider activates it.
+      plrui_botao_repouso((GfxRect){right - 40.0f, yc - 18.0f, 36.0f, 36.0f}, a);
+      gfx_icone((GfxRect){right - 31.0f, yc - 9.0f, 18.0f, 18.0f},
+                 "pl_rotate-ccw", 0.85f, 0.91f, 1.0f, a);
+    } else if (i == 3) {
+      float bw = 88.0f, gap = 7.0f, start = right - (4.0f * bw + 3.0f * gap);
+      for (int j = 0; j < 4; j++) {
+        GfxRect btn = {start + j * (bw + gap), yc - 20.0f, bw, 40.0f};
+        float fa = a * (j == audioAjNight ? 0.93f : 0.55f);
+        plrui_material(btn, 9.0f, 0, fa);
+        if (j == audioAjNight) gfx_cor(btn, 9.0f, 0.12f, 0.33f, 0.62f, 0.82f * a);
+        if (selected && j == audioAjNightFoco) plrui_linha_foco(btn, 9.0f, 0.95f * a);
+        {
+          TxtLinha t = txt_linha(TXT_ILHA_SEG, niveis[j], 228, 238, 253, 255);
+          txt_desenhar_alpha(t, btn.x + (btn.w - t.w) / 2.0f,
+             btn.y + (btn.h - t.h) / 2.0f, a);
+        }
+      }
+    } else {
+      const char *label = audioAjPersist ? "On" : "Off";
+      TxtLinha t = txt_linha(TXT_ILHA_FORTE, label, 225, 237, 255, 255);
+      txt_desenhar_alpha(t, right - t.w, yc - t.h / 2.0f, a);
+    }
+    y += IL_LN_H + IL_LN_VAO;
+  }
+  gfx_cor((GfxRect){x, y + 7.0f, w, 1.0f}, 0, 1, 1, 1, 0.08f * a);
+  {
+    const char *hint = audioAjFoco == 3 ? "← → Focus level · OK Select · Back Tracks" :
+      audioAjFoco == 4 ? "OK Toggle · Back Tracks" :
+      "← → Adjust · OK Reset · Back Tracks";
+    if (cacheboost_ganho_estado() == CB_GANHO_PASSTHROUGH)
+      hint = "Bitstream passthrough: adjustments unavailable";
+    TxtLinha l = txt_linha_corta(TXT_ILHA_APOIO, hint, 188, 203, 223, 255, w - 22.0f);
+    txt_desenhar_alpha(l, x + 10.0f, y + 18.0f, a);
+  }
+}
+
 static void corpoLista(GfxRect c, float a) {
   int col = modo ? 1 : 0, n = nLinhas(col), r, fim, i;
   float x0 = c.x + IL_PAD_X, w = c.w - IL_PAD_X * 2.0f, y = c.y + IL_PAD_Y;
@@ -1743,9 +1947,11 @@ static void corpoLista(GfxRect c, float a) {
     txt_desenhar_alpha(t, x0 + 10.0f, ty, a);
     if (!modo) {
       char q[32];
-      snprintf(q, sizeof q, i18n("%d faixas"), n);
-      { TxtLinha l = txt_linha(TXT_G18R, q, 243, 242, 239, 115);
-        txt_desenhar_alpha(l, x0 + w - 10.0f - l.w, ty + (float)t.h - (float)l.h - 8.0f, a); }
+      const char *rot[2] = { "Tracks", "Adjustments" };
+      int cont[2] = { n, -1 };
+      float sw = plrui_seg(rot, cont, 2, 0, 0, -1.0f, 0, a);
+      plrui_seg(rot, cont, 2, 0, 0, x0 + w - 10.0f - sw,
+                ty + (float)t.h - 54.0f, a);
     } else {
       const char *rot[2] = { "Faixas", "Estilo" };
       int cont[2] = { n, -1 };
@@ -2107,6 +2313,7 @@ static void corpoIlha(GfxRect c, float a, void *u) {
   (void)u;
   if (faixas_estilo_topo() || (!aberta && animTopo > 0.5f)) corpoEstilo(c, a);
   else if (modo) legendasui_corpo(c, a);
+  else if (audioPagina) audioAjDesenhar(c, a);
   else corpoLista(c, a);
 }
 
