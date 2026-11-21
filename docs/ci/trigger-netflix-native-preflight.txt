@@ -17,3 +17,5 @@ Build 122 no-APK validation: row/style size persistence and preview transaction,
 Build 123 no-APK native gate — progressive time-based left/right row-size acceleration, moderate per-style max 260/280/300/340, 16-bit saved sizes, exact style and row isolation, and dynamic slider labels. No APK in this workflow.
 
 Build 124 (three Home/episode visual refinements) no-APK validation: remove broad landscape/editorial title-artwork gradients without changing logo artwork, add independent Genre on posters and IMDb rating on posters under Settings > Posters and trailers > Poster information (defaults On, persist per profile), and eliminate top black band/previous thumbnail sliver in right Netflix episode column, keeping left title logo intact. Test source guards, settings IDs/keys/defaults and native Android compilation. No APK until green.
+
+Build 128 player refinement: ARM64 C syntax, stats screen, glass action pill, dynamic selector shortcut, cleaned audio adjustments, subtitle/persistence guards, preflight before APK. Head 6b3b693d61ea4a5db84a9054d9f8dddd0c0ecc3e
