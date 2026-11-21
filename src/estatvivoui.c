@@ -7,6 +7,8 @@
 #include "linguas.h"
 #include "catalogo.h"
 #include "dados.h"
+#include "debrid.h"
+#include "cacheboost.h"
 #include "escala.h"
 #include "gfx.h"
 #include "idioma.h"
@@ -55,9 +57,24 @@
 #define EVU_K_NUM      9.0f
 
 typedef struct {
-  char titulo[160], sub[160], addon[64], resolucao[32], codecHdr[64], taxa[24], audio[96], legenda[64];
+  char titulo[160], sub[160], addon[64], provider[40], server[96];
+  char filename[512], size[32], engine[48], resolucao[32], videoCodec[32];
+  char codecHdr[64], videoFormat[32], fps[24], decoder[48], dropped[48];
+  char frameLead[32], display[48], taxa[24];
+  char audio[96], audioCodec[32], audioChannels[16], audioSampleRate[24];
+  char audioLanguage[32], audioRoute[40], legenda[64];
+  char buffer[32], backBuffer[32], network[48], connections[24];
+  char requests[32], latency[32], rebuffers[32];
   int plataforma;
 } EvTela;
+
+typedef struct {
+  double cpuAtual, cpuMedia, pagingAtual, pagingMedia, bufferMedia, thermalC;
+  unsigned amostras, bufferAmostras;
+  unsigned long long cpuTotal, cpuIdle, pagingTotal;
+  long long rssKb, peakKb, totalKb;
+} EvSistema;
+typedef struct { int secao; char rotulo[48], valor[512]; } EvInfoLinha;
 
 // OK logo depois de abrir e eco da tecla que abriu (o OK da central, o clique do
 // Magic Remote que vira tecla, a repeticao de quem segura): nao anda de tamanho.
@@ -65,6 +82,14 @@ typedef struct {
 #define EVU_ARQ_TAMANHO "estatvivo-tamanho.txt"
 
 static int aberto, fixado, temSessao, tamanho;
+static EvSistema sistema;
+static int playerInfoAberto, playerInfoAuto, playerInfoModo, playerInfoHud, playerInfoCarregado;
+static int playerInfoScroll, playerInfoFoco, playerInfoHudFoco;
+#define EVU_ARQ_PLAYER_INFO "estatvivo-player-info.txt"
+static EvInfoLinha playerInfoLinhas[48];
+static int playerInfoN;
+static void playerInfoMontarLinhas(void);
+static void playerInfoGarantirScroll(void);
 static int editando, focoEd, perfilTiles = -1, nTiles[EV_TAM_N], tiles[EV_TAM_N][6];
 static const char *const tileNome[] = {
   "Velocidade", "Buffer à frente", "Fonte", "Conexões e servidor", "Erros e reconexões", "Quadros perdidos"
@@ -194,6 +219,65 @@ static int ultimoTamanho(void) {
 static void lembrarTamanho(void) {
   char b[4] = { (char)('0' + tamanho), '\n', 0, 0 };
   dados_gravar(EVU_ARQ_TAMANHO, b);
+}
+static void playerInfoCarregar(void) {
+  char *t;
+  if (playerInfoCarregado) return;
+  playerInfoCarregado = 1;
+  playerInfoAuto = playerInfoModo = playerInfoHud = 0;
+  t = dados_ler(EVU_ARQ_PLAYER_INFO);
+  if (t) {
+    int a = 0, m = 0, h = 0;
+    if (sscanf(t, "%d %d %d", &a, &m, &h) >= 1) {
+      playerInfoAuto = a != 0;
+      playerInfoModo = m != 0;
+      playerInfoHud = h != 0;
+    }
+    free(t);
+  }
+}
+static void playerInfoSalvar(void) {
+  char b[32];
+  snprintf(b, sizeof b, "%d %d %d\\n", playerInfoAuto, playerInfoModo, playerInfoHud);
+  dados_gravar(EVU_ARQ_PLAYER_INFO, b);
+}
+void estatvivo_player_toggle(void) {
+  playerInfoCarregar();
+  if (playerInfoAberto) {
+    playerInfoAberto = 0;
+    playerInfoAuto = 0;
+  } else {
+    playerInfoAberto = 1;
+    playerInfoAuto = 1;
+    playerInfoModo = 0;
+    playerInfoHud = 0;
+    playerInfoScroll = playerInfoFoco = playerInfoHudFoco = 0;
+  }
+  playerInfoSalvar();
+}
+void estatvivo_player_expandir(void) {
+  playerInfoCarregar();
+  if (!playerInfoAberto) return;
+  playerInfoModo = !playerInfoModo;
+  if (playerInfoModo) {
+    playerInfoScroll = playerInfoFoco = playerInfoHudFoco = 0;
+    playerInfoHud = 0;
+  }
+  playerInfoAuto = 1;
+  playerInfoSalvar();
+}
+void estatvivo_player_nova_sessao(void) {
+  playerInfoCarregar();
+  playerInfoAberto = playerInfoAuto;
+  playerInfoScroll = playerInfoFoco = playerInfoHudFoco = 0;
+}
+int estatvivo_player_aberto(void) { playerInfoCarregar(); return playerInfoAberto; }
+int estatvivo_player_detalhado(void) { playerInfoCarregar(); return playerInfoModo; }
+void estatvivo_player_hud_toggle(void) {
+  playerInfoCarregar();
+  if (!playerInfoAberto || !playerInfoModo) return;
+  playerInfoHud = !playerInfoHud;
+  playerInfoSalvar();
 }
 
 // Focus is modal at every size; changing size preserves an existing pin. The rectangle

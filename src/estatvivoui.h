@@ -42,6 +42,15 @@ int  estatvivo_evento(const SDL_Event *e, int cimaDela);
 // Uma vez por quadro (barato: so trabalha 1x/s).
 void estatvivo_atualizar(Uint32 agora);
 void estatvivo_desenhar(Uint32 agora);
+
+// Playback Info do player: HUD compacto, detalhes rolaveis e preferencia
+// persistente entre videos. Nao e modal; Back continua pertencendo ao player.
+void estatvivo_player_toggle(void);
+void estatvivo_player_expandir(void);
+void estatvivo_player_nova_sessao(void);
+int  estatvivo_player_aberto(void);
+int  estatvivo_player_detalhado(void);
+void estatvivo_player_hud_toggle(void);
 // A velocidade mais recente (kbps) para a linha "Tocando agora" da central;
 // -1 sem numero. `*estimada` = 1 quando nao e medida.
 int  estatvivo_kbps(int *estimada);
