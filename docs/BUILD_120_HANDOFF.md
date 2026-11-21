@@ -164,3 +164,32 @@ Owner tested #123 and supplied two screenshots. Requests:
 - Verified artifact: [nuvio-native-legacy-android-debug #14625890403](https://github.com/nerdfxzxl/nuvio-native-legacy/actions/runs/44727752551/artifacts/14625890403), ZIP ~79.46 MB, contains `Nuvio-2.0.8-android-debug.apk` ~82 MB. Created Nov 20 11:34 UTC, expires **2026-12-04**.
 - Logs confirm Gradle cache hits (wrapper and dependencies), native Android dependency cache **HIT ~100 MB**, P2P engine cache **HIT ~71 MB**, P2P recompilation SKIPPED. No unnecessary second APK build.
 - On-TV acceptance remains pending for actual appearance: landscape/editorial full-artwork visibility with readable title logos; changing Genre independently of IMDb under Posters and trailers; no duplicate IMDb control under Home rows; episode list top gap/sliver removed but **left title artwork still intact**. Physical TV runtime acceptance cannot be inferred from CI.
+
+
+### Build 128 — player refinement after owner rejected #127 (Nov 21, 2026)
+
+Branch: feature/official-stream-selector. Do not merge to main until owner validates on TV.
+
+Implemented in the commits after Build #127:
+- Player actions now share one centered dark-liquid-glass capsule. Focus expansion retains existing spring/bounce animation. Native Next Episode skip icon, Episodes uses shared detail-page episode glyph. Subtitles, Audio, Zoom icons converted faithfully from official NuvioTV SVG resources. No raster references are required in CI.
+- Player keyboard fix: seekbar OK pauses/resumes regardless of previous time-display focus. Right from Info focuses elapsed/total, OK toggles remaining-time display. Long-press Info opens the SAME native stream selector, not Detailed Info.
+- While Playback Info is enabled, Up from seekbar focuses that overlay; OK toggles Compact ↔ Detailed. Back hides ONLY controls; second Back exits. Previous visibility and mode are stored. Info panel is independent of controls.
+- Compact Info now near-black NuvioTV-style with grey metric labels, white readings and yellow alerts for app CPU>=60%, app major page faults>=100/s, buffer<5s, dropped frames>0. Thermal reading is omitted if the native bridge cannot return Android PowerManager thermal headroom; never substitute an arbitrary thermal zone. Detailed Info is smaller/darker, its file row can wrap many lines, and Up/Down scroll by a page. The 1920×1080 size is correctly labeled UI rendering surface rather than incorrectly claiming it is the physical 4K TV screen.
+- Existing native Dynamic Clock source-list body reused inside the player, including official-style stream cards and provider navigation instead of legacy-only style.
+- Audio Tracks no longer shows volume or playback speed or legacy OK/Back hints. Tracks/Adjustments underlined pages. Amp, Bass, Center each use minus/value/plus, with row reset. Night Mode has Off/Light/Medium/Strong independent rectangular buttons and separate focus/selected indication. Night Mode stored globally by profile; other adjustments stored per IMDb/title across episodes. The PCM processing path is requested when DSP needs it, with no lossy AC-3 re-encode; otherwise retain encoded passthrough. This cannot make 2.1-channel HDMI ARC receive lossless 5.1/7.1.
+- Subtitle UI uses underlined Subtitles/Style/Sync navigation, compact vertical style rows, 50ms manual sync, longer subtitle release names with two lines. Supported rows are live; unsupported renderer knobs explicitly say unavailable, rather than pretending to adjust HDR brightness or shadow alpha/radius.
+- Home fullscreen hero copy shifted down ~22 virtual px. Stopped time moved near the progress bar. Buffered interval now visually distinct from played and unbuffered areas.
+- Fixed misuse of normalized corner radius in shared player capsule, Info panels and Night Mode rectangles.
+
+Validation:
+- Preflight #18 PASS on an earlier subset: https://github.com/nerdfxzxl/nuvio-native-legacy/actions/runs/44892580037
+- Preflight #19 (after subtitle/selector/hero updates): https://github.com/nerdfxzxl/nuvio-native-legacy/actions/runs/44893380986
+- Mandatory final cached APK build: not yet triggered at the time of writing this section. Update with run/result/artifact after verification.
+
+Known limitations requiring separate follow-through, not to be misrepresented as implemented:
+1. Subtitle Brightness (HDR), Shadow Opacity and Shadow Size are not exposed by the underlying VideoLegendaEstilo renderer. Their current Style rows show unavailable; implement actual cross-platform/native subtitle rendering controls before claiming full parity.
+2. Subtitle delay uses existing primary/secondary delay state; individual per-track persistence beyond the existing title-level design has not been verified.
+3. Screen physical resolution readout is not available through existing C diagnostic bridge; distinguish UI canvas size from actual display resolution.
+4. Original high-resolution lossless source decoding and multichannel output depend on supported Media3 decoder, source track, TV and HDMI ARC device; PCM DSP is not bit-perfect passthrough. Test on owner's JBL Cinema SB180 2.1 HDMI ARC.
+5. Exact on-TV appearance, shadow clipping, focus continuity, pause overlay, seeking, and natural audio playback cannot be certified by CI alone. Owner screenshot acceptance remains required.
+6. Full original-language track auto-selection, labels, quality ordering should be regression-tested on a multi-audio MKV (not asserted from these UI-only tests).
