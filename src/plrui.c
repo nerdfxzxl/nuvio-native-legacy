@@ -288,10 +288,13 @@ void plrui_barra(float x, float y, float w, float frac, float buf, int foco,
   if (frac < 0.0f) frac = 0.0f;
   if (frac > 1.0f) frac = 1.0f;
   ajustes_acento(&ar, &ag, &ab);
-  gfx_cor((GfxRect){ x, yy, w, h }, 0.5f, 1, 1, 1, 0.20f * a);
+  // Three visually distinct bands: dark unbuffered, brighter downloaded,
+  // accent-colored watched. Do not paint the entire bar twice.
+  gfx_cor((GfxRect){ x, yy, w, h }, 0.5f, 1, 1, 1, 0.13f * a);
   if (buf > frac + 0.002f) {
     if (buf > 1.0f) buf = 1.0f;
-    gfx_cor((GfxRect){ x, yy, w * buf, h }, 0.5f, 1, 1, 1, 0.30f * a);
+    gfx_cor((GfxRect){ x + w * frac, yy, w * (buf - frac), h },
+            0.0f, 0.84f, 0.86f, 0.90f, 0.58f * a);
   }
   // Mesmo o primeiro pixel aparece: o raio 0,5 vale para qualquer largura >= h.
   if (w * frac > 0.5f) {

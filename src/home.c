@@ -5686,6 +5686,9 @@ static void desenhaHero(Uint32 agora, float saida) {
   float empurraMax = lay == HOME_LAYOUT_MODERNA ? empurraHero() : ANC(NV_HOME_HERO_EMPURRA);
   float aBotao = anim_clamp(empurra / empurraMax, 0.0f, 1.0f);
   float base = heroBaseCopia(lay, r, empurra, descidaCopy);
+  // Correct the upward offset visible on the full-screen editorial hero:
+  // move title, synopsis and action together, keeping the artwork untouched.
+  if (cheio || lay == HOME_LAYOUT_DINAMICA) base += ANC(22.0f);
   // Padrao e Dinamica ancoram o bloco na BASE DO PROPRIO DESTAQUE (e o botao
   // sempre existe, com o foco ou sem ele): o texto anda com a arte, e nao com
   // as fileiras como na Moderna.

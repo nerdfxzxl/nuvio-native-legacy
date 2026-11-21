@@ -7270,6 +7270,10 @@ static void desenharOsdCorpo(Uint32 agora, float a, float ac, const CatItem *c) 
   float cw = bw;
   int transporteCurto = transporteCompacto();
   float cyTempo = transporteCurto ? yRowTopo - 16.0f : cyBotoes;
+  // During stopped/paused playback the full action row can fade, so the
+  // time label belongs directly above the progress bar, never floating
+  // where the controls used to be.
+  if (pausaPessoa || !tocando) cyTempo = yBarra - 25.0f;
   float frac = ehCanal()
              ? fracCanal()
              : (duracaoSeg > 0.0f ? anim_clamp(posVis / duracaoSeg, 0.0f, 1.0f) : 0.0f);
