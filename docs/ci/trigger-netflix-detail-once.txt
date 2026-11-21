@@ -27,3 +27,5 @@ Build 124 Android debug APK requested after native preflight #17 PASSED (run 447
 Player customization + bass EQ integration APK build 2026-11-21. Native Playback Info HUD and detailed scroll panel, player action bar, time focus, spring animation, 7 zoom modes, Audio Adjustments Bass -12..+6 dB/Amplification/Center/Night Mode, audio original-language quality and Show All, subtitle 50 ms sync. Reuse Gradle, native, P2P, FFmpeg caches. Run mandatory early tests including updated audioescolha.sh, build complete debug APK.
 
 Player customization retry #126 on 2026-11-21: fix 5 native gfx_cor argument counts in detailed/compact Playback Info after build #125 CMake failed. Add estatvivoui.c, faixas.c, legendasui.c, audioescolha.c, cacheboost.c to ARM64 early preflight; preserve Gradle/native/P2P/FFmpeg cache keys; only full APK after early tests pass.
+
+Build #127 2026-11-21: fix ARM64 preflight audio selector's missing forward declaration audioLinhaDaFaixa() after #126 uncovered it. Keep expanded gate and unchanged Gradle/FFmpeg/native/P2P caches; rerun full APK.

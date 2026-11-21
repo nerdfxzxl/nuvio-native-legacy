@@ -484,6 +484,7 @@ static int ctl = -1;       // ESTILO: item cujo controle esta aberto (-1 = a gra
 
 static int nLinhas(int col);
 static int linhaDaLeg(int i);
+static int audioLinhaDaFaixa(int indice);
 
 // F07: VOLUME ROW at the top of the AUDIO sheet (0-200%, per session). Focus on
 // it is `volFoco`; LEFT/RIGHT change it in 10% steps, live. Only focusable
