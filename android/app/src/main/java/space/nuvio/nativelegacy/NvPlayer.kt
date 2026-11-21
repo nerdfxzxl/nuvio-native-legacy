@@ -647,6 +647,7 @@ object NvPlayer {
         @Volatile var adotado = carga.adotada
         @Volatile var audioFormato = AudioSyncTap.FMT_NENHUM
         @Volatile var velocidadePcm = false
+        @Volatile var ajustePcm = false // DSP requires decoded PCM, never lossy AC-3 transcoding
         val proc = GanhoAudioProcessor()
         val tap = AudioSyncTap(
             { pcm, n, pts -> if (adotado) try { nativeAudioPcm(pcm, n, pts) } catch (_: UnsatisfiedLinkError) {} },
@@ -1148,12 +1149,31 @@ object NvPlayer {
     // Live adjustments persist only while requested by the native Audio panel.
     // The processor is bypassed entirely for bitstream passthrough.
     @JvmStatic fun audioAdjustments(amp: Int, bass: Int, center: Int, night: Int) {
+        val pedido = pedidos.get()
         principal.post {
+            if (pedido != pedidos.get()) return@post
             amplificacaoDb = amp.coerceIn(0, 10)
             baixoDb = bass.coerceIn(-12, 6)
             centroDb = center.coerceIn(-10, 30)
             noiteNivel = night.coerceIn(0, 3)
             aplicarGanho()
+            // FFmpeg/MediaCodec decode the ORIGINAL compressed track into PCM.
+            // Re-negotiate the sink only when DSP crosses on/off: never encode
+            // PCM back to lossy AC-3 or downgrade the selected source track.
+            val requirePcm = amplificacaoDb != 0 || baixoDb != 0 ||
+                centroDb != 0 || noiteNivel != 0
+            val r = recursosAtuais ?: return@post
+            val p = player ?: return@post
+            if (r.ajustePcm != requirePcm) {
+                val pos = p.currentPosition
+                val resume = p.playWhenReady
+                r.ajustePcm = requirePcm
+                p.stop()
+                p.seekTo(pos)
+                p.prepare()
+                p.playWhenReady = resume
+                Log.i(TAG, "[audio] PCM processing=" + requirePcm + " (lossless decode, no lossy transcode)")
+            }
         }
     }
     // C reapplies speed after each open; keep PCM policy with that player.
@@ -1344,7 +1364,7 @@ object NvPlayer {
                     // Sonic needs integer PCM; float output bypasses audio processors.
                     AudioSyncSink(DefaultAudioSink.Builder(context).setEnableFloatOutput(false)
                         .setEnableAudioTrackPlaybackParams(false)
-                        .setAudioProcessors(arrayOf(r.proc)).build(), r.tap, { r.velocidadePcm })
+                        .setAudioProcessors(arrayOf(r.proc)).build(), r.tap, { r.velocidadePcm || r.ajustePcm })
             }.setExtensionRendererMode(androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
                 .setEnableDecoderFallback(true)
             r.fabricaMidia = DefaultMediaSourceFactory(act)
