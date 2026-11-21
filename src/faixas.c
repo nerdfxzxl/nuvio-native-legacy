@@ -28,6 +28,8 @@
 #include "cacheboost.h"
 #include "dados.h"
 #include "perfis.h"
+#include "audioinfo.h"
+#include <stdlib.h>
 #include "velocidade.h"
 #include "faixasmkv.h"
 #define NV_ESCALA_TELA   // o arquivo inteiro mede pela tela virtual (escala.h)
@@ -50,6 +52,10 @@ static int velFoco, velPedidaUi = VEL_NORMAL;
 // Dedicated Audio Adjustments page. The track selector keeps its existing
 // volume row; bass EQ and dB amplification are independent controls.
 static int audioPagina, audioAjFoco = 1, audioAjNightFoco;
+static int audioMostrarTudo, audioOrdem[NV_FAIXA_MAX], audioNOrdem, audioOcultas;
+static int audioOrdemCacheN = -1, audioOrdemCacheMostrar = -1;
+static Uint32 audioOrdemTick;
+static char audioOrdemIdioma[16];
 static int audioAjAmp, audioAjBass, audioAjCenter, audioAjNight, audioAjPersist;
 static int audioAjPerfil = -1;
 static void audioAjCarregar(void);
@@ -593,12 +599,20 @@ void faixas_abrir_em(int col) {
   audioAjCarregar();
   audioPagina = 0;
   audioAjFoco = 1;
+  audioMostrarTudo = 0;
+  audioOrdemCacheN = -1;
   aberta = 1;
   modo = (col == 1) ? 1 : 0;
   coluna = modo;                 // audio -> col 0; legenda -> col 1
   ctl = -1;
   volFoco = 0; velFoco = 0;
-  foco[0] = video_audio_atual();
+  foco[0] = audioLinhaDaFaixa(video_audio_atual());
+  if (foco[0] < 0 && video_n_audio() > 0) {
+    audioMostrarTudo = 1;
+    audioOrdemCacheN = -1;
+    foco[0] = audioLinhaDaFaixa(video_audio_atual());
+  }
+  if (foco[0] < 0) foco[0] = 0;
   // A legenda pode estar desligada (-1); a primeira linha da coluna e sempre
   // "Desativada", entao o indice da lista e deslocado em um.
   foco[1] = linhaDaLeg(legendaAtiva()) + 1;
@@ -674,9 +688,65 @@ static int linhaDaLeg(int i) {
   return i;
 }
 
+
+static int audioGrupo(const VideoFaixa *f, const char *original) {
+  const char *id = f ? f->idioma : "";
+  if (id[0] && original && original[0] && ling_casa(id, original)) return 0;
+  if (id[0] && ling_casa(id, "en")) return 1;
+  if (id[0] && ling_casa(id, "ml")) return 2;
+  return id[0] ? 4 : 3;
+}
+static void audioOrdenar(void) {
+  Uint32 agora = SDL_GetTicks();
+  int n = video_n_audio();
+  const char *original = ling_original();
+  if (audioOrdemCacheN == n && audioOrdemCacheMostrar == audioMostrarTudo &&
+      !strcmp(audioOrdemIdioma, original ? original : "") &&
+      audioOrdemTick && (Uint32)(agora - audioOrdemTick) < 250u) return;
+  audioOrdemCacheN = n; audioOrdemCacheMostrar = audioMostrarTudo;
+  audioOrdemTick = agora | 1u;
+  snprintf(audioOrdemIdioma, sizeof audioOrdemIdioma, "%s", original ? original : "");
+  audioNOrdem = audioOcultas = 0;
+  if (n > NV_FAIXA_MAX) n = NV_FAIXA_MAX;
+  for (int g = 0; g < 5; g++) {
+    for (int i = 0; i < n; i++) {
+      const VideoFaixa *f = video_audio(i);
+      int group = audioGrupo(f, original), rank, pos;
+      if (group != g) continue;
+      if (g == 4 && !audioMostrarTudo) { audioOcultas++; continue; }
+      rank = f ? audioesc_qualidade(f->codec, f->canais, f->rotulo) : 0;
+      pos = audioNOrdem;
+      while (pos > 0) {
+        const VideoFaixa *p = video_audio(audioOrdem[pos-1]);
+        if (audioGrupo(p, original) != g ||
+            audioesc_qualidade(p->codec, p->canais, p->rotulo) >= rank) break;
+        audioOrdem[pos] = audioOrdem[pos-1];
+        pos--;
+      }
+      audioOrdem[pos] = i;
+      audioNOrdem++;
+    }
+  }
+  if (audioMostrarTudo)
+    for (int i = 0; i < n; i++)
+      if (audioGrupo(video_audio(i), original) == 4) audioOcultas++;
+}
+static int audioIndiceNaLinha(int linha) {
+  audioOrdenar();
+  return linha >= 0 && linha < audioNOrdem ? audioOrdem[linha] : -1;
+}
+static int audioLinhaDaFaixa(int indice) {
+  audioOrdenar();
+  for (int i = 0; i < audioNOrdem; i++) if (audioOrdem[i] == indice) return i;
+  return -1;
+}
+
 static int nLinhas(int col) {
   if (col == FX_COL_ESTILO) return FX_N_ESTILO;
-  if (col == 0) { int n = video_n_audio(); return n; }
+  if (col == 0) {
+    audioOrdenar();
+    return audioNOrdem + (audioOcultas ? 1 : 0);
+  }
   return nLegendas() + 1;   // +1 pela linha "Desativada"
 }
 
@@ -1044,16 +1114,25 @@ static void lembrarManual(int i) {
 
 static void aplicar(void) {
   if (coluna == 0) {
+    int indice = audioIndiceNaLinha(foco[0]);
+    if (indice < 0) {
+      audioMostrarTudo = !audioMostrarTudo;
+      audioOrdemCacheN = -1;
+      nLinhas(0);
+      foco[0] = audioNOrdem;
+      ajustarRolagem();
+      return;
+    }
     // F06: outra faixa de audio = outras falas; a escuta em curso nao vale mais.
-    if (video_audio_atual() != foco[0]) legsync_audio_trocou();
+    if (video_audio_atual() != indice) legsync_audio_trocou();
     // A ordem automatica (audioescolha.h) volta a esta faixa neste titulo, e
     // nos outros episodios: gravada no perfil (audiomemoria.h), com o numero
     // dela para a mesma release (bingeGroup).
-    { const VideoFaixa *f = video_audio(foco[0]);
+    { const VideoFaixa *f = video_audio(indice);
       if (f && !player_id_canal()[0])
         audioesc_lembrar_faixa(f->idioma, f->codec, f->rotulo, f->canais,
                               video_audio_numero_memoria(f)); }
-    video_escolher_audio(foco[0]);
+    video_escolher_audio(indice);
   } else {
     // A pessoa escolheu: a automatica nao mexe mais nesta sessao, nem se a
     // escolha foi "Desativada".
@@ -1641,9 +1720,34 @@ static void linhaLista(int col, int i, float x, float y, float w, float a) {
   GfxRect lr = { x, y, w, IL_LN_H };
   nome[0] = sub[0] = 0;
   if (!col) {
-    const VideoFaixa *f = video_audio(i);
+    int real = audioIndiceNaLinha(i);
+    if (real < 0) {
+      GfxRect small = {x + 14.0f, y + 19.0f, 156.0f, 50.0f};
+      const char *label = audioMostrarTudo ? "Show Less" : "Show All";
+      TxtLinha t = txt_linha(TXT_ILHA_SEG, label, 239, 245, 255, 255);
+      plrui_material(small, 9.0f, 0, a);
+      if (sel) plrui_linha_foco(small, 9.0f, a);
+      txt_desenhar_alpha(t, small.x + 18.0f, small.y + (small.h - t.h)*0.5f, a);
+      return;
+    }
+    const VideoFaixa *f = video_audio(real);
     partirRotulo(f ? f->rotulo : "", nome, sizeof nome, sub, sizeof sub);
     idioma = f ? f->idioma : NULL;
+    if (f) {
+      char detalhe[64], sufixo[96], antigo[96];
+      int grp = audioGrupo(f, ling_original());
+      const char *grupo = grp == 0 ? "Original" : grp == 1 ? "English" :
+                          grp == 2 ? "Malayalam" : grp == 3 ? "Unknown" : "";
+      audioinfo_texto(f->codec, f->canais, strstr(f->rotulo,"Atmos")!=NULL,
+                      detalhe, sizeof detalhe);
+      snprintf(antigo, sizeof antigo, "%s", sub);
+      if (!nome[0] || !strcasecmp(nome, "Audio"))
+        snprintf(nome, sizeof nome, "%s", f->idioma[0] ? i18n(ling_nome(f->idioma)) : f->rotulo);
+      snprintf(sufixo, sizeof sufixo, "%s%s%s", grupo,
+               grupo[0] && detalhe[0] ? " · " : "", detalhe);
+      snprintf(sub, sizeof sub, "%s%s%s", sufixo,
+               sufixo[0] && antigo[0] ? " · " : "", antigo);
+    }
   } else if (i == 0) {
     snprintf(nome, sizeof nome, "%s", i18n("Nenhuma"));
     snprintf(sub, sizeof sub, "%s", i18n(player_id_canal()[0] && !nLegendas()
@@ -1659,7 +1763,7 @@ static void linhaLista(int col, int i, float x, float y, float w, float a) {
   }
   if (sel) plrui_linha_foco(lr, 22.0f, a);
   rostoIdioma((GfxRect){ x + 22.0f, y + (IL_LN_H - 52.0f) * 0.5f, 52.0f, 52.0f }, idioma, icone, sel, a);
-  ativo = col == 0 ? i == video_audio_atual() : legDaLinha(i - 1) == legendaAtiva();
+  ativo = col == 0 ? audioIndiceNaLinha(i) == video_audio_atual() : legDaLinha(i - 1) == legendaAtiva();
   { float tx = x + 22.0f + 52.0f + 18.0f, tw = w - (tx - x) - 22.0f - (ativo ? 46.0f : 0.0f);
     int c = sel ? 255 : 219, cs = 122;
     TxtLinha ln = txt_linha_corta(TXT_ILHA_FORTE, nome, c, c, c - 2, 255, tw);
