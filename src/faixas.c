@@ -58,6 +58,7 @@ static Uint32 audioOrdemTick;
 static char audioOrdemIdioma[16];
 static int audioAjAmp, audioAjBass, audioAjCenter, audioAjNight, audioAjPersist;
 static int audioAjPerfil = -1;
+static char audioAjChave[112];
 static void audioAjCarregar(void);
 static void audioAjNovaSessao(void);
 static void audioAjEnviar(void);
@@ -491,7 +492,7 @@ static int audioLinhaDaFaixa(int indice);
 // where the backend has the gain (cacheboost_suportado: Android); elsewhere
 // it is drawn dimmed with "Não disponível nesta TV".
 static int volFoco;
-static int volFocavel(void) { return cacheboost_suportado(); }
+static int volFocavel(void) { return 0; } // volume removed from Audio Tracks page
 
 // #202: SPEED ROW right below the volume, same anatomy and gesture (LEFT/RIGHT
 // step through VEL_LISTA, live). Unlike the volume it is HIDDEN where the
@@ -506,36 +507,51 @@ static int velVisivel(void) { return 0; }
 static int velFocavel(void) { return velVisivel() && !video_velocidade_bloqueada(); }
 
 
-#define AUDIO_AJ_N 5
+#define AUDIO_AJ_N 4
+
 static void audioAjArquivo(char *b, size_t n) {
-  snprintf(b, n, "audio-ajustes-p%d.txt", perfis_ativo());
+  // Stable title identity; IMDb identifies every episode of the same series.
+  const CatItem *c = cat_item(player_indice());
+  const char *s = c && c->imdb[0] ? c->imdb : c ? c->titulo : "";
+  unsigned long h = 2166136261UL;
+  for (; *s; ++s) { h ^= (unsigned char)*s; h = (h * 16777619UL) & 0xffffffffUL; }
+  snprintf(b, n, "audio-ajustes-p%d-%08lx.txt", perfis_ativo(), h);
 }
 static void audioAjCarregar(void) {
-  char arq[64], *s;
-  int am=0, ba=0, ce=0, no=0, pe=0;
-  int perfil = perfis_ativo();
-  if (audioAjPerfil == perfil) return;
+  char file[112], global[64], *data;
+  int am=0, ba=0, ce=0, no=0, perfil = perfis_ativo();
+  audioAjArquivo(file, sizeof file);
+  if (audioAjPerfil == perfil && !strcmp(file, audioAjChave)) return;
   audioAjPerfil = perfil;
-  audioAjAmp = audioAjBass = audioAjCenter = audioAjNight = audioAjPersist = 0;
-  audioAjArquivo(arq, sizeof arq);
-  s = dados_ler(arq);
-  if (!s) return;
-  if (sscanf(s, "%d %d %d %d %d", &pe, &am, &ba, &ce, &no) == 5 && pe == 1) {
-    audioAjPersist = 1;
-    audioAjAmp = am < 0 ? 0 : am > 10 ? 10 : am;
-    audioAjBass = ba < -12 ? -12 : ba > 6 ? 6 : ba;
-    audioAjCenter = ce < -10 ? -10 : ce > 30 ? 30 : ce;
-    audioAjNight = no < 0 ? 0 : no > 3 ? 3 : no;
+  snprintf(audioAjChave, sizeof audioAjChave, "%s", file);
+  audioAjAmp = audioAjBass = audioAjCenter = audioAjNight = 0;
+  // Night Mode is a global preference; equal across all movies and series.
+  snprintf(global, sizeof global, "audio-noite-p%d.txt", perfil);
+  data = dados_ler(global);
+  if (data) {
+    if (sscanf(data, "%d", &no) == 1)
+      audioAjNight = no < 0 ? 0 : no > 3 ? 3 : no;
+    free(data);
   }
-  free(s);
+  // Amplification, Bass and Center Mix remember the title (series-wide).
+  data = dados_ler(file);
+  if (data) {
+    if (sscanf(data, "%d %d %d", &am, &ba, &ce) == 3) {
+      audioAjAmp = am < 0 ? 0 : am > 10 ? 10 : am;
+      audioAjBass = ba < -12 ? -12 : ba > 6 ? 6 : ba;
+      audioAjCenter = ce < -10 ? -10 : ce > 30 ? 30 : ce;
+    }
+    free(data);
+  }
 }
 static void audioAjSalvar(void) {
-  char arq[64], txt[80];
-  audioAjArquivo(arq, sizeof arq);
-  if (!audioAjPersist) { dados_apagar(arq); return; }
-  snprintf(txt, sizeof txt, "%d %d %d %d %d\n",
-           audioAjPersist, audioAjAmp, audioAjBass, audioAjCenter, audioAjNight);
-  dados_gravar(arq, txt);
+  char file[112], global[64], data[64];
+  audioAjArquivo(file, sizeof file);
+  snprintf(data, sizeof data, "%d %d %d\n", audioAjAmp, audioAjBass, audioAjCenter);
+  dados_gravar(file, data);
+  snprintf(global, sizeof global, "audio-noite-p%d.txt", perfis_ativo());
+  snprintf(data, sizeof data, "%d\n", audioAjNight);
+  dados_gravar(global, data);
 }
 static void audioAjEnviar(void) {
   if (cacheboost_suportado())
@@ -543,7 +559,6 @@ static void audioAjEnviar(void) {
 }
 static void audioAjNovaSessao(void) {
   audioAjCarregar();
-  if (!audioAjPersist) audioAjAmp = audioAjBass = audioAjCenter = audioAjNight = 0;
   audioPagina = 0; audioAjFoco = 1; audioAjNightFoco = audioAjNight;
   audioAjEnviar();
 }
@@ -570,7 +585,7 @@ static void audioAjTecla(SDL_Keycode k, int rep) {
   if (k == SDLK_DOWN) { if (audioAjFoco < AUDIO_AJ_N - 1) audioAjFoco++; return; }
   if (audioAjFoco <= 2) {
     if (k == SDLK_LEFT || k == SDLK_RIGHT) audioAjPasso(k == SDLK_RIGHT ? 1 : -1, rep);
-    else if (ok && !rep) audioAjResetar(); // separate reset icon at each slider
+    else if (ok && !rep) audioAjResetar();
   } else if (audioAjFoco == 3) {
     if (k == SDLK_LEFT && audioAjNightFoco > 0) audioAjNightFoco--;
     else if (k == SDLK_RIGHT && audioAjNightFoco < 3) audioAjNightFoco++;
@@ -578,12 +593,6 @@ static void audioAjTecla(SDL_Keycode k, int rep) {
       audioAjNight = audioAjNightFoco;
       audioAjEnviar(); audioAjSalvar();
     }
-  } else if (ok && !rep) {
-    audioAjPersist = !audioAjPersist;
-    audioAjSalvar();
-  } else if (k == SDLK_LEFT || k == SDLK_RIGHT) {
-    audioAjPersist = k == SDLK_RIGHT;
-    audioAjSalvar();
   }
 }
 
@@ -1940,7 +1949,7 @@ static float alturaLista(int col) {
       AUDIO_AJ_N * (IL_LN_H + IL_LN_VAO) + 30.0f + IL_PE_H;
   int n = visiveisLista(col);
   float h = IL_PAD_Y + IL_TIT_H + 14.0f;
-  if (col == 0) h += IL_LN_H + VOL_VAO;
+  // No legacy Volume or Playback Speed row in Audio Tracks.
   if (col == 0 && velVisivel()) h += IL_LN_H + IL_LN_VAO;
   if (n > 0) h += n * IL_LN_H + (n - 1) * IL_LN_VAO;
   else h += 60.0f;
@@ -1957,119 +1966,103 @@ static void ponteiroFaixa(int i, int b) {
 
 
 static void audioAjDesenhar(GfxRect c, float a) {
-  const char *rotulos[AUDIO_AJ_N] = {
-    "Amplification", "Bass", "Center Channel Mix", "Night Mode", "Remember adjustments"
+  const char *labels[AUDIO_AJ_N] = {
+    "Amplification", "Bass", "Center Channel Mix", "Night Mode"
   };
-  const char *dicas[AUDIO_AJ_N] = {
-    "Overall +0 to +10 dB", "Low frequencies · -12 to +6 dB",
-    "Center PCM channel · -10 to +30 dB", "Choose one level", "Apply to future videos"
-  };
-  const char *niveis[4] = {"Off", "Light", "Medium", "Strong"};
-  const char *tabs[2] = {"Tracks", "Adjustments"};
-  int cont[2] = {-1, -1};
-  float x = c.x + IL_PAD_X, w = c.w - 2.0f * IL_PAD_X, y = c.y + IL_PAD_Y;
-  float larguraTabs;
-  TxtLinha title = txt_linha(TXT_ILHA_PERGUNTA, "Audio Adjustments", 243, 242, 239, 255);
+  const char *levels[4] = {"Off", "Light", "Medium", "Strong"};
+  float x = c.x + IL_PAD_X, w = c.w - 2.0f * IL_PAD_X;
+  float y = c.y + IL_PAD_Y;
+  TxtLinha title = txt_linha(TXT_ILHA_PERGUNTA, "Audio", 244, 244, 246, 255);
   txt_desenhar_alpha(title, x + 10.0f, y, a);
-  larguraTabs = plrui_seg(tabs, cont, 2, 1, 0, -1.0f, 0, a);
-  plrui_seg(tabs, cont, 2, 1, 0, x + w - 10.0f - larguraTabs,
-            y + title.h - 54.0f, a);
-  y += IL_TIT_H + 14.0f;
+  {
+    float tabX = x + w - 283.0f, yy = y + 12.0f;
+    TxtLinha tr = txt_linha(TXT_ILHA_SUB, "Tracks", 175, 184, 195, 255);
+    TxtLinha adj = txt_linha(TXT_ILHA_SUB, "Adjustments", 243, 243, 246, 255);
+    txt_desenhar_alpha(tr, tabX, yy, a);
+    txt_desenhar_alpha(adj, tabX + 125.0f, yy, a);
+    gfx_cor((GfxRect){tabX, yy + 47.0f, 107.0f, 2.0f}, 0.0f, 1, 1, 1, .14f * a);
+    gfx_cor((GfxRect){tabX + 125.0f, yy + 47.0f, 149.0f, 3.0f},
+            0.0f, .9f, .94f, 1.0f, a);
+  }
+  y += IL_TIT_H + 18.0f;
   for (int i = 0; i < AUDIO_AJ_N; i++) {
-    float yc = y + IL_LN_H / 2.0f, left = x + 22.0f, right = x + w - 20.0f;
-    int selected = i == audioAjFoco;
+    float yc = y + IL_LN_H * 0.5f, right = x + w - 18.0f;
     GfxRect row = { x, y, w, IL_LN_H };
-    if (selected) plrui_linha_foco(row, 18.0f, a);
+    int selected = audioAjFoco == i;
+    if (selected) plrui_linha_foco(row, 18.0f, .76f * a);
     {
-      TxtLinha t = txt_linha_corta(TXT_ILHA_FORTE, rotulos[i], 237, 242, 248, 255, 270.0f);
-      TxtLinha sub = txt_linha_corta(TXT_ILHA_GENERO, dicas[i], 155, 168, 187, 255, 290.0f);
-      txt_desenhar_alpha(t, left, yc - 21.0f, a);
-      txt_desenhar_alpha(sub, left, yc + 9.0f, a);
+      TxtLinha label = txt_linha_corta(TXT_ILHA_FORTE, labels[i], 239, 241, 245, 255, 300.0f);
+      txt_desenhar_alpha(label, x + 24.0f, yc - label.h * .5f, a);
     }
     if (i <= 2) {
-      int value = i == 0 ? audioAjAmp : i == 1 ? audioAjBass : audioAjCenter;
-      int lo = i == 0 ? 0 : i == 1 ? -12 : -10;
-      int hi = i == 0 ? 10 : i == 1 ? 6 : 30;
-      char num[24];
-      float trackW = 154.0f, bx = right - 58.0f - trackW;
-      float zero = (float)(0 - lo) / (float)(hi - lo);
-      float val = (float)(value - lo) / (float)(hi - lo);
-      if (i == 0) snprintf(num, sizeof num, "+%d dB", value);
-      else snprintf(num, sizeof num, "%+d dB", value);
-      gfx_cor((GfxRect){bx, yc + 14.0f, trackW, 5.0f}, 2.5f, 0.38f, 0.43f, 0.52f, 0.8f * a);
-      gfx_cor((GfxRect){bx + fminf(zero,val) * trackW, yc + 14.0f,
-              fmaxf(2.0f, fabsf(zero-val) * trackW), 5.0f},
-              2.5f, 0.35f, 0.68f, 1.0f, a);
-      gfx_cor((GfxRect){bx + val * trackW - 3.0f, yc + 8.0f, 7.0f, 17.0f},
-              3.0f, 0.88f, 0.94f, 1.0f, a);
+      int val = i == 0 ? audioAjAmp : i == 1 ? audioAjBass : audioAjCenter;
+      char text[24];
+      snprintf(text, sizeof text, "%+d dB", val);
+      float minus = right - 253.0f, plus = right - 74.0f;
+      GfxRect ml = {minus, yc - 19.0f, 38.0f, 38.0f};
+      GfxRect pr = {plus, yc - 19.0f, 38.0f, 38.0f};
+      plrui_material(ml, 14.0f, 0, a * .82f);
+      plrui_material(pr, 14.0f, 0, a * .82f);
+      gfx_icone((GfxRect){minus + 8.0f, yc - 11.0f, 22.0f, 22.0f}, "pl_minus",
+                 1, 1, 1, a);
+      gfx_icone((GfxRect){plus + 8.0f, yc - 11.0f, 22.0f, 22.0f}, "pl_plus",
+                 1, 1, 1, a);
       {
-        TxtLinha v = txt_linha(TXT_ILHA_FORTE, num, 227, 238, 255, 255);
-        txt_desenhar_alpha(v, right - 58.0f - v.w, yc - 22.0f, a);
+        TxtLinha value = txt_linha(TXT_ILHA_FORTE, text, 245, 246, 249, 255);
+        float vx = minus + 38.0f + (plus - minus - 38.0f - value.w) * .5f;
+        txt_desenhar_alpha(value, vx, yc - value.h*.5f, a);
       }
-      // Individual reset affordance: OK on the focused slider activates it.
-      plrui_botao_repouso((GfxRect){right - 40.0f, yc - 18.0f, 36.0f, 36.0f}, a);
-      gfx_icone((GfxRect){right - 31.0f, yc - 9.0f, 18.0f, 18.0f},
-                 "pl_rotate-ccw", 0.85f, 0.91f, 1.0f, a);
-    } else if (i == 3) {
-      float bw = 88.0f, gap = 7.0f, start = right - (4.0f * bw + 3.0f * gap);
+      // OK on focused adjustment resets it; reset icon remains visible.
+      gfx_icone((GfxRect){right - 24.0f, yc - 12.0f, 24.0f, 24.0f},
+                 "pl_rotate-ccw", .78f, .85f, .94f, a);
+    } else {
+      float bw = 90.0f, gap = 7.0f, start = right - (4.0f*bw + 3.0f*gap);
       for (int j = 0; j < 4; j++) {
-        GfxRect btn = {start + j * (bw + gap), yc - 20.0f, bw, 40.0f};
-        float fa = a * (j == audioAjNight ? 0.93f : 0.55f);
-        plrui_material(btn, 9.0f, 0, fa);
-        if (j == audioAjNight) gfx_cor(btn, 9.0f, 0.12f, 0.33f, 0.62f, 0.82f * a);
-        if (selected && j == audioAjNightFoco) plrui_linha_foco(btn, 9.0f, 0.95f * a);
+        GfxRect button = {start + j*(bw + gap), yc - 21.0f, bw, 42.0f};
+        int active = j == audioAjNight;
+        int focused = selected && j == audioAjNightFoco;
+        plrui_material(button, 11.0f, 0, a);
+        if (active) gfx_cor(button, 11.0f, .24f, .43f, .65f, .95f*a);
+        else gfx_cor(button, 11.0f, .06f, .07f, .09f, .34f*a);
+        if (focused) gfx_anel(button, 11.0f, 2.5f, 1, 1, 1, a);
+        else if (active) gfx_anel(button, 11.0f, 1.5f, .55f, .79f, 1, a);
         {
-          TxtLinha t = txt_linha(TXT_ILHA_SEG, niveis[j], 228, 238, 253, 255);
-          txt_desenhar_alpha(t, btn.x + (btn.w - t.w) / 2.0f,
-             btn.y + (btn.h - t.h) / 2.0f, a);
+          TxtLinha t = txt_linha(TXT_ILHA_SEG, levels[j], active ? 255 : 191,
+                                 active ? 255 : 199, active ? 255 : 209, 255);
+          txt_desenhar_alpha(t, button.x + (button.w-t.w)*.5f,
+                             button.y + (button.h-t.h)*.5f, a);
         }
       }
-    } else {
-      const char *label = audioAjPersist ? "On" : "Off";
-      TxtLinha t = txt_linha(TXT_ILHA_FORTE, label, 225, 237, 255, 255);
-      txt_desenhar_alpha(t, right - t.w, yc - t.h / 2.0f, a);
     }
     y += IL_LN_H + IL_LN_VAO;
   }
-  gfx_cor((GfxRect){x, y + 7.0f, w, 1.0f}, 0, 1, 1, 1, 0.08f * a);
-  {
-    const char *hint = audioAjFoco == 3 ? "← → Focus level · OK Select · Back Tracks" :
-      audioAjFoco == 4 ? "OK Toggle · Back Tracks" :
-      "← → Adjust · OK Reset · Back Tracks";
-    if (cacheboost_ganho_estado() == CB_GANHO_PASSTHROUGH)
-      hint = "Bitstream passthrough: adjustments unavailable";
-    TxtLinha l = txt_linha_corta(TXT_ILHA_APOIO, hint, 188, 203, 223, 255, w - 22.0f);
-    txt_desenhar_alpha(l, x + 10.0f, y + 18.0f, a);
-  }
 }
+
 
 static void corpoLista(GfxRect c, float a) {
   int col = modo ? 1 : 0, n = nLinhas(col), r, fim, i;
   float x0 = c.x + IL_PAD_X, w = c.w - IL_PAD_X * 2.0f, y = c.y + IL_PAD_Y;
   // Titulo (o filme ja esta no cabecalho); a direita, a contagem (audio) ou o segmentado (legendas).
-  { TxtLinha t = txt_linha(TXT_ILHA_PERGUNTA, modo ? "Legendas" : "\xc3\x81udio", 243, 242, 239, 255);
-    float ty = y;
-    txt_desenhar_alpha(t, x0 + 10.0f, ty, a);
+  { TxtLinha t = txt_linha(TXT_ILHA_PERGUNTA, modo ? "Legendas" : "Audio",
+                               243, 242, 239, 255);
+    txt_desenhar_alpha(t, x0 + 10.0f, y, a);
     if (!modo) {
-      char q[32];
-      const char *rot[2] = { "Tracks", "Adjustments" };
-      int cont[2] = { n, -1 };
-      float sw = plrui_seg(rot, cont, 2, 0, 0, -1.0f, 0, a);
-      plrui_seg(rot, cont, 2, 0, 0, x0 + w - 10.0f - sw,
-                ty + (float)t.h - 54.0f, a);
+      float tabX = x0 + w - 283.0f, yy = y + 12.0f;
+      TxtLinha tr = txt_linha(TXT_ILHA_SUB, "Tracks", 243, 243, 246, 255);
+      TxtLinha adj = txt_linha(TXT_ILHA_SUB, "Adjustments", 175, 184, 195, 255);
+      txt_desenhar_alpha(tr, tabX, yy, a);
+      txt_desenhar_alpha(adj, tabX + 125.0f, yy, a);
+      gfx_cor((GfxRect){tabX, yy + 47.0f, 107.0f, 3.0f}, 0.0f, .9f, .94f, 1.0f, a);
+      gfx_cor((GfxRect){tabX + 125.0f, yy + 47.0f, 149.0f, 2.0f}, 0.0f, 1, 1, 1, .14f*a);
     } else {
       const char *rot[2] = { "Faixas", "Estilo" };
       int cont[2] = { n, -1 };
       float sw = plrui_seg(rot, cont, 2, coluna == FX_COL_ESTILO ? 1 : 0, 0, -1.0f, 0, a);
       plrui_seg(rot, cont, 2, coluna == FX_COL_ESTILO ? 1 : 0, 0, x0 + w - 10.0f - sw,
-                ty + (float)t.h - 54.0f, a);
+                y + (float)t.h - 54.0f, a);
     } }
   y += IL_TIT_H + 14.0f;
-  if (!modo) {
-    if (velVisivel()) { linhaVolume(x0, y, w, a); y += IL_LN_H + IL_LN_VAO;
-                        linhaVelocidade(x0, y, w, a); y += IL_LN_H + VOL_VAO; }
-    else { linhaVolume(x0, y, w, a); y += IL_LN_H + VOL_VAO; }
-  }
+  // Audio list begins immediately below the tab underline; no Volume row.
   visiveis = IL_VIS_COL(col);
 #ifdef NV_TOUCH_UI
   if (telefoneui_ativo()) {
@@ -2123,8 +2116,7 @@ static void corpoLista(GfxRect c, float a) {
       const char *k[2] = { "\xe2\x86\x90 \xe2\x86\x92", "Voltar" }, *rt[2] = { "Ajustar", "Fechar" };
       plrui_dicas(k, rt, 2, x0 + w - 10.0f, yc, 1, a);
     } else if (!modo) {
-      const char *k[2] = { "OK", "Voltar" }, *rt[2] = { "Usar esta faixa", "Fechar" };
-      plrui_dicas(k, rt, 2, x0 + w - 10.0f, yc, 1, a);
+      // No old "OK Use this track / Back Close" instructions.
     } else {
       const char *k[3] = { "OK", "\xe2\x86\x92", "Voltar" }, *rt[3] = { "Usar", "Estilo", "Fechar" };
       plrui_dicas(k, rt, 3, x0 + w - 10.0f, yc, 1, a);
