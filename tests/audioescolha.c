@@ -1,6 +1,6 @@
-// A ordem do audio automatico (audioescolha.h, dono 15/10/2026): escolhida a
-// mao nesta reproducao > idioma preferido > segundo idioma > original > nada;
-// em cada idioma, a que nao e DTS/TrueHD antes; o que o alvo nao toca, nunca.
+// A ordem do audio automatico: faixa manual > original > English > Malayalam.
+// Dentro do idioma, a de maior qualidade que o player suporta. Original
+// desconhecido = preservar a escolha do arquivo, nao adivinhar.
 //
 //   bash tests/audioescolha.sh
 #include "audioescolha.h"
@@ -24,20 +24,22 @@ int main(void) {
   int n = sizeof f / sizeof *f, o;
   AudioLembrada m;
 
-  ok(audioesc_escolher_com(f, n, NULL, "en", "", "", &o) == 1 && o == AUDIOESC_PREF1,
-     "preferred English: the AC-3 one, not the DTS one");
-  ok(audioesc_escolher_com(f, n, NULL, "sv", "en", "", &o) == 2 && o == AUDIOESC_PREF1,
-     "preferred Swedish exists only in TrueHD: TrueHD (it converts)");
+  ok(audioesc_escolher_com(f, n, NULL, "en", "", "ja", &o) == 3 && o == AUDIOESC_ORIGINAL,
+     "original Japanese wins over English preference");
+  ok(audioesc_escolher_com(f, n, NULL, "en", "", "en", &o) == 0 && o == AUDIOESC_ORIGINAL,
+     "original English: highest quality DTS-HD 7.1 beats AC-3 5.1");
+  ok(audioesc_escolher_com(f, n, NULL, "sv", "en", "sv", &o) == 2 && o == AUDIOESC_ORIGINAL,
+     "original Swedish: lossless TrueHD");
   f[2].pode = 0;
-  ok(audioesc_escolher_com(f, n, NULL, "sv", "en", "", &o) == 1 && o == AUDIOESC_PREF2,
-     "Swedish TrueHD the target cannot play: the second language, English AC-3");
+  ok(audioesc_escolher_com(f, n, NULL, "sv", "en", "sv", &o) == 0 && o == AUDIOESC_PREF1,
+     "original unavailable: highest-quality English fallback");
   f[2].pode = 1;
   ok(audioesc_escolher_com(f, n, NULL, "de", "fr", "ja", &o) == 3 && o == AUDIOESC_ORIGINAL,
-     "neither preferred language in the file: the original (Japanese)");
+     "Japanese original beats unrelated account preferences");
   ok(audioesc_escolher_com(f, n, NULL, "de", "", "", &o) == -1 && o == AUDIOESC_NADA,
-     "nothing matches: -1, the file's choice stays");
-  ok(audioesc_escolher_com(f, n, NULL, "", "", "", &o) == -1, "no preference at all: -1");
-  ok(audioesc_escolher_com(f, n, NULL, "~", "", "", &o) == -1, "a sentinel never matches a track");
+     "unknown original: preserve stream default");
+  ok(audioesc_escolher_com(f, n, NULL, "", "", "", &o) == -1, "unknown original remains untouched");
+  ok(audioesc_escolher_com(f, n, NULL, "~", "", "", &o) == -1, "sentinel without original never guesses");
 
   // Picked by hand: wins over every preference, matched by language+codec+channels.
   memset(&m, 0, sizeof m);
@@ -49,8 +51,8 @@ int main(void) {
   snprintf(m.rotulo, sizeof m.rotulo, "Inglês"); m.canais = 6;
   ok(audioesc_escolher_com(f, n, &m, "ja", "", "", &o) == 1, "another source, eng AC-3 picked: en AC-3 here");
   snprintf(m.idioma, sizeof m.idioma, "fr"); snprintf(m.codec, sizeof m.codec, "A_AC3");
-  ok(audioesc_escolher_com(f, n, &m, "ja", "", "", &o) == 3 && o == AUDIOESC_PREF1,
-     "picked French earlier, no French here: the preferences decide (Japanese)");
+  ok(audioesc_escolher_com(f, n, &m, "ja", "", "ja", &o) == 3 && o == AUDIOESC_ORIGINAL,
+     "picked French unavailable: known original Japanese wins");
   memset(&m, 0, sizeof m);
   snprintf(m.rotulo, sizeof m.rotulo, "Audio 5");
   ok(audioesc_escolher_com(f, n, &m, "en", "", "", &o) == 4, "unlabelled track picked by hand: same label again");

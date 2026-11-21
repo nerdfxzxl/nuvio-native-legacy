@@ -114,15 +114,39 @@ static int parecenca(const AudioCand *c, const AudioLembrada *m) {
   return p + (rot ? 4 : 0) + (cod ? 2 : 0) + (ch ? 1 : 0);
 }
 
-// Num idioma: a primeira que nao e DTS/TrueHD; senao a primeira DTS/TrueHD.
+
+// Stable quality score: codec fidelity before channel count. The backend
+// reports "pode" separately, so a playable lossless track beats a fallback
+// even when its codec name happens to be unusual.
+int audioesc_qualidade(const char *codec, int canais, const char *rotulo) {
+  char b[256];
+  size_t i;
+  int score = 100;
+  snprintf(b, sizeof b, "%s %s", codec ? codec : "", rotulo ? rotulo : "");
+  for (i = 0; b[i]; i++) b[i] = (char)tolower((unsigned char)b[i]);
+  if (strstr(b, "truehd") || strstr(b, "true-hd") || strstr(b, "a_mlp")) score = 930;
+  else if (strstr(b, "dts-hd ma") || strstr(b, "dts/hd") || strstr(b, "dts.hd") || strstr(b, "dts-ma")) score = 905;
+  else if (strstr(b, "flac") || strstr(b, "alac") || strstr(b, "pcm_") || strstr(b, "a_pcm")) score = 890;
+  else if (strstr(b, "dts") || strstr(b, " dca")) score = 790;
+  else if (strstr(b, "eac3") || strstr(b, "e-ac3") || strstr(b, "e-ac-3")) score = 750;
+  else if (strstr(b, "ac3") || strstr(b, "ac-3")) score = 710;
+  else if (strstr(b, "opus")) score = 670;
+  else if (strstr(b, "aac")) score = 650;
+  else if (strstr(b, "mp3") || strstr(b, "mpeg")) score = 520;
+  if (strstr(b, "atmos")) score += 18;
+  if (canais > 0 && canais <= 16) score += canais * 3;
+  return score;
+}
+
 static int noIdioma(const AudioCand *c, int n, const char *pref) {
-  int i, dts = -1;
-  for (i = 0; i < n; i++) {
+  int melhor = -1, nota = -1;
+  for (int i = 0; i < n; i++) {
+    int q;
     if (!c[i].pode || !c[i].idioma || !c[i].idioma[0] || !ling_casa(c[i].idioma, pref)) continue;
-    if (!c[i].dts) return i;
-    if (dts < 0) dts = i;
+    q = audioesc_qualidade(c[i].codec, c[i].canais, c[i].rotulo);
+    if (q > nota) { nota = q; melhor = i; }
   }
-  return dts;
+  return melhor;
 }
 
 // A MESMA RELEASE: o bingeGroup e a declaracao do addon de que estes episodios
@@ -150,8 +174,12 @@ int audioesc_escolher_com(const AudioCand *c, int n, const AudioLembrada *m,
 
 int audioesc_escolher_binge(const AudioCand *c, int n, const AudioLembrada *m, const char *binge,
                             const char *pref1, const char *pref2, const char *original, int *origem) {
-  const char *prefs[3] = { pref1, pref2, original };
-  static const int ORIG[3] = { AUDIOESC_PREF1, AUDIOESC_PREF2, AUDIOESC_ORIGINAL };
+  // Explicit owner rule: original language first, then English then Malayalam.
+  // If the original language is unknown, keep the source default instead of
+  // guessing from unrelated title metadata or the user's subtitle language.
+  const char *prefs[3] = { original, "en", "ml" };
+  static const int ORIG[3] = { AUDIOESC_ORIGINAL, AUDIOESC_PREF1, AUDIOESC_PREF2 };
+  (void)pref1; (void)pref2;
   int i, k, j;
   if (origem) *origem = AUDIOESC_NADA;
   if (!c || n < 1) return -1;
@@ -167,6 +195,7 @@ int audioesc_escolher_binge(const AudioCand *c, int n, const AudioLembrada *m, c
     }
     if (melhor >= 0) { if (origem) *origem = AUDIOESC_LEMBRADA; return melhor; }
   }
+  if (!original || !original[0] || !strcmp(original, "none")) return -1;
   for (k = 0; k < 3; k++) {
     const char *p = prefs[k];
     int repetida = 0;

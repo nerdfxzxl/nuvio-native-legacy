@@ -87,4 +87,6 @@ int audioesc_escolher_com(const AudioCand *c, int n, const AudioLembrada *lembra
                           const char *pref1, const char *pref2, const char *original, int *origem);
 int audioesc_escolher_binge(const AudioCand *c, int n, const AudioLembrada *lembrada, const char *binge,
                             const char *pref1, const char *pref2, const char *original, int *origem);
+// Highest-quality playable variant first, even if the codec is lossless.
+int audioesc_qualidade(const char *codec, int canais, const char *rotulo);
 #endif
