@@ -193,3 +193,15 @@ Known limitations requiring separate follow-through, not to be misrepresented as
 4. Original high-resolution lossless source decoding and multichannel output depend on supported Media3 decoder, source track, TV and HDMI ARC device; PCM DSP is not bit-perfect passthrough. Test on owner's JBL Cinema SB180 2.1 HDMI ARC.
 5. Exact on-TV appearance, shadow clipping, focus continuity, pause overlay, seeking, and natural audio playback cannot be certified by CI alone. Owner screenshot acceptance remains required.
 6. Full original-language track auto-selection, labels, quality ordering should be regression-tested on a multi-audio MKV (not asserted from these UI-only tests).
+
+
+### Build 128 — verified cached APK success (Nov 21, 2026)
+
+- Full Android workflow: https://github.com/nerdfxzxl/nuvio-native-legacy/actions/runs/44893588782
+- Workflow #128 **COMPLETED SUCCESS**. Both jobs succeeded: Early Android C and asset validation, and full debug APK.
+- Source build SHA: f75c84293da1c6e7d5290256f1c6ed58f98f17cc. Version: Nuvio-2.0.8-android-debug.apk (~82 MB).
+- Uploaded artifact name: nuvio-native-legacy-android-debug; artifact ID 14703142651, ZIP size 79,478,988 bytes; created 2026-11-21 10:23:46 UTC and expires 2026-12-05 10:23:43 UTC.
+- Gradle log: BUILD SUCCESSFUL in 2m 31s; 41 actionable tasks executed.
+- Cache proof from full job: Gradle wrapper, modules, Kotlin DSL and transforms cache HITS; native Android dependency cache HIT (native-android-r27c-v1); P2P engine cache HIT (p2p-r27c-v1) and native P2P rebuild SKIPPED; Android FFmpeg and other native caches preserved. No expensive redundant APK retry necessary.
+- Native APK page alignment/ABI check: 7 arm64 libs passed, 0 failed, 7 other ABI libs excluded.
+- This is a **compilation / packaging acceptance**, NOT proof that every UI matches approved NuvioTV screens or that lossless PCM is hardware-supported for every codec. Remaining limitations recorded above must be disclosed and verified on physical TV before declaring project complete.
