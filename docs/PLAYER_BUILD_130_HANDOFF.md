@@ -33,3 +33,11 @@
 - Three shorter ARM64 preflights #20 (44923318587), #21 (44923663774), #22 (44923910606) completed successfully before the last two-line tab-navigation correction.
 - Build #129 was deliberately cancelled by #130 due to workflow concurrency (it was built from an older snapshot). Only run #130 is relevant for acceptance.
 - When fixing any future bugs, keep branch, preflight first, then trigger one integration APK build once; do not trigger expensive builds for documentation-only edits.
+
+## CI verified — completed 2026-11-21
+- Workflow #130 (run 44924133856) **completed successfully** at source commit `ba88494e50064f53a4f3199818c05ecc67705dc6`.
+- Early ARM64 native compile, artwork conversion and Android graphics tests: SUCCESS.
+- Full Android debug APK, required login config and cached P2P/native dependencies: SUCCESS.
+- Upload APK: SUCCESS. Artifact `nuvio-native-legacy-android-debug`, ID `14715147968`, size 79,481,231 bytes ZIP; expires 2026-12-05T16:30:08Z.
+- GitHub Actions run page: https://github.com/nerdfxzxl/nuvio-native-legacy/actions/runs/44924133856
+- Runtime/physical TV visual and audio acceptance **not yet tested**. Unsupported settings above remain explicitly pending.
