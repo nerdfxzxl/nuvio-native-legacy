@@ -426,45 +426,50 @@ static void sistemaZerar(void) {
 static void sistemaAmostrar(void) {
 #ifdef NV_ANDROID
   FILE *f;
-  char linha[256];
-  unsigned long long u=0,n=0,sy=0,idle=0,io=0,irq=0,soft=0,steal=0;
-  unsigned long long pgIn=0,pgOut=0;
-  if ((f = fopen("/proc/stat", "r")) != NULL) {
-    if (fgets(linha, sizeof linha, f) &&
-        sscanf(linha, "cpu %llu %llu %llu %llu %llu %llu %llu %llu",
-               &u,&n,&sy,&idle,&io,&irq,&soft,&steal) >= 4) {
-      unsigned long long total = u+n+sy+idle+io+irq+soft+steal;
-      unsigned long long idleTotal = idle+io;
-      if (sistema.cpuTotal && total > sistema.cpuTotal) {
-        unsigned long long dt = total - sistema.cpuTotal;
-        unsigned long long di = idleTotal >= sistema.cpuIdle ? idleTotal-sistema.cpuIdle : 0;
-        sistema.cpuAtual = 100.0 * (double)(dt > di ? dt-di : 0) / (double)dt;
-        if (sistema.cpuAtual < 0) sistema.cpuAtual = 0;
-        if (sistema.cpuAtual > 100) sistema.cpuAtual = 100;
-        sistema.cpuMedia = sistema.amostras ?
-          (sistema.cpuMedia * sistema.amostras + sistema.cpuAtual) / (sistema.amostras + 1) : sistema.cpuAtual;
+  char linha[1024];
+  // NuvioTV's CPU/paging HUD is per APP, not global system load. /proc/stat
+  // and /proc/vmstat include every Android process and would mislead the user.
+  // /proc/self/stat fields: 12 majflt, 14 utime, 15 stime, after the process name.
+  if ((f = fopen("/proc/self/stat", "r")) != NULL) {
+    if (fgets(linha, sizeof linha, f)) {
+      char *close = strrchr(linha, ')');
+      if (close) {
+        char *state = NULL, *save = NULL;
+        unsigned long long major = 0, user = 0, kernel = 0;
+        int field = 3;
+        for (state = strtok_r(close + 1, " \t\n", &save);
+             state && field <= 15; state = strtok_r(NULL, " \t\n", &save), field++) {
+          if (field == 12) major = strtoull(state, NULL, 10);
+          else if (field == 14) user = strtoull(state, NULL, 10);
+          else if (field == 15) kernel = strtoull(state, NULL, 10);
+        }
+        if (field > 15) {
+          unsigned long long ticks = user + kernel;
+          unsigned long long now = SDL_GetTicks();
+          long clockTicks = sysconf(_SC_CLK_TCK), cores = sysconf(_SC_NPROCESSORS_ONLN);
+          double seconds = sistema.cpuIdle && now > sistema.cpuIdle ?
+            (double)(now - sistema.cpuIdle) / 1000.0 : 0.0;
+          if (seconds > 0 && clockTicks > 0 && cores > 0 &&
+              sistema.cpuTotal && ticks >= sistema.cpuTotal) {
+            sistema.cpuAtual = 100.0 * (double)(ticks - sistema.cpuTotal) /
+                               ((double)clockTicks * (double)cores * seconds);
+            if (sistema.cpuAtual < 0) sistema.cpuAtual = 0;
+            if (sistema.cpuAtual > 100) sistema.cpuAtual = 100;
+            sistema.cpuMedia = sistema.amostras ?
+              (sistema.cpuMedia * sistema.amostras + sistema.cpuAtual) / (sistema.amostras + 1) : sistema.cpuAtual;
+          }
+          if (seconds > 0 && sistema.cpuIdle && major >= sistema.pagingTotal) {
+            sistema.pagingAtual = (double)(major - sistema.pagingTotal) / seconds;
+            sistema.pagingMedia = sistema.amostras ?
+              (sistema.pagingMedia * sistema.amostras + sistema.pagingAtual) / (sistema.amostras + 1) : sistema.pagingAtual;
+          }
+          sistema.cpuTotal = ticks;
+          sistema.cpuIdle = now;
+          sistema.pagingTotal = major;
+        }
       }
-      sistema.cpuTotal = total;
-      sistema.cpuIdle = idleTotal;
     }
     fclose(f);
-  }
-  if ((f = fopen("/proc/vmstat", "r")) != NULL) {
-    while (fgets(linha, sizeof linha, f)) {
-      unsigned long long v;
-      if (sscanf(linha, "pgpgin %llu", &v) == 1) pgIn = v;
-      else if (sscanf(linha, "pgpgout %llu", &v) == 1) pgOut = v;
-    }
-    fclose(f);
-    {
-      unsigned long long total = pgIn + pgOut;
-      if (sistema.pagingTotal && total >= sistema.pagingTotal) {
-        sistema.pagingAtual = (double)(total - sistema.pagingTotal);
-        sistema.pagingMedia = sistema.amostras ?
-          (sistema.pagingMedia * sistema.amostras + sistema.pagingAtual) / (sistema.amostras + 1) : sistema.pagingAtual;
-      }
-      sistema.pagingTotal = total;
-    }
   }
   if ((f = fopen("/proc/meminfo", "r")) != NULL) {
     while (fgets(linha, sizeof linha, f)) {
@@ -481,16 +486,10 @@ static void sistemaAmostrar(void) {
     }
     fclose(f);
   }
-  for (int z = 0; z < 8 && sistema.thermalC < 0; z++) {
-    char caminho[96];
-    double temp;
-    snprintf(caminho, sizeof caminho, "/sys/class/thermal/thermal_zone%d/temp", z);
-    if ((f = fopen(caminho, "r")) != NULL) {
-      if (fscanf(f, "%lf", &temp) == 1 && temp > 0)
-        sistema.thermalC = temp > 1000.0 ? temp / 1000.0 : temp;
-      fclose(f);
-    }
-  }
+  // Thermal zones are device-specific (the first is often NOT CPU/GPU), so
+  // never treat thermal_zone0 as the PowerManager headroom metric.
+  // Until an actual Android PowerManager snapshot arrives, omit this field.
+  sistema.thermalC = -1.0;
   if (est.bufSeg >= 0) {
     sistema.bufferMedia = sistema.bufferAmostras ?
       (sistema.bufferMedia * sistema.bufferAmostras + est.bufSeg) / (sistema.bufferAmostras + 1) : est.bufSeg;
@@ -503,7 +502,6 @@ static void sistemaAmostrar(void) {
   sistema.thermalC = -1.0;
 #endif
 }
-
 
 // As linhas do cartao: o que o add-on declara da fonte e o que o pipeline diz.
 static void montarTela(int taxaKbps) {
