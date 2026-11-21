@@ -167,4 +167,23 @@ static inline int anim_borda_passo(AnimBorda *b, float dt, int reduzida) {
   return 1;
 }
 
+
+// An underdamped, retargetable focus spring with small controlled overshoot.
+// Runs only for visible player controls; reduced-motion jumps to the target.
+static inline float anim_mola_rebote(float *v, float x, float alvo, float dt, float omega, float damping) {
+  if (anim_politica_reduzida) { *v = 0.0f; return alvo; }
+  if (dt <= 0.0f) return x;
+  if (dt > 0.05f) dt = 0.05f;
+  int n = dt > 0.03f ? 5 : dt > 0.02f ? 3 : 2;
+  float h = dt / n;
+  for (int i = 0; i < n; i++) {
+    float acel = omega * omega * (alvo - x) - 2.0f * damping * omega * *v;
+    *v += acel * h;
+    x += *v * h;
+  }
+  if (x < -0.07f) { x = -0.07f; *v = 0.0f; }
+  if (x > 1.07f) { x = 1.07f; *v = 0.0f; }
+  if (fabsf(x - alvo) < 0.0004f && fabsf(*v) < 0.005f) { x = alvo; *v = 0.0f; }
+  return x;
+}
 #endif

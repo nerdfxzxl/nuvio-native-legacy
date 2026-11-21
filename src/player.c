@@ -145,6 +145,7 @@ extern int trakt_scrobble_alvo(int, const TraktScrobbleAlvo *, double, double,
 #include "plrilha.h"
 #include "neste.h"
 #include "cacheboost.h"
+#include "estatvivoui.h"
 #include "audioinfo.h"
 #include "legendasui.h"   /* F04: second subtitle band */
 #include <time.h>
@@ -234,7 +235,7 @@ extern int trakt_scrobble_alvo(int, const TraktScrobbleAlvo *, double, double,
 // IDs estaveis: a ordem visual e de navegacao vem de transporteAcoes.
 // Na serie, Anterior/Proximo ficam ao lado do Play; o restante conserva a ordem.
 enum { PLR_PLAY, PLR_CC, PLR_AUDIO, PLR_ASPECTO,
-       PLR_FONTES, PLR_EPISODIOS, PLR_PROXIMO, PLR_REINICIAR, PLR_NESTE, PLR_NBTNS };
+       PLR_FONTES, PLR_EPISODIOS, PLR_PROXIMO, PLR_REINICIAR, PLR_NESTE, PLR_INFO, PLR_NBTNS };
 
 // Avanco em curso: enquanto vale, posSeg e do DONO e nao do pipeline.
 static int    scrubbing, scrubPassos, scrubTocava, scrubDir, scrubToque;
@@ -350,6 +351,10 @@ static float anim = 0.0f;          // 0..1 seguindo `visivel`, por mola
 static int   soBarra = 0;
 static float cheio = 1.0f;
 static float focoB[PLR_NBTNS];     // mola de foco de cada botao
+static float focoBV[PLR_NBTNS];    // underdamped spring velocity for premium bounce
+static int tempoFoco, tempoRestante; // Right from Info -> elapsed / total or remaining
+static int infoTeclaEmBaixo, infoSegurou;
+static Uint32 infoTeclaDesde;
 // A FILEIRA DE BOTOES FECHA COM O FOCO NA BARRA (pedido do dono, 03/10): quem
 // subiu para a barra esta procurando no filme, e os botoes embaixo dela so
 // disputam o olhar. Ela desce e apaga pela mola dos controles e volta quando o
@@ -1832,7 +1837,7 @@ void player_aspecto_ciclar(void) {
   // de girar para sempre.
   for (i = 0; i < PLR_ASP_N; i++) {
     m = (m + 1) % PLR_ASP_N;
-    if (modoDisponivel(m)) break;
+    if (m != PLR_ASP_ZOOM_ULTRA && modoDisponivel(m)) break;
   }
   player_aspecto_definir(m);
   toastTexto[0] = 0;
@@ -1947,7 +1952,10 @@ void player_abrir(int indiceCatalogo, const char *url) {
   retomarSeg = 0.0; retomadaNaPreparacao = 0;
 #endif
   botao = PLR_PLAY;
+  tempoFoco = infoTeclaEmBaixo = infoSegurou = 0;
   memset(focoB, 0, sizeof focoB);
+  memset(focoBV, 0, sizeof focoBV);
+  estatvivo_player_nova_sessao();
   posSeg = 0.0f; relogio_zerar(&relLeg); velmed_zerar(&velMed);
   ultimoInput = SDL_GetTicks();
   esperandoFonte = (url == NULL);
@@ -3358,14 +3366,11 @@ static int transporteAcoes(PlrAcao a[PLR_NBTNS]) {
   int pronto = serie && !trocaEpisodio && !pedRecarregar && !player_carregando() && !erroFonte && !saindo;
   a[n++] = (PlrAcao){PLR_PLAY, 1};
   if (serie) a[n++] = (PlrAcao){PLR_PROXIMO, pronto && player_proximo_episodio() != NULL};
-  if (!ehCanal()) a[n++] = (PlrAcao){PLR_REINICIAR,
-      player_recarregar_contexto() != 0 && video_duracao() > 0.5};
   a[n++] = (PlrAcao){PLR_CC, 1};
   a[n++] = (PlrAcao){PLR_AUDIO, 1};
+  if (serie || temUltimoBotao()) a[n++] = (PlrAcao){PLR_EPISODIOS, 1};
   a[n++] = (PlrAcao){PLR_ASPECTO, 1};
-  a[n++] = (PlrAcao){PLR_FONTES, 1};
-  if (temUltimoBotao()) a[n++] = (PlrAcao){PLR_EPISODIOS, 1};
-  if (serie) a[n++] = (PlrAcao){PLR_NESTE, 1};
+  a[n++] = (PlrAcao){PLR_INFO, 1};
   return n;
 }
 static int transporteHabilitado(int id) {
@@ -4220,6 +4225,7 @@ static int ativarBotao(int i, int repetiu) {
       return 1;
     }
     case PLR_PLAY: alternarTocando(); break;
+    case PLR_INFO: if (!repetiu) estatvivo_player_toggle(); break;
     case PLR_ASPECTO: player_aspecto_ciclar(); break;
     case PLR_CC: pedFaixas = 2; break;
     case PLR_AUDIO: pedFaixas = 1; break;
@@ -4249,8 +4255,16 @@ void player_evento(const SDL_Event *e) {
     default: break;
   }
   if (e->type == SDL_KEYUP && (e->key.keysym.sym == SDLK_RETURN ||
-      e->key.keysym.sym == SDLK_KP_ENTER || e->key.keysym.sym == SDLK_SPACE))
+      e->key.keysym.sym == SDLK_KP_ENTER || e->key.keysym.sym == SDLK_SPACE)) {
     confirmacaoTransporteRetida = 0;
+    if (infoTeclaEmBaixo) {
+      int foiSegurado = infoSegurou;
+      infoTeclaEmBaixo = infoSegurou = 0;
+      if (!foiSegurado && aberto && !saindo && visivel) estatvivo_player_toggle();
+      acordar();
+      return;
+    }
+  }
   // O painel de pos-reproducao come a tecla quando esta no ar; ele e a coisa
   // mais recente na tela e o dono esta olhando para ele. O 2 e o BAIXO: ele
   // dispensa o painel E pede a barra de tempo de volta, que e o gesto que o
@@ -4272,6 +4286,16 @@ void player_evento(const SDL_Event *e) {
     if (r) { if (r == 2) acordar(); return; } }
   if (!aberto || saindo || e->type != SDL_KEYDOWN) return;
   SDL_Keycode k = e->key.keysym.sym;
+  if (visivel && !barraFoco && !skipFoco && !tempoFoco && botao == PLR_INFO &&
+      (k == SDLK_RETURN || k == SDLK_KP_ENTER || k == SDLK_SPACE)) {
+    if (!infoTeclaEmBaixo) {
+      infoTeclaEmBaixo = 1;
+      infoSegurou = 0;
+      infoTeclaDesde = SDL_GetTicks();
+    }
+    acordar();
+    return;
+  }
   if (e->key.repeat && confirmacaoTransporteRetida &&
       (k == SDLK_RETURN || k == SDLK_KP_ENTER || k == SDLK_SPACE)) return;
 
@@ -4468,6 +4492,11 @@ void player_evento(const SDL_Event *e) {
   // OK no meio de um avanco CONFIRMA o avanco, em vez de alternar play/pausa.
   // Quem aperta o centro com a barra correndo quer parar ali, e alternar o
   // estado deixaria o filme pausado no ponto novo — meio comando executado.
+  if (tempoFoco && (k == SDLK_RETURN || k == SDLK_KP_ENTER || k == SDLK_SPACE)) {
+    if (!e->key.repeat) tempoRestante = !tempoRestante;
+    acordar();
+    return;
+  }
   if (scrubbing && (barraFoco || skipFoco || botao != PLR_REINICIAR) &&
       (k == SDLK_RETURN || k == SDLK_KP_ENTER || k == SDLK_SPACE)) {
     terminarSalto();
@@ -4531,7 +4560,12 @@ void player_evento(const SDL_Event *e) {
   }
   // Sem rotacao nas pontas: a fileira e curta e cabe inteira no olhar; dar a
   // volta no fim le como erro, nao como atalho.
-  if (k == SDLK_LEFT) transporteMover(-1);
+  if (tempoFoco) {
+    if (k == SDLK_LEFT) tempoFoco = 0;
+    else if (k == SDLK_UP) { tempoFoco = 0; barraFoco = 1; }
+  } else if (k == SDLK_RIGHT && botao == PLR_INFO && !ehCanal()) {
+    tempoFoco = 1;
+  } else if (k == SDLK_LEFT) transporteMover(-1);
   else if (k == SDLK_RIGHT) transporteMover(1);
   acordar();
 }
@@ -4568,6 +4602,12 @@ void player_atualizar(float dt, Uint32 agora) {
   playerTelaAtualizar();
 #endif
   if (retido) { player_validar_retido(agora); return; }
+  if (infoTeclaEmBaixo && !infoSegurou && visivel && aberto && !saindo &&
+      (Sint32)(agora - infoTeclaDesde) >= 520) {
+    infoSegurou = 1;
+    if (estatvivo_player_aberto()) estatvivo_player_expandir();
+    else pedFontes = 1; // keep source selection accessible without an extra action button
+  }
   if (aberto || mini) atualizarIdentidade();
 #ifdef NV_TPK
   // A TV recusou um seek e o arquivo nao tem indice nenhum (mkvfix.h): diz,
@@ -5176,8 +5216,7 @@ void player_atualizar(float dt, Uint32 agora) {
   for (int i = 0; i < PLR_NBTNS; i++) {
     // Foco na barra: o botao fecha (antes ficava aberto sem texto).
     float alvo = (visivel && habilitadas[i] && botao == i && !barraFoco) ? 1.0f : 0.0f;
-    focoB[i] = anim_mola(focoB[i], alvo, dt,
-                         alvo > focoB[i] ? NV_MOLA_FOCO : NV_MOLA_DESFOCO);
+    focoB[i] = anim_mola_rebote(&focoBV[i], focoB[i], alvo, dt, 24.0f, 0.75f);
   }
 }
 
@@ -5341,6 +5380,7 @@ static const char *iconeBotao(int i) {
     case PLR_CC:        return "pl_captions";
     case PLR_AUDIO:     return "pl_audio-lines";
     case PLR_ASPECTO:   return "pl_ratio";
+    case PLR_INFO:      return "pl_info";
     case PLR_FONTES:    return "pl_layers";
     case PLR_PROXIMO:   return "pl_chevron-right";
     case PLR_REINICIAR: return "pl_rotate-ccw";
@@ -5354,6 +5394,7 @@ static const char *rotuloBotao(int i) {
     case PLR_CC:        return "Legendas";
     case PLR_AUDIO:     return "\xc3\x81udio";
     case PLR_ASPECTO:   return "Propor\xc3\xa7\xc3\xa3o";
+    case PLR_INFO:      return "Playback Info";
     case PLR_FONTES:    return "Fontes";
     case PLR_PROXIMO:   return "Próximo episódio";
     case PLR_REINICIAR: return "Assistir do começo";
@@ -7318,7 +7359,8 @@ static void desenharOsdCorpo(Uint32 agora, float a, float ac, const CatItem *c) 
     float yRow = yRowTopo + dy;
     for (int j = 0; j < nAcoes; j++) {
       int i = acoes[j].id, habilitada = acoes[j].habilitada;
-      float f = habilitada ? focoB[i] : 0.0f, alpha = habilitada ? af : af * 0.35f;
+      float f = habilitada ? focoB[i] : 0.0f, fAlpha = anim_clamp(f, 0.0f, 1.0f);
+      float alpha = habilitada ? af : af * 0.35f;
       const char *ic = iconeBotao(i), *rot = rotuloBotao(i);
       TxtLinha lr = txt_linha(TXT_G21B, rot, 0, 0, 0, 255);
       float wCheio = 22.0f + 30.0f + 12.0f + (float)lr.w + 28.0f;
@@ -7333,21 +7375,21 @@ static void desenharOsdCorpo(Uint32 agora, float a, float ac, const CatItem *c) 
                       alvo.y + (celulaH - diametro) * 0.5f, diametro, diametro};
       }
       float cyB = r.y + r.h * 0.5f;
-      int tinta = (int)(242.0f + (plrui_tinta() - 242.0f) * f);
+      int tinta = (int)(242.0f + (plrui_tinta() - 242.0f) * fAlpha);
       float k = tinta / 255.0f;
-      if (f > 0.02f) plrui_pilula_foco(r, alpha * f);
-      if (f < 0.98f) plrui_disco_osd(r, alpha * (1.0f - f));
+      if (fAlpha > 0.02f) plrui_pilula_foco(r, alpha * fAlpha);
+      if (fAlpha < 0.98f) plrui_disco_osd(r, alpha * (1.0f - fAlpha));
       if (ponteiroNoPlayer() && af > 0.3f)
         ponteiro_alvo(alvo.x, alvo.y, alvo.w, alvo.h, habilitada ? ponteiroBotao : NULL,
                       habilitada ? ponteiroAtivarBotao : ponteiroBotaoInativo, i, 0);
       { float tamanho = toque ? 64.0f / gfx_escala_ui() : 30.0f;
         float ix = transporteCurto ? r.x + (diametro - tamanho) * 0.5f :
-          x + (PLR_BTN_D - 30.0f) * 0.5f + (22.0f - (PLR_BTN_D - 30.0f) * 0.5f) * f;
+          x + (PLR_BTN_D - 30.0f) * 0.5f + (22.0f - (PLR_BTN_D - 30.0f) * 0.5f) * fAlpha;
         gfx_icone((GfxRect){ ix, cyB - tamanho * 0.5f, tamanho, tamanho }, ic, k, k, k, alpha * 0.96f);
-        if (!transporteCurto && f > 0.05f) {
+        if (!transporteCurto && fAlpha > 0.05f) {
           TxtLinha l = txt_linha(TXT_G21B, rot, tinta, tinta, tinta, 255);
           gfx_recorte(r.x, r.y, r.w, r.h);
-          txt_desenhar_alpha(l, ix + 30.0f + 12.0f, cyB - (float)l.h * 0.5f, af * f);
+          txt_desenhar_alpha(l, ix + 30.0f + 12.0f, cyB - (float)l.h * 0.5f, af * fAlpha);
           gfx_sem_recorte();
         } }
       if (!toque) x += w + PLR_BTN_GAP;
@@ -7377,12 +7419,19 @@ static void desenharOsdCorpo(Uint32 agora, float a, float ac, const CatItem *c) 
     } else {
       plrui_tempo(t1, sizeof t1, posVisSolto ? posVis : posSeg);
       plrui_tempo(d, sizeof d, duracaoSeg);
-      snprintf(t2, sizeof t2, "/ %s", d);
+      if (tempoRestante) {
+        char restante[24];
+        plrui_tempo(restante, sizeof restante, fmaxf(0.0f, duracaoSeg - posSeg));
+        snprintf(t2, sizeof t2, "/ -%s", restante);
+      } else snprintf(t2, sizeof t2, "/ %s", d);
       if (cheio > 0.01f) {
         TxtEstilo estilo = transporteCurto ? TXT_G22M : TXT_ILHA_NOME;
         TxtLinha l2 = txt_linha(estilo, t2, 243, 242, 239, 128);
         TxtLinha l1 = txt_linha(estilo, t1, 243, 242, 239, 235);
         float xr = cx + cw - l2.w, y = cyTempo - (float)l1.h * 0.5f;
+        if (tempoFoco && visivel)
+          plrui_linha_foco((GfxRect){xr - 24.0f - l1.w, y - 7.0f,
+              l1.w + l2.w + 38.0f, fmaxf(l1.h, l2.h) + 14.0f}, 15.0f, a * cheio);
         txt_desenhar_alpha(l2, xr, y, a * cheio);
         txt_desenhar_alpha(l1, xr - 8.0f - l1.w, y, a * cheio);
 #ifdef NV_TPK
