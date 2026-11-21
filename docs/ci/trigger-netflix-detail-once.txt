@@ -29,3 +29,5 @@ Player customization + bass EQ integration APK build 2026-11-21. Native Playback
 Player customization retry #126 on 2026-11-21: fix 5 native gfx_cor argument counts in detailed/compact Playback Info after build #125 CMake failed. Add estatvivoui.c, faixas.c, legendasui.c, audioescolha.c, cacheboost.c to ARM64 early preflight; preserve Gradle/native/P2P/FFmpeg cache keys; only full APK after early tests pass.
 
 Build #127 2026-11-21: fix ARM64 preflight audio selector's missing forward declaration audioLinhaDaFaixa() after #126 uncovered it. Keep expanded gate and unchanged Gradle/FFmpeg/native/P2P caches; rerun full APK.
+
+Build 128: cached Android debug APK after green preflight #19 (run 44893380986); complete post-127 player refinements, branch SHA 97c1d2cc5fdec0679506f2be180e6bb8a9728efa. Reuse Gradle, Android native and P2P caches.
