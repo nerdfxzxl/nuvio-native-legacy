@@ -23,3 +23,4 @@ Build 128 player refinement: ARM64 C syntax, stats screen, glass action pill, dy
 Build 128 preflight #19: C/ARM64 checks for shared glass controls, subtitles 3 tabs, Audio PCM effects, official stream list; from 7fe3a13d38c9d9e88a1efbccd05f5b9cd5fb4240.
 
 # Audio panel navigation + optional persistence preflight, 2026-11-21.
+# Subtitle source tabs and shared header ARM64 preflight, 2026-11-21.
