@@ -48,6 +48,7 @@
 static int aberta, coluna, foco[3];
 static int legendaSyncPagina, legendaSyncFoco;
 static int legendaTopoFoco, legendaTopoIndice, legendaSyncEdit, legendaSyncLado;
+static int estiloEdit, estiloLado, estiloFontePopup, estiloFonteFoco;
 static float legendaTabCursor;
 // #202: foco na linha da velocidade e o ultimo valor pedido pela folha.
 static int velFoco, velPedidaUi = VEL_NORMAL;
@@ -655,6 +656,7 @@ void faixas_abrir_em(int col) {
   coluna = modo;                 // audio -> col 0; legenda -> col 1
   ctl = -1; legendaSyncPagina = legendaSyncFoco = 0;
   legendaTopoFoco = legendaTopoIndice = legendaSyncEdit = legendaSyncLado = 0;
+  estiloEdit = estiloLado = estiloFontePopup = estiloFonteFoco = 0;
   legendaTabCursor = 0.0f;
   volFoco = 0; velFoco = 0;
   foco[0] = audioLinhaDaFaixa(video_audio_atual());
@@ -695,14 +697,14 @@ int faixas_estilo_topo(void) { return aberta && modo && coluna == FX_COL_ESTILO 
 float faixas_anim(void) { return anim; }
 void faixas_aba_estilo(int estilo) {
   if (!aberta || !modo) return;
-  legendaTopoFoco = 0;
+  legendaTopoFoco = 0; estiloEdit = estiloFontePopup = 0;
   coluna = estilo ? FX_COL_ESTILO : 1;
   legendaSyncPagina = 0;
   ctl = -1;
 }
 void faixas_aba_sync(int ativar) {
   if (!aberta || !modo) return;
-  legendaTopoFoco = legendaSyncEdit = 0;
+  legendaTopoFoco = legendaSyncEdit = estiloEdit = estiloFontePopup = 0;
   coluna = ativar ? FX_COL_ESTILO : 1;
   legendaSyncPagina = ativar != 0;
   legendaSyncFoco = 0; ctl = -1;
@@ -1416,47 +1418,64 @@ static const int estiloNovoMapa[9] = {5, -1, 1, 0, 8, 6, -1, -1, 9};
 static int estiloNovoAtivo(int linha) { return linha >= 0 && linha < 9 && estiloNovoMapa[linha] >= 0; }
 
 static int estiloTecla(SDL_Keycode k, int rep) {
-  int *f = &foco[FX_COL_ESTILO];
-  int d = k == SDLK_LEFT ? -1 : k == SDLK_RIGHT ? 1 : 0;
-  int ok = k == SDLK_RETURN || k == SDLK_KP_ENTER;
-  if (k == SDLK_ESCAPE || k == SDLK_AC_BACK || k == SDLK_BACKSPACE) {
-    coluna = 1; ctl = -1; return 1;
-  }
-  if (k == SDLK_UP) {
-    if (*f > 0) (*f)--;
-    else { legendaTopoFoco = 1; legendaTopoIndice = 1; ctl = -1; }
+  int *f=&foco[FX_COL_ESTILO];
+  int ok=k==SDLK_RETURN || k==SDLK_KP_ENTER;
+  (void)rep;
+  if (k==SDLK_ESCAPE || k==SDLK_AC_BACK || k==SDLK_BACKSPACE) {
+    if(estiloFontePopup) {estiloFontePopup=0;ctl=-1;}
+    else if(estiloEdit) estiloEdit=0;
+    else {legendaTopoFoco=1;legendaTopoIndice=1;}
     return 1;
   }
-  if (k == SDLK_DOWN) {
-    if (*f < 8) (*f)++;
-    else { legendaSyncPagina = 1; legendaSyncFoco = 0; }
-    return 1;
-  }
-  if (!d && !ok) return 1;
-  int original = estiloNovoMapa[*f];
-  if (original < 0) return 1; // Renderer does not expose this parameter.
-  if (original == EST_RESTAURAR) { if (ok) ciclarEstilo(original); return 1; }
-  if (original == EST_FONTE) {
-    if (d || ok) {
-      int atual = player_leg_estilo()->familia, n = TXT_FAMILIA_N;
-      int novo = (atual + (d ? d : 1) + n) % n;
-      player_leg_fonte_definir(novo);
+  if(estiloFontePopup) {
+    int total=TXT_FAMILIA_N+legfontes_n();
+    if(k==SDLK_UP && estiloFonteFoco>0)estiloFonteFoco--;
+    else if(k==SDLK_DOWN && estiloFonteFoco<total-1)estiloFonteFoco++;
+    else if(ok && !rep) {
+      // Existing font pipeline applies the chosen installed or imported font.
+      ctl=EST_FONTE;estEscolher(estiloFonteFoco);ctl=-1;
+      estiloFontePopup=0;
     }
     return 1;
   }
-  if (original == 8 || original == 6) {
-    if (d || ok) {
-      VideoLegendaEstilo *e = player_leg_estilo();
-      if (original == 8) { e->negrito = !e->negrito; player_leg_estilo_tocou(PLR_LEG_NEGRITO); }
-      else { e->borda = e->borda == 2 ? 0 : 2; player_leg_estilo_tocou(PLR_LEG_BORDA); }
+  if(k==SDLK_UP || k==SDLK_DOWN) {
+    // Vertical movement exits the +/- controls, exactly like Audio.
+    estiloEdit=0;
+    if(k==SDLK_UP && *f>0)(*f)--;
+    else if(k==SDLK_UP){legendaTopoFoco=1;legendaTopoIndice=1;}
+    else if(k==SDLK_DOWN && *f<8)(*f)++;
+    return 1;
+  }
+  int original=estiloNovoMapa[*f];
+  if(original<0) return 1; // Not implemented in the active rendering pipeline.
+  if(original==EST_RESTAURAR) {
+    if(ok && !rep)ciclarEstilo(original);
+    return 1;
+  }
+  if(original==EST_FONTE) {
+    if(ok && !rep) {
+      int local=legfontes_selecionada(0);
+      estiloFonteFoco=local>=0?TXT_FAMILIA_N+local:player_leg_estilo()->familia;
+      estiloFontePopup=1;estiloEdit=0;
+    }
+    return 1;
+  }
+  if(original==8||original==6){
+    if(ok && !rep) {
+      VideoLegendaEstilo *e=player_leg_estilo();
+      if(original==8){e->negrito=!e->negrito;player_leg_estilo_tocou(PLR_LEG_NEGRITO);}
+      else{e->borda=e->borda==2?0:2;player_leg_estilo_tocou(PLR_LEG_BORDA);}
       player_leg_estilo_mudou();
     }
     return 1;
   }
-  if (d) {
-    ctlRep = rep ? ctlRep + 1 : 0;
-    estPasso(original, d, rep);
+  if(!estiloEdit) {
+    if(ok && !rep) {estiloEdit=1;estiloLado=0;}
+    return 1; // arrows on an unfocused setting do not mutate it
   }
+  if(k==SDLK_LEFT && estiloLado>0)estiloLado--;
+  else if(k==SDLK_RIGHT && estiloLado<1)estiloLado++;
+  else if(ok && !rep) {ctlRep=0;estPasso(original,estiloLado==0?-1:1,0);}
   return 1;
 }
 
@@ -2520,35 +2539,67 @@ void faixas_legenda_tabs(float x, float y, float w, float a) {
           target==selected?1.0f:.60f,a);
 }
 static void corpoEstilo(GfxRect c, float a) {
-  float x = c.x + IL_PAD_X, w = c.w - IL_PAD_X*2.0f, y = c.y + IL_PAD_Y;
-  faixas_legenda_tabs(x, y, w, a);
-  y += 78.0f;
-  for (int i = 0; i < 9; i++) {
-    float rowH = 66.0f, cy = y + rowH*.5f;
-    GfxRect row = {x, y, w, rowH};
-    int active = i == foco[FX_COL_ESTILO], original = estiloNovoMapa[i];
+  float x=c.x+IL_PAD_X,w=c.w-IL_PAD_X*2.0f,y=c.y+IL_PAD_Y;
+  faixas_legenda_tabs(x,y,w,a);
+  y+=78.0f;
+  for(int i=0;i<9;i++) {
+    float rowH=66.0f,cy=y+rowH*.5f;
+    GfxRect row={x,y,w,rowH};
+    int selected=!legendaTopoFoco && i==foco[FX_COL_ESTILO];
+    int original=estiloNovoMapa[i];
     char val[128];
-    if (active) plrui_linha_foco(row, 14.0f, a*.85f);
-    if (original < 0) snprintf(val, sizeof val, "Unavailable");
-    else if (original == EST_RESTAURAR) snprintf(val, sizeof val, "OK to reset");
-    else if (original == 6) snprintf(val, sizeof val, "%s",
-                                       player_leg_estilo()->borda == 2 ? "On" : "Off");
-    else valorEstilo(original, val, sizeof val);
-    {
-      TxtLinha lab = txt_linha(TXT_ILHA_CORPO, estiloNovoRotulos[i], 237, 240, 245, 255);
-      TxtLinha v = txt_linha_corta(TXT_ILHA_SUB, val, original < 0 ? 134 : 216,
-                                   original < 0 ? 135 : 221, original < 0 ? 138 : 231,
-                                   255, w*.48f);
-      txt_desenhar_alpha(lab, x + 18.0f, cy - lab.h*.5f, a);
-      txt_desenhar_alpha(v, x + w - 18.0f - v.w, cy - v.h*.5f, a);
+    if(selected)plrui_linha_foco(row,14.0f,a*.85f);
+    if(original<0)snprintf(val,sizeof val,"Unavailable");
+    else if(original==EST_RESTAURAR)snprintf(val,sizeof val,"Reset to default");
+    else if(original==6)snprintf(val,sizeof val,"%s",player_leg_estilo()->borda==2?"On":"Off");
+    else valorEstilo(original,val,sizeof val);
+    TxtLinha lab=txt_linha(TXT_ILHA_CORPO,estiloNovoRotulos[i],237,240,245,255);
+    txt_desenhar_alpha(lab,x+18.0f,cy-lab.h*.5f,a);
+    if(original==0 || original==5) {
+      // Always-visible value flanked by minus/plus, even when not editing.
+      const float minus=x+w-248.0f, plus=x+w-64.0f;
+      GfxRect m={minus,cy-19.0f,38.0f,38.0f};
+      GfxRect p={plus,cy-19.0f,38.0f,38.0f};
+      if(selected&&estiloEdit){
+        GfxRect fr=estiloLado==0?m:p;
+        plrui_material(fr,11.0f,0,a);
+        gfx_anel(fr,11.0f/fr.h,2.0f,1,1,1,a);
+      }
+      gfx_icone((GfxRect){minus+8.0f,cy-11.0f,22.0f,22.0f},"aj_minus",1,1,1,a);
+      gfx_icone((GfxRect){plus+8.0f,cy-11.0f,22.0f,22.0f},"aj_plus",1,1,1,a);
+      TxtLinha v=txt_linha_corta(TXT_ILHA_SUB,val,218,224,234,255,142.0f);
+      txt_desenhar_alpha(v,minus+38.0f+(plus-minus-38.0f-v.w)*.5f,cy-v.h*.5f,a);
+    } else {
+      TxtLinha v=txt_linha_corta(TXT_ILHA_SUB,val,original<0?134:216,
+                                 original<0?135:221,original<0?138:231,255,w*.42f);
+      txt_desenhar_alpha(v,x+w-18.0f-v.w,cy-v.h*.5f,a);
     }
-    if (original >= 0 && original != EST_RESTAURAR) {
-      gfx_cor((GfxRect){x + w - 239.0f, y + 19.0f, 2.0f, rowH-38.0f},
-              0, 1, 1, 1, .12f*a);
+    y+=70.0f;
+  }
+  if(estiloFontePopup) {
+    int total=TXT_FAMILIA_N+legfontes_n();
+    float row=38.0f, pw=248.0f, ph=total*row+20.0f;
+    float px=x+w-pw-15.0f, py=c.y+IL_PAD_Y+78.0f+2*70.0f;
+    if(py+ph>c.y+c.h-18.0f)py=c.y+c.h-18.0f-ph;
+    GfxRect popup={px,py,pw,ph};
+    gfx_sem_recorte();
+    gfx_cor(popup,18.0f/popup.h,.07f,.08f,.10f,.97f*a);
+    gfx_anel(popup,18.0f/popup.h,1.0f,.37f,.40f,.46f,a);
+    int imported=legfontes_selecionada(0);
+    for(int j=0;j<total;j++) {
+      GfxRect item={px+10.0f,py+10.0f+row*j,pw-20.0f,row};
+      int chosen=imported>=0?j==TXT_FAMILIA_N+imported:j==player_leg_estilo()->familia;
+      if(j==estiloFonteFoco)plrui_linha_foco(item,9.0f,.77f*a);
+      const char *name=j<TXT_FAMILIA_N?TXT_FAMILIAS_PT[j]:legfontes_nome(j-TXT_FAMILIA_N);
+      TxtLinha t=txt_linha_corta(TXT_ILHA_SUB,name,237,240,244,255,item.w-56.0f);
+      txt_desenhar_alpha(t,item.x+12.0f,item.y+(row-t.h)*.5f,a);
+      if(chosen)gfx_icone((GfxRect){item.x+item.w-31.0f,item.y+8.0f,22.0f,22.0f},
+                           "pl_check",1,1,1,a);
     }
-    y += 70.0f;
+    gfx_recorte(c.x,c.y,c.w,c.h);
   }
 }
+
 static void corpoSync(GfxRect c, float a) {
   float x=c.x+IL_PAD_X,w=c.w-IL_PAD_X*2.0f,y=c.y+IL_PAD_Y+80.0f;
   int ms=legendasui_sync_valor();
