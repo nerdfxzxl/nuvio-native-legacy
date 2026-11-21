@@ -28,6 +28,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#ifdef NV_ANDROID
+#include <unistd.h>
+#endif
 
 
 #include "anim.h"
@@ -85,14 +88,33 @@ static int aberto, fixado, temSessao, tamanho;
 static EvSistema sistema;
 static int playerInfoAberto, playerInfoAuto, playerInfoModo, playerInfoHud, playerInfoCarregado;
 static int playerInfoScroll, playerInfoFoco, playerInfoHudFoco;
+static int playerInfoFocused;
 #define EVU_ARQ_PLAYER_INFO "estatvivo-player-info.txt"
 static EvInfoLinha playerInfoLinhas[48];
 static int playerInfoN;
 static void playerInfoMontarLinhas(void);
-static void playerInfoGarantirScroll(void);
-static int editando, focoEd, perfilTiles = -1, nTiles[EV_TAM_N], tiles[EV_TAM_N][6];
-static const char *const tileNome[] = {
-  "Velocidade", "Buffer à frente", "Fonte", "Conexões e servidor", "Erros e reconexões", "Quadros perdidos"
+static float playerInfoLinhaH(const EvInfoLinha *l) {
+  if (l->secao) return 40.0f;
+  if (!strcmp(l->rotulo, "File")) {
+    int chars = (int)strlen(l->valor);
+    int rows = (chars + 43) / 44;
+    if (rows < 2) rows = 2;
+    if (rows > 13) rows = 13;
+    return 14.0f + rows * 27.0f;
+  }
+  return 34.0f;
+}
+static float playerInfoAlturaTotal(void) {
+  float total = 0.0f;
+  for (int i = 0; i < playerInfoN; i++) total += playerInfoLinhaH(&playerInfoLinhas[i]);
+  return total;
+}
+static void playerInfoGarantirScroll(void) {
+  float visible = NV_VTELA_H - EVU_TOPO - 24.0f - 178.0f;
+  float max = playerInfoAlturaTotal() - visible;
+  if (max < 0) max = 0;
+  if (playerInfoScroll < 0) playerInfoScroll = 0;
+  if (playerInfoScroll > (int)max) playerInfoScroll = (int)max;
 };
 static const char *const tileIcone[] = {
   "aj_gauge", "aj_database", "aj_film", "aj_server", "aj_rotate-cw", "aj_monitor-play"
@@ -238,7 +260,7 @@ static void playerInfoCarregar(void) {
 }
 static void playerInfoSalvar(void) {
   char b[32];
-  snprintf(b, sizeof b, "%d %d %d\\n", playerInfoAuto, playerInfoModo, playerInfoHud);
+  snprintf(b, sizeof b, "%d %d %d\n", playerInfoAuto, playerInfoModo, playerInfoHud);
   dados_gravar(EVU_ARQ_PLAYER_INFO, b);
 }
 void estatvivo_player_toggle(void) {
@@ -269,10 +291,17 @@ void estatvivo_player_expandir(void) {
 void estatvivo_player_nova_sessao(void) {
   playerInfoCarregar();
   playerInfoAberto = playerInfoAuto;
-  playerInfoScroll = playerInfoFoco = playerInfoHudFoco = 0;
+  playerInfoScroll = playerInfoFoco = playerInfoHudFoco = playerInfoFocused = 0;
 }
 int estatvivo_player_aberto(void) { playerInfoCarregar(); return playerInfoAberto; }
 int estatvivo_player_detalhado(void) { playerInfoCarregar(); return playerInfoModo; }
+void estatvivo_player_focar(int ativo) { playerInfoFocused = ativo && playerInfoAberto; }
+void estatvivo_player_scroll(int direcao) {
+  if (!playerInfoAberto || !playerInfoModo) return;
+  playerInfoScroll += (direcao > 0 ? 1 : -1) * 490;
+  if (playerInfoScroll < 0) playerInfoScroll = 0;
+  playerInfoGarantirScroll();
+}
 void estatvivo_player_hud_toggle(void) {
   playerInfoCarregar();
   if (!playerInfoAberto || !playerInfoModo) return;
@@ -325,31 +354,9 @@ int estatvivo_evento(const SDL_Event *e, int cimaDela) {
   if (!e || e->type != SDL_KEYDOWN) return aberto && e && e->type == SDL_KEYUP;
   k = e->key.keysym.sym;
   // Playback Info is non-modal: Back remains owned by the player.
-  if (playerInfoAberto && !aberto && !fixado) {
-    if (cimaDela || k == SDLK_AC_BACK || k == SDLK_ESCAPE || k == SDLK_BACKSPACE) return 0;
-    if (playerInfoModo && (k == SDLK_UP || k == SDLK_DOWN ||
-        k == SDLK_PAGEUP || k == SDLK_PAGEDOWN || k == SDLK_RETURN || k == SDLK_KP_ENTER)) {
-      playerInfoMontarLinhas();
-      if (k == SDLK_UP) {
-        if (playerInfoHudFoco) playerInfoHudFoco = 0;
-        else if (playerInfoFoco > 0) playerInfoFoco--;
-      } else if (k == SDLK_DOWN) {
-        if (!playerInfoHudFoco && playerInfoFoco < playerInfoN - 1) playerInfoFoco++;
-        else playerInfoHudFoco = 1;
-      } else if (k == SDLK_PAGEUP) {
-        playerInfoHudFoco = 0;
-        playerInfoFoco -= 8;
-        if (playerInfoFoco < 0) playerInfoFoco = 0;
-      } else if (k == SDLK_PAGEDOWN) {
-        playerInfoHudFoco = 0;
-        playerInfoFoco += 8;
-        if (playerInfoFoco >= playerInfoN) { playerInfoFoco = playerInfoN - 1; playerInfoHudFoco = 1; }
-      } else if (playerInfoHudFoco) estatvivo_player_hud_toggle();
-      playerInfoGarantirScroll();
-      return 1;
-    }
-    return 0;
-  }
+  // The player's information overlay is non-modal. Its focus and page
+  // scrolling belong to player_evento, not to this legacy stats card.
+
   if (!aberto) {
     // CIMA foca o painel fixado — MENOS quando outra camada/foco e dona da
     // tecla neste quadro (cimaDela: folha, avisos, guia, barra, "Pular
@@ -1516,117 +1523,137 @@ static void playerInfoMontarLinhas(void) {
 }
 
 static void desenharPlayerHud(float a) {
-  GfxRect p = { EVU_MARG, EVU_TOPO, 500.0f, 252.0f };
-  char linhas[8][176], cpu[48], pag[48], mem[96], buf[80], net[80], drop[64], thermal[48];
-  char taxa[24], rede[24], redeMedia[24];
+  const float px = EVU_MARG, py = EVU_TOPO;
+  char values[9][152], labels[9][20];
+  int severity[9] = {0}, n = 0;
+  char b[80], size[40], now[32], avg[32];
+  GfxRect p;
   if (!playerInfoAberto || a < 0.01f) return;
-  if (sistema.cpuAtual >= 0) snprintf(cpu, sizeof cpu, "cpu       %.0f%%  avg %.0f%%", sistema.cpuAtual, sistema.cpuMedia);
-  else snprintf(cpu, sizeof cpu, "cpu       —");
-  if (sistema.pagingAtual >= 0) snprintf(pag, sizeof pag, "paging    %.0f/s  avg %.0f/s", sistema.pagingAtual, sistema.pagingMedia);
-  else snprintf(pag, sizeof pag, "paging    —");
-  if (sistema.rssKb >= 0)
-    snprintf(mem, sizeof mem, "memory    %lld / %lld MB  native peak %lld MB",
-             sistema.rssKb / 1024, sistema.totalKb >= 0 ? sistema.totalKb / 1024 : 0,
-             sistema.peakKb >= 0 ? sistema.peakKb / 1024 : 0);
-  else snprintf(mem, sizeof mem, "memory    —");
-  if (est.bufSeg >= 0) snprintf(buf, sizeof buf, "buffer    %.1fs  avg %.1fs", est.bufSeg,
-                                sistema.bufferMedia >= 0 ? sistema.bufferMedia : est.bufSeg);
-  else snprintf(buf, sizeof buf, "buffer    —");
-  snprintf(taxa, sizeof taxa, "%s", tela.taxa[0] ? tela.taxa : "—");
-  snprintf(rede, sizeof rede, "—");
-  snprintf(redeMedia, sizeof redeMedia, "—");
-  if (est.kbps >= 0) ev_fmt_mbps(rede, sizeof rede, est.kbps, sepDec());
-  if (est.mediaKbps >= 0) ev_fmt_mbps(redeMedia, sizeof redeMedia, est.mediaKbps, sepDec());
-  snprintf(net, sizeof net, "network   %s / %s Mbps", rede, redeMedia);
-  if (est.perdidos >= 0) snprintf(drop, sizeof drop, "dropped   %lld frames", est.perdidos);
-  else snprintf(drop, sizeof drop, "dropped   —");
-  if (sistema.thermalC >= 0) snprintf(thermal, sizeof thermal, "thermal   %.1f °C", sistema.thermalC);
-  else snprintf(thermal, sizeof thermal, "thermal   —");
-  snprintf(linhas[0], sizeof linhas[0], "%s", cpu);
-  snprintf(linhas[1], sizeof linhas[1], "%s", pag);
-  snprintf(linhas[2], sizeof linhas[2], "%s", mem);
-  snprintf(linhas[3], sizeof linhas[3], "%s", buf);
-  snprintf(linhas[4], sizeof linhas[4], "bitrate   %s  file %s", taxa, tela.size[0] ? tela.size : "—");
-  snprintf(linhas[5], sizeof linhas[5], "%s", net);
-  snprintf(linhas[6], sizeof linhas[6], "%s", drop);
-  snprintf(linhas[7], sizeof linhas[7], "%s", thermal);
-  plrui_material(p, 18.0f, 0, a);
-  gfx_cor(p, 18.0f, 0.01f, 0.035f, 0.12f, 0.84f * a);
-  gfx_recorte(p.x, p.y, p.w, p.h);
-  for (int i = 0; i < 8; i++) {
-    TxtLinha l = txt_linha_corta(TXT_AJ_VALOR18, linhas[i], 105, 165, 255, 255, p.w - 32.0f);
-    txt_desenhar_alpha(l, p.x + 16.0f, p.y + 12.0f + i * 28.0f, a);
+#define HUD_ADD(label,text,sev) do { \
+  if (n < 9) { snprintf(labels[n], sizeof labels[n], "%s", (label)); \
+    snprintf(values[n], sizeof values[n], "%s", (text)); severity[n++] = (sev); } \
+} while (0)
+  if (sistema.cpuAtual >= 0.0) {
+    snprintf(b, sizeof b, "%.0f%%   avg %.0f%%", sistema.cpuAtual, sistema.cpuMedia);
+    HUD_ADD("cpu", b, sistema.cpuAtual >= 60.0 ? 1 : 0);
   }
-  gfx_sem_recorte();
+  if (sistema.pagingAtual >= 0.0) {
+    snprintf(b, sizeof b, "%.0f/s   avg %.0f/s", sistema.pagingAtual, sistema.pagingMedia);
+    HUD_ADD("paging", b, sistema.pagingAtual >= 100.0 ? 1 : 0);
+  }
+  if (sistema.rssKb >= 0) {
+    snprintf(b, sizeof b, "%lld MB app   peak %lld MB",
+             sistema.rssKb / 1024, sistema.peakKb / 1024);
+    HUD_ADD("memory", b, 0);
+  }
+  if (est.bufSeg >= 0.0) {
+    snprintf(b, sizeof b, "%.1fs   avg %.1fs", est.bufSeg,
+             sistema.bufferMedia >= 0.0 ? sistema.bufferMedia : est.bufSeg);
+    HUD_ADD("buffer", b, est.bufSeg < 5.0 ? 1 : 0);
+  }
+  if (tela.taxa[0] || tela.size[0]) {
+    snprintf(b, sizeof b, "%s file   %s",
+             tela.taxa[0] ? tela.taxa : "—", tela.size[0] ? tela.size : "—");
+    HUD_ADD("bitrate", b, 0);
+  }
+  if (est.kbps >= 0) {
+    ev_fmt_mbps(now, sizeof now, est.kbps, '.');
+    ev_fmt_mbps(avg, sizeof avg, est.mediaKbps, '.');
+    snprintf(b, sizeof b, "%s Mbps   avg %s", now, avg);
+    HUD_ADD("network", b, 0);
+  }
+  if (est.perdidos >= 0) {
+    snprintf(b, sizeof b, "%lld frames", est.perdidos);
+    HUD_ADD("dropped", b, est.perdidos > 0 ? 1 : 0);
+  }
+  if (sistema.thermalC >= 0) {
+    snprintf(b, sizeof b, "%.1f °C", sistema.thermalC);
+    // Celsius is a sensor reading, NOT NuvioTV's thermal headroom score.
+    HUD_ADD("temp", b, 0);
+  }
+#undef HUD_ADD
+  if (!n) return;
+  p = (GfxRect){px,py, 440.0f, 19.0f + n * 27.0f};
+  // Match official NuvioTV's near-black translucent HUD, but with glass edges.
+  plrui_material(p, 13.0f, 0, a);
+  gfx_cor(p, 13.0f, 0.005f, 0.006f, 0.009f, 0.82f * a);
+  gfx_anel(p, 13.0f, 0.9f, 0.73f, 0.78f, 0.86f, 0.18f * a);
+  for (int i = 0; i < n; i++) {
+    int cr = severity[i] == 2 ? 244 : severity[i] == 1 ? 255 : 240;
+    int cg = severity[i] == 2 ? 67 : severity[i] == 1 ? 179 : 240;
+    int cb = severity[i] == 2 ? 54 : severity[i] == 1 ? 0 : 240;
+    float y = py + 12.0f + i * 27.0f;
+    TxtLinha label = txt_linha(TXT_AJ_VALOR18, labels[i], 138, 138, 138, 255);
+    TxtLinha val = txt_linha_corta(TXT_AJ_VALOR18, values[i], cr, cg, cb, 255, p.w - 115.0f);
+    txt_desenhar_alpha(label, px + 14.0f, y, a);
+    txt_desenhar_alpha(val, px + 110.0f, y, a);
+  }
+  (void)size;
 }
 
 static void desenharPlayerDetalhado(float a) {
-  int dw=NV_VTELA_W, dh=NV_VTELA_H;
-  GfxRect p, btn;
-  float y, rowH = 28.0f, contentY, contentH, visibleRows, maxScroll;
+  // Compact Nuvio Arc proportions: only 850 virtual pixels, not 1240.
+  // The file name wraps; scrolling moves by pages instead of per-field focus.
+  GfxRect p = { (NV_VTELA_W - 850.0f) * 0.5f, EVU_TOPO, 850.0f,
+                NV_VTELA_H - EVU_TOPO - 24.0f };
+  float contentY, contentH, y, maxScroll, totalH;
   if (!playerInfoAberto || !playerInfoModo || a < 0.01f) return;
   playerInfoMontarLinhas();
-  p.x = playerInfoHud ? 560.0f : 48.0f;
-  p.y = EVU_TOPO;
-  p.w = playerInfoHud ? (float)dw - p.x - 40.0f : 1240.0f;
-  p.h = (float)dh - EVU_TOPO - 24.0f;
-  if (p.w > (float)dw - 48.0f) p.w = (float)dw - 48.0f;
-  contentY = p.y + 112.0f;
-  contentH = p.h - 178.0f;
-  visibleRows = floorf(contentH / rowH);
-  if (visibleRows < 6.0f) visibleRows = 6.0f;
-  maxScroll = playerInfoN - visibleRows;
-  if (maxScroll < 0.0f) maxScroll = 0.0f;
+  contentY = p.y + 106.0f;
+  contentH = p.h - 158.0f;
+  totalH = playerInfoAlturaTotal();
+  maxScroll = fmaxf(0.0f, totalH - contentH);
   if (playerInfoScroll > (int)maxScroll) playerInfoScroll = (int)maxScroll;
-  playerInfoGarantirScroll();
-  plrui_material(p, 26.0f, 0, a);
-  gfx_cor(p, 26.0f, 0.025f, 0.07f, 0.20f, 0.88f * a);
-  plrui_linha_foco(p, 26.0f, 0.18f * a);
+  plrui_material(p, 24.0f, 0, a);
+  gfx_cor(p, 24.0f, 0.007f, 0.009f, 0.014f, 0.88f * a);
+  gfx_anel(p, 24.0f, playerInfoFocused ? 2.0f : 1.0f, 0.70f, 0.79f, 0.92f,
+           (playerInfoFocused ? 0.8f : 0.22f) * a);
   {
-    TxtLinha title = txt_linha(TXT_ILHA_TITULO, "Playback Info", 226, 241, 255, 255);
-    txt_desenhar_alpha(title, p.x + 28.0f, p.y + 20.0f, a);
-    TxtLinha sub = txt_linha_corta(TXT_ILHA_SUB, tela.titulo, 185, 205, 235, 255, p.w - 60.0f);
-    txt_desenhar_alpha(sub, p.x + 30.0f, p.y + 68.0f, a);
+    TxtLinha title = txt_linha(TXT_ILHA_TITULO, "Playback Info", 241, 244, 248, 255);
+    TxtLinha name = txt_linha_corta(TXT_ILHA_SUB, tela.titulo, 176, 185, 199, 255, p.w - 56.0f);
+    txt_desenhar_alpha(title, p.x + 26.0f, p.y + 18.0f, a);
+    txt_desenhar_alpha(name, p.x + 28.0f, p.y + 69.0f, a);
   }
-  gfx_recorte(p.x + 18.0f, contentY, p.w - 36.0f, contentH);
-  for (int i = playerInfoScroll; i < playerInfoN && i < playerInfoScroll + (int)visibleRows; i++) {
-    EvInfoLinha *l = &playerInfoLinhas[i];
-    y = contentY + (i - playerInfoScroll) * rowH;
-    if (l->secao) {
-      TxtLinha sec = txt_linha(TXT_ILHA_SECAO, l->rotulo, 105, 170, 255, 255);
-      txt_desenhar_alpha(sec, p.x + 30.0f, y + 3.0f, a);
-      gfx_cor((GfxRect){p.x + 30.0f, y + rowH - 2.0f, p.w - 70.0f, 1.0f}, 0.0f, 0.10f, 0.24f, 0.48f, 0.62f * a);
-    } else {
-      GfxRect rr = {p.x + 20.0f, y, p.w - 44.0f, rowH};
-      if (i == playerInfoFoco && !playerInfoHudFoco) plrui_linha_foco(rr, 7.0f, 0.22f * a);
-      {
-        TxtLinha lab = txt_linha_corta(TXT_AJ_ROTULO, l->rotulo, 188, 204, 230, 255, 230.0f);
-        TxtLinha val = txt_linha_corta(TXT_AJ_VALOR18, l->valor, 238, 246, 255, 255, p.w - 330.0f);
-        txt_desenhar_alpha(lab, p.x + 30.0f, y + 3.0f, a);
-        txt_desenhar_alpha(val, p.x + 280.0f, y + 3.0f, a);
+  gfx_recorte(p.x + 14.0f, contentY, p.w - 28.0f, contentH);
+  y = contentY - (float)playerInfoScroll;
+  for (int i = 0; i < playerInfoN; i++) {
+    const EvInfoLinha *l = &playerInfoLinhas[i];
+    float h = playerInfoLinhaH(l);
+    if (y + h >= contentY && y < contentY + contentH) {
+      if (l->secao) {
+        TxtLinha sec = txt_linha(TXT_ILHA_SECAO, l->rotulo, 113, 167, 236, 255);
+        txt_desenhar_alpha(sec, p.x + 28.0f, y + 4.0f, a);
+        gfx_cor((GfxRect){p.x + 28.0f, y + h - 2.0f, p.w - 56.0f, 1.0f},
+                0.0f, 0.40f, 0.54f, 0.72f, 0.32f * a);
+      } else {
+        TxtLinha lab = txt_linha_corta(TXT_AJ_VALOR18, l->rotulo, 175, 184, 197, 255, 208.0f);
+        txt_desenhar_alpha(lab, p.x + 28.0f, y + 4.0f, a);
+        if (!strcmp(l->rotulo, "File")) {
+          txt_bloco_corta(TXT_AJ_VALOR18, l->valor, 242, 243, 247,
+                          p.x + 246.0f, y + 3.0f, p.w - 276.0f,
+                          26.0f, a, 14);
+        } else {
+          TxtLinha val = txt_linha_corta(TXT_AJ_VALOR18, l->valor,
+                                         239, 242, 247, 255, p.w - 281.0f);
+          txt_desenhar_alpha(val, p.x + 246.0f, y + 4.0f, a);
+        }
       }
     }
+    y += h;
   }
   gfx_sem_recorte();
-  if (playerInfoN > (int)visibleRows) {
-    float frac = (float)visibleRows / (float)playerInfoN;
-    float thumbH = contentH * frac;
-    float max = (float)(playerInfoN - (int)visibleRows);
-    float thumbY = contentY + (contentH - thumbH) * (max > 0 ? playerInfoScroll / max : 0);
-    gfx_cor((GfxRect){p.x + p.w - 10.0f, contentY, 3.0f, contentH}, 1.5f, 0.18f, 0.22f, 0.32f, 0.7f * a);
-    gfx_cor((GfxRect){p.x + p.w - 10.0f, thumbY, 3.0f, thumbH}, 1.5f, 0.22f, 0.56f, 0.98f, 0.95f * a);
-  }
-  btn = (GfxRect){p.x + p.w - 190.0f, p.y + p.h - 54.0f, 160.0f, 36.0f};
-  plrui_material(btn, 10.0f, 0, a);
-  if (playerInfoHudFoco) plrui_linha_foco(btn, 10.0f, 0.9f * a);
-  {
-    const char *txt = playerInfoHud ? "HUD: On" : "HUD: Off";
-    TxtLinha l = txt_linha(TXT_ILHA_SEG, txt, 205, 232, 255, 255);
-    txt_desenhar_alpha(l, btn.x + (btn.w - l.w) * 0.5f, btn.y + (btn.h - l.h) * 0.5f, a);
+  if (totalH > contentH) {
+    float track = contentH, thumbH = fmaxf(34.0f, track * contentH / totalH);
+    float thumbY = contentY + (track - thumbH) * (playerInfoScroll / maxScroll);
+    gfx_cor((GfxRect){p.x + p.w - 10.0f, contentY, 3.0f, track}, 1.5f, 1, 1, 1, 0.12f * a);
+    gfx_cor((GfxRect){p.x + p.w - 10.0f, thumbY, 3.0f, thumbH},
+            1.5f, 0.64f, 0.78f, 1.0f, 0.9f * a);
   }
   {
-    TxtLinha hint = txt_linha(TXT_ILHA_HORA, "UP / DOWN  ·  Scroll", 155, 178, 210, 255);
-    txt_desenhar_alpha(hint, p.x + 30.0f, p.y + p.h - 50.0f, a);
+    TxtLinha hint = txt_linha(TXT_ILHA_HORA,
+       "Up / Down: page scroll   •   OK: compact view   •   Left: seekbar",
+       175, 189, 209, 255);
+    txt_desenhar_alpha(hint, p.x + 28.0f, p.y + p.h - 41.0f, a);
   }
 }
 
@@ -1634,10 +1661,8 @@ static void desenharPlayerInfo(Uint32 agora) {
   (void)agora;
   if (!playerInfoAberto || !player_aberto() || !player_com_video()) return;
   if (!tela.titulo[0]) montarTela(0);
-  if (playerInfoModo) {
-    desenharPlayerDetalhado(1.0f);
-    if (playerInfoHud) desenharPlayerHud(1.0f);
-  } else desenharPlayerHud(1.0f);
+  if (playerInfoModo) desenharPlayerDetalhado(1.0f);
+  else desenharPlayerHud(1.0f);
 }
 
 void estatvivo_desenhar(Uint32 agora) {
