@@ -497,7 +497,16 @@ static void montarTela(int taxaKbps) {
   const char *hdr = video_hdr(), *ep = player_linha_episodio();
   int w = video_largura(), h = video_altura(), samsung;
   size_t u;
+  VideoStats vs;
+  video_stats_vazio(&vs);
+  video_estatisticas(&vs);
   memset(&tela, 0, sizeof tela);
+  snprintf(tela.fps, sizeof tela.fps, "—");
+  snprintf(tela.decoder, sizeof tela.decoder, "—");
+  snprintf(tela.frameLead, sizeof tela.frameLead, "—");
+  snprintf(tela.backBuffer, sizeof tela.backBuffer, "—");
+  snprintf(tela.requests, sizeof tela.requests, "—");
+  snprintf(tela.audioSampleRate, sizeof tela.audioSampleRate, "—");
   tela.plataforma = (int)ptv_plataforma();
   samsung = tela.plataforma == PTV_TIZEN || tela.plataforma == PTV_TPK;
   if (c) snprintf(tela.titulo, sizeof tela.titulo, "%s", c->titulo);
@@ -507,7 +516,44 @@ static void montarTela(int taxaKbps) {
   if (h > 0 && u < sizeof tela.sub)
     u += (size_t)snprintf(tela.sub + u, sizeof tela.sub - u, "%s%s", u ? " · " : "",
                           h >= 2000 || w >= 3200 ? "4K" : h >= 1000 ? "1080p" : h >= 700 ? "720p" : "SD");
-  if (s) snprintf(tela.addon, sizeof tela.addon, "%s", s->provedor);
+  if (s) {
+    snprintf(tela.addon, sizeof tela.addon, "%s", s->provedor);
+    if (s->debridServico > 0)
+      snprintf(tela.provider, sizeof tela.provider, "%s", debrid_servico_nome(s->debridServico - 1));
+    snprintf(tela.filename, sizeof tela.filename, "%s",
+             s->arquivo[0] ? s->arquivo : (s->descricao[0] ? s->descricao : s->rotulo));
+    if (s->tamanhoBytes)
+      snprintf(tela.size, sizeof tela.size, "%.2f GB", (double)s->tamanhoBytes / 1073741824.0);
+    else if (s->tamanhoMB > 0)
+      snprintf(tela.size, sizeof tela.size, "%ld MB", s->tamanhoMB);
+    snprintf(tela.videoCodec, sizeof tela.videoCodec, "%s", codecDe(s->badges));
+    snprintf(tela.videoFormat, sizeof tela.videoFormat, "%s", s->mp4 ? "MP4" : "Adaptive stream");
+  }
+#ifdef NV_ANDROID
+  snprintf(tela.engine, sizeof tela.engine, "Media3 ExoPlayer");
+#else
+  snprintf(tela.engine, sizeof tela.engine, "%s", nomePlataforma(tela.plataforma));
+#endif
+  if (vs.host[0]) snprintf(tela.server, sizeof tela.server, "%s", vs.host);
+  if (vs.bufferSeg >= 0) snprintf(tela.buffer, sizeof tela.buffer, "%.1fs", vs.bufferSeg);
+  if (vs.conexoes >= 0) snprintf(tela.connections, sizeof tela.connections, "%d", vs.conexoes);
+  if (vs.primeiroByteMs >= 0) snprintf(tela.latency, sizeof tela.latency, "%d ms", vs.primeiroByteMs);
+  if (vs.quadrosPerdidos >= 0) {
+    if (vs.quadros >= 0) snprintf(tela.dropped, sizeof tela.dropped, "%lld / %lld frames", vs.quadrosPerdidos, vs.quadros);
+    else snprintf(tela.dropped, sizeof tela.dropped, "%lld frames", vs.quadrosPerdidos);
+  } else snprintf(tela.dropped, sizeof tela.dropped, "—");
+  if (est.reconexoes >= 0) snprintf(tela.rebuffers, sizeof tela.rebuffers, "%d", est.reconexoes);
+  if (est.kbps >= 0) {
+    char atual[24], media[24];
+    ev_fmt_mbps(atual, sizeof atual, est.kbps, sepDec());
+    ev_fmt_mbps(media, sizeof media, est.mediaKbps, sepDec());
+    snprintf(tela.network, sizeof tela.network, "%s Mbps · avg %s Mbps", atual, media);
+  } else snprintf(tela.network, sizeof tela.network, "—");
+  {
+    int dw=0, dh=0;
+    gfx_tamanho_tela(&dw, &dh);
+    if (dw > 0 && dh > 0) snprintf(tela.display, sizeof tela.display, "%d × %d", dw, dh);
+  }
   if (w > 0 && h > 0) snprintf(tela.resolucao, sizeof tela.resolucao, "%d × %d", w, h);
   else if (s && s->altura > 0) snprintf(tela.resolucao, sizeof tela.resolucao, "%dp", s->altura);
   { const char *cod = s ? codecDe(s->badges) : "";
@@ -532,7 +578,18 @@ static void montarTela(int taxaKbps) {
     const VideoFaixa *fl = video_legenda(video_legenda_atual());
     if (fa) {
       char cc[40] = "";
+      const char *codec = audioinfo_codec(fa->codec);
+      const char *canais = audioinfo_canais(fa->canais);
       audioinfo_texto(fa->codec, fa->canais, strstr(fa->rotulo, "Atmos") != NULL, cc, sizeof cc);
+      snprintf(tela.audioCodec, sizeof tela.audioCodec, "%s", codec[0] ? codec : (fa->rotulo[0] ? fa->rotulo : "—"));
+      snprintf(tela.audioChannels, sizeof tela.audioChannels, "%s", canais[0] ? canais : "—");
+      snprintf(tela.audioLanguage, sizeof tela.audioLanguage, "%s",
+               fa->idioma[0] ? i18n(ling_nome(fa->idioma)) : "—");
+      switch (cacheboost_ganho_estado()) {
+        case CB_GANHO_PCM: snprintf(tela.audioRoute, sizeof tela.audioRoute, "PCM output"); break;
+        case CB_GANHO_PASSTHROUGH: snprintf(tela.audioRoute, sizeof tela.audioRoute, "Bitstream passthrough"); break;
+        default: snprintf(tela.audioRoute, sizeof tela.audioRoute, "Unavailable"); break;
+      }
       { const char *lg = fa->idioma[0] ? i18n(ling_nome(fa->idioma)) : "";
         snprintf(tela.audio, sizeof tela.audio, "%s%s%s", cc, cc[0] && lg[0] ? " · " : "", lg); }
     }
