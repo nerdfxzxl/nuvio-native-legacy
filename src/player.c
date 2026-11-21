@@ -54,6 +54,7 @@
 #include "artehero.h"
 #include "detail.h"
 #include "logotitulo.h"
+#include "episodeicon.h"
 #include "extplayer.h"
 #include "corviva.h"
 
@@ -353,6 +354,7 @@ static float cheio = 1.0f;
 static float focoB[PLR_NBTNS];     // mola de foco de cada botao
 static float focoBV[PLR_NBTNS];    // underdamped spring velocity for premium bounce
 static int tempoFoco, tempoRestante; // Right from Info -> elapsed / total or remaining
+static int infoPanelFoco; // Up from seekbar focuses the independent Playback Info overlay
 static int infoTeclaEmBaixo, infoSegurou;
 static Uint32 infoTeclaDesde;
 // A FILEIRA DE BOTOES FECHA COM O FOCO NA BARRA (pedido do dono, 03/10): quem
@@ -1952,7 +1954,7 @@ void player_abrir(int indiceCatalogo, const char *url) {
   retomarSeg = 0.0; retomadaNaPreparacao = 0;
 #endif
   botao = PLR_PLAY;
-  tempoFoco = infoTeclaEmBaixo = infoSegurou = 0;
+  tempoFoco = infoPanelFoco = infoTeclaEmBaixo = infoSegurou = 0;
   memset(focoB, 0, sizeof focoB);
   memset(focoBV, 0, sizeof focoBV);
   estatvivo_player_nova_sessao();
@@ -4340,6 +4342,7 @@ void player_evento(const SDL_Event *e) {
       if (skipFoco) { skipFoco = 0; return; }
       if (visivel || anim > 0.004f) {
         if (scrubbing) terminarSalto();
+        infoPanelFoco = 0; tempoFoco = 0;
         esconderControles(); anim = 0.0f;
         intro_botao_esconder(monoSeg());
         return;
@@ -4492,7 +4495,7 @@ void player_evento(const SDL_Event *e) {
   // OK no meio de um avanco CONFIRMA o avanco, em vez de alternar play/pausa.
   // Quem aperta o centro com a barra correndo quer parar ali, e alternar o
   // estado deixaria o filme pausado no ponto novo — meio comando executado.
-  if (tempoFoco && (k == SDLK_RETURN || k == SDLK_KP_ENTER || k == SDLK_SPACE)) {
+  if (tempoFoco && !barraFoco && (k == SDLK_RETURN || k == SDLK_KP_ENTER || k == SDLK_SPACE)) {
     if (!e->key.repeat) tempoRestante = !tempoRestante;
     acordar();
     return;
@@ -4502,6 +4505,23 @@ void player_evento(const SDL_Event *e) {
     terminarSalto();
     acordar();
     return;
+  }
+
+  // Focused information panel is independent of the controls. D-pad scrolls
+  // whole groups rather than stepping slowly through every technical field.
+  if (infoPanelFoco) {
+    if (k == SDLK_RETURN || k == SDLK_KP_ENTER || k == SDLK_SPACE) {
+      if (!e->key.repeat) estatvivo_player_expandir();
+      acordar(); return;
+    }
+    if (k == SDLK_UP || k == SDLK_DOWN || k == SDLK_PAGEUP || k == SDLK_PAGEDOWN) {
+      estatvivo_player_scroll(k == SDLK_UP || k == SDLK_PAGEUP ? -1 : 1);
+      acordar(); return;
+    }
+    if (k == SDLK_LEFT) {
+      infoPanelFoco = 0; barraFoco = 1; tempoFoco = 0;
+      acordar(); return;
+    }
   }
 
   // CONTROLES EM PE: o foco anda pelos botoes e o OK aperta o botao em foco.
@@ -4536,9 +4556,12 @@ void player_evento(const SDL_Event *e) {
   // "Pular abertura", quando existe — e esse esta mesmo em cima dela.
   if (k == SDLK_UP) {
     if (!barraFoco && transporteMoverLinha(-1)) { acordar(); return; }
-    if (!barraFoco) barraFoco = 1;
+    if (!barraFoco) { barraFoco = 1; tempoFoco = 0; }
+    else if (estatvivo_player_aberto()) {
+      barraFoco = 0; tempoFoco = 0; infoPanelFoco = 1;
+    }
     else if (trechoPulavel(NULL)) skipFoco = 1;
-    else { esconderControles(); return; }   // #305: CIMA no topo tira a interface da frente
+    else { esconderControles(); return; }
     acordar();
     return;
   }
@@ -4546,7 +4569,7 @@ void player_evento(const SDL_Event *e) {
     // Na barra, ESQUERDA e DIREITA procuram no filme em vez de trocar de botao.
     if (k == SDLK_LEFT)       saltar(-1, e->key.repeat);
     else if (k == SDLK_RIGHT) saltar(1, e->key.repeat);
-    else if (k == SDLK_DOWN)  barraFoco = 0;
+    else if (k == SDLK_DOWN) { barraFoco = 0; tempoFoco = 0; }
     acordar();
     return;
   }
@@ -4605,8 +4628,7 @@ void player_atualizar(float dt, Uint32 agora) {
   if (infoTeclaEmBaixo && !infoSegurou && visivel && aberto && !saindo &&
       (Sint32)(agora - infoTeclaDesde) >= 520) {
     infoSegurou = 1;
-    if (estatvivo_player_aberto()) estatvivo_player_expandir();
-    else pedFontes = 1; // keep source selection accessible without an extra action button
+    pedFontes = 1; // Hold Playback Info always opens the existing Dynamic Clock selector.
   }
   if (aberto || mini) atualizarIdentidade();
 #ifdef NV_TPK
@@ -5382,7 +5404,7 @@ static const char *iconeBotao(int i) {
     case PLR_ASPECTO:   return "pl_ratio";
     case PLR_INFO:      return "pl_info";
     case PLR_FONTES:    return "pl_layers";
-    case PLR_PROXIMO:   return "pl_chevron-right";
+    case PLR_PROXIMO:   return "pl_skip-forward";
     case PLR_REINICIAR: return "pl_rotate-ccw";
     case PLR_NESTE:     return "pl_users";
     default:            return epE > 0 ? "pl_list-video" : "pl_film";
@@ -7268,6 +7290,14 @@ static void desenharOsdCorpo(Uint32 agora, float a, float ac, const CatItem *c) 
       }
       for (i = 0; i < nCaps; i++) if (caps[i] <= 0.0f || caps[i] >= 1.0f) caps[i--] = caps[--nCaps];
     }
+    // Native player may report buffer end as 0 while exposing buffer-ahead
+    // seconds in VideoStats; use the latter when the former is stale.
+    if (!ehCanal() && duracaoSeg > 0.0f && bufFrac <= frac) {
+      VideoStats s;
+      video_estatisticas(&s);
+      if (s.bufferSeg > 0.0)
+        bufFrac = anim_clamp((float)((posSeg + s.bufferSeg) / duracaoSeg), 0.0f, 1.0f);
+    }
     plrui_barra(bx, yBarra, bw, frac, bufFrac, barraFoco, caps, nCaps, a); }
 
   // --- O TITULO: o LOGO, e o texto so na falta dele -------------------------
@@ -7357,6 +7387,23 @@ static void desenharOsdCorpo(Uint32 agora, float a, float ac, const CatItem *c) 
     float diametro = toque ? (PLR_TOQUE_CELULA - 16.0f) / gfx_escala_ui() : transporteCurto ?
         fminf(PLR_BTN_D, (cw - (nAcoes - 1) * PLR_BTN_GAP) / nAcoes) : PLR_BTN_D;
     float yRow = yRowTopo + dy;
+    // TV: a SINGLE CENTERED liquid-glass pill. Child buttons spring open
+    // inside the shared material; the touch layout keeps spacious hit targets.
+    if (!toque) {
+      float contentW = 0.0f;
+      for (int j = 0; j < nAcoes; j++) {
+        int id = acoes[j].id;
+        TxtLinha label = txt_linha(TXT_G21B, rotuloBotao(id), 243, 242, 239, 255);
+        float full = 22.0f + 30.0f + 12.0f + (float)label.w + 28.0f;
+        contentW += transporteCurto ? diametro : PLR_BTN_D + (full - PLR_BTN_D) * fmaxf(0.0f, focoB[id]);
+      }
+      contentW += (nAcoes - 1) * PLR_BTN_GAP;
+      x = (NV_VTELA_W - contentW) * 0.5f;
+      GfxRect capsule = {x - 14.0f, yRow - 10.0f, contentW + 28.0f, diametro + 20.0f};
+      plrui_material(capsule, capsule.h * 0.5f, 0, af);
+      gfx_cor(capsule, capsule.h * 0.5f, 0.015f, 0.018f, 0.023f, af * 0.48f);
+      gfx_anel(capsule, capsule.h * 0.5f, 1.0f, 0.85f, 0.90f, 1.0f, af * 0.23f);
+    }
     for (int j = 0; j < nAcoes; j++) {
       int i = acoes[j].id, habilitada = acoes[j].habilitada;
       float f = habilitada ? focoB[i] : 0.0f, fAlpha = anim_clamp(f, 0.0f, 1.0f);
@@ -7378,14 +7425,17 @@ static void desenharOsdCorpo(Uint32 agora, float a, float ac, const CatItem *c) 
       int tinta = (int)(242.0f + (plrui_tinta() - 242.0f) * fAlpha);
       float k = tinta / 255.0f;
       if (fAlpha > 0.02f) plrui_pilula_foco(r, alpha * fAlpha);
-      if (fAlpha < 0.98f) plrui_disco_osd(r, alpha * (1.0f - fAlpha));
+      if (toque && fAlpha < 0.98f) plrui_disco_osd(r, alpha * (1.0f - fAlpha));
       if (ponteiroNoPlayer() && af > 0.3f)
         ponteiro_alvo(alvo.x, alvo.y, alvo.w, alvo.h, habilitada ? ponteiroBotao : NULL,
                       habilitada ? ponteiroAtivarBotao : ponteiroBotaoInativo, i, 0);
       { float tamanho = toque ? 64.0f / gfx_escala_ui() : 30.0f;
         float ix = transporteCurto ? r.x + (diametro - tamanho) * 0.5f :
           x + (PLR_BTN_D - 30.0f) * 0.5f + (22.0f - (PLR_BTN_D - 30.0f) * 0.5f) * fAlpha;
-        gfx_icone((GfxRect){ ix, cyB - tamanho * 0.5f, tamanho, tamanho }, ic, k, k, k, alpha * 0.96f);
+        if (i == PLR_EPISODIOS && epE > 0)
+          episodeicon_draw((GfxRect){ix, cyB - tamanho * 0.5f, tamanho, tamanho}, k, k, k, alpha * 0.96f);
+        else
+          gfx_icone((GfxRect){ ix, cyB - tamanho * 0.5f, tamanho, tamanho }, ic, k, k, k, alpha * 0.96f);
         if (!transporteCurto && fAlpha > 0.05f) {
           TxtLinha l = txt_linha(TXT_G21B, rot, tinta, tinta, tinta, 255);
           gfx_recorte(r.x, r.y, r.w, r.h);
@@ -7394,7 +7444,7 @@ static void desenharOsdCorpo(Uint32 agora, float a, float ac, const CatItem *c) 
         } }
       if (!toque) x += w + PLR_BTN_GAP;
     }
-    if (transporteCurto && !barraFoco && transporteHabilitado(botao)) {
+    if (toque && transporteCurto && !barraFoco && transporteHabilitado(botao)) {
       char atual[24], dur[24], total[32];
       plrui_tempo(atual, sizeof atual, posVisSolto ? posVis : posSeg);
       plrui_tempo(dur, sizeof dur, duracaoSeg); snprintf(total, sizeof total, "/ %s", dur);
