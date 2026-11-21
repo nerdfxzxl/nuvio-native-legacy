@@ -2069,10 +2069,10 @@ static void audioAjDesenhar(GfxRect c, float a) {
         int active = j == audioAjNight;
         int focused = selected && j == audioAjNightFoco;
         plrui_material(button, 11.0f, 0, a);
-        if (active) gfx_cor(button, 11.0f, .24f, .43f, .65f, .95f*a);
-        else gfx_cor(button, 11.0f, .06f, .07f, .09f, .34f*a);
-        if (focused) gfx_anel(button, 11.0f, 2.5f, 1, 1, 1, a);
-        else if (active) gfx_anel(button, 11.0f, 1.5f, .55f, .79f, 1, a);
+        if (active) gfx_cor(button, 11.0f / button.h, .24f, .43f, .65f, .95f*a);
+        else gfx_cor(button, 11.0f / button.h, .06f, .07f, .09f, .34f*a);
+        if (focused) gfx_anel(button, 11.0f / button.h, 2.5f, 1, 1, 1, a);
+        else if (active) gfx_anel(button, 11.0f / button.h, 1.5f, .55f, .79f, 1, a);
         {
           TxtLinha t = txt_linha(TXT_ILHA_SEG, levels[j], active ? 255 : 191,
                                  active ? 255 : 199, active ? 255 : 209, 255);

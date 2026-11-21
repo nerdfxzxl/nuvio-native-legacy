@@ -7410,8 +7410,8 @@ static void desenharOsdCorpo(Uint32 agora, float a, float ac, const CatItem *c) 
       x = (NV_VTELA_W - contentW) * 0.5f;
       GfxRect capsule = {x - 14.0f, yRow - 10.0f, contentW + 28.0f, diametro + 20.0f};
       plrui_material(capsule, capsule.h * 0.5f, 0, af);
-      gfx_cor(capsule, capsule.h * 0.5f, 0.015f, 0.018f, 0.023f, af * 0.48f);
-      gfx_anel(capsule, capsule.h * 0.5f, 1.0f, 0.85f, 0.90f, 1.0f, af * 0.23f);
+      gfx_cor(capsule, 0.5f, 0.015f, 0.018f, 0.023f, af * 0.48f);
+      gfx_anel(capsule, 0.5f, 1.0f, 0.85f, 0.90f, 1.0f, af * 0.23f);
     }
     for (int j = 0; j < nAcoes; j++) {
       int i = acoes[j].id, habilitada = acoes[j].habilitada;

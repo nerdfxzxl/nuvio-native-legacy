@@ -1567,8 +1567,8 @@ static void desenharPlayerHud(float a) {
   p = (GfxRect){px,py, 440.0f, 19.0f + n * 27.0f};
   // Match official NuvioTV's near-black translucent HUD, but with glass edges.
   plrui_material(p, 13.0f, 0, a);
-  gfx_cor(p, 13.0f, 0.005f, 0.006f, 0.009f, 0.82f * a);
-  gfx_anel(p, 13.0f, 0.9f, 0.73f, 0.78f, 0.86f, 0.18f * a);
+  gfx_cor(p, 13.0f / p.h, 0.005f, 0.006f, 0.009f, 0.82f * a);
+  gfx_anel(p, 13.0f / p.h, 0.9f, 0.73f, 0.78f, 0.86f, 0.18f * a);
   for (int i = 0; i < n; i++) {
     int cr = severity[i] == 2 ? 244 : severity[i] == 1 ? 255 : 240;
     int cg = severity[i] == 2 ? 67 : severity[i] == 1 ? 179 : 240;
@@ -1596,8 +1596,8 @@ static void desenharPlayerDetalhado(float a) {
   maxScroll = fmaxf(0.0f, totalH - contentH);
   if (playerInfoScroll > (int)maxScroll) playerInfoScroll = (int)maxScroll;
   plrui_material(p, 24.0f, 0, a);
-  gfx_cor(p, 24.0f, 0.007f, 0.009f, 0.014f, 0.88f * a);
-  gfx_anel(p, 24.0f, playerInfoFocused ? 2.0f : 1.0f, 0.70f, 0.79f, 0.92f,
+  gfx_cor(p, 24.0f / p.h, 0.007f, 0.009f, 0.014f, 0.88f * a);
+  gfx_anel(p, 24.0f / p.h, playerInfoFocused ? 2.0f : 1.0f, 0.70f, 0.79f, 0.92f,
            (playerInfoFocused ? 0.8f : 0.22f) * a);
   {
     TxtLinha title = txt_linha(TXT_ILHA_TITULO, "Playback Info", 241, 244, 248, 255);
