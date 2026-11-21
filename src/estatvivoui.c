@@ -400,6 +400,96 @@ static const char *codecDe(uint64_t b) {
   return "";
 }
 
+
+static void sistemaZerar(void) {
+  memset(&sistema, 0, sizeof sistema);
+  sistema.cpuAtual = sistema.cpuMedia = sistema.pagingAtual = sistema.pagingMedia = -1.0;
+  sistema.bufferMedia = sistema.thermalC = -1.0;
+  sistema.rssKb = sistema.peakKb = sistema.totalKb = -1;
+}
+
+static void sistemaAmostrar(void) {
+#ifdef NV_ANDROID
+  FILE *f;
+  char linha[256];
+  unsigned long long u=0,n=0,sy=0,idle=0,io=0,irq=0,soft=0,steal=0;
+  unsigned long long pgIn=0,pgOut=0;
+  if ((f = fopen("/proc/stat", "r")) != NULL) {
+    if (fgets(linha, sizeof linha, f) &&
+        sscanf(linha, "cpu %llu %llu %llu %llu %llu %llu %llu %llu",
+               &u,&n,&sy,&idle,&io,&irq,&soft,&steal) >= 4) {
+      unsigned long long total = u+n+sy+idle+io+irq+soft+steal;
+      unsigned long long idleTotal = idle+io;
+      if (sistema.cpuTotal && total > sistema.cpuTotal) {
+        unsigned long long dt = total - sistema.cpuTotal;
+        unsigned long long di = idleTotal >= sistema.cpuIdle ? idleTotal-sistema.cpuIdle : 0;
+        sistema.cpuAtual = 100.0 * (double)(dt > di ? dt-di : 0) / (double)dt;
+        if (sistema.cpuAtual < 0) sistema.cpuAtual = 0;
+        if (sistema.cpuAtual > 100) sistema.cpuAtual = 100;
+        sistema.cpuMedia = sistema.amostras ?
+          (sistema.cpuMedia * sistema.amostras + sistema.cpuAtual) / (sistema.amostras + 1) : sistema.cpuAtual;
+      }
+      sistema.cpuTotal = total;
+      sistema.cpuIdle = idleTotal;
+    }
+    fclose(f);
+  }
+  if ((f = fopen("/proc/vmstat", "r")) != NULL) {
+    while (fgets(linha, sizeof linha, f)) {
+      unsigned long long v;
+      if (sscanf(linha, "pgpgin %llu", &v) == 1) pgIn = v;
+      else if (sscanf(linha, "pgpgout %llu", &v) == 1) pgOut = v;
+    }
+    fclose(f);
+    {
+      unsigned long long total = pgIn + pgOut;
+      if (sistema.pagingTotal && total >= sistema.pagingTotal) {
+        sistema.pagingAtual = (double)(total - sistema.pagingTotal);
+        sistema.pagingMedia = sistema.amostras ?
+          (sistema.pagingMedia * sistema.amostras + sistema.pagingAtual) / (sistema.amostras + 1) : sistema.pagingAtual;
+      }
+      sistema.pagingTotal = total;
+    }
+  }
+  if ((f = fopen("/proc/meminfo", "r")) != NULL) {
+    while (fgets(linha, sizeof linha, f)) {
+      unsigned long long v;
+      if (sscanf(linha, "MemTotal: %llu kB", &v) == 1) sistema.totalKb = (long long)v;
+    }
+    fclose(f);
+  }
+  if ((f = fopen("/proc/self/status", "r")) != NULL) {
+    while (fgets(linha, sizeof linha, f)) {
+      unsigned long long v;
+      if (sscanf(linha, "VmRSS: %llu kB", &v) == 1) sistema.rssKb = (long long)v;
+      else if (sscanf(linha, "VmHWM: %llu kB", &v) == 1) sistema.peakKb = (long long)v;
+    }
+    fclose(f);
+  }
+  for (int z = 0; z < 8 && sistema.thermalC < 0; z++) {
+    char caminho[96];
+    double temp;
+    snprintf(caminho, sizeof caminho, "/sys/class/thermal/thermal_zone%d/temp", z);
+    if ((f = fopen(caminho, "r")) != NULL) {
+      if (fscanf(f, "%lf", &temp) == 1 && temp > 0)
+        sistema.thermalC = temp > 1000.0 ? temp / 1000.0 : temp;
+      fclose(f);
+    }
+  }
+  if (est.bufSeg >= 0) {
+    sistema.bufferMedia = sistema.bufferAmostras ?
+      (sistema.bufferMedia * sistema.bufferAmostras + est.bufSeg) / (sistema.bufferAmostras + 1) : est.bufSeg;
+    sistema.bufferAmostras++;
+  }
+  sistema.amostras++;
+#else
+  sistema.cpuAtual = sistema.cpuMedia = sistema.pagingAtual = sistema.pagingMedia = -1.0;
+  sistema.rssKb = sistema.peakKb = sistema.totalKb = -1;
+  sistema.thermalC = -1.0;
+#endif
+}
+
+
 // As linhas do cartao: o que o add-on declara da fonte e o que o pipeline diz.
 static void montarTela(int taxaKbps) {
   const CatItem *c = cat_item(player_indice());
@@ -474,7 +564,7 @@ void estatvivo_atualizar(Uint32 agora) {
   hu = fnv(video_url_atual());
   // Outra URL = outro video (ou outra fonte): tudo recomeca. A reconexao
   // reabre a MESMA URL e segue contando.
-  if (!temSessao || hu != hashUrl) { ev_zerar(&est); hashUrl = hu; temSessao = 1; proxAmostra = 0; }
+  if (!temSessao || hu != hashUrl) { ev_zerar(&est); sistemaZerar(); hashUrl = hu; temSessao = 1; proxAmostra = 0; }
   if (proxAmostra && (Sint32)(agora - proxAmostra) < 0) return;
   proxAmostra = agora + 1000u;
   amostraEm = agora;
@@ -490,7 +580,8 @@ void estatvivo_atualizar(Uint32 agora) {
   t = time(NULL);
   lt = localtime(&t);
   ev_amostra(&est, agora, &in, lt ? lt->tm_hour : 0, lt ? lt->tm_min : 0);
-  if (aberto || fixado) montarTela(in.taxaKbps);
+  sistemaAmostrar();
+  if (aberto || fixado || playerInfoAberto) montarTela(in.taxaKbps);
 }
 
 
