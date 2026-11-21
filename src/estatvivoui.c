@@ -1479,7 +1479,7 @@ static void playerInfoMontarLinhas(void) {
   playerInfoAdicionar(0, "Decoder", tela.decoder);
   playerInfoAdicionar(0, "Dropped", tela.dropped);
   playerInfoAdicionar(0, "Frame lead", tela.frameLead);
-  playerInfoAdicionar(0, "Display", tela.display);
+  playerInfoAdicionar(0, "UI rendering surface", tela.display);
   playerInfoAdicionar(1, "AUDIO", "");
   playerInfoAdicionar(0, "Codec", tela.audioCodec);
   playerInfoAdicionar(0, "Channels", tela.audioChannels);
