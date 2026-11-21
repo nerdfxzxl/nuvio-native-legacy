@@ -37,6 +37,9 @@ enum { LEGUI_NADA = 0, LEGUI_TRATADO, LEGUI_FECHAR, LEGUI_ESTILO };
 int   legendasui_evento(const SDL_Event *e);
 float legendasui_altura(void);
 void  legendasui_corpo(GfxRect corpo, float a);
+void legendasui_sync_passo(int ms);
+void legendasui_sync_reset(void);
+int  legendasui_sync_valor(void);
 // Media change (faixas_reiniciar): drops the second subtitle and the focus.
 void  legendasui_reiniciar(void);
 // Tests (#99 pointer): focused row index (-1 = panel closed), and the "Usar

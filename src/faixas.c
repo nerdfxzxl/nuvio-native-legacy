@@ -46,6 +46,7 @@
 // 3 e nao 2: a folha de legenda tem a LISTA e o ESTILO, e FX_COL_ESTILO e o
 // indice 2. Com dois slots a coluna de estilo escrevia fora do vetor.
 static int aberta, coluna, foco[3];
+static int legendaSyncPagina, legendaSyncFoco;
 // #202: foco na linha da velocidade e o ultimo valor pedido pela folha.
 static int velFoco, velPedidaUi = VEL_NORMAL;
 
@@ -614,7 +615,7 @@ void faixas_abrir_em(int col) {
   aberta = 1;
   modo = (col == 1) ? 1 : 0;
   coluna = modo;                 // audio -> col 0; legenda -> col 1
-  ctl = -1;
+  ctl = -1; legendaSyncPagina = legendaSyncFoco = 0;
   volFoco = 0; velFoco = 0;
   foco[0] = audioLinhaDaFaixa(video_audio_atual());
   if (foco[0] < 0 && video_n_audio() > 0) {
@@ -650,12 +651,19 @@ void faixas_abrir_em(int col) {
 
 int faixas_aberta(void) { return aberta; }
 int faixas_estilo_controle(void) { return ctl; }
-int faixas_estilo_topo(void) { return aberta && modo && coluna == FX_COL_ESTILO; }
+int faixas_estilo_topo(void) { return aberta && modo && coluna == FX_COL_ESTILO && !legendaSyncPagina; }
 float faixas_anim(void) { return anim; }
 void faixas_aba_estilo(int estilo) {
   if (!aberta || !modo) return;
   coluna = estilo ? FX_COL_ESTILO : 1;
+  legendaSyncPagina = 0;
   ctl = -1;
+}
+void faixas_aba_sync(int ativar) {
+  if (!aberta || !modo) return;
+  coluna = ativar ? FX_COL_ESTILO : 1;
+  legendaSyncPagina = ativar != 0;
+  legendaSyncFoco = 0; ctl = -1;
 }
 int faixas_teste_foco(int *col, int *vol, int *vel) {
   if (col) *col = coluna;
@@ -1358,33 +1366,54 @@ static void passoVelocidade(int d) {
 }
 // As teclas da aba Estilo. Devolve 0 so para "Voltar" sem controle aberto (o
 // chamador fecha o painel); o resto e sempre tratado aqui.
+static const char *const estiloNovoRotulos[9] = {
+  "Vertical Offset", "Brightness (HDR)", "Font", "Font Size", "Bold",
+  "Shadow", "Shadow Opacity", "Shadow Size", "Reset"
+};
+static const int estiloNovoMapa[9] = {5, -1, 1, 0, 8, 6, -1, -1, 9};
+static int estiloNovoAtivo(int linha) { return linha >= 0 && linha < 9 && estiloNovoMapa[linha] >= 0; }
+
 static int estiloTecla(SDL_Keycode k, int rep) {
   int *f = &foco[FX_COL_ESTILO];
-  int voltar = k == SDLK_AC_BACK || k == SDLK_ESCAPE || k == SDLK_BACKSPACE;
+  int d = k == SDLK_LEFT ? -1 : k == SDLK_RIGHT ? 1 : 0;
   int ok = k == SDLK_RETURN || k == SDLK_KP_ENTER;
-  int dx = k == SDLK_RIGHT ? 1 : k == SDLK_LEFT ? -1 : 0, dy = k == SDLK_DOWN ? 1 : k == SDLK_UP ? -1 : 0;
-  ctlRep = rep ? ctlRep + 1 : 0;
-  if (ctl >= 0) {
-    int t = estTipo(ctl);
-    if (voltar) { ctl = -1; return 1; }
-    if (ok) { if (t > 1) estEscolher(ctlSub); ctl = -1; return 1; }
-    if (t == 1) { if (dx) estPasso(ctl, dx, rep); }
-    else if (t == 2) { if (dx) estEscolher((ctlSub + dx + VIDEO_LEG_NCORES) % VIDEO_LEG_NCORES); }
-    else {   // fontes: 2 colunas, bundled followed by imported faces
-      int n = ctlSub + dx + dy * 2;
-      if (n >= 0 && n < TXT_FAMILIA_N + legfontes_n()) estEscolher(n);
+  if (k == SDLK_ESCAPE || k == SDLK_AC_BACK || k == SDLK_BACKSPACE) {
+    coluna = 1; ctl = -1; return 1;
+  }
+  if (k == SDLK_UP) {
+    if (*f > 0) (*f)--;
+    else coluna = 1;
+    return 1;
+  }
+  if (k == SDLK_DOWN) {
+    if (*f < 8) (*f)++;
+    else { legendaSyncPagina = 1; legendaSyncFoco = 0; }
+    return 1;
+  }
+  if (!d && !ok) return 1;
+  int original = estiloNovoMapa[*f];
+  if (original < 0) return 1; // Renderer does not expose this parameter.
+  if (original == EST_RESTAURAR) { if (ok) ciclarEstilo(original); return 1; }
+  if (original == EST_FONTE) {
+    if (d || ok) {
+      int atual = player_leg_estilo()->familia, n = TXT_FAMILIA_N;
+      int novo = (atual + (d ? d : 1) + n) % n;
+      player_leg_fonte_definir(novo);
     }
     return 1;
   }
-  if (voltar) return 0;
-  // A grade de FX_BARRA_COLS colunas: as quatro setas andam nela; a esquerda da
-  // primeira coluna volta para a lista de legendas.
-  if (dx < 0) { if (*f % FX_BARRA_COLS) (*f)--; else coluna = 1; }
-  else if (dx > 0) { if (*f % FX_BARRA_COLS < FX_BARRA_COLS - 1 && *f + 1 < FX_N_ESTILO) (*f)++; }
-  else if (dy < 0) { if (*f >= FX_BARRA_COLS) *f -= FX_BARRA_COLS; }
-  else if (dy > 0) { if (*f + FX_BARRA_COLS < FX_N_ESTILO) *f += FX_BARRA_COLS; }
-  else if (ok) {
-    if (estTipo(*f)) estAbrir(*f); else ciclarEstilo(*f);
+  if (original == 8 || original == 6) {
+    if (d || ok) {
+      VideoLegendaEstilo *e = player_leg_estilo();
+      if (original == 8) { e->negrito = !e->negrito; player_leg_estilo_tocou(PLR_LEG_NEGRITO); }
+      else { e->borda = e->borda == 2 ? 0 : 2; player_leg_estilo_tocou(PLR_LEG_BORDA); }
+      player_leg_estilo_mudou();
+    }
+    return 1;
+  }
+  if (d) {
+    ctlRep = rep ? ctlRep + 1 : 0;
+    estPasso(original, d, rep);
   }
   return 1;
 }
@@ -1400,6 +1429,24 @@ void faixas_evento(const SDL_Event *e) {
   if (!aberta) return;
   // F04: the subtitle LIST is the selector of legendasui.c (simple view and
   // "Mais opções"); the Estilo bar below stays here.
+  if (modo && legendaSyncPagina) {
+    if (e->type != SDL_KEYDOWN) return;
+    SDL_Keycode key = e->key.keysym.sym;
+    if (key == SDLK_ESCAPE || key == SDLK_AC_BACK || key == SDLK_BACKSPACE || key == SDLK_LEFT && legendaSyncFoco != 0) {
+      legendaSyncPagina = 0; return;
+    }
+    if (key == SDLK_UP) {
+      if (legendaSyncFoco > 0) legendaSyncFoco--;
+      else legendaSyncPagina = 0;
+    } else if (key == SDLK_DOWN) {
+      if (legendaSyncFoco < 1) legendaSyncFoco++;
+    } else if (legendaSyncFoco == 0 && (key == SDLK_LEFT || key == SDLK_RIGHT)) {
+      legendasui_sync_passo((key == SDLK_RIGHT ? 1 : -1) * (e->key.repeat ? 200 : 50));
+    } else if ((key == SDLK_RETURN || key == SDLK_KP_ENTER) && legendaSyncFoco == 1) {
+      legendasui_sync_reset();
+    }
+    return;
+  }
   if (modo && coluna == 1) {
     int r = legendasui_evento(e);
     if (r == LEGUI_FECHAR) aberta = 0;
@@ -2363,52 +2410,85 @@ static void controleEstilo(int i, GfxRect g, float a, int ativo) {
     if (estTipo(i) == 1) sliderCtl(i, rb, a, ativo); else paletaCtl(rb, a, ativo); }
 }
 
-static float alturaEstilo(void) { return IL_PAD_Y + IL_EST_TOPO + 14.0f + IL_EST_GRADE_H + IL_PAD_Y; }
+static float alturaEstilo(void) { return IL_PAD_Y * 2.0f + 92.0f + 9.0f * 70.0f; }
+static float alturaSync(void) { return IL_PAD_Y * 2.0f + 96.0f + 2.0f * 88.0f; }
 
-static void corpoEstilo(GfxRect c, float a) {
-  float pad = estiloPadX(), x0 = c.x + pad, w = c.w - pad * 2.0f, y = c.y + IL_PAD_Y;
-  float cw = (w - 4.0f * 6.0f) / FX_BARRA_COLS;
-  int i, assentada = a > 0.99f && ponteiro_ativo();
-  { TxtLinha t = txt_linha(TXT_G30B, "Legendas", 243, 242, 239, 255);
-    const char *rot[2] = { "Faixas", "Estilo" };
-    int cont[2] = { nLinhas(1), -1 };
-    float yc = y + IL_EST_TOPO * 0.5f;
-    txt_desenhar_alpha(t, x0 + 10.0f, yc - (float)t.h * 0.5f, a);
-    plrui_seg(rot, cont, 2, 1, 0, x0 + 10.0f + (float)t.w + 18.0f, yc - 27.0f, a);
-    // A aba "Faixas": a largura do primeiro segmento e a do segmentado de um so.
-    if (assentada)
-      ponteiro_alvo(x0 + 10.0f + (float)t.w + 18.0f, yc - 27.0f, plrui_seg(rot, cont, 1, 1, 0, -1.0f, 0, a),
-                    54.0f, NULL, ponteiroAba, 0, 0);
-    { const char *k[3] = { "\xe2\x86\x90 \xe2\x86\x92", "OK", "Voltar" }, *rt[3];
-      int n = 3, t0 = ctl >= 0 ? estTipo(ctl) : 0;
-      if (ctl >= 0) {
-        rt[0] = t0 == 1 ? "Ajustar" : "Escolher"; rt[1] = "Pronto"; rt[2] = "Voltar";
-        if (t0 == 3) k[0] = "\xe2\x86\x91 \xe2\x86\x93 \xe2\x86\x90 \xe2\x86\x92";
-      } else {
-        rt[0] = "Op\xc3\xa7\xc3\xa3o"; rt[1] = estTipo(foco[FX_COL_ESTILO]) ? "Abrir" : "Mudar"; rt[2] = "Fechar";
-      }
-      plrui_dicas(k, rt, n, x0 + w - 10.0f, yc, 1, a); } }
-  y += IL_EST_TOPO + 14.0f;
-  // A grade e o controle se trocam NO MESMO retangulo (a altura nao muda): a
-  // grade some e sobe um pouco, o controle entra de baixo, pela mola da tela.
-  if (ctlAnim < 0.995f) {
-    float ag = a * (1.0f - anim_clamp(ctlAnim * 1.6f, 0.0f, 1.0f)), dy = -10.0f * ctlAnim;
-    for (i = 0; i < FX_N_ESTILO; i++) {
-      GfxRect r = { x0 + (i % FX_BARRA_COLS) * (cw + 6.0f), y + dy + (i / FX_BARRA_COLS) * (IL_EST_CEL_H + 6.0f),
-                    cw, IL_EST_CEL_H };
-      celulaEstilo(i, r, ag, assentada && ctlAnim < 0.01f);
-    }
+static void legendaTabs(float x, float y, float w, float a, int selected) {
+  static const char *tabs[3] = {"Subtitles", "Style", "Sync"};
+  static const float widths[3] = {132.0f, 88.0f, 74.0f};
+  float xx = x + w - 304.0f;
+  TxtLinha heading = txt_linha(TXT_ILHA_PERGUNTA, "Subtitles", 243, 242, 239, 255);
+  txt_desenhar_alpha(heading, x + 10.0f, y, a);
+  for (int i = 0; i < 3; i++) {
+    TxtLinha text = txt_linha(TXT_ILHA_SUB, tabs[i], i == selected ? 246 : 157,
+                              i == selected ? 246 : 171, i == selected ? 247 : 184, 255);
+    txt_desenhar_alpha(text, xx + 7.0f, y + 12.0f, a);
+    gfx_cor((GfxRect){xx, y + 50.0f, widths[i] - 9.0f, selected == i ? 3.0f : 1.0f},
+            0, 1, 1, 1, (selected == i ? 0.95f : 0.13f)*a);
+    xx += widths[i];
   }
-  if (ctlAnim > 0.005f && ctlVis >= 0) {
-    float ac = a * anim_clamp((ctlAnim - 0.1f) * 1.4f, 0.0f, 1.0f);
-    controleEstilo(ctlVis, (GfxRect){ x0, y + 12.0f * (1.0f - ctlAnim), w, IL_EST_GRADE_H }, ac,
-                   assentada && ctl >= 0 && ctlAnim > 0.99f);
+}
+static void corpoEstilo(GfxRect c, float a) {
+  float x = c.x + IL_PAD_X, w = c.w - IL_PAD_X*2.0f, y = c.y + IL_PAD_Y;
+  legendaTabs(x, y, w, a, 1);
+  y += 78.0f;
+  for (int i = 0; i < 9; i++) {
+    float rowH = 66.0f, cy = y + rowH*.5f;
+    GfxRect row = {x, y, w, rowH};
+    int active = i == foco[FX_COL_ESTILO], original = estiloNovoMapa[i];
+    char val[128];
+    if (active) plrui_linha_foco(row, 14.0f, a*.85f);
+    if (original < 0) snprintf(val, sizeof val, "Unavailable");
+    else if (original == EST_RESTAURAR) snprintf(val, sizeof val, "OK to reset");
+    else if (original == 6) snprintf(val, sizeof val, "%s",
+                                       player_leg_estilo()->borda == 2 ? "On" : "Off");
+    else valorEstilo(original, val, sizeof val);
+    {
+      TxtLinha lab = txt_linha(TXT_ILHA_CORPO, estiloNovoRotulos[i], 237, 240, 245, 255);
+      TxtLinha v = txt_linha_corta(TXT_ILHA_SUB, val, original < 0 ? 134 : 216,
+                                   original < 0 ? 135 : 221, original < 0 ? 138 : 231,
+                                   255, w*.48f);
+      txt_desenhar_alpha(lab, x + 18.0f, cy - lab.h*.5f, a);
+      txt_desenhar_alpha(v, x + w - 18.0f - v.w, cy - v.h*.5f, a);
+    }
+    if (original >= 0 && original != EST_RESTAURAR) {
+      gfx_cor((GfxRect){x + w - 239.0f, y + 19.0f, 2.0f, rowH-38.0f},
+              0, 1, 1, 1, .12f*a);
+    }
+    y += 70.0f;
+  }
+}
+static void corpoSync(GfxRect c, float a) {
+  float x = c.x + IL_PAD_X, w = c.w - IL_PAD_X*2.0f, y = c.y + IL_PAD_Y;
+  char value[48];
+  int ms = legendasui_sync_valor();
+  snprintf(value, sizeof value, "%+.3f s", ms/1000.0);
+  legendaTabs(x, y, w, a, 2);
+  y += 80.0f;
+  for (int i = 0; i < 2; i++) {
+    GfxRect row = {x, y, w, 80.0f};
+    const char *label = i == 0 ? "Subtitle delay" : "Reset delay";
+    if (i == legendaSyncFoco) plrui_linha_foco(row, 14.0f, a*.84f);
+    TxtLinha t = txt_linha(TXT_ILHA_CORPO, label, 238, 239, 244, 255);
+    txt_desenhar_alpha(t, x + 18.0f, y + (row.h-t.h)*.5f, a);
+    if (i == 0) {
+      TxtLinha v = txt_linha(TXT_ILHA_FORTE, value, 239, 240, 246, 255);
+      float xx = x + w - 195.0f;
+      gfx_icone((GfxRect){xx, y + 26.0f, 25.0f, 25.0f}, "aj_minus", 1,1,1,a);
+      txt_desenhar_alpha(v, xx + 43.0f, y + (row.h - v.h)*.5f, a);
+      gfx_icone((GfxRect){x + w - 39.0f, y + 26.0f, 25.0f, 25.0f},
+                 "aj_plus", 1,1,1,a);
+    } else
+      gfx_icone((GfxRect){x + w - 54.0f, y + 26.0f, 25.0f, 25.0f},
+                 "pl_rotate-ccw", 1,1,1,a);
+    y += 88.0f;
   }
 }
 
 static void corpoIlha(GfxRect c, float a, void *u) {
   (void)u;
-  if (faixas_estilo_topo() || (!aberta && animTopo > 0.5f)) corpoEstilo(c, a);
+  if (modo && legendaSyncPagina) corpoSync(c, a);
+  else if (faixas_estilo_topo() || (!aberta && animTopo > 0.5f)) corpoEstilo(c, a);
   else if (modo) legendasui_corpo(c, a);
   else if (audioPagina) audioAjDesenhar(c, a);
   else corpoLista(c, a);
@@ -2433,8 +2513,9 @@ static void faixas_desenharCorpo_(Uint32 agora) {
     if (!aberta) return;   // fechando: a ilha encolhe com o ultimo corpo
     { PlrIlhaPedido p;
       memset(&p, 0, sizeof p);
-      p.w = est ? NV_TELA_W - 192.0f : IL_W;
-      p.h = est ? alturaEstilo() : modo ? legendasui_altura() : alturaLista(0);
+      p.w = IL_W;
+      p.h = modo && legendaSyncPagina ? alturaSync() : est ? alturaEstilo() :
+            modo ? legendasui_altura() : alturaLista(0);
       p.corpo = corpoIlha;
       plrilha_pedir(&p); } }
 }

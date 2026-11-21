@@ -39,6 +39,7 @@ void faixas_desenhar(Uint32 agora);
 // PONTEIRO (#99): as abas "Faixas | Estilo" da folha de legenda (o mesmo que
 // ESQUERDA/DIREITA entre a lista e a barra de estilo). 0 = lista, 1 = estilo.
 void faixas_aba_estilo(int estilo);
+void faixas_aba_sync(int ativar);
 // Testes: o foco da folha. Devolve a linha focada da coluna atual (-1 = folha
 // fechada); `col` 0 = audio, 1 = lista de legendas, 2 = barra de estilo;
 // `vol`/`vel` = foco nas linhas de volume/velocidade da folha de audio.

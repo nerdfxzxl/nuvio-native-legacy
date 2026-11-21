@@ -493,6 +493,14 @@ static void mudarAtraso(int passo) {
   }
 }
 
+void legendasui_sync_passo(int ms) { mudarAtraso(ms); }
+void legendasui_sync_reset(void) {
+  if (alvo == 0) mudarAtraso(-player_leg_estilo()->atrasoMs);
+  else mudarAtraso(-legenda2_offset_manual());
+}
+int legendasui_sync_valor(void) {
+  return alvo == 0 ? player_leg_estilo()->atrasoMs : legenda2_offset_manual();
+}
 static void ajustarRolagem(int vis) {
   if (vis < 1) return;
   if (foco < rolagem) rolagem = foco;
@@ -645,7 +653,7 @@ int legendasui_evento(const SDL_Event *e) {
 #define LU_PAD_X   18.0f
 #define LU_PAD_Y   22.0f
 #define LU_TIT_H   42.0f   // heading only: the title already sits in the header by the clock
-#define LU_LN_H    88.0f
+#define LU_LN_H    102.0f
 #define LU_LN_VAO   4.0f
 #define LU_PE_H    47.0f
 // PONTEIRO (#99). A linha sob o cursor ganha o foco pela mesma focar() das
@@ -685,6 +693,8 @@ static void ponteiroAtraso(int i, int cx) {
   mudarAtraso(ponteiro_x() < (float)cx ? -50 : 50);
 }
 static void ponteiroAbaEstilo(int a, int b) { (void)a; (void)b; if (aberto) faixas_aba_estilo(1); }
+static void ponteiroAbaSync(int a, int b) { (void)a; (void)b; if (aberto) faixas_aba_sync(1); }
+
 
 int legendasui_teste_foco(int *alvoOut, int *syncOut) {
   if (alvoOut) *alvoOut = alvo;
@@ -755,7 +765,7 @@ static int nomeInutil(const LegUiCand *c, const char *nome) {
 }
 // Copies `src` into `out` (<= 40 bytes + index), cutting on a UTF-8 boundary with "…".
 static void corteLimpo(char *out, size_t sz, const char *src) {
-  size_t n = strlen(src), max = 40;
+  size_t n = strlen(src), max = sz > 1 ? sz - 1 : 0;
   if (max >= sz) max = sz - 1;
   if (n > max) {
     n = max - 3;
@@ -976,13 +986,20 @@ static void desenharLinha(const LuiLinha *l, int idx, int sel, float x, float y,
                             (int)((tx + tw * 0.5f) * gfx_escala()));
     dir = tx - 18.0f;
   }
-  { float tx = x + 22.0f + 52.0f + 18.0f, tw = dir - tx;
-    int c = sel ? 255 : 219, cs = 122;
-    TxtLinha ln = txt_linha_corta(TXT_ILHA_FORTE, nome, c, c, c - 2, 255, tw);
-    TxtLinha ls = txt_linha_corta(TXT_ILHA_GENERO, sub, cs, cs, cs - 2, 255, tw);
-    float th = (float)ln.h + (sub[0] ? 5.0f + (float)ls.h : 0.0f), ty = y + (LU_LN_H - th) * 0.5f;
-    txt_desenhar_alpha(ln, tx, ty, aL);
-    if (sub[0]) txt_desenhar_alpha(ls, tx, ty + (float)ln.h + 5.0f, aL); }
+  {
+    float tx = x + 22.0f + 52.0f + 18.0f, tw = dir - tx;
+    int c = sel ? 255 : 219, cs = 153;
+    // Release names may be long: show two lines instead of 40-byte truncation.
+    float hn = txt_bloco_corta(TXT_ILHA_FORTE, nome, c, c, c - 2,
+                                tx, 0.0f, tw, 26.0f, 0.0f, 2);
+    float hs = sub[0] ? txt_bloco_corta(TXT_ILHA_GENERO, sub, cs, cs, cs - 2,
+                                         tx, 0.0f, tw, 21.0f, 0.0f, 2) : 0.0f;
+    float h = hn + (hs > 0 ? 3.0f + hs : 0.0f), ty = y + (LU_LN_H - h) * .5f;
+    txt_bloco_corta(TXT_ILHA_FORTE, nome, c, c, c - 2,
+                    tx, ty, tw, 26.0f, aL, 2);
+    if (hs > 0) txt_bloco_corta(TXT_ILHA_GENERO, sub, cs, cs, cs - 2,
+                                 tx, ty + hn + 3.0f, tw, 21.0f, aL, 2);
+  }
 }
 
 static void ponteiroMenu(int i, int b) { (void)b; if (menu) menuFoco = i; }
@@ -1043,17 +1060,24 @@ void legendasui_corpo(GfxRect c, float a) {
   int vis = luVis(), fim, i;
   montarLinhas();
   pont = !menu && a > 0.99f && ponteiro_ativo();
-  { TxtLinha t = txt_linha(TXT_ILHA_PERGUNTA, ver ? nomeIdioma(verIdioma) : mais ? "Todas as legendas" : "Recomendadas", 243, 242, 239, 255);
-    float ty = y;
-    const char *rot[2] = { "Faixas", "Estilo" };
-    int cont[2] = { nCand, -1 };
-    float sw = plrui_seg(rot, cont, 2, 0, 0, -1.0f, 0, a);
-    txt_desenhar_alpha(t, x0 + 10.0f, ty, a);
-    plrui_seg(rot, cont, 2, 0, 0, x0 + w - 10.0f - sw, ty + (float)t.h - 54.0f, a);
-    if (pont) {   // a aba "Estilo": o que sobra depois do primeiro segmento
-      float w0 = plrui_seg(rot, cont, 1, 0, 0, -1.0f, 0, a);
-      ponteiro_alvo(x0 + w - 10.0f - sw + w0, ty + (float)t.h - 54.0f, sw - w0, 54.0f, NULL, ponteiroAbaEstilo, 0, 0);
-    } }
+  // Three consistent, underlined page tabs, shared with Audio; not segmented pills.
+  {
+    const char *tabs[3] = { "Subtitles", "Style", "Sync" };
+    float tw[3] = {134.0f, 91.0f, 76.0f};
+    float tx = x0 + w - (134.0f + 91.0f + 76.0f + 20.0f);
+    TxtLinha title = txt_linha(TXT_ILHA_PERGUNTA, "Subtitles", 243, 242, 239, 255);
+    txt_desenhar_alpha(title, x0 + 10.0f, y, a);
+    for (int k = 0; k < 3; k++) {
+      TxtLinha t = txt_linha(TXT_ILHA_SUB, tabs[k], k == 0 ? 245 : 162,
+                              k == 0 ? 245 : 174, k == 0 ? 248 : 190, 255);
+      txt_desenhar_alpha(t, tx + 8.0f, y + 12.0f, a);
+      gfx_cor((GfxRect){tx, y + 50.0f, tw[k] - 8.0f, k == 0 ? 3.0f : 1.0f},
+              0.0f, 1.0f, 1.0f, 1.0f, (k == 0 ? .86f : .16f) * a);
+      if (pont && k == 1) ponteiro_alvo(tx, y + 8.0f, tw[k], 50.0f, NULL, ponteiroAbaEstilo, 0, 0);
+      if (pont && k == 2) ponteiro_alvo(tx, y + 8.0f, tw[k], 50.0f, NULL, ponteiroAbaSync, 0, 0);
+      tx += tw[k];
+    }
+  }
   y += LU_TIT_H + 14.0f;
 #ifdef NV_TOUCH_UI
   if (telefoneui_ativo()) {
