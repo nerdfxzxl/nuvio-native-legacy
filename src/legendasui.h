@@ -33,7 +33,9 @@ void  legendasui_abrir(void);
 int   legendasui_mais(void);
 // 1 while the versions list of one language row is open (#202).
 int   legendasui_versoes(void);
-enum { LEGUI_NADA = 0, LEGUI_TRATADO, LEGUI_FECHAR, LEGUI_ESTILO };
+enum { LEGUI_NADA = 0, LEGUI_TRATADO, LEGUI_FECHAR, LEGUI_ESTILO, LEGUI_ABAS };
+// Reopen an activated Subtitles tab focused on its currently selected track.
+void legendasui_focar_ativa(void);
 int   legendasui_evento(const SDL_Event *e);
 float legendasui_altura(void);
 void  legendasui_corpo(GfxRect corpo, float a);
