@@ -93,6 +93,7 @@ static int filtroVisto = -2, trocaDir;
 static Uint32 trocaDesde;
 static float pillX, pillW = -1.0f, pillDeX, pillDeW;   // x relative to the list column
 static int folhaRelogio; // Latched at opening, retained through closing.
+static int folhaIlha(void); // Player uses same official selector layout within plrilha.
 static int folhaOpcoesEp, folhaOpcoesFoco, folhaOpcoesEscolha = -1;
 static int folhaOpcoesVisto;
 #define FOLHA_ILHA_Y     48.0f   // plrilha.c: Y_TOPO
@@ -4025,7 +4026,7 @@ static void textoAddonMedirCompleto(TextoAddon *t, const Stream *s) {
     const char *desc = descricaoAddon(s);
     const float largura = FOLHA_W - FOLHA_PAD_E - FOLHA_PAD_D - 2.0f * FOLHA_TXT;
     float h;
-    if (folhaRelogio && !canalFolha) {
+    if ((folhaRelogio || folhaIlha()) && !canalFolha) {
       t->tituloH=txt_bloco_longas(TXT_CALLOUT,t->titulo,235,235,235,0,0,
                                   largura,34.0f,0.0f,0);
       if (t->tituloH < 34.0f) t->tituloH=34.0f;
@@ -4039,7 +4040,7 @@ static void textoAddonMedirCompleto(TextoAddon *t, const Stream *s) {
     t->descHCompleta=h;
     t->descLinhas=(int)ceilf(h/FOLHA_ADDON_LD);
     if(s->arquivo[0]&&!strstr(desc,s->arquivo)) {
-      t->arquivoH=(folhaRelogio && !canalFolha)
+      t->arquivoH=((folhaRelogio || folhaIlha()) && !canalFolha)
         ? txt_bloco_longas(TXT_PG_FIM,s->arquivo,170,170,170,0,0,
                            largura,FOLHA_ADDON_LD,0.0f,0)
         : txt_bloco(TXT_PG_FIM,s->arquivo,170,170,170,0,0,
@@ -4560,7 +4561,7 @@ static int temMarca(int i, int automatica) {
 static float alturaLinha(int i, int automatica, float abertura, int cabProv) {
   float provH = cabProv ? FOLHA_PROV_H : 0.0f;
   // The new Dynamic Clock renderer sizes cards from the addon's real text.
-  if (folhaRelogio && !canalFolha) {
+  if ((folhaRelogio || folhaIlha()) && !canalFolha) {
     // Unlike Legacy's expandable rows, every stream displays the full addon text.
     TextoAddon *t = textoAddonDa(i);
 #ifdef NV_ANDROID
@@ -4604,7 +4605,7 @@ static void porLinha(int i, float *y, int automatica) {
   ordem[nOrdem] = i;
   linhaY[nOrdem] = *y;
   linhaH[nOrdem] = h;
-  *y += h + (folhaRelogio && !canalFolha ? 32.0f : FOLHA_LINHA_GAP);
+  *y += h + ((folhaRelogio || folhaIlha()) && !canalFolha ? 32.0f : FOLHA_LINHA_GAP);
   nOrdem++;
 }
 // Tamanho para ordenar: desconhecido (0) vai para o fim do grupo.
@@ -4831,7 +4832,7 @@ static void montar(int automatica) {
     versao = folhaDadosVersao;
   }
 #ifdef NV_ANDROID
-  if (folhaRelogio && !canalFolha && filtro >= 0) {
+  if ((folhaRelogio || folhaIlha()) && !canalFolha && filtro >= 0) {
     expansaoFoco = expansaoAnt = 0;
     // Refine only the viewport and a small overscan. Once a row is measured
     // its real height survives tab/search changes and no JNI call is needed.
@@ -4919,7 +4920,7 @@ static FolhaMemoria *memoriaFolhaDaAba(int aba) {
   return NULL;
 }
 static void memoriaFolhaGuardar(void) {
-  if (!folhaRelogio || canalFolha || grupo != 1) return;
+  if ((!folhaRelogio && !folhaIlha()) || canalFolha || grupo != 1) return;
   FolhaMemoria *m = memoriaFolhaDaAba(filtro);
   if (!m) return;
   int indice = filtrado(foco);
@@ -5526,7 +5527,7 @@ void stream_folha_evento(const SDL_Event *e) {
   }
   // Dynamic Clock: moving focus NEVER activates a different provider.
   // Down from Search, Reload or chips restores the active provider's last row.
-  if (folhaRelogio && !canalFolha) {
+  if ((folhaRelogio || folhaIlha()) && !canalFolha) {
     if (k == SDLK_UP) {
       if (grupo == 1 && foco > 0) foco--;
       else if (grupo == 1) { memoriaFolhaGuardar(); grupo = 0; abaFoco = filtro; }
@@ -5757,7 +5758,7 @@ void stream_folha_atualizar(float dt, Uint32 agora) {
   // rows and can run JNI layout measurements on an underpowered TV CPU.
   // Keep the second pass in every other selector where focus expansion
   // really does require recomputing row geometry after the spring update.
-  if (!folhaRelogio || canalFolha)
+  if ((!folhaRelogio && !folhaIlha()) || canalFolha)
 #endif
     montar(automaticaDaFolha());
   if (focoFixo >= 0) {
@@ -5850,7 +5851,7 @@ static void ponteiroFolhaFiltro(int i, int b) {
 #endif
   (void)b;
   if (i < 0 || i >= nProvedores) return;
-  if (folhaRelogio && !canalFolha) {
+  if ((folhaRelogio || folhaIlha()) && !canalFolha) {
     memoriaFolhaGuardar();
     abaFoco = i;
     if (i == filtro) memoriaFolhaPrimeiro();
@@ -6782,7 +6783,7 @@ static void corpoFolha(float x, float w, float anim, Uint32 agora, int ilha) {
     if (providerW < 0.0f) providerW=0.0f;
     for(int i=1;i<nProvedores;i++) providerTotal+=iw[i]+6.0f;
     if(ptr) ponteiro_alvo(allR.x,allR.y,allR.w,allR.h,NULL,ponteiroFolhaFiltro,0,0);
-    const int chipEmFoco = folhaRelogio && !canalFolha ? abaFoco : filtro;
+    const int chipEmFoco = (folhaRelogio || folhaIlha()) && !canalFolha ? abaFoco : filtro;
     chipFolha(allR,rot[0],(float)nome[0].w,NULL,grupo==0&&chipEmFoco==0,filtro==0,anim);
 #ifdef NV_TOUCH_UI
     if(layout_modo_mobile()) {
@@ -6922,7 +6923,7 @@ static void corpoFolha(float x, float w, float anim, Uint32 agora, int ilha) {
       float b = cardY + r.h > NV_TELA_H ? NV_TELA_H : cardY + r.h;
       if (b > t) ponteiro_alvo(r.x, t, r.w, b - t, ponteiroFolhaLinha, NULL, row, 0);
     }
-    if(folhaRelogio && !canalFolha) {
+    if((folhaRelogio || folhaIlha()) && !canalFolha) {
       // Solid #000000 surface against the OLED background.
       gfx_cor(r,FOLHA_RAIO/r.h,0.0f,0.0f,0.0f,anim);
       if(sel) gfx_anel_fora(r,FOLHA_RAIO/r.h,0.0f,2.0f,1.0f,1.0f,1.0f,.95f*anim);
@@ -6938,7 +6939,7 @@ static void corpoFolha(float x, float w, float anim, Uint32 agora, int ilha) {
       else gfx_cor(r,FOLHA_RAIO/r.h,.14f,.15f,.17f,.92f*anim);
       gfx_anel(r,FOLHA_RAIO/r.h,1.0f,.34f,.36f,.40f,.18f*anim);
     }
-    if(folhaRelogio && !canalFolha) {
+    if((folhaRelogio || folhaIlha()) && !canalFolha) {
       // The chosen badge pack determines the badges. Original addon formatting
       // remains intact, regardless of which addon generated the streams.
       TextoAddon *t=textoAddonDa(i);
