@@ -33,3 +33,4 @@ Build #127 2026-11-21: fix ARM64 preflight audio selector's missing forward decl
 Build 128: cached Android debug APK after green preflight #19 (run 44893380986); complete post-127 player refinements, branch SHA 97c1d2cc5fdec0679506f2be180e6bb8a9728efa. Reuse Gradle, Android native and P2P caches.
 
 # One full audio/subtitle panel integration Android APK run, 2026-11-21.
+# Final tab-key focus correction: use this commit as the reviewed APK source.
