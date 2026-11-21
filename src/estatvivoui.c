@@ -1551,7 +1551,7 @@ static void desenharPlayerHud(float a) {
   snprintf(linhas[6], sizeof linhas[6], "%s", drop);
   snprintf(linhas[7], sizeof linhas[7], "%s", thermal);
   plrui_material(p, 18.0f, 0, a);
-  gfx_cor(p, 0.01f, 0.035f, 0.12f, 0.84f * a);
+  gfx_cor(p, 18.0f, 0.01f, 0.035f, 0.12f, 0.84f * a);
   gfx_recorte(p.x, p.y, p.w, p.h);
   for (int i = 0; i < 8; i++) {
     TxtLinha l = txt_linha_corta(TXT_AJ_VALOR18, linhas[i], 105, 165, 255, 255, p.w - 32.0f);
@@ -1580,7 +1580,7 @@ static void desenharPlayerDetalhado(float a) {
   if (playerInfoScroll > (int)maxScroll) playerInfoScroll = (int)maxScroll;
   playerInfoGarantirScroll();
   plrui_material(p, 26.0f, 0, a);
-  gfx_cor(p, 0.025f, 0.07f, 0.20f, 0.88f * a);
+  gfx_cor(p, 26.0f, 0.025f, 0.07f, 0.20f, 0.88f * a);
   plrui_linha_foco(p, 26.0f, 0.18f * a);
   {
     TxtLinha title = txt_linha(TXT_ILHA_TITULO, "Playback Info", 226, 241, 255, 255);
@@ -1595,7 +1595,7 @@ static void desenharPlayerDetalhado(float a) {
     if (l->secao) {
       TxtLinha sec = txt_linha(TXT_ILHA_SECAO, l->rotulo, 105, 170, 255, 255);
       txt_desenhar_alpha(sec, p.x + 30.0f, y + 3.0f, a);
-      gfx_cor((GfxRect){p.x + 30.0f, y + rowH - 2.0f, p.w - 70.0f, 1.0f}, 0.10f, 0.24f, 0.48f, 0.62f * a);
+      gfx_cor((GfxRect){p.x + 30.0f, y + rowH - 2.0f, p.w - 70.0f, 1.0f}, 0.0f, 0.10f, 0.24f, 0.48f, 0.62f * a);
     } else {
       GfxRect rr = {p.x + 20.0f, y, p.w - 44.0f, rowH};
       if (i == playerInfoFoco && !playerInfoHudFoco) plrui_linha_foco(rr, 7.0f, 0.22f * a);
@@ -1613,8 +1613,8 @@ static void desenharPlayerDetalhado(float a) {
     float thumbH = contentH * frac;
     float max = (float)(playerInfoN - (int)visibleRows);
     float thumbY = contentY + (contentH - thumbH) * (max > 0 ? playerInfoScroll / max : 0);
-    gfx_cor((GfxRect){p.x + p.w - 10.0f, contentY, 3.0f, contentH}, 0.18f, 0.22f, 0.32f, 0.7f * a);
-    gfx_cor((GfxRect){p.x + p.w - 10.0f, thumbY, 3.0f, thumbH}, 0.22f, 0.56f, 0.98f, 0.95f * a);
+    gfx_cor((GfxRect){p.x + p.w - 10.0f, contentY, 3.0f, contentH}, 1.5f, 0.18f, 0.22f, 0.32f, 0.7f * a);
+    gfx_cor((GfxRect){p.x + p.w - 10.0f, thumbY, 3.0f, thumbH}, 1.5f, 0.22f, 0.56f, 0.98f, 0.95f * a);
   }
   btn = (GfxRect){p.x + p.w - 190.0f, p.y + p.h - 54.0f, 160.0f, 36.0f};
   plrui_material(btn, 10.0f, 0, a);
