@@ -1446,6 +1446,12 @@ static int estiloTecla(SDL_Keycode k, int rep) {
     else if(k==SDLK_DOWN && *f<8)(*f)++;
     return 1;
   }
+  if(!estiloEdit && (k==SDLK_LEFT || k==SDLK_RIGHT)) {
+    // A tab may receive focus without being activated. OK activates it.
+    legendaTopoFoco=1;
+    legendaTopoIndice=k==SDLK_LEFT?0:2;
+    return 1;
+  }
   int original=estiloNovoMapa[*f];
   if(original<0) return 1; // Not implemented in the active rendering pipeline.
   if(original==EST_RESTAURAR) {
@@ -1516,6 +1522,10 @@ void faixas_evento(const SDL_Event *e) {
       if (legendaSyncEdit) legendaSyncEdit=0;
       else { legendaTopoFoco=1; legendaTopoIndice=2; }
       return;
+    }
+    if (!legendaSyncEdit && key == SDLK_LEFT) {
+      // Sync -> Style: focus the tab but keep Sync content until OK.
+      legendaTopoFoco=1; legendaTopoIndice=1; return;
     }
     if (key == SDLK_UP) {
       legendaSyncEdit=0; legendaTopoFoco=1; legendaTopoIndice=2;
