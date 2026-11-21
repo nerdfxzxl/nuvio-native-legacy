@@ -608,7 +608,7 @@ int legendasui_evento(const SDL_Event *e) {
   if (k == SDLK_LEFT || k == SDLK_RIGHT) {
     int d = k == SDLK_RIGHT ? 1 : -1;
     if (l && l->tipo == LR_ALVO) { alvo = d > 0; return LEGUI_TRATADO; }
-    if (l && l->tipo == LR_ATRASO) { mudarAtraso((e->key.repeat ? 500 : 100) * d); return LEGUI_TRATADO; }
+    if (l && l->tipo == LR_ATRASO) { mudarAtraso((e->key.repeat ? 200 : 50) * d); return LEGUI_TRATADO; }
     if (l && l->tipo == LR_SYNC) {
       const char *rot[4];
       int n = nAcoes(l->slot, rot, 4);
@@ -629,7 +629,7 @@ int legendasui_evento(const SDL_Event *e) {
         break;
       case LR_CAND: escolher(l->slot, l->cand >= 0 ? &cand[l->cand] : NULL); break;
       case LR_ALVO: alvo = !alvo; break;
-      case LR_ATRASO: break;
+      case LR_ATRASO: mudarAtraso(l->slot ? -legenda2_offset_manual() : -player_leg_estilo()->atrasoMs); break;
       case LR_SYNC: {
         const char *rot[4];
         int n = nAcoes(l->slot, rot, 4);
@@ -682,7 +682,7 @@ static void ponteiroSyncPasso(int i, int d) {
 static void ponteiroAtraso(int i, int cx) {
   if (!ponteiroAqui(i) || linhas[i].tipo != LR_ATRASO) return;
   ponteiroLinha(i, 0);
-  mudarAtraso(ponteiro_x() < (float)cx ? -100 : 100);
+  mudarAtraso(ponteiro_x() < (float)cx ? -50 : 50);
 }
 static void ponteiroAbaEstilo(int a, int b) { (void)a; (void)b; if (aberto) faixas_aba_estilo(1); }
 
@@ -839,7 +839,7 @@ static void textoLinha(const LuiLinha *l, char *nome, size_t tn, char *sub, size
       int v = l->slot ? legenda2_offset_manual() : player_leg_estilo()->atrasoMs;
       snprintf(nome, tn, "%s", i18n("Atraso"));
       if (!v) snprintf(sub, ts, "0 s");
-      else { snprintf(sub, ts, "%+.2f s", v / 1000.0f); plrui_decimal(sub); }
+      else { snprintf(sub, ts, "%+.3f s", v / 1000.0f); plrui_decimal(sub); }
       *icone = "aj_clock";
       break; }
     case LR_CAND:
