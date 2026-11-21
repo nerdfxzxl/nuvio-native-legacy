@@ -40,6 +40,8 @@ void faixas_desenhar(Uint32 agora);
 // ESQUERDA/DIREITA entre a lista e a barra de estilo). 0 = lista, 1 = estilo.
 void faixas_aba_estilo(int estilo);
 void faixas_aba_sync(int ativar);
+// Shared underlined header for Subtitles, Style and Sync (no duplicate title).
+void faixas_legenda_tabs(float x, float y, float w, float alpha);
 // Testes: o foco da folha. Devolve a linha focada da coluna atual (-1 = folha
 // fechada); `col` 0 = audio, 1 = lista de legendas, 2 = barra de estilo;
 // `vol`/`vel` = foco nas linhas de volume/velocidade da folha de audio.
