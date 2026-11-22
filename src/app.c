@@ -483,6 +483,12 @@ static unsigned fonteFalhaLista;
 static int fonteFalhaEsperando, fonteFalhaN;
 static int fonteFalhaManual = -1;
 static double fonteFalhaPos = -1.0;
+#ifdef NV_ANDROID
+// The last trustworthy point survives the failed decoder while the user
+// chooses a replacement; it is scoped by title/episode, never a global seek.
+static double p1PosEscolha = -1.0;
+static char p1AlvoEscolha[64];
+#endif
 static int vodRenovou;
 static Uint32 vodRenovandoDesde;
 static double vodRenovarPos;
@@ -3395,6 +3401,15 @@ static void renovarVodInterrompido(void) {
 // On exhausted same-source recovery, user choice owns the next attempt.
 static void selecionarAposFalhaVOD(const char *motivo) {
   if (!player_aberto() || player_quer_sair() || player_id_canal()[0]) return;
+  // Before stopping the failed player, retain the last stable position.
+  // Never use a reset-to-zero sample from the newly opened backend.
+  double pos = fonteFalhaPos;
+  if (video_pronto() && !video_reconectando()) {
+    double atual = video_pos();
+    if (isfinite(atual) && atual > 0.0) pos = atual;
+  }
+  p1PosEscolha = isfinite(pos) && pos > 0.0 ? pos : -1.0;
+  alvoPlayer(p1AlvoEscolha, sizeof p1AlvoEscolha);
   novaGeracaoFonte(); // invalidate late async renewal and automatic jobs
   limparFontePendente();
   aguardandoFonte = 0; preparoEspera = 0;
@@ -6783,7 +6798,14 @@ void app_atualizar(float dt, Uint32 agora) {
       consumirFolhaTocar(&t, &e);
       int mesmaParte = epAnteriorT == t && epAnteriorE == e && !folhaInicioDepoisEscolha;
 #ifdef NV_ANDROID
-      if (mesmaParte) video_p1_guardar_faixas_manual();
+      if (mesmaParte) {
+        char alvoManual[64];
+        alvoPlayer(alvoManual, sizeof alvoManual);
+        if (trocaPos < 0.0 && p1PosEscolha > 0.0 &&
+            !strcmp(alvoManual, p1AlvoEscolha)) trocaPos = p1PosEscolha;
+        video_p1_guardar_faixas_manual();
+      }
+      p1PosEscolha = -1.0; p1AlvoEscolha[0] = 0;
 #endif
       diagnostico_cancelar_vazao();
       player_abrir(cat_indice_vivo(titulo, imdb),NULL);
@@ -6969,6 +6991,9 @@ void app_atualizar(float dt, Uint32 agora) {
   }
   if (folhaCancelarTocar && stream_folha_anim() <= 0.005f) {
     folhaCancelarTocar = 0;
+#ifdef NV_ANDROID
+    p1PosEscolha = -1.0; p1AlvoEscolha[0] = 0;
+#endif
     if (player_aberto()) {
       novaGeracaoFonte();
       limparFontePendente();

@@ -37,7 +37,8 @@ check("selecionarAposFalhaVOD" in android and
       "Android VOD failure does not substitute source")
 check("void video_p1_guardar_faixas_manual(void)" in backend and
       "player_aspecto_repor_troca(aspectoAnterior)" in app and
-      "player_definir_retomada_fonte(trocaPos)" in app,
+      "player_definir_retomada_fonte(trocaPos)" in app and
+      "p1PosEscolha = isfinite(pos)" in app,
       "same-episode manual source switch carries tracks, zoom and position")
 check("reconPausado = 0;" in backend and
       "if (nv_recon_ativa(&recon)) reconPausado = pausaPedida;" in backend and
