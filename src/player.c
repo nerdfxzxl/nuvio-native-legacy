@@ -6760,6 +6760,7 @@ void player_desenhar(Uint32 agora) {
     // The DV screen keeps the opening alive: it only falls with the real frame, DV or not.
     abrecine_passo(&cine, (player_carregando() || dvtela_ativa()) && !ehCanal(), imagem, ajustes_abertura_detalhada(),
                    agora, dtc, ajustes_animacoes_reduzidas());
+    if (!cine.viva || erroFonte || saindo || ehCanal()) cinemaEscapeFoco = 0;
     if (erroFonte || saindo || ehCanal()) cine.veu = 0.0f; }
   // Live video below (hardware plane): the glass of the frame is translucent
   // flat glass, no capture, no blur; the video shows through the hole.
