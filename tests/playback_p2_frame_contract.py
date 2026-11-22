@@ -69,7 +69,7 @@ check("Preserves Dolby Vision native surface workaround",
 check("Existing warm frame not removed",
     "private fun mostrarQuadro(url: String, titulo: String)" in K and "quadroVisivel || retidoVisivel" in K)
 check("Existing post-134 refinement handoff untouched in scope",
-    "OWNER CONFIRMED FORMAT A" in HANDOFF and "responsive" in HANDOFF.lower())
+    "OWNER CONFIRMED FORMAT A" in HANDOFF and "Action pill + exclusive focus" in HANDOFF)
 check("No guessed P2P readiness in native event path",
     "contiguous_ready_bytes" not in body_between(N, "JNIEXPORT void JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativeEvento", "// --- video.h (C -> Kotlin)"))
 check("Pure-Kotlin frame ownership regression tests present",
