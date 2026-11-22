@@ -826,7 +826,7 @@ JNIEXPORT void JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativeEvento(JNIEn
     case EV_SUPERFICIE_ESTAVEL: superficieEstavel = 1; break;
     case EV_AUDIO_SEM_DECODER: semDecoderAudio = 1; break;
     case EV_CARGA_FASE: if (a >= 0 && a <= 3) cargaFase = a; break;
-    case EV_SO_AUDIO: if (a == 1 && prontoLoad) somenteAudio = 1; break;
+    case EV_SO_AUDIO: if (a == 1) somenteAudio = 1; break;
     case EV_LIVE_SEGMENT:
       pthread_mutex_lock(&travaRetomada);
       if (ativo && (unsigned)b == sessao) liveSegmentoMs = a > 60000 ? 60000u : a > 0 ? (unsigned)a : 0u;
