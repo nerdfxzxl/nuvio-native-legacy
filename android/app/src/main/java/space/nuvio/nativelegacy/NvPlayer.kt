@@ -188,7 +188,7 @@ object NvPlayer {
     // quadros perdidos (onDroppedVideoFrames) e entregues; host final.
     @JvmStatic external fun nativeStats(bytes: Long, bufferMs: Int, alvoMs: Int, conexoes: Int,
                                         primeiroByteMs: Int, perdidos: Long, quadros: Long, host: String,
-                                        minMs: Int, alvoMb: Int, carregando: Int)
+                                        minMs: Int, alvoMb: Int, carregando: Int, geracao: Int)
 
     // F06 sincronia por audio (AudioSyncTap.kt / AudioSyncSink.kt). Fio de
     // reproducao; o C so copia para um anel limitado (src/audsync.c).
@@ -1719,7 +1719,7 @@ object NvPlayer {
                 bufferAlvoMs,
                 if (e.usado) e.conexoes.get().coerceAtLeast(0) else -1,
                 e.primeiroByteMs, perdidos, quadros, e.host,
-                bufferMinMs, bufferBytes shr 20, if (p.isLoading) 1 else 0)
+                bufferMinMs, bufferBytes shr 20, if (p.isLoading) 1 else 0, geracaoNative)
         } catch (t: UnsatisfiedLinkError) { }
     }
 
