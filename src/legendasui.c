@@ -1088,23 +1088,8 @@ static void desenharLinha(const LuiLinha *l, int idx, int sel, float x, float y,
     // row, so the details (release name) get the width.
     if (ativo) dir -= pilulaSlot(l->slot, dir, y + LU_LN_H * 0.5f, sel, aL) + 12.0f;
   }
-  // O chevron diz "tem mais atras deste OK" (o das Ajustes): a linha com acoes
-  // (segure OK) e "Todas as legendas". Mesmo icone do resto do app.
-  if (!mais && !ver && (temMenu(l) || l->tipo == LR_MAIS)) {
-    gfx_icone((GfxRect){ dir - 24.0f, y + (LU_LN_H - 24.0f) * 0.5f, 24.0f, 24.0f }, "pl_chevron-right", 1, 1, 1, (sel ? 0.9f : 0.5f) * aL);
-    if (pont && l->tipo != LR_MAIS) ponteiro_alvo(dir - 40.0f, y, 40.0f, LU_LN_H, ponteiroLinha, ponteiroMenuAbrir, idx, 0);
-    dir -= 24.0f + 10.0f;
-    // Dono, 11/10: a linha em foco diz que segurar abre mais ("hold to more"),
-    // na mesma pilula de tecla do rodape.
-    if (sel && !menu && l->tipo != LR_MAIS) {
-      const char *k[1] = { "Segure OK" }, *r[1] = { "Mais opções" };
-      dir -= plrui_dicas(k, r, 1, dir, y + LU_LN_H * 0.5f, 1, 0.8f * aL) + 12.0f;
-    }
-  } else if ((mais || ver) && sel && !menu && l->tipo == LR_CAND) {
-    // Na lista inteira o segurar tambem abre o menu da linha: a mesma dica.
-    const char *k[1] = { "Segure OK" }, *r[1] = { "Mais opções" };
-    dir -= plrui_dicas(k, r, 1, dir, y + LU_LN_H * 0.5f, 1, 0.8f * aL) + 12.0f;
-  }
+  // #131: the active English-only selector has no hold-OK submenu,
+  // secondary subtitle action, or "find others of this language" chevron.
   if (l->tipo == LR_SYNC && sel) {
     // The chosen action between < > discs; a disc dims with nothing beyond it.
     const char *rot[4];
