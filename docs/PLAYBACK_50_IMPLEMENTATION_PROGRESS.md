@@ -1,7 +1,7 @@
 # Nuvio Legacy — Q01–Q50 Implementation Progress
 
 **Last updated:** 2026-11-22
-**Status:** PLANNING CHECKPOINTS CREATED; FEATURE IMPLEMENTATION NOT AUTHORIZED; APK BUILD NOT AUTHORIZED.
+**Status:** P0 BASELINE AUDIT COMPLETE; P1 FEATURE IMPLEMENTATION NOT STARTED; APK BUILD NOT AUTHORIZED.
 **Branch:** `feature/official-stream-selector` (not `master`).
 **Prior feature baseline:** `6171645e05d2137d2a1e9ed1b113687246acd7ca` — docs: lock subtitle filename Format A and unbuilt wrapping/parser test handoff.
 **Latest planning commits:** master specification `7d3c81d81aee309843dd2f0b767c6ef3c2d59723`; work packages `b059a7a9a42ae2b91d87bff0a03bfeb314d0f647`; this progress tracker is an additional documentation-only commit. **Recheck actual HEAD at the beginning of every session.**
@@ -11,6 +11,7 @@
 - [Approved Q01–Q50 master specification](PLAYBACK_50_MASTER_SPEC.md)
 - [Bounded package plan and session protocol](PLAYBACK_50_WORK_PACKAGES.md)
 - [Existing post-#134 unbuilt refinements](PLAYER_PENDING_REFINEMENTS_AFTER_134.md)
+- [P0 verified source inventory, preservation audit and known risks](PLAYBACK_50_P0_BASELINE.md)
 - [Official NuvioTV dev reference](https://github.com/NuvioMedia/NuvioTV/tree/dev)
 
 ## Existing work to preserve (not part of Q1–Q50 implementation progress)
@@ -21,7 +22,7 @@
 
 | Package | Scope | Status | Implementation commits | Verification |
 |---|---|---|---|---|
-| P0 | Baseline, inventory, preservation | NOT STARTED | — | — |
+| P0 | Baseline, inventory, preservation | COMPLETE — source audit only | [`d0ff5a1`](https://github.com/nerdfxzxl/nuvio-native-legacy/commit/d0ff5a1f44fc42034c867ca149a21e1814d2f77c) (documentation) | GitHub branch diff/source/test scripts inspected; **no tests, compile or APK run** |
 | P1 | State/source identity/cancellation | NOT STARTED | — | — |
 | P2 | Cinematic/arc/status/speed | NOT STARTED | — | — |
 | P3 | Selector/reload/recovery | NOT STARTED | — | — |
@@ -40,7 +41,11 @@
 
 ## Immediate next action
 
-**Wait for explicit owner authorization to start implementation.** Once authorized, assign **P0 only** to a fresh chat: verify branch head and current code, inventory source/test architecture, inspect existing post-#134 refinements and produce a baseline report. Commit a tracker update, then end the package. Subsequent fresh chats execute P1, P2, etc. P8 always requires *separate* owner permission to run APK workflow.
+**P0 is complete. Do not re-run P0 in the next chat.** Await owner's request to execute **P1 only** in a fresh chat. Read master spec, package plan, this tracker, P0 baseline and post-#134 handoff; verify HEAD and local working tree where applicable. P1 targets playback source/session identity, stale callback cancellation, same-source renewal and recovery/background precedence. It must not trigger APK/GitHub Actions. Stop at P1 checkpoint and update this tracker. P8 requires separate explicit owner workflow authorization.
+
+**P0 known integration issue:** Android `src/video_android.c:video_buffer_fim()` currently returns nonzero only for live streams, while `src/player.c` uses that API for the VOD buffer rail; `src/video.c` updated after #134 is a non-Android target path. See [P0 baseline](PLAYBACK_50_P0_BASELINE.md) and ensure P4/P7 resolves and tests actual Android VOD buffer endpoint. The early native syntax preflight omits several newly changed files; add coverage before P8. Linux compatibility of subtitle C harness scripts also needs checking. Full detailed Q01–Q50 prose document is not yet archived in GitHub; the in-repo master register is condensed.
+
+- **2026-11-22 / P0 source baseline:** Verified HEAD `5a9975c` and source commit `6171645`, reviewed build #134 source `bad57b2`, compared 26 post-build commits / 19 changed paths, inspected native, Android, test and workflow files; committed [baseline report](PLAYBACK_50_P0_BASELINE.md). Found Android VOD buffered-end gap and fast-preflight coverage issues. **No feature code, tests, native compilation, CI run or APK triggered.**
 
 ## Mandatory checkpoint template for future sessions
 
