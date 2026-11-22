@@ -1283,13 +1283,21 @@ static void desenharLinha(const LuiLinha *l, int idx, int sel, float x, float y,
     // Release names may be long: show two lines instead of 40-byte truncation.
     int nameLines=fonteModo?4:2;
     float nameLeading=fonteModo?23.0f:26.0f;
-    float hn = txt_bloco_corta(TXT_ILHA_FORTE, nome, c, c, c - 2,
-                                tx, 0.0f, tw, nameLeading, 0.0f, nameLines);
+    // Actual dot-separated releases are often ONE long token. The regular
+    // cutter ellipsizes that token on its first line; use the UTF-8 wrapping
+    // cutter in source mode for the same measured/drawn multi-line layout.
+    float hn = fonteModo
+      ? txt_bloco_corta_longas(TXT_ILHA_FORTE,nome,c,c,c-2,
+                                tx,0.0f,tw,nameLeading,0.0f,nameLines)
+      : txt_bloco_corta(TXT_ILHA_FORTE,nome,c,c,c-2,
+                        tx,0.0f,tw,nameLeading,0.0f,nameLines);
     float hs = sub[0] ? txt_bloco_corta(TXT_ILHA_GENERO, sub, cs, cs, cs - 2,
                                          tx, 0.0f, tw, 21.0f, 0.0f, 2) : 0.0f;
     float h = hn + (hs > 0 ? 3.0f + hs : 0.0f), ty = y + (LU_LN_H - h) * .5f;
-    txt_bloco_corta(TXT_ILHA_FORTE, nome, c, c, c - 2,
-                    tx, ty, tw, nameLeading, aL, nameLines);
+    if(fonteModo)txt_bloco_corta_longas(TXT_ILHA_FORTE,nome,c,c,c-2,
+                                        tx,ty,tw,nameLeading,aL,nameLines);
+    else txt_bloco_corta(TXT_ILHA_FORTE,nome,c,c,c-2,
+                         tx,ty,tw,nameLeading,aL,nameLines);
     if (hs > 0) txt_bloco_corta(TXT_ILHA_GENERO, sub, cs, cs, cs - 2,
                                  tx, ty + hn + 3.0f, tw, 21.0f, aL, 2);
   }
