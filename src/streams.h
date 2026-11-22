@@ -468,6 +468,7 @@ int  stream_canal_prazo_longo(int idx);
 // --- folha de fontes (a lista que sobe por cima do player/detalhe) ---
 void stream_folha_abrir(void);
 // P1 recovery-only focus request. Never selects or auto-starts a source.
+void stream_folha_focar_fonte(int indice); // preserve manual-loading escape row when present
 void stream_folha_focar_primeira_disponivel(void);
 // Native Dynamic Clock episode-action step. Action values:
 // 0=Play manually (expand streams), 1=Play from beginning, 2=mark watched.
