@@ -126,6 +126,48 @@ static int syncAcoes(int slot, const char **r, int max, void *u) {
 static void syncRodar(int slot, int acao, void *u) { (void)u; syncExec[slot] = acao; }
 
 int main(void) {
+  // Format A: preserve entire readable release metadata. Provider tab / EN
+  // chip are separate; only the subtitle's actual name occupies the title.
+  {
+    LegUiCand names[4];
+    char title[256], cleaned[256], longName[220];
+    memset(names,0,sizeof names);
+    nomeSemExtensao("A%2EStory%2EOf%2EDerry%2E2026%2E1080p%2EHMAX%2EWEB-DL.srt.zip",
+                    cleaned,sizeof cleaned);
+    assert(!strcmp(cleaned,"A.Story.Of.Derry.2026.1080p.HMAX.WEB-DL"));
+    nomeSemExtensao("folder%2FShow.S01E05.1080p.WEB-DL.ASS",
+                    cleaned,sizeof cleaned);
+    assert(!strcmp(cleaned,"Show.S01E05.1080p.WEB-DL"));
+    for(int i=0;i<4;i++) {
+      snprintf(names[i].idioma,sizeof names[i].idioma,"en");
+      snprintf(names[i].rotulo,sizeof names[i].rotulo,"English  ·  Sync status");
+      names[i].leg.addonIndice=i==2?1:0;
+    }
+    snprintf(names[0].arquivo,sizeof names[0].arquivo,
+             "A.Story.Of.Derry.2026.1080p.HMAX.WEB-DL.DDP5.1.srt");
+    snprintf(names[1].arquivo,sizeof names[1].arquivo,
+             "subtitle%%2F3752803-8674841.zip");
+    snprintf(names[2].arquivo,sizeof names[2].arquivo,
+             "%s",names[0].arquivo);
+    snprintf(names[3].arquivo,sizeof names[3].arquivo,
+             "subtitle%%2F3750701-8672665.zip");
+    // The UI no longer numbers duplicates that belong to other addon tabs.
+    fonteModo=1;
+    assert(legendasui_titulo(names,4,0,title,sizeof title));
+    assert(!strcmp(title,"A.Story.Of.Derry.2026.1080p.HMAX.WEB-DL.DDP5.1"));
+    assert(legendasui_titulo(names,4,2,title,sizeof title));
+    assert(!strcmp(title,"A.Story.Of.Derry.2026.1080p.HMAX.WEB-DL.DDP5.1"));
+    assert(!legendasui_titulo(names,4,1,title,sizeof title));
+    assert(!strcmp(title,"Subtitle (1)"));
+    assert(!legendasui_titulo(names,4,3,title,sizeof title));
+    assert(!strcmp(title,"Subtitle (2)"));
+    for(int k=0;k<205;k++)longName[k]=(char)('a'+k%26);
+    strcpy(longName+205,".srt");
+    snprintf(names[0].arquivo,sizeof names[0].arquivo,"%s",longName);
+    assert(legendasui_titulo(names,4,0,title,sizeof title));
+    assert(strlen(title)==205 && !strstr(title,".srt"));
+    fonteModo=0;
+  }
   // #439: the secondary overlay must keep all added sizes.
   TxtEstilo est; int r, g, b, fundo, borda;
   for (segundaPct = 260; segundaPct <= 300; segundaPct += 10) {
