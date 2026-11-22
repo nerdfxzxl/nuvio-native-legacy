@@ -17,8 +17,11 @@
 4. **Cleaner English subtitle rows** — `src/legendasui.c`, `src/legendasui.h`
    - Source-mode selected subtitle has checkmark, not redundant `Main` pill.
    - Retain single `EN` badge; remove duplicate `English` and repeated provider, subtitle format/release in the secondary row.
-   - Remove common filename extension (.srt/.vtt/.ass/.ssa/.zip/etc). Preserve up to 256 bytes of the filename and UTF-8-safe fallback truncation for narrow legacy API callers. Wrap titles for up to 4 lines inside each existing 102px row.
-   - **PENDING OWNER CHOICE:** semantic display format; options A full release filename, B cleaned title + quality metadata, C technical badges/tokens. Opaque auto-generated `subtitle%2F...zip` labels especially need user-approved fallback presentation. Do not hardcode a format before owner chooses.
+   - **OWNER CONFIRMED FORMAT A:** show the full readable release filename with its original title/year/resolution/release/codec tokens and separators; do not reformat as separate metadata badges.
+   - The addon parser now retains up to 255 UTF-8 bytes of its original filename instead of 95; where `subtitleFileName` is an opaque service ID, prefer a separately provided meaningful `movieReleaseName` or other real title field. Playback URLs and immutable subtitle IDs are untouched.
+   - Decode percent-escaped filenames, remove common filename/archive extensions (.srt/.vtt/.ass/.ssa/.zip/etc) and URL/path/query fragments before display, without stripping meaningful release information. If only an opaque download ID exists, display a neutral **Subtitle** label, numbered within the selected addon when needed, not `subtitle%2F...zip`.
+   - Preserve the complete value in the UI text buffer (up to 255 bytes); the source-mode renderer now uses **UTF-8 long-token wrapping** so a period-separated filename actually wraps across up to four lines rather than being cut on its first line. Extremely long names still receive an overflow ellipsis after four lines because the existing 102px TV rows have finite height.
+   - Tests added: `tests/addons_legendas.c` (opaque ID + long original name) and `tests/legendasui.c` (Format A, decoded/stacked extensions, duplicate numbering per source, >95-byte names). These are committed but **not run** because owner explicitly wants to discuss more changes before building.
 5. **Font size** — `src/faixas.c`
    - Single adjustment is 3 native units = 2.5% rather than 12 units = 10%. Render the exact value with one decimal.
 6. **Held +/- acceleration** — `src/faixas.c`
@@ -36,7 +39,7 @@
    - Updated obsolete fixed-shell and Back assertions to new behavior; extended static checks. Tests were **NOT executed by CI** at owner's request not to build or run workflows.
 
 ## Next steps before ANY build
-- Owner to choose subtitle title/name presentation format (A/B/C or custom).
+- Subtitle filename Format A is final for this round; don't ask again or silently switch to B/C.
 - Owner may provide additional refinements. Continue committing changes without triggering build until explicitly instructed.
 - Before next artifact: run focused source/native compile regression, then a single APK workflow with existing cache, never unneeded duplicate full workflows.
 - Acceptance tests: D-pad focus/Back behavior, true hold-OK repeats, full English filename wrap, seek beyond buffer, no double focus, phone hero in landscape, player pill capsule width/anchored icon motion, parental exact TV visual comparison.
