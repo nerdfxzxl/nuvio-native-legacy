@@ -812,12 +812,13 @@ static float escalaPosterTelefone(void) {
   return homeRetratoTelefone() ? homeLarguraUtil() * 0.28f / (NV_CARD_W * gfx_poster_k()) : 1.0f;
 }
 
-// A tela larga de um telefone precisa deixar uma fileira ao alcance sem
-// ocupar quase toda a altura com o destaque. Tablets e a edicao para TV
-// conservam suas medidas.
+// Only portrait phones use the compact hero. Wide landscape phones were
+// artificially limited to ~75% of the TV hero's height, cropping the backdrop
+// and placing the first row halfway down the screen. Use the SAME immersive
+// hero layout as Android TV when the phone is in landscape.
 static int heroCompactoTelefone(void) {
 #ifdef NV_TOUCH_UI
-  return layout_modo_mobile() && (homeRetratoTelefone() || NV_TELA_W / NV_TELA_H >= 1.95f);
+  return layout_modo_mobile() && homeRetratoTelefone();
 #else
   return 0;
 #endif
@@ -891,7 +892,9 @@ static float corteFileiras(void) {
 // foco", que e o quanto o destaque sobe ao descer.
 static float empurraHero(void) {
   int heroOn = ajustes_hero_ligado();
-  if (heroOn && !telefoneui_ativo())
+  if (heroOn && (!telefoneui_ativo() || !heroCompactoTelefone()))
+    // Landscape touch and TV must push the first catalogue row to the
+    // bottom when the hero has focus. Scrolling still reveals rows normally.
     return fmaxf(0.0f, NV_TELA_H + 16.0f - topoFileiras());
   if (homeRetratoTelefone() && !heroOn) return 0.0f;
   switch (layoutHome()) {
@@ -4924,7 +4927,7 @@ static GfxRect heroArtworkRect(int lay, int cheio) {
     }
   }
 #endif
-  if (!telefoneui_ativo() && ajustes_hero_ligado()) {
+  if ((!telefoneui_ativo() || !heroCompactoTelefone()) && ajustes_hero_ligado()) {
     if (lay == HOME_LAYOUT_PADRAO) r = padBannerRect();
     float reveal = anim_clamp(-scrollY / fmaxf(1.0f, empurraHero()), 0, 1);
     r.x *= 1.0f-reveal; r.y *= 1.0f-reveal;
