@@ -23,13 +23,15 @@ typedef struct {
   int calado;      // 1 = sem OSD desde a abertura ate a primeira tecla (inclusive DV pausado)
 } AbreCine;
 
-// Por quadro. abrindo = o player espera a fonte/o primeiro quadro; imagem = o
-// primeiro quadro real ja aparece (Android needs rendered frame + stable surface;
-// audio-only must be explicitly confirmed); nova abertura recomeca do zero.
+// Per frame: abrindo is the BACKEND still waiting, not the overlay's visibility;
+// imagem means a frame on the current stable surface, or verified audio-only.
+// Input remains owned by the overlay during its entire visual exit.
 void abrecine_passo(AbreCine *a, int abrindo, int imagem, int detalhadaPadrao,
                     Uint32 agora, float dt, int reduzidas);
 // 1 = desenhar a tela cinema neste quadro (e esconder o cartao da ilha).
 int abrecine_cinema(const AbreCine *a);
+// Visual handoff owns loading input until the last fade frame is gone.
+int abrecine_navegacao(const AbreCine *a);
 int abrecine_demorando(const AbreCine *a, Uint32 agora);
 // O OSD do player fica fora desde a abertura (o filme entra suave, sem controles)
 // ate a PESSOA apertar uma tecla com a fonte ja aberta; tecla durante a abertura
