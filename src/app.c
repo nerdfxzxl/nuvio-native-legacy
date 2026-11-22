@@ -1764,7 +1764,8 @@ static void processarFonteJob(void) {
   if (tipo == FJOB_PREPARO || tipo == FJOB_PREPARO_FALHA) aplicar = 0;
   if (tipo == FJOB_RENOVAR_VOD) {
     if (aplicar && vodRenovandoDesde && aguardandoFonte == 2 &&
-        player_aberto() && !player_quer_sair()) {
+        player_aberto() && !player_quer_sair() &&
+        !player_fontes_pendentes()) {
       aguardandoFonte = 0; vodRenovandoDesde = 0;
       if (resultado >= 0 && addons_consulta_atual(job->consulta) &&
           stream_vod_renovada_aplicar(resultado, job->listaGeracao,

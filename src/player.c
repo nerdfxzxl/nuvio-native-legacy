@@ -923,6 +923,7 @@ void player_definir_motivo_inicio(const char *texto) {
 int player_pediu_ajustes_fonte(void) { int v = pedAjFonte; pedAjFonte = 0; return v; }
 Uint32 player_aberto_ha_ms(void) { return aberto && abertoEm ? SDL_GetTicks() - abertoEm : 0; }
 int player_pediu_fontes(void) { int p = pedFontes; pedFontes = 0; return p; }
+int player_fontes_pendentes(void) { return pedFontes != 0; }
 int player_pediu_proximo(int *t,int *e) {
   if(pedProxT<0||pedProxE<=0)return 0;
   if(t)*t=pedProxT;if(e)*e=pedProxE;pedProxT=pedProxE=0;return 1;

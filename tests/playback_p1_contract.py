@@ -45,6 +45,7 @@ check("bufavanco_segura(&reconBufferAvanco" in backend and
       "bufavanco_segura(&av" in android,
       "progressive REMUX buffering avoids false stall")
 check("novaGeracaoFonte(); limparFontePendente();" in app and
-      "if (player_aberto() && player_pediu_fontes())" in app,
+      "if (player_aberto() && player_pediu_fontes())" in app and
+      "!player_fontes_pendentes()" in app,
       "Change Stream cancels pending renewal")
 print("P1 source contracts: PASS")
