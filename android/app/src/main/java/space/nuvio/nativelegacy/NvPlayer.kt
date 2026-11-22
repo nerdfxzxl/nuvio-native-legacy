@@ -288,6 +288,8 @@ object NvPlayer {
     private var retidoView: ImageView? = null
     @Volatile private var retidoVisivel = false
     private var retidoPedido = 0
+    // A PixelCopy callback cannot apply an older seek after a newer D-pad seek.
+    private var buscaSerial = 0
     private fun limparRetido() {
         retidoPedido++
         retidoVisivel = false
@@ -1277,6 +1279,7 @@ object NvPlayer {
         principal.post {
             if (pedido != pedidos.get()) return@post
             val p = player ?: return@post
+            val busca = ++buscaSerial
             val alvo = ms.coerceAtLeast(0).toLong()
             relatarAudio(sessao, "seek alvoMs=$ms")
             // In-buffer seeks and ordinary buffering keep the SAME hardware
@@ -1286,7 +1289,8 @@ object NvPlayer {
             if (sv != null && FrameHoldP2B.beyondKnownBuffer(
                     alvo, p.currentPosition, p.bufferedPosition, p.isCurrentMediaItemLive)) {
                 capturarRetido(p, sv, pedido) {
-                    if (pedido == pedidos.get() && player === p) p.seekTo(alvo)
+                    if (pedido == pedidos.get() && player === p && busca == buscaSerial)
+                        p.seekTo(alvo)
                 }
             } else p.seekTo(alvo)
         }
@@ -1632,6 +1636,9 @@ object NvPlayer {
         limitedSession = limitedNext
         novaSuperficie(act)
         mostrarQuadro(url, tituloPedido)
+        // A more recent SAME-source SDR hold takes precedence over the
+        // older warm-resume thumbnail during a bounded recovery reopen.
+        retidoView?.bringToFront()
         pedidoAtivo = pedido
         hdrRecriadoPara = ""; quadroVisto = false
         somLiberado = false
@@ -1746,6 +1753,7 @@ object NvPlayer {
     // morre na conferencia do numero.
     private fun liberar(preservarRetido: Boolean = false) {
         if (!preservarRetido) limparRetido()
+        buscaSerial++ // cancel any outstanding pre-seek PixelCopy continuation
         recuperacaoLive?.cancel()
         recuperacaoLive = null
         sessao++
@@ -2105,21 +2113,21 @@ object NvPlayer {
                     ev(EV_SUPERFICIE_INVALIDADA)
                     val ini = SystemClock.elapsedRealtime()
                     sv.visibility = View.GONE
-                Log.i(TAG, "[player] superficie: destruir levou ${SystemClock.elapsedRealtime() - ini} ms no fio principal")
-                principal.post {
-                    if (player !== p || superficie !== sv) return@post
-                    sv.visibility = View.VISIBLE
-                    // Clear the association after attach events queued during destruction.
+                    Log.i(TAG, "[player] superficie: destruir levou ${SystemClock.elapsedRealtime() - ini} ms no fio principal")
                     principal.post {
-                        if (player === p && superficie === sv) {
-                            soltando = null
-                            recriando = false
-                            avaliarEstavel()
+                        if (player !== p || superficie !== sv) return@post
+                        sv.visibility = View.VISIBLE
+                        // Clear the association after attach events queued during destruction.
+                        principal.post {
+                            if (player === p && superficie === sv) {
+                                soltando = null
+                                recriando = false
+                                avaliarEstavel()
+                            }
                         }
+                        Log.i(TAG, "[dvtrace] visible player=${System.identityHashCode(p)} holder=${System.identityHashCode(sv.holder)} atual=${player === p && superficie === sv}")
+                        (activity as? NuvioActivity)?.devolverFoco()
                     }
-                    Log.i(TAG, "[dvtrace] visible player=${System.identityHashCode(p)} holder=${System.identityHashCode(sv.holder)} atual=${player === p && superficie === sv}")
-                    (activity as? NuvioActivity)?.devolverFoco()
-                }
                 }
             }
         }
