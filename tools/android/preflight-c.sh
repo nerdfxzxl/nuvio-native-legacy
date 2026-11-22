@@ -61,6 +61,8 @@ sources=(
   src/progresso.c src/simkl.c src/trakt.c src/androidcache.c src/cachearte.c
   src/perfiltv.c src/tex_cache.c src/estatvivoui.c src/estatvivo.c
   src/faixas.c src/legendasui.c src/audioescolha.c src/cacheboost.c
+  src/plrguia.c src/parental.c src/plainass.c src/assrender.c
+  src/video_android.c
   src/detail.c src/trailer.c src/detmais.c src/extras.c
   src/serieaud.c src/notasui.c src/episodios.c src/app.c
 )
