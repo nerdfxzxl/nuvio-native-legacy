@@ -929,65 +929,150 @@ static int nomeInutil(const LegUiCand *c, const char *nome) {
   if (!strncasecmp(nome, "track ", 6) && !nome[6 + strspn(nome + 6, "0123456789")]) return 1;
   return 0;
 }
-// Copies `src` into `out` (<= 40 bytes + index), cutting on a UTF-8 boundary with "…".
-// Filename cleanup is deliberately LOSSLESS apart from transport suffixes.
-// Subtitle presentation/metadata layout is a separate user design choice.
-static void nomeSemExtensao(const char *src, char *out, size_t max) {
-  if(!src||!max)return;
-  snprintf(out,max,"%s",src);
-  size_t n=strlen(out);
-  // Strip HTTP query fragments from names, never from playback URLs.
-  char *q=strchr(out,'?'); if(q){*q=0;n=(size_t)(q-out);}
-  q=strchr(out,'#'); if(q){*q=0;n=(size_t)(q-out);}
-  static const char *const extensions[]={
-    ".srt",".vtt",".ass",".ssa",".sub",".zip",".7z",".rar",".gz",NULL
-  };
-  for(int i=0;extensions[i];i++) {
-    size_t k=strlen(extensions[i]);
-    if(n>=k&&!strcasecmp(out+n-k,extensions[i])) {out[n-k]=0;break;}
-  }
+// Format A: use the FULL readable filename supplied by the subtitle addon.
+// Keep its release separators, year, quality, codec and group tags unchanged.
+// Normalize only URL escapes, directory prefixes and file extensions.
+// Never display an opaque service download ID or a signed URL.
+static int subtitleHex(char c) {
+  if(c>='0'&&c<='9')return c-'0';
+  if(c>='a'&&c<='f')return c-'a'+10;
+  if(c>='A'&&c<='F')return c-'A'+10;
+  return -1;
 }
-// Preserve complete names when the caller supplies the full row buffer.
-// Keep the previous UTF-8-safe ellipsis for small legacy/test callers.
+static void nomeSemExtensao(const char *src,char *out,size_t max) {
+  if(!max)return;
+  out[0]=0;
+  if(!src||!*src||strstr(src,"://"))return;
+  size_t k=0;
+  for(size_t i=0;src[i]&&src[i]!='?'&&src[i]!='#'&&k+1<max;i++) {
+    unsigned char ch=(unsigned char)src[i];
+    if(ch=='%'&&src[i+1]&&src[i+2]) {
+      int a=subtitleHex(src[i+1]),b=subtitleHex(src[i+2]);
+      if(a>=0&&b>=0){ch=(unsigned char)((a<<4)|b);i+=2;}
+    }
+    if(ch==0)break;
+    // The filename is metadata, never executable UI/control markup.
+    if(ch<32||ch==127)ch=' ';
+    out[k++]=(char)ch;
+  }
+  out[k]=0;
+  // Some addons return folder/filename as one escaped value. The last path
+  // component is the actual release filename (never a secret URL).
+  const char *base=out;
+  for(const char *q=out;*q;q++)if(*q=='/'||*q=='\\')base=q+1;
+  if(base!=out)memmove(out,base,strlen(base)+1);
+  // Remove stacked transport suffixes, e.g. Movie.en.srt.zip -> Movie.en.
+  static const char *const ext[]={
+    ".srt",".vtt",".ass",".ssa",".sub",".sup",".idx",
+    ".zip",".7z",".rar",".gz",NULL
+  };
+  for(int changed=1;changed;) {
+    changed=0;
+    size_t n=strlen(out);
+    for(int i=0;ext[i];i++){
+      size_t size=strlen(ext[i]);
+      if(n>=size&&!strcasecmp(out+n-size,ext[i])){
+        out[n-size]=0;changed=1;break;
+      }
+    }
+  }
+  // Only trim whitespace, not dots, hyphens or release identifiers.
+  size_t n=strlen(out);
+  while(n&&isspace((unsigned char)out[n-1]))out[--n]=0;
+  size_t first=0;
+  while(out[first]&&isspace((unsigned char)out[first]))first++;
+  if(first)memmove(out,out+first,strlen(out+first)+1);
+}
+static int nomeOpaco(const char *name) {
+  if(!name||!*name)return 1;
+  if(!strncasecmp(name,"subtitle%2f",11)||
+     !strncasecmp(name,"subtitles%2f",12)||
+     !strncasecmp(name,"subtitle/",9)||
+     !strncasecmp(name,"subtitles/",10)||
+     !strncasecmp(name,"subtitle_",9)||
+     !strncasecmp(name,"subtitle-",9))return 1;
+  size_t n=strlen(name);
+  int num=0;
+  if(n>=7){
+    for(size_t j=0;j<n;j++) {
+      if(isdigit((unsigned char)name[j]))num=1;
+      else if(name[j]!='-'&&name[j]!='_')return 0;
+    }
+    return num;
+  }
+  return 0;
+}
 static void corteLimpo(char *out,size_t sz,const char *src){
   if(!sz)return;
   if(!src)src="";
   size_t n=strlen(src);
   if(n<sz){memcpy(out,src,n+1);return;}
   if(sz<5){out[0]=0;return;}
-  n=sz-4; // reserve exactly 3 bytes for the UTF-8 ellipsis and one NUL
+  n=sz-4; // UTF-8 ellipsis (3 bytes), NUL
   while(n&&((unsigned char)src[n]&0xc0)==0x80)n--;
   memcpy(out,src,n);
   memcpy(out+n,"\xe2\x80\xa6",3);
   out[n+3]=0;
 }
-// Title of candidate `i` among `cs[0..n)`: its name, else its language; equal
-// titles of one language get " (k)". Returns 1 when the title is a name.
-int legendasui_titulo(const LegUiCand *cs, int n, int i, char *out, size_t sz) {
-  const LegUiCand *c = &cs[i];
-  const char *nome = c->embutida ? (c->nome[0] ? c->nome : strstr(c->rotulo, LU_SEP)) : (c->arquivo[0] ? c->arquivo : c->rotulo);
-  int j, dup = 0, pos = 0, nomeado;
-  char outro[256],limpo[256];
-  if (c->embutida && !c->nome[0] && nome) nome += strlen(LU_SEP);
-  nomeado = nome && !nomeInutil(c, nome);
-  nomeSemExtensao(nomeado?nome:"",limpo,sizeof limpo);
-  corteLimpo(out,sz,nomeado?limpo:
-             c->embutida?"Embedded track":"Subtitle");
-  for (j = 0; j < n; j++) {
-    const char *on = cs[j].embutida ? (cs[j].nome[0] ? cs[j].nome : strstr(cs[j].rotulo, LU_SEP)) : (cs[j].arquivo[0] ? cs[j].arquivo : cs[j].rotulo);
-    if (j == i || cs[j].embutida != c->embutida || cs[j].tipo != c->tipo || !ling_casa(cs[j].idioma, c->idioma) || !ling_casa(c->idioma, cs[j].idioma)) continue;
-    if (cs[j].embutida && !cs[j].nome[0] && on) on += strlen(LU_SEP);
-    char candidate[256];
-    nomeSemExtensao(on&&!nomeInutil(&cs[j],on)?on:"",candidate,sizeof candidate);
-    corteLimpo(outro,sizeof outro,
-               on&&!nomeInutil(&cs[j],on)?candidate:
-               cs[j].embutida?"Embedded track":"Subtitle");
-    if (strcmp(outro, out)) continue;
-    dup = 1;
-    if (j < i) pos++;
+static int nomeCandidato(const LegUiCand *c,char out[256]) {
+  const char *name=NULL;
+  if(c->embutida){
+    name=c->nome[0]?c->nome:strstr(c->rotulo,LU_SEP);
+    if(name&&!c->nome[0])name+=strlen(LU_SEP);
+    if(name&&!nomeInutil(c,name)) {
+      nomeSemExtensao(name,out,256);
+      if(out[0]&&!nomeOpaco(out))return 1;
+    }
+    snprintf(out,256,"%s",fonteModo?"Embedded track":nomeIdioma(c->idioma));
+    return 0;
   }
-  if (dup) { size_t l = strlen(out); snprintf(out + l, sz - l, " (%d)", pos + 1); }
-  return nomeado;
+  if(c->arquivo[0]&&!nomeOpaco(c->arquivo)) {
+    nomeSemExtensao(c->arquivo,out,256);
+    if(out[0]&&!nomeOpaco(out)&&!nomeInutil(c,out))return 1;
+  }
+  // If a service sent only an opaque ID, it may still expose a readable
+  // release in its label. Do not mistake "English" or "Sync status" for one.
+  name=c->rotulo;
+  if(name&&*name) {
+    const char *sep=strstr(name,LU_SEP);
+    if(sep && (!strncasecmp(name,"English",7)||
+               !strncasecmp(name,"EN",2)))name=sep+strlen(LU_SEP);
+    nomeSemExtensao(name,out,256);
+    if(out[0]&&!nomeOpaco(out)&&!nomeInutil(c,out)&&
+       strcasecmp(out,"Sync status")&&
+       strcasecmp(out,"Weak sync")&&
+       strcasecmp(out,"Not synced")&&
+       strcasecmp(out,"Syncs when picked"))return 1;
+  }
+  snprintf(out,256,"Subtitle");
+  return 0;
+}
+// Candidate index is used only to preserve an existing selected subtitle's
+// identity. Duplicate suffixes are per visible source, not across addons.
+int legendasui_titulo(const LegUiCand *cs,int n,int i,char *out,size_t sz) {
+  if(!cs||i<0||i>=n||!out||!sz)return 0;
+  const LegUiCand *c=&cs[i];
+  char title[256],other[256],suffix[24];
+  int dup=0,pos=0;
+  int named=nomeCandidato(c,title);
+  for(int j=0;j<n;j++) {
+    if(j==i||cs[j].embutida!=c->embutida||cs[j].tipo!=c->tipo||
+       !ling_casa(cs[j].idioma,c->idioma)||
+       !ling_casa(c->idioma,cs[j].idioma))continue;
+    if(fonteModo&&!c->embutida&&cs[j].leg.addonIndice!=c->leg.addonIndice)continue;
+    nomeCandidato(&cs[j],other);
+    if(strcmp(title,other))continue;
+    dup=1;
+    if(j<i)pos++;
+  }
+  if(!dup){corteLimpo(out,sz,title);return named;}
+  snprintf(suffix,sizeof suffix," (%d)",pos+1);
+  size_t extra=strlen(suffix);
+  if(sz<=extra+1){corteLimpo(out,sz,title);return named;}
+  corteLimpo(out,sz-extra,title);
+  size_t len=strlen(out);
+  snprintf(out+len,sz-len,"%s",suffix);
+  return named;
 }
 
 // State of the second subtitle for the row that holds the active selection.
