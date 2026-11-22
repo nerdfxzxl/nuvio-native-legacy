@@ -31,6 +31,10 @@
 #include "memlog.h"
 #include "dvtela.h"
 #include "abrecine.h"
+#ifdef NV_ANDROID
+#include "loading_telemetry_p2.h"
+#include "p2pmotor.h"
+#endif
 #include "ilhacart.h"
 #include "idbase.h"
 #include "dados.h"
@@ -6330,6 +6334,38 @@ void player_morph_de(GfxRect logo, GfxRect play) {
 // uma passada; a nitida so enquanto recua (~1 s). O preto so com o furo aberto
 // (sem furo o preto opaco de baixo ja esta la). Logo, anel e linha sao
 // retangulos pequenos.
+/* P2 telemetry: display only real socket bytes or active engine counters.
+ * Unknown throughput is absent, never shown as 0. This never reads URL tokens
+ * or invents a 0..100% readiness percentage for HTTP/remote P2P. */
+static void desenharTelemetriaCarga(float cx, float y, int canto, float xCanto, float a) {
+#ifdef NV_ANDROID
+  char velocidade[64] = "", texto[112] = "";
+  double bps = video_download_bps();
+  int pares = -1;
+  if (p2pmotor_e_url(video_url_atual())) {
+    P2pmEstado e;
+    memset(&e, 0, sizeof e);
+    p2pmotor_estado(&e);
+    bps = e.ativo ? (double)e.baixando_bps : -1.0;
+    pares = e.ativo ? (int)e.pares : -1;
+  }
+  if (nv_download_texto(bps, velocidade, sizeof velocidade)) {
+    snprintf(texto, sizeof texto, "%s", velocidade);
+  }
+  if (pares >= 0) {
+    size_t n = strlen(texto);
+    snprintf(texto + n, sizeof texto - n, "%s%u peers",
+             n ? " · " : "", (unsigned)pares);
+  }
+  if (texto[0]) {
+    TxtLinha l = txt_linha(TXT_G19M, texto, 210, 210, 210, 255);
+    txt_desenhar_alpha(l, canto ? xCanto : cx - l.w * .5f, y, a * .82f);
+  }
+#else
+  (void)cx; (void)y; (void)canto; (void)xCanto; (void)a;
+#endif
+}
+
 static void desenharCinema(Uint32 agora, const CatItem *c, int furou) {
   GfxRect tela = { 0, 0, NV_TELA_W, NV_TELA_H };
   float f = cine.foco, t = (float)(agora - cine.desde) / 1000.0f;
@@ -6458,6 +6494,8 @@ static void desenharCinema(Uint32 agora, const CatItem *c, int furou) {
     txt_desenhar_alpha(l, canto ? tx : cx - l.w * .5f, y, .76f * v);
     y += 34.0f;
   }
+  desenharTelemetriaCarga(cx, y, canto, tx, v);
+  y += 29.0f;
   /* Q26: escape appears only after a genuinely slow 15-second startup.
    * Focus is never stolen; Down focuses it and OK confirms selection. */
   if (cine.viva && agora - cine.desde >= 15000u) {
@@ -6772,9 +6810,18 @@ void player_desenhar(Uint32 agora) {
   // Agora so os pontos, cada um com a sombra suave propria (plrui_anel_solto).
   // Com o veu da Cinema ainda na tela o trilho dela ja e o sinal (dono, 11/10:
   // o anel por cima do logo ficava feio).
-  else if (comVideo && !erroFonte && !saindo && video_bufferando_ms() >= 600 && cine.veu <= 0.01f) {
+  else if (comVideo && !erroFonte && !saindo &&
+           (video_bufferando_ms() >= 600 || video_reconectando()) && cine.veu <= 0.01f) {
+    const int recon = video_reconectando();
     ESCALA_INI();
+    /* Existing video plane remains visible; no black reset or cinematic art. */
     plrui_anel_solto(NV_VTELA_W * 0.5f, NV_VTELA_H * 0.5f, 56.0f, agora, entrada);
+    if (recon) {
+      TxtLinha l = txt_linha(TXT_G19M, i18n("Reconnecting…"), 255, 255, 255, 255);
+      txt_desenhar_alpha(l, (NV_VTELA_W - l.w) * .5f, NV_VTELA_H * .5f + 48.0f, entrada);
+    }
+    desenharTelemetriaCarga(NV_VTELA_W * .5f, NV_VTELA_H * .5f + (recon ? 80.0f : 50.0f),
+                            0, 0, entrada);
     ESCALA_FIM();
   }
   if (erroFonte && ehCanal()) {
