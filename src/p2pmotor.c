@@ -43,6 +43,8 @@ static int vigiaViva, vigiaSair;
 static int ondeFoiPendente;    // vigia pediu o inventario; pararFio roda depois dos escritores (#297)
 static pthread_t fioVigia;
 static char tidAtual[65], sidAtual[65], hashAtual[41], prefixoUrl[96];
+// Exact selected file index for sidAtual, never an index from a previous stream.
+static int indiceArquivoAtual = -1;
 static int metaPronta;
 static char pastaRaiz[600], pastaMae[600];
 static int pastaFat;           // File limit bound to the active motor root.
@@ -50,6 +52,14 @@ static uint64_t livreSubida;   // livre medido quando o motor subiu (#297)
 static uint64_t tamArquivo;    // tamanho do arquivo do pedido atual (#334); 0 = nao sei
 static int limpando;           // p2pmotor_limpar_sobra apagando a pasta (#334)
 static P2pmEstado estado;
+// Caller must hold trava. Unknown is distinct from a real measured zero.
+static void limparMedicaoArquivo(void) {
+  estado.medicao_arquivo = 0;
+  estado.indice_arquivo = 0;
+  estado.tamanho_arquivo = 0;
+  estado.prefixo_verificado = 0;
+  estado.bytes_verificados = 0;
+}
 static _Atomic unsigned geracao;
 static _Atomic int motivoParada;
 static _Atomic unsigned descartados;
@@ -1008,6 +1018,7 @@ void p2pmotor_limpar_sobra(void) {
 void p2pmotor_cancelar(void) {
   atomic_fetch_add(&geracao, 1u);
   pthread_mutex_lock(&trava);
+  limparMedicaoArquivo();
   estado.etapa = P2PM_ETAPA_NENHUMA;
   pthread_cond_broadcast(&sinal);
   pthread_mutex_unlock(&trava);
@@ -1203,9 +1214,14 @@ static void *vigiaFio(void *x) {
     double fim = agora() + vigiaMs / 1000.0;
     void *m;
     int lerEventos, motivo = 0, espaco = 0, okLivre;
-    char tid[65], raiz[600], mae[600];
+    char tid[65], sidArquivo[65], raiz[600], mae[600];
+    int idxArquivo;
+    unsigned geracaoArquivo;
+    uint64_t tamEsperado;
     uint64_t duro, usado, livre = 0, subida;
     P2pmStats st;
+    P2pmArquivoMedicao medicao = {0};
+    int medicaoValida = 0;
     while (!vigiaSair && agora() < fim) esperarSinal(vigiaMs);
     if (vigiaSair) break;
     if (!motor || parando) continue;
@@ -1214,6 +1230,10 @@ static void *vigiaFio(void *x) {
     lerEventos = !resolvendo;
     if (lerEventos) vigiaEventos = 1;
     snprintf(tid, sizeof tid, "%s", tidAtual);
+    snprintf(sidArquivo, sizeof sidArquivo, "%s", sidAtual);
+    idxArquivo = indiceArquivoAtual;
+    geracaoArquivo = atomic_load(&geracao);
+    tamEsperado = tamArquivo;
     snprintf(raiz, sizeof raiz, "%s", pastaRaiz);
     snprintf(mae, sizeof mae, "%s", pastaMae);
     duro = estado.disco_duro;
@@ -1225,6 +1245,17 @@ static void *vigiaFio(void *x) {
     okLivre = livreFn(mae, &livre);
     memset(&st, 0, sizeof st);
     if (o->stats) o->stats(m, &st);
+    // Engine queries are outside trava; the motor remains alive via usuarios.
+    // API 4's stream snapshot is file-specific and derived from verified pieces,
+    // NOT total_payload_download_bytes. Do not sample until PREPARADO supplied
+    // a real opaque stream ID and an actual selected file index.
+    if (sidArquivo[0] && idxArquivo >= 0 && tamEsperado &&
+        o->medicao_arquivo && o->medicao_arquivo(m, sidArquivo, &medicao) == 0 &&
+        medicao.indice_arquivo == (uint32_t)idxArquivo &&
+        medicao.tamanho_arquivo == tamEsperado &&
+        medicao.prefixo_verificado <= medicao.bytes_verificados &&
+        medicao.bytes_verificados <= medicao.tamanho_arquivo)
+      medicaoValida = 1;
     if (lerEventos) {
       P2pmEvento ev;
       int k;
@@ -1265,6 +1296,20 @@ static void *vigiaFio(void *x) {
     estado.ram_usada = st.ram_usada;
     estado.baixando_bps = st.baixando_bps;
     estado.pares = st.pares;
+    // A query may have raced cancellation, torrent replacement, stop or a
+    // second stream of the same torrent. Publish only for the SAME stream,
+    // generation, exact file and live motor; otherwise leave it unknown.
+    if (motor == m && !parando && geracaoArquivo == atomic_load(&geracao) &&
+        !strcmp(sidArquivo, sidAtual) && idxArquivo == indiceArquivoAtual) {
+      limparMedicaoArquivo();
+      if (medicaoValida) {
+        estado.medicao_arquivo = 1;
+        estado.indice_arquivo = medicao.indice_arquivo;
+        estado.tamanho_arquivo = medicao.tamanho_arquivo;
+        estado.prefixo_verificado = medicao.prefixo_verificado;
+        estado.bytes_verificados = medicao.bytes_verificados;
+      }
+    }
     pthread_cond_broadcast(&sinal);
     if (motivo && !parando) {
       atomic_store(&motivoParada, motivo);
@@ -1443,6 +1488,8 @@ static void soltarTorrent(Pedido *p) {
   snprintf(tid, sizeof tid, "%s", tidAtual);
   snprintf(sid, sizeof sid, "%s", sidAtual);
   tidAtual[0] = sidAtual[0] = hashAtual[0] = 0;
+  indiceArquivoAtual = -1;
+  limparMedicaoArquivo();
   metaPronta = 0;
   prefixoUrl[0] = 0;
   pthread_mutex_unlock(&trava);
@@ -1462,6 +1509,8 @@ static int resolverCom(Pedido *p, const char *h, int fileIdx, const char *fontes
   uint64_t tamEscolhido = 0;
   pthread_mutex_lock(&trava);
   tamArquivo = 0;
+  indiceArquivoAtual = -1;
+  limparMedicaoArquivo();
   mesmo = hashAtual[0] && !strcmp(hashAtual, h) && metaPronta && tidAtual[0];
   snprintf(tid, sizeof tid, "%s", mesmo ? tidAtual : "");
   snprintf(sidVelho, sizeof sidVelho, "%s", sidAtual);
@@ -1573,6 +1622,8 @@ static int resolverCom(Pedido *p, const char *h, int fileIdx, const char *fontes
   }
   pthread_mutex_lock(&trava);
   snprintf(sidAtual, sizeof sidAtual, "%s", ev.sid);
+  indiceArquivoAtual = idx;
+  limparMedicaoArquivo();
   pthread_mutex_unlock(&trava);
   registrarEtapa(p, P2PM_ETAPA_BYTES);
   // Os primeiros KB de VIDEO tem de chegar (a mesma prova do servidor
@@ -1629,6 +1680,7 @@ int p2pmotor_resolver(const char *hash, int fileIdx, const char *fontes,
   pthread_mutex_lock(&trava);
   if (resolvendo) { pthread_mutex_unlock(&trava); return P2P_ERR_OCUPADO; }
   resolvendo = 1;
+  limparMedicaoArquivo();
   estado.etapa = P2PM_ETAPA_INICIANDO;
   // Uma parada em curso (destroy de segundos) ou a vigia lendo eventos: espera
   // no sinal (a trava fica solta), acordando com cancelamento.
@@ -1648,6 +1700,7 @@ int p2pmotor_resolver(const char *hash, int fileIdx, const char *fontes,
   if (e != P2P_OK) {
     resolvendo = 0;
     estado.etapa = P2PM_ETAPA_NENHUMA;
+    limparMedicaoArquivo();
     pthread_cond_broadcast(&sinal);
     pthread_mutex_unlock(&trava);
     return e;
@@ -1664,6 +1717,7 @@ int p2pmotor_resolver(const char *hash, int fileIdx, const char *fontes,
   usuarios--;
   resolvendo = 0;
   estado.etapa = e == P2P_OK ? P2PM_ETAPA_PRONTO : P2PM_ETAPA_NENHUMA;
+  if (e != P2P_OK) limparMedicaoArquivo();
   pthread_cond_broadcast(&sinal);
   pthread_mutex_unlock(&trava);
   if (e != P2P_OK) url[0] = 0;
