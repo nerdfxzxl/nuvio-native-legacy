@@ -8,6 +8,7 @@ typedef struct {
   char font[96];
   int size, rgb, background, border, bold, marginV;
   int outlineRgb;   // 0xRRGGBB; zero preserves the existing black edge
+  int shadowOpacity, shadowSize; // controls libass text when Shadow is enabled
   int overrides;    // Authored ASS: only explicitly changed fields.
 } PlainAssStyle;
 
