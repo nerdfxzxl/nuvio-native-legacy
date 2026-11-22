@@ -2509,6 +2509,15 @@ float txt_bloco_corta(TxtEstilo estilo, const char *s, int r, int g, int b,
                         maxLinhas, 1, 0);
 }
 
+// Same wrapping as txt_bloco_longas, with the overflow ellipsis behavior
+// of txt_bloco_corta. Does not affect the general text renderer.
+float txt_bloco_corta_longas(TxtEstilo estilo, const char *s, int r, int g, int b,
+                             float x, float y, float larg, float leading,
+                             float alpha, int maxLinhas) {
+  return txt_bloco_impl(estilo, s, r, g, b, x, y, larg, leading, alpha,
+                        maxLinhas, 1, 1);
+}
+
 // Quebra igual a txt_bloco, mas posiciona cada linha pela BORDA DIREITA. A
 // duplicacao com txt_bloco e pequena e proposital: unificar as duas exigiria um
 // parametro de alinhamento em todas as chamadas, e so este caso precisa.
