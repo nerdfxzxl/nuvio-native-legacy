@@ -34,3 +34,5 @@ Build 128: cached Android debug APK after green preflight #19 (run 44893380986);
 
 # One full audio/subtitle panel integration Android APK run, 2026-11-21.
 # Final tab-key focus correction: use this commit as the reviewed APK source.
+
+Build #131, 2026-11-22: verified English-only subtitle addon pill selection and smooth scroll; subtitle style backend (offset/HDR/shadow/font size); time/seekbar/buffer; official-style parental guide. Short ARM64 preflight #25 success (run 44985088795). Preserve cached native Gradle FFmpeg and P2P dependencies.
