@@ -6000,9 +6000,25 @@ static void arteCarregando(float x, float y, float w, float a) {
 // ativo/pronto, ver o trilho abaixo): nao entram, em vez de um numero inventado.
 // NUNCA a URL: ela pode carregar a chave do debrid.
 typedef struct { char rot[40]; char val[220]; } AbrLinha;
-#define ABR_MAX 6
+#define ABR_MAX 10
 static int abrFitIdx = -2;
 static char abrFit1[160], abrFit2[160];
+/* Event-derived status shared by cinema and detailed fallback card.  The
+ * Loading state is not a stopwatch-based claim of fetching subtitles. */
+static const char *estadoCargaP2(void) {
+  if (esperandoFonte) return "Preparing stream…";
+  if (video_reconectando()) return "Reconnecting…";
+#ifdef NV_ANDROID
+  switch (video_carga_fase()) {
+    case 1: return "Building player…";
+    case 2: return "Detecting stream format…";
+    case 3: return "Starting stream…";
+    default: return "Preparing stream…";
+  }
+#else
+  return video_bufferando_ms() && video_quadro_visto() ? "Buffering…" : "Starting stream…";
+#endif
+}
 static int linhasAbrindo(const Stream *st, AbrLinha *L) {
   int n = 0;
   if (!st) return 0;
@@ -6028,6 +6044,47 @@ static int linhasAbrindo(const Stream *st, AbrLinha *L) {
     snprintf(L[n].rot, sizeof L[n].rot, "Rede"); snprintf(L[n].val, sizeof L[n].val, "%s", abrFit1); n++;
     if (abrFit2[0]) { L[n].rot[0] = 0; snprintf(L[n].val, sizeof L[n].val, "%s", abrFit2); n++; }
   }
+#ifdef NV_ANDROID
+  /* Real diagnostics: bytes served by the active progressive socket path,
+   * buffered seconds and peers. Unknown fields stay absent. */
+  {
+    VideoStats stVideo;
+    char velocidade[64];
+    double bps;
+    video_estatisticas(&stVideo);
+    bps = video_download_bps();
+    if (stVideo.bytes >= 0 && n < ABR_MAX) {
+      snprintf(L[n].rot, sizeof L[n].rot, "Downloaded");
+      if (stVideo.bytes >= 1048576)
+        snprintf(L[n].val, sizeof L[n].val, "%.1f MB", (double)stVideo.bytes / 1048576.0);
+      else snprintf(L[n].val, sizeof L[n].val, "%.0f KB", (double)stVideo.bytes / 1024.0);
+      n++;
+    }
+    if (stVideo.bufferSeg >= 0 && n < ABR_MAX) {
+      snprintf(L[n].rot, sizeof L[n].rot, "Buffered");
+      snprintf(L[n].val, sizeof L[n].val, "%.1f s", stVideo.bufferSeg);
+      n++;
+    }
+    if (p2pmotor_e_url(video_url_atual())) {
+      P2pmEstado p;
+      memset(&p, 0, sizeof p);
+      p2pmotor_estado(&p);
+      if (p.ativo) {
+        bps = (double)p.baixando_bps;
+        if (n < ABR_MAX) {
+          snprintf(L[n].rot, sizeof L[n].rot, "Peers");
+          snprintf(L[n].val, sizeof L[n].val, "%u", p.pares);
+          n++;
+        }
+      } else bps = -1.0;
+    }
+    if (n < ABR_MAX && nv_download_texto(bps, velocidade, sizeof velocidade)) {
+      snprintf(L[n].rot, sizeof L[n].rot, "Download");
+      snprintf(L[n].val, sizeof L[n].val, "%s", velocidade);
+      n++;
+    }
+  }
+#endif
   return n;
 }
 // Alturas (22 de respiro, a logo, o titulo, ...). O compacto reserva sempre a
@@ -6095,7 +6152,7 @@ static void corpoCarregando(GfxRect r, float a, void *u) {
   y += CAR_LOGO_H + 16.0f;
   // O ESSENCIAL, nos dois estados: o ponto que respira e o estado.
   plrui_respira(x + 6.0f + 5.0f, y + 16.0f, 10.0f, agora, a);
-  { TxtLinha l = txt_linha(TXT_G26B, "Abrindo fonte", 243, 242, 239, 255);
+  { TxtLinha l = txt_linha(TXT_G26B, i18n(estadoCargaP2()), 243, 242, 239, 255);
     txt_desenhar_alpha(l, x + 6.0f + 10.0f + 16.0f, y + 16.0f - (float)l.h * 0.5f, a); }
   if (dvtela_visivel() && dvtela_variante() == DVT_VAR_DETALHADA) {
     dvtela_abertura_marca(1, x + w - 260.0f, r.y + 62.0f, a);
@@ -6488,17 +6545,7 @@ static void desenharCinema(Uint32 agora, const CatItem *c, int furou) {
     } }
   /* Real state only: no generic Just a moment and no invented progress. */
   {
-    const char *estado = esperandoFonte ? "Preparing stream…" :
-        video_reconectando() ? "Reconnecting…" :
-        video_bufferando_ms() && video_quadro_visto() ? "Buffering…" : "Starting stream…";
-#ifdef NV_ANDROID
-    if (!esperandoFonte && !video_reconectando()) {
-      int fase = video_carga_fase();
-      estado = fase == 1 ? "Building player…" :
-               fase == 2 ? "Detecting stream format…" :
-               fase == 3 ? "Starting stream…" : "Preparing stream…";
-    }
-#endif
+    const char *estado = estadoCargaP2();
     TxtLinha l = txt_linha(TXT_G19M, i18n(estado), 243, 242, 239, 255);
     txt_desenhar_alpha(l, canto ? tx : cx - l.w * .5f, y, .76f * v);
     y += 34.0f;
