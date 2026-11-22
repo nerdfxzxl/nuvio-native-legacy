@@ -25,3 +25,4 @@ Build 128 preflight #19: C/ARM64 checks for shared glass controls, subtitles 3 t
 # Audio panel navigation + optional persistence preflight, 2026-11-21.
 # Subtitle source tabs and shared header ARM64 preflight, 2026-11-21.
 # D-pad style controls + font popup compile preflight.
+# Verify #131 subtitle source navigation, seekbar, parental guide before APK (2026-11-22).
