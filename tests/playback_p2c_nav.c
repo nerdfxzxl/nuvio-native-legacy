@@ -18,8 +18,8 @@ int main(void) {
   CHECK(!nv_loading_change_ready(15100u, 101u, 1));
   CHECK(nv_loading_change_ready(15101u, 101u, 1));
   /* SDL 32-bit tick wraparound: real elapsed time, not wall-clock comparisons. */
-  CHECK(!nv_loading_change_ready(14989u, UINT32_MAX - 10u, 1));
-  CHECK(nv_loading_change_ready(14990u, UINT32_MAX - 10u, 1));
+  CHECK(!nv_loading_change_ready(14988u, UINT32_MAX - 10u, 1));
+  CHECK(nv_loading_change_ready(14989u, UINT32_MAX - 10u, 1));
   /* Explicit Down only focuses, never triggers selection. */
   CHECK(!nv_loading_change_confirm(0, 0));
   CHECK(!nv_loading_change_confirm(1, 0));
