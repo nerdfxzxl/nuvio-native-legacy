@@ -23,9 +23,10 @@ check("plrui_material(capsule" in pill and "ponteiro_alvo(target.x" in pill,
 check("if (!toque)" not in pill and "if (toque)" not in pill
       and "transporteDuasLinhas()" not in pill,
       "touch input no longer selects a separate rendering layout")
-check("float contentW = baseW + maxExtra;" in pill
-      and "(NV_VTELA_W - contentW) * 0.5f" in pill,
-      "outer capsule width and center do not depend on the active label")
+check("float baseX=(NV_VTELA_W-baseW)*0.5f;" in pill
+      and "float x=baseX;" in pill
+      and "baseW+2.0f*expanded+28.0f" in pill,
+      "icon row stays anchored while glass shell expands and collapses")
 check("const float ix = r.x + (diameter - size) * 0.5f;" in pill
       and "fminf(maxExtra" in pill and "float tx = ix + size + 12.0f" in pill,
       "icon stays anchored, label is revealed to its right")
@@ -55,14 +56,29 @@ check(gfx.count("float rampa = uFoco < -0.5 ? 0.0") == 2,
 check("(gfx_hero_sem_degrade_atual && heroMode) ? -1.0f : foco" in gfx,
       "only hero modes receive gradient bypass uniform")
 
-# Geometric invariant: fixed shell width regardless of selected action,
-# whereas the old implementation recalculated its x every focus frame.
+# Geometric contract for responsive capsule: no action focus means a small
+# resting pill; the occupied region expands only while focus is active. The
+# layout origin for icon positions never follows that expansion.
 baseW=7*68+6*12
-extra=[71,92,133,65,180,97,106]
-maxExtra=max(extra)
-shell=baseW+maxExtra
-for selected in range(7):
-    normalWidths=[68+extra[i]*(i==selected) for i in range(7)]
-    assert baseW+maxExtra==shell
-    assert sum(normalWidths)<=shell
-print("PASS stable 7-button capsule shell with labels of varying widths")
+labelExtras=[71,92,133,65,180,97,106]
+def shell(focus):
+    extra=sum(labelExtras[i]*focus[i] for i in range(7))
+    return baseW+2.0*extra+28,extra
+rest,extent=shell([0.0]*7)
+assert extent==0.0 and rest==baseW+28
+for index in range(7):
+    focus=[0.0]*7
+    focus[index]=1.0
+    expanded,extent=shell(focus)
+    assert expanded>rest and extent>0
+    assert baseW+extent<=expanded
+print("PASS capsule collapses when unfocused; each selected name expands glass")
+
+check("!tempoFoco && !barraFoco" in player
+      and "focoB[i]=anim_mola" in player,
+      "video-time focus excludes playback highlight and no focus bounce")
+check("if(!ehCanal() && duracaoSeg > 0.0f)" in player
+      and "if(bufFrac<barraBufferMem)bufFrac=barraBufferMem;" in player,
+      "buffer endpoint is retained independent of seek-only OSD")
+check("return layout_modo_mobile() && homeRetratoTelefone();" in home,
+      "landscape mobile no longer forces a half-height hero")
