@@ -38,7 +38,7 @@ focus = between(streams, "void stream_folha_focar_fonte", "// Q11: only the reco
 escape_card = between(player, "// The delayed escape also exists", "// O MODAL DO ERRO")
 
 check("15-second monotonic SDL interval", "NV_LOADING_CHANGE_MS 15000u" in policy and "(uint32_t)(now - started)" in policy)
-check("time guard owned by active cinema", "nv_loading_change_ready(agora, cine.desde, cine.viva)" in player)
+check("time guard owned by active cinema", "nv_loading_change_ready(agora, cine.desde," in player and "abrecine_navegacao(&cine)" in player)
 check("only Down focuses", "if (k == SDLK_DOWN) { cinemaEscapeFoco = 1; return; }" in nav)
 check("Up clears explicit focus", "if (k == SDLK_UP && cinemaEscapeFoco) { cinemaEscapeFoco = 0; return; }" in nav)
 check("OK confirms only after two guards", "nv_loading_change_confirm(cinemaEscapeDisponivel(SDL_GetTicks()), cinemaEscapeFoco)" in nav)
@@ -55,7 +55,7 @@ check("card grows for visible control", "cinemaEscapeDisponivel(abrindoAgora) ? 
 check("card shows label and visible underline", "Change Stream" in escape_card and "if (cinemaEscapeFoco)" in escape_card)
 check("cine focus decoration", "float xx = canto ? tx : cx - l.w * .5f;" in player)
 check("cinema logo static", "artwork/logo must be static" in player)
-check("cinema first-frame gate unchanged", "video_quadro_visto() && video_superficie_estavel()" in player)
+check("cinema first-frame gate unchanged", "nv_p2d_visual_ready(video_quadro_visto(), video_superficie_estavel()" in player and "imagem = imagem && video_quadro_visto() && video_superficie_estavel()" in player)
 check("reduced motion from common arc", "nv_arc_quadro(agora, ajustes_animacoes_reduzidas())" in arc)
 check("shared arc endpoints match stroke alpha", arc.count("cb, arcAlfa") >= 3)
 check("shared arc is still single provider", all(x in arc for x in ("void plrui_arco(", "void plrui_anel(", "void plrui_respira(")))
@@ -81,7 +81,7 @@ check("P2-B source-scoped recovery bridge remains", "same-source" in bridge.lowe
 check("Android HTTP telemetry untouched", "TransferListener" in android)
 check("audio-only first-frame escape remains", "video_somente_audio()" in player)
 check("live tune remains lightweight", 'player_carregando() && ehCanal()' in player)
-check("cinematic opening logic retains real frame", "if (!imagem) return;" in cinema)
+check("cinematic opening logic retains real frame", "if (!imagem) { a->fim = 0; a->veu = 1.0f; return; }" in cinema)
 
 failed = [name for name, ok in checks if not ok]
 for name, ok in checks:
