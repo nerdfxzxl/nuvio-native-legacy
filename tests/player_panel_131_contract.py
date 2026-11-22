@@ -29,8 +29,9 @@ check('ling_casa(cand[i].idioma,"en")' in leg,
 check("ponteiroFonteEscolher" in leg and "fonteScroll=anim_mola" in leg,
       "source pills expose pointer targets and animated offset")
 check('"Segure OK"' not in leg, "hold-for-options text was removed")
-check("if(modo&&e->type==SDL_KEYDOWN" in faixas and "aberta=0;legendaTopoFoco=0" in faixas,
-      "Back is available from every subtitle tab")
+check("if(e->type==SDL_KEYDOWN && !e->key.repeat" in faixas
+      and "aberta=0;audioTopoFoco=legendaTopoFoco=0;" in faixas,
+      "one Back closes every Audio and Subtitles page and any editing mode")
 check('"Show Less"' in faixas and "plrui_material(small" not in faixas,
       "Show All/Less is a plain label")
 check("if (soBarra) cyTempo = yBarra - 25.0f;" in plr,
@@ -47,3 +48,17 @@ check("offsetHalfPct" in video and "shadowOpacity" in video
       "precise subtitle style fields exist")
 check("p->shadowSize" in ass and "p->shadowOpacity" in ass,
       "ASS renderer receives adjustable shadow size/opacity")
+
+# #135: source-level guarantees for the recently reported regressions.
+check("if (!fonteModo && ativo)" in leg,
+      "source selector omits the redundant Main / Principal pill")
+check("if(fonteModo) sub[0]=0;" in leg and "nomeSemExtensao" in leg,
+      "English is shown once in the EN chip; extensionless names wrap")
+check('nameLines=fonteModo?4:2' in leg,
+      "subtitle titles wrap over up to four lines in source mode")
+check("ajusteRepetir" in faixas
+      and "int v=e->tamanho+dir*3;" in faixas,
+      "held OK accelerates +/- adjustments; font steps are 2.5%")
+check("1.0f,1.0f,1.0f,alpha" in parental
+      and "GfxRect shade=" not in parental,
+      "parental warning uses white vertical line without background plaque")
