@@ -1161,6 +1161,7 @@ static int pedirParadaTravado(void) {
   parando = 1;
   vigiaSair = 1;
   atomic_fetch_add(&geracao, 1u);
+  limparMedicaoArquivo(); // no stale selected-file bytes during asynchronous teardown
   pthread_cond_broadcast(&sinal);
   pthread_attr_init(&a);
   pthread_attr_setdetachstate(&a, PTHREAD_CREATE_DETACHED);
