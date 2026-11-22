@@ -92,6 +92,8 @@ object NvPlayer {
     private const val EV_SUPERFICIE_ESTAVEL = 10
     private const val EV_LIVE_RECOVERY = 11
     private const val EV_LIVE_SEGMENT = 12
+    private const val EV_CARGA_FASE = 13 // observed Media3 startup milestones
+    private const val EV_SO_AUDIO = 14  // READY with selected audio and no video tracks
 
     private const val TELA_W = 1920   // coordenadas de layout do app
     private const val TELA_H = 1080
@@ -1467,6 +1469,7 @@ object NvPlayer {
         cabAtual = cabecalhos
         inicioAtualMs = inicioMs
         geracaoNative = geracao
+        ev(EV_CARGA_FASE, 1, geracao = geracao) // building Media3 player
         fracaoAtual = if (inicioMs > 0) 0 else fracao
         fracaoPendente = 0
         abriuEm = SystemClock.elapsedRealtime()
@@ -1529,6 +1532,7 @@ object NvPlayer {
                 if (inicioMs <= 0 && fracaoAtual > 0) fracaoPendente = fracaoAtual
                 else confirmarRetomada(geracao, inicioAceito)
                 p.playWhenReady = !pausaPedida
+                ev(EV_CARGA_FASE, 2, geracao = geracao) // prepare resolves media format
                 // false -> false nao gera callback quando a pausa chegou sem player.
                 if (pausaPedida) ev(EV_PAUSADO)
                 p.prepare()
@@ -1540,6 +1544,7 @@ object NvPlayer {
                 p.setMediaSource(r.fontePrecarregada!!, preparada.posicaoFonteMs)
                 if (fracaoPendente <= 0) confirmarRetomada(geracao, inicioMs > 0 || preparada.inicioAceito)
                 p.playWhenReady = true
+                ev(EV_CARGA_FASE, 2, geracao = geracao) // warmed next-episode prepare
                 p.prepare()
                 Log.i(TAG, "[preparo] proximo adotado token=${preparada.token} pos=${preparada.posicaoFonteMs}")
             } else {
@@ -2037,6 +2042,17 @@ object NvPlayer {
             when (state) {
                 Player.STATE_BUFFERING -> ev(EV_BUFFER, 0)
                 Player.STATE_READY -> {
+                    if (!pronto) {
+                        /* Audio-only is a verified track outcome, not a 3s
+                         * approximation of a missing video first frame. */
+                        val groups = p.currentTracks.groups
+                        val selectedAudio = groups.any { g ->
+                            g.type == C.TRACK_TYPE_AUDIO && (0 until g.length).any { i -> g.isTrackSelected(i) }
+                        }
+                        if (selectedAudio && groups.none { it.type == C.TRACK_TYPE_VIDEO })
+                            ev(EV_SO_AUDIO, 1)
+                    }
+                    ev(EV_CARGA_FASE, 3) // decoded tracks ready; awaiting rendered video frame
                     if (live.ready()) Log.i(TAG, "[live] janela recuperada na mesma sessao=$minha")
                     ev(EV_BUFFER, 100)
                     Log.i(TAG, "[speed] ready parameters=${p.playbackParameters.speed} pcm=${recursosAtuais?.velocidadePcm}; awaiting native clock measurement")
