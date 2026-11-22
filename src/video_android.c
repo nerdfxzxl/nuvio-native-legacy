@@ -767,7 +767,7 @@ JNIEXPORT void JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativeEvento(JNIEn
   // samples. A delayed READY/ERROR/PAUSE from the old player must never alter
   // the state or rescue/error the newly selected source.
   pthread_mutex_lock(&travaRetomada);
-  int atual = ativo && (geracao == 0 || (unsigned)geracao == sessao);
+  int atual = ativo && geracao > 0 && (unsigned)geracao == sessao;
   pthread_mutex_unlock(&travaRetomada);
   if (!atual) return;
   switch (tipo) {

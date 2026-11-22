@@ -20,8 +20,9 @@ check("if (!nv_fonte_mesma_liberacao(&antigo, &novo)) continue;" in streams,
 check("nativeEvento(tipo: Int, a: Int, b: Int, geracao: Int)" in kotlin and
       "jint tipo, jint a, jint b, jint geracao)" in backend,
       "event JNI generation ABI agrees")
-check("geracaoDaAbertura" in kotlin and "int atual = ativo &&" in backend,
-      "stale listener events rejected")
+check("geracaoDaAbertura" in kotlin and
+      "int atual = ativo && geracao > 0 && (unsigned)geracao == sessao;" in backend,
+      "stale listener events rejected; missing/zero generations denied")
 check("pedido != pedidos.get()" in kotlin and "p.playWhenReady = false" in kotlin,
       "late pause and decoder release are bounded")
 check("static void selecionarAposFalhaVOD(const char *motivo)" in app and
