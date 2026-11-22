@@ -44,6 +44,7 @@
 #include "cacheboost.h"
 #include "tex_cache.h"
 #include "velocidade.h"
+#include "loading_telemetry_p2.h"
 #include "redefit.h"
 #include <SDL2/SDL.h>
 #include <jni.h>
@@ -591,20 +592,27 @@ static VideoStats statsAndroid;
 static RedeFit redeFit;
 static int statsValido, redeMinMs = -1, redeMaxMs = -1, redeMaxMb = -1;
 static double redeMbps = -1;
+static NvMedidorDownload medidorDownload;
 JNIEXPORT void JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativeStats(JNIEnv *env, jclass cls,
     jlong bytes, jint bufferMs, jint alvoMs, jint conexoes, jint primeiroByteMs,
-    jlong perdidos, jlong quadros, jstring host, jint minMs, jint alvoMb, jint carregando) {
+    jlong perdidos, jlong quadros, jstring host, jint minMs, jint alvoMb, jint carregando, jint geracao) {
   char h[96];
   double mbps = -1;
   int sinal;
   int memoria, pico;
   (void)cls;
   pthread_mutex_lock(&travaRetomada);
+  /* P1 identity: an old player's telemetry cannot describe a new stream. */
+  if (!ativo || geracao <= 0 || (unsigned)geracao != sessao) {
+    pthread_mutex_unlock(&travaRetomada);
+    return;
+  }
   memoria = sampleBytes; pico = samplePeakBytes;
   pthread_mutex_unlock(&travaRetomada);
   deJString(env, host, h, sizeof h);
   pthread_mutex_lock(&travaStats);
   video_stats_vazio(&statsAndroid);
+  nv_download_amostrar(&medidorDownload, bytes >= 0 ? (int64_t)bytes : -1, SDL_GetTicks());
   statsAndroid.bytes = bytes >= 0 ? (long long)bytes : -1;
   statsAndroid.bufferSeg = bufferMs >= 0 ? bufferMs / 1000.0 : -1.0;
   statsAndroid.bufferAlvoSeg = alvoMs > 0 ? alvoMs / 1000.0 : 0.0;
@@ -639,6 +647,16 @@ void video_estatisticas(VideoStats *s) {
   if (statsValido && ativo) *s = statsAndroid;
   else video_stats_vazio(s);
   pthread_mutex_unlock(&travaStats);
+}
+/* Real HTTP socket bytes only; no HLS placeholder, media Mbps or synthetic %. */
+double video_download_bps(void) {
+  double speed = -1.0;
+  pthread_mutex_lock(&travaStats);
+  if (ativo && medidorDownload.valido &&
+      SDL_GetTicks() - medidorDownload.emAnterior <= 3000u)
+    speed = medidorDownload.bps;
+  pthread_mutex_unlock(&travaStats);
+  return speed;
 }
 
 JNIEXPORT void JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativeRetomada(JNIEnv *env, jclass cls, jint geracao, jint aceita) {
@@ -846,6 +864,7 @@ static int abrirSessao(int inicioMs, int fracao) {
   pausaPedida = pausaVista = 0;
   hdrAtual = "none"; dvAtual = atmosAtual = 0;
   pthread_mutex_lock(&travaStats); statsValido = 0;
+  nv_download_zerar(&medidorDownload);
   redeMbps = -1; redeMinMs = redeMaxMs = redeMaxMb = -1;
   memset(&redeFit, 0, sizeof redeFit); redeKbps = playerSessao ? stream_kbps_atual() : 0;
   pthread_mutex_unlock(&travaStats);
