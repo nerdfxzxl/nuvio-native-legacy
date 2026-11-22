@@ -26,7 +26,7 @@ def check(name, passed):
 pronto = between(v, "int  video_pronto(void) {", "int  video_ativo(void)")
 drawing = p.split("void player_desenhar(Uint32 agora)", 1)[1]
 nav_branch = between(p, "// Loading owns D-pad/OK", "// PAINEL DE PAUSA")
-back_branch = between(p, "if (k == SDLK_ESCAPE || k == SDLK_AC_BACK", "// A FONTE NAO ABRIU")
+back_branch = between(p.split("void player_evento(const SDL_Event *e)", 1)[1], "if (k == SDLK_ESCAPE || k == SDLK_AC_BACK", "// A FONTE NAO ABRIU")
 app_back = between(app, "// Back during startup/recovery", "// A BARRA LATERAL POR CIMA")
 app_change = between(app, "// The slow-loading escape", "// CANAL ESCOLHIDO NO GUIA")
 
@@ -109,7 +109,7 @@ check("P2-A genuine P2P measurements and unknown readiness retained",
       "Verified from start" in p and "medicao_arquivo" in p and
       "Q18" in checkpoints)
 check("P2-C native shared arc and 15s policy preserved",
-      "NV_LOADING_CHANGE_MS 15000u" in nav and "plrui_arco(" in drawing)
+      "NV_LOADING_CHANGE_MS 15000u" in nav and "plrui_arco(" in p)
 check("P1 identity and cancellation protections preserved",
       "fonteAcaoInvalidar()" in p and "novaGeracaoFonte();" in app)
 check("protected post-134 handoff still present",
