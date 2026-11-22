@@ -2652,8 +2652,8 @@ static void corpoEstilo(GfxRect c, float a) {
     if(i==0)snprintf(val,sizeof val,"%s%.1f%%",e->offsetHalfPct>0?"+":"",
                       e->offsetHalfPct/2.0f);
     else if(i==1)snprintf(val,sizeof val,"%d%%",e->hdrBrightness);
-    else if(i==3)snprintf(val,sizeof val,"%d%%",
-                         (int)(e->tamanho*100.0f/120.0f+.5f));
+    else if(i==3)snprintf(val,sizeof val,"%.1f%%",
+                         e->tamanho*100.0f/120.0f);
     else if(i==4)snprintf(val,sizeof val,"%s",e->negrito?"On":"Off");
     else if(i==5)snprintf(val,sizeof val,"%s",e->borda==2?"On":"Off");
     else if(i==6)snprintf(val,sizeof val,"%d%%",e->shadowOpacity);
