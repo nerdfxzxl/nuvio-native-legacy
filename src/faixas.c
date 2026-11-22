@@ -1415,7 +1415,50 @@ static const char *const estiloNovoRotulos[9] = {
   "Shadow", "Shadow Opacity", "Shadow Size", "Reset"
 };
 static const int estiloNovoMapa[9] = {5, -1, 1, 0, 8, 6, -1, -1, 9};
-static int estiloNovoAtivo(int linha) { return linha >= 0 && linha < 9 && estiloNovoMapa[linha] >= 0; }
+// Rows 1, 6 and 7 use new native fields; negative legacy-map slots are not
+// unsupported and must never show placeholder text.
+static int estiloNovoAtivo(int linha) { return linha>=0 && linha<9; }
+static void estiloAjPasso(int i,int dir) {
+  VideoLegendaEstilo *e=player_leg_estilo();
+  int changed=0;
+  switch(i) {
+    case 0: {
+      int v=e->offsetHalfPct+dir; // 0.5 percent of 1080p height
+      if(v<-40)v=-40;if(v>40)v=40;
+      changed=v!=e->offsetHalfPct;e->offsetHalfPct=v;
+      if(changed)player_leg_estilo_tocou(PLR_LEG_POSICAO);
+      break;
+    }
+    case 1: {
+      int v=e->hdrBrightness+dir*5;
+      if(v<25)v=25;if(v>100)v=100;
+      changed=v!=e->hdrBrightness;e->hdrBrightness=v;
+      break;
+    }
+    case 3: {
+      int v=e->tamanho+dir*12; // 120 native = 100% displayed
+      if(v<60)v=60;if(v>240)v=240;
+      changed=v!=e->tamanho;e->tamanho=v;
+      break;
+    }
+    case 6: {
+      int v=e->shadowOpacity+dir*5;
+      if(v<0)v=0;if(v>100)v=100;
+      changed=v!=e->shadowOpacity;e->shadowOpacity=v;
+      if(changed)player_leg_estilo_tocou(PLR_LEG_BORDA);
+      break;
+    }
+    case 7: {
+      int v=e->shadowSize+dir;
+      if(v<0)v=0;if(v>14)v=14;
+      changed=v!=e->shadowSize;e->shadowSize=v;
+      if(changed)player_leg_estilo_tocou(PLR_LEG_BORDA);
+      break;
+    }
+    default: break;
+  }
+  if(changed)player_leg_estilo_mudou();
+}
 
 static int estiloTecla(SDL_Keycode k, int rep) {
   int *f=&foco[FX_COL_ESTILO];
@@ -1453,7 +1496,12 @@ static int estiloTecla(SDL_Keycode k, int rep) {
     return 1;
   }
   int original=estiloNovoMapa[*f];
-  if(original<0) return 1; // Not implemented in the active rendering pipeline.
+  if(*f==8) {
+    if(ok&&!rep) {
+      player_leg_estilo_restaurar();estiloEdit=estiloFontePopup=0;
+    }
+    return 1;
+  }
   if(original==EST_RESTAURAR) {
     if(ok && !rep)ciclarEstilo(original);
     return 1;
@@ -1466,10 +1514,10 @@ static int estiloTecla(SDL_Keycode k, int rep) {
     }
     return 1;
   }
-  if(original==8||original==6){
+  if(*f==4||*f==5){
     if(ok && !rep) {
       VideoLegendaEstilo *e=player_leg_estilo();
-      if(original==8){e->negrito=!e->negrito;player_leg_estilo_tocou(PLR_LEG_NEGRITO);}
+      if(*f==4){e->negrito=!e->negrito;player_leg_estilo_tocou(PLR_LEG_NEGRITO);}
       else{e->borda=e->borda==2?0:2;player_leg_estilo_tocou(PLR_LEG_BORDA);}
       player_leg_estilo_mudou();
     }
@@ -1481,7 +1529,7 @@ static int estiloTecla(SDL_Keycode k, int rep) {
   }
   if(k==SDLK_LEFT && estiloLado>0)estiloLado--;
   else if(k==SDLK_RIGHT && estiloLado<1)estiloLado++;
-  else if(ok && !rep) {ctlRep=0;estPasso(original,estiloLado==0?-1:1,0);}
+  else if(ok && !rep) estiloAjPasso(*f,estiloLado==0?-1:1);
   return 1;
 }
 
@@ -2566,15 +2614,23 @@ static void corpoEstilo(GfxRect c, float a) {
     GfxRect row={x,y,w,rowH};
     int selected=!legendaTopoFoco && i==foco[FX_COL_ESTILO];
     int original=estiloNovoMapa[i];
+    const VideoLegendaEstilo *e=player_leg_estilo();
     char val[128];
     if(selected)plrui_linha_foco(row,14.0f,a*.85f);
-    if(original<0)snprintf(val,sizeof val,"Unavailable");
-    else if(original==EST_RESTAURAR)snprintf(val,sizeof val,"Reset to default");
-    else if(original==6)snprintf(val,sizeof val,"%s",player_leg_estilo()->borda==2?"On":"Off");
+    if(i==0)snprintf(val,sizeof val,"%s%.1f%%",e->offsetHalfPct>0?"+":"",
+                      e->offsetHalfPct/2.0f);
+    else if(i==1)snprintf(val,sizeof val,"%d%%",e->hdrBrightness);
+    else if(i==3)snprintf(val,sizeof val,"%d%%",
+                         (int)(e->tamanho*100.0f/120.0f+.5f));
+    else if(i==4)snprintf(val,sizeof val,"%s",e->negrito?"On":"Off");
+    else if(i==5)snprintf(val,sizeof val,"%s",e->borda==2?"On":"Off");
+    else if(i==6)snprintf(val,sizeof val,"%d%%",e->shadowOpacity);
+    else if(i==7)snprintf(val,sizeof val,"%d px",e->shadowSize);
+    else if(i==8)snprintf(val,sizeof val,"Reset to default");
     else valorEstilo(original,val,sizeof val);
     TxtLinha lab=txt_linha(TXT_ILHA_CORPO,estiloNovoRotulos[i],237,240,245,255);
     txt_desenhar_alpha(lab,x+18.0f,cy-lab.h*.5f,a);
-    if(original==0 || original==5) {
+    if(i==0||i==1||i==3||i==6||i==7) {
       // Always-visible value flanked by minus/plus, even when not editing.
       const float minus=x+w-248.0f, plus=x+w-64.0f;
       GfxRect m={minus,cy-19.0f,38.0f,38.0f};
