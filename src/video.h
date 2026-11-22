@@ -328,6 +328,10 @@ static inline void video_stats_vazio(VideoStats *s) {
   s->host[0] = 0;
 }
 void video_estatisticas(VideoStats *s);
+#ifdef NV_ANDROID
+/* Socket bytes over a rolling ~2.5s window; -1 when unknown/unsupported. */
+double video_download_bps(void);
+#endif
 #if defined(__APPLE__) || defined(NV_LINUX_DESKTOP)
 void video_simular_estatisticas(const VideoStats *s);   // capturas; NULL zera
 #endif
