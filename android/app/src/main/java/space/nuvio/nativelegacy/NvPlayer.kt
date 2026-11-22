@@ -1611,7 +1611,7 @@ object NvPlayer {
         }
         val espera = if (esperaInicio < 0) SystemClock.elapsedRealtime() else esperaInicio
         if (esperaInicio < 0) {
-            liberar()
+            liberar(preservarRetido = mesmaFonte)
             // O C envia ganho/pausa depois de abrir; a espera nao pode apaga-los.
             ganhoPct = 100
             if (!reabrindo) pausaPedida = false
@@ -1744,7 +1744,8 @@ object NvPlayer {
 
     // Sobe a sessao e solta tudo; qualquer callback pendente do player velho
     // morre na conferencia do numero.
-    private fun liberar() {
+    private fun liberar(preservarRetido: Boolean = false) {
+        if (!preservarRetido) limparRetido()
         recuperacaoLive?.cancel()
         recuperacaoLive = null
         sessao++
@@ -2088,10 +2089,22 @@ object NvPlayer {
             recriando = true
             recuperouSuperficie = false
             superficiePos = p.currentPosition
-            soltarSaida(p) {
-                if (player !== p || superficie !== sv) return@soltarSaida
-                val ini = SystemClock.elapsedRealtime()
-                sv.visibility = View.GONE
+            val pedido = pedidoAtivo
+            // Keep the existing hardware plane until a bounded best-effort
+            // SDR snapshot is ready; HDR/DV go directly through the original
+            // device-specific path, never through an 8-bit SDR approximation.
+            capturarRetido(p, sv, pedido) {
+                if (player !== p || superficie !== sv || pedido != pedidos.get()) {
+                    if (soltando === p) { soltando = null; recriando = false }
+                    return@capturarRetido
+                }
+                soltarSaida(p) {
+                    if (player !== p || superficie !== sv) return@soltarSaida
+                    quadroVisto = false
+                    estavelEmitido = false
+                    ev(EV_SUPERFICIE_INVALIDADA)
+                    val ini = SystemClock.elapsedRealtime()
+                    sv.visibility = View.GONE
                 Log.i(TAG, "[player] superficie: destruir levou ${SystemClock.elapsedRealtime() - ini} ms no fio principal")
                 principal.post {
                     if (player !== p || superficie !== sv) return@post
@@ -2106,6 +2119,7 @@ object NvPlayer {
                     }
                     Log.i(TAG, "[dvtrace] visible player=${System.identityHashCode(p)} holder=${System.identityHashCode(sv.holder)} atual=${player === p && superficie === sv}")
                     (activity as? NuvioActivity)?.devolverFoco()
+                }
                 }
             }
         }
