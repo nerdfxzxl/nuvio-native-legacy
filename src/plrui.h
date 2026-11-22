@@ -78,8 +78,10 @@ void plrui_barra(float x, float y, float w, float frac, float buf, int foco,
 // `cr/cg/cb` < 0 = acento.
 void plrui_trilho(GfxRect r, float frac, float cr, float cg, float cb, float a);
 
-// Anel de 12 pontos do carregamento, centrado em (cx, cy), diametro `d`.
-// `cinza` = 1 pinta em branco 70% (o Seekr esperando), senao no acento.
+// Shared NuvioTV-style animated loading arc (no synthetic percentage).
+// Reduced motion keeps a static functional arc. Accent unless cinza is set.
+// sombra is for overlay contrast without drawing a solid background plate.
+void plrui_arco(float cx, float cy, float d, int cinza, int sombra, Uint32 agora, float a);
 void plrui_anel_solto(float cx, float cy, float d, Uint32 agora, float a);
 void plrui_anel(float cx, float cy, float d, int cinza, Uint32 agora, float a);
 
