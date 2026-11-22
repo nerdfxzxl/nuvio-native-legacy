@@ -5110,6 +5110,22 @@ void stream_folha_abrir(void) {
          fitFotoOrigem == SF_DUR_MEDIA ? "media" : fitFotoOrigem == SF_DUR_METADATA ? "metadata" : "unknown");
   fflush(stdout);
 }
+// Q26/Q27: returning from a manually abandoned loading source should show
+// the exact previously selected row when it still exists. This is an explicit
+// one-shot focus operation, not a new selection, search, reload, or autoplay.
+// Ordinary first-play and failed-recovery selector focus remain untouched.
+void stream_folha_focar_fonte(int indice) {
+  if (!aberta || canalFolha || indice < 0 || indice >= n) return;
+  montar(automaticaDaFolha());
+  int row = linhaDe(indice);
+  if (row < 0) return; // filtered/removed source: keep existing valid focus
+  grupo = 1;
+  foco = focoVisto = row;
+  linhaAnt = -1;
+  abreFoco = 1.0f;
+  rolagem = fmaxf(0.0f, linhaTopo(row) - NV_TELA_H * .4f);
+  velRol = 0.0f;
+}
 // Q11: only the recovery path requests this. When addons are still loading,
 // stream_folha_atualizar() applies the focus when the first usable row arrives.
 void stream_folha_focar_primeira_disponivel(void) {
