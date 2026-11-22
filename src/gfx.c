@@ -1715,6 +1715,22 @@ static const char *FS_CORPO[GFX_NMODOS] = {
   [GFX_COPIA_EASU] = NV_EASU_SHADER,
   [GFX_COPIA_LANCZOS] = NV_LANCZOS_SHADER,
   [GFX_RCAS] = NV_RCAS_SHADER,
+  // P2: Compose ContentScale.Crop with Alignment.TopEnd. No pan/zoom animation.
+  [GFX_CINE_ARTE] = "void main(){\n"
+  "  vec2 uv=vUv;\n"
+  "  float ra=uAspect/max(uTexAsp,0.01);\n"
+  "  if(ra>1.0) uv.y=uv.y/ra; else uv.x=uv.x*ra+(1.0-ra);\n"
+  "  vec3 rgb=texture2D(uTex,clamp(uv,0.0,1.0)).rgb;\n"
+  "  gl_FragColor=vec4(rgb,uCor.a);\n"
+  "}\n",
+  // P2: 0x4D/0x99/0xCC/0xE6 black at y=0/.35/.7/1 (official dev).
+  [GFX_CINE_GRAD] = "void main(){\n"
+  "  float t=clamp(vUv.y,0.0,1.0);\n"
+  "  float alpha=t<0.35?mix(0.3019608,0.6,t/0.35):\n"
+  "              t<0.7?mix(0.6,0.8,(t-0.35)/0.35):\n"
+  "                     mix(0.8,0.9019608,(t-0.7)/0.3);\n"
+  "  gl_FragColor=nv_dither(vec3(0.0),alpha*uCor.a);\n"
+  "}\n",
 };
 
 // Cada corpo declara o que usa; montar so o necessario mantem o shader enxuto.
@@ -1759,7 +1775,9 @@ static const struct { int sdf, cover; } PRECISA[GFX_NMODOS] = {
   {0,0},   /* GFX_PALCO_ARTE — own anchored cover */
   {0,0},   /* GFX_COPIA_NITIDA */
   {0,0}, {0,0}, {0,0},   /* GFX_COPIA_EASU, GFX_COPIA_LANCZOS, GFX_RCAS */
-  {0,0}    /* GFX_HDR_OUTPUT */
+  {0,0},   /* GFX_HDR_OUTPUT */
+  {0,0},   /* GFX_CINE_ARTE */
+  {0,0}    /* GFX_CINE_GRAD */
 };
 
 static GLuint compila(GLenum tipo, const char *src) {
@@ -2171,7 +2189,7 @@ static int vidroFundoModo(GfxRect r, GfxModo m) {
     1ull << GFX_HERO_CHEIO | 1ull << GFX_VEU_BAIXO | 1ull << GFX_SOCIAL | 1ull << GFX_EDITORIAL |
     1ull << GFX_BRILHO_TOPO | 1ull << GFX_LUZ | 1ull << GFX_CEU | 1ull << GFX_AMBIENTE | 1ull << GFX_VITRINE |
     1ull << GFX_FUNDO_DIN | 1ull << GFX_HERO_CAM | 1ull << GFX_HERO_CHEIO_CAM | 1ull << GFX_VEU_CSS |
-    1ull << GFX_VITRINE_DIN | 1ull << GFX_PALCO_ARTE;
+    1ull << GFX_VITRINE_DIN | 1ull << GFX_PALCO_ARTE | 1ull << GFX_CINE_ARTE | 1ull << GFX_CINE_GRAD;
   return ((FUNDO >> (unsigned)m) & 1ull) ||
          (m != GFX_VIDRO && r.x <= 0.0f && r.y <= 0.0f && r.x + r.w >= NV_TELA_W && r.y + r.h >= NV_TELA_H);
 }

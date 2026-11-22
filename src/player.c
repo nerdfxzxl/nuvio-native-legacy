@@ -6470,10 +6470,9 @@ static void desenharCinema(Uint32 agora, const CatItem *c, int furou) {
       if (ar < tela.w / tela.h) { alvo.w = tela.h * ar; alvo.x = (tela.w - alvo.w) * 0.5f; }
       else { alvo.h = tela.w / ar; alvo.y = (tela.h - alvo.h) * 0.5f; }
     }
-    if (ts) gfx_rect(alvo, ts, GFX_CARD, 0, 0, 0, 0.0f, 0, 0, 0, v);
+    if (ts) gfx_rect(alvo, ts, cinemaPoster ? GFX_CARD : GFX_CINE_ARTE,
+                     0, 0, 0, 0.0f, 0, 0, 0, v);
     gfx_tex_aspect_atual = 0.0f;
-    gfx_rect((GfxRect){ 0, NV_TELA_H * 0.5f, NV_TELA_W, NV_TELA_H * 0.5f }, 0, GFX_VEU_BAIXO,
-             0, 0, 0, 0.0f, 0, 0, 0, 0.85f * v * (morph ? k : entra));
   } else {
   // ARTE BORRADA: recua para 45%, a arte vira luz de fundo (a copia 96x54 de
   // sempre, gfx_desfocado). Pelo GFX_SNAP com o nv_dither e o B-spline ligados
@@ -6484,6 +6483,9 @@ static void desenharCinema(Uint32 agora, const CatItem *c, int furou) {
     if (ts && as > 0.01f) gfx_rect(tela, ts, GFX_CARD, 0, 0, 0, 0.0f, 0, 0, 0, as); }
   }
   gfx_tex_aspect_atual = 0.0f;
+  // Exact NuvioTV dev four-stop full-height overlay; also covers Blurred Art.
+  // No artwork => AMOLED black base, never an invented/stretched backdrop.
+  if (nf && (ts || tb)) gfx_rect(tela, 0, GFX_CINE_GRAD, 0, 0, 0, 0.0f, 0, 0, 0, v);
 
   // O LOGO: a mesma textura do detalhe, so o quad anda e escala ate o centro.
   lg = marca ? tex_obter_larg_qualquer(marca, 640) : 0;
