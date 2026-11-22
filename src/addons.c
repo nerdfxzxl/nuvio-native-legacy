@@ -51,6 +51,38 @@
 #define ADD_PREF_MAX 8
 #define ADD_PREF_TAM 24
 
+// Subtitle providers sometimes return a download identifier instead of a
+// release filename (e.g. subtitle%2F3752803-8674841.zip). Prefer a separate
+// movieReleaseName when available, but never change the playback URL or ID.
+static int legendaArquivoOpaco(const char *s) {
+  if (!s || !*s) return 1;
+  if (!strncasecmp(s, "https://", 8) || !strncasecmp(s, "http://", 7))
+    return 1;
+  if (!strncasecmp(s, "subtitle%2f", 11) ||
+      !strncasecmp(s, "subtitles%2f", 12) ||
+      !strncasecmp(s, "subtitle/", 9) ||
+      !strncasecmp(s, "subtitles/", 10))
+    return 1;
+  const char *p = s, *slash = strrchr(s, '/');
+  if (slash) p = slash + 1;
+  if (!strncasecmp(p, "subtitle_", 9) ||
+      !strncasecmp(p, "subtitle-", 9) ||
+      !strncasecmp(p, "download_", 9) ||
+      !strncasecmp(p, "download-", 9))
+    return 1;
+  // A bare numeric ID (with separator dashes) is not a release name.
+  int sawDigit = 0;
+  const char *e=p+strcspn(p,".?#");
+  if(e>p && (size_t)(e-p)>=7) {
+    for(const char *q=p;q<e;q++) {
+      if(isdigit((unsigned char)*q))sawDigit=1;
+      else if(*q!='-'&&*q!='_')return 0;
+    }
+    return sawDigit;
+  }
+  return 0;
+}
+
 // `fonte` marca quem realmente entrega stream. Descoberto pelo manifesto: o
 // Xperience declara resources catalog/meta/subtitles e NENHUM stream, entao
 // respondia {"streams":[]} para tudo. Consultar quem nao fornece e um
@@ -1474,7 +1506,7 @@ static void *buscarUmAddon(void *u) {
     int noGrupo = 0, teto = LEG_MAX / B->nGrupos;
     for (q = p; q && noGrupo < teto;) {
       const char *f = js_fim(q);
-      char l[64] = "", cod[16], nome[120] = "", link[2048], id[256] = "";
+      char l[64] = "", cod[16], nome[256] = "", link[2048], id[256] = "";
       Legenda *d = &lote->itens[lote->n];
       if (!f || f <= q) break;
       js_texto(q, f, "id", id, sizeof id);
@@ -1496,13 +1528,23 @@ static void *buscarUmAddon(void *u) {
           snprintf(d->id, sizeof d->id, "%s", id);
           d->addonIndice = i;
           if (legendaRepetida(lote->itens, lote->n, d)) { q = js_prox(f); continue; }
+          // Keep the entire release name the addon actually supplied.
+          // If subtitleFileName is an opaque service token, use a readable
+          // release/filename metadata field instead of exposing that token.
           js_texto(q, f, "subtitleFileName", nome, sizeof nome);
-          if (!nome[0]) js_texto(q, f, "movieReleaseName", nome, sizeof nome);
-          if (!nome[0]) js_texto(q, f, "filename", nome, sizeof nome);
-          if (!nome[0]) js_texto(q, f, "fileName", nome, sizeof nome);
-          if (!nome[0]) js_texto(q, f, "name", nome, sizeof nome);
-          if (!nome[0]) js_texto(q, f, "title", nome, sizeof nome);
-          if (!nome[0]) js_texto(q, f, "release", nome, sizeof nome);
+          if (legendaArquivoOpaco(nome)) {
+            static const char *const nomes[] = {
+              "movieReleaseName", "filename", "fileName",
+              "name", "title", "release", NULL
+            };
+            for(int campo=0;nomes[campo];campo++) {
+              char alternativa[sizeof nome]="";
+              js_texto(q,f,nomes[campo],alternativa,sizeof alternativa);
+              if(!legendaArquivoOpaco(alternativa)) {
+                snprintf(nome,sizeof nome,"%s",alternativa);break;
+              }
+            }
+          }
           if (!nome[0]) {
             const char *host = strstr(link, "://");
             const char *path = host ? host + 3 : link;
