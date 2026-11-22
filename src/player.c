@@ -4310,7 +4310,7 @@ void player_evento(const SDL_Event *e) {
     if (infoTeclaEmBaixo) {
       int foiSegurado = infoSegurou;
       infoTeclaEmBaixo = infoSegurou = 0;
-      if (!foiSegurado && aberto && !saindo && visivel) estatvivo_player_toggle();
+      if (!foiSegurado && aberto && !saindo && visivel && !player_carregando()) estatvivo_player_toggle();
       acordar();
       return;
     }
@@ -4336,7 +4336,8 @@ void player_evento(const SDL_Event *e) {
     if (r) { if (r == 2) acordar(); return; } }
   if (!aberto || saindo || e->type != SDL_KEYDOWN) return;
   SDL_Keycode k = e->key.keysym.sym;
-  if (visivel && !barraFoco && !skipFoco && !tempoFoco && botao == PLR_INFO &&
+  if (visivel && !player_carregando() && !barraFoco && !skipFoco &&
+      !tempoFoco && botao == PLR_INFO &&
       (k == SDLK_RETURN || k == SDLK_KP_ENTER || k == SDLK_SPACE)) {
     if (!infoTeclaEmBaixo) {
       infoTeclaEmBaixo = 1;
@@ -4349,7 +4350,8 @@ void player_evento(const SDL_Event *e) {
   if (e->key.repeat && confirmacaoTransporteRetida &&
       (k == SDLK_RETURN || k == SDLK_KP_ENTER || k == SDLK_SPACE)) return;
 
-  if (durFonteAcaoAte && durFonteAcaoAte == toastAte && SDL_GetTicks() < durFonteAcaoAte &&
+  if (!player_carregando() && durFonteAcaoAte && durFonteAcaoAte == toastAte &&
+      SDL_GetTicks() < durFonteAcaoAte &&
       (k == SDLK_RETURN || k == SDLK_KP_ENTER)) { durFonteTentar(0, 0); return; }
 
   // EVERY KEY IS ACTIVITY, including the ones a panel consumes below. The pause
