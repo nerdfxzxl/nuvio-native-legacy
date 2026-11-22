@@ -493,6 +493,7 @@ static int    antAberta = -1;
 static int    antPreAuto, antPreTent;
 static Uint32 antPreDesde;
 static void limparFonteVOD(void);
+static void selecionarAposFalhaVOD(const char *motivo);
 static int tocarParteGuardada(void);   // partes.h, mais abaixo
 // FONTE PROVOU TOCAR: a posicao andou >= 2 s reais nesta candidata, seja qual for
 // a duracao da midia e o estado de aguardandoFonte (automatica, manual, aberta
@@ -1428,10 +1429,9 @@ static void vigiarFonteGuardada(void) {
   { char alvo[64]; alvoPlayer(alvo, sizeof alvo);
     fontevolta_esquecer_alvo(alvo, sessao_usuario(), perfis_ativo(), motivo); }
   if (fonteFalhaPos > 0.0) player_definir_retomada_fonte(fonteFalhaPos);
-  player_voltar_a_esperar();
-  limparFonteVOD();
+  // Saved Resume accepted this file; its failure cannot silently pick another.
   renovarListaDoPlayer();
-  aguardandoFonte = 1;
+  selecionarAposFalhaVOD("A fonte anterior falhou. Escolha uma fonte.");
 }
 // ID BASE DO TITULO EM JOGO, sem ":temporada:episodio".
 //
@@ -1769,7 +1769,7 @@ static void processarFonteJob(void) {
         definirFonteVOD(s->url);
         vodRenovou = 1;
         fonteVODDesde = fonteManualDesde = SDL_GetTicks() | 1u;
-      } else player_erro_fonte_motivo(i18n("A fonte não respondeu a tempo."), NULL);
+      } else selecionarAposFalhaVOD("A fonte não respondeu a tempo. Escolha uma fonte.");
     }
     addons_consulta_liberar(job->consulta); job->consulta = NULL;
   } else if (tipo == FJOB_FALHA) {
@@ -3320,9 +3320,7 @@ static void guardarPosicaoFonteFalha(void) {
 static void renovarVodInterrompido(void) {
   if (vodRenovandoDesde) {
     if ((Sint32)(SDL_GetTicks() - vodRenovandoDesde) >= 30000) {
-      novaGeracaoFonte(); limparFontePendente();
-      vodRenovandoDesde = 0; aguardandoFonte = 0;
-      player_erro_fonte_motivo(i18n("A fonte não respondeu a tempo."), NULL);
+      selecionarAposFalhaVOD("A recuperação da fonte demorou demais. Escolha uma fonte.");
     }
     return;
   }
@@ -3352,6 +3350,21 @@ static void renovarVodInterrompido(void) {
     vodRenovandoDesde = 0; aguardandoFonte = 0;
     player_erro_fonte();
   }
+}
+// After an accepted VOD fails, the user owns the next selection.
+static void selecionarAposFalhaVOD(const char *motivo) {
+  if (!player_aberto() || player_quer_sair() || player_id_canal()[0]) return;
+  int indice = stream_atual();
+  novaGeracaoFonte(); // invalidate late async renewal and automatic jobs
+  limparFontePendente();
+  aguardandoFonte = 0; preparoEspera = 0;
+  retomarDiretoPendente = 0; vodRenovandoDesde = 0;
+  limparFonteVOD();
+  player_voltar_a_esperar(); // stop the failed decoder before showing options
+  stream_preferir(indice); // keep last accepted source focused, not playing
+  folhaParaTocar = 1; folhaCancelarTocar = 0;
+  nomeParaFolha(); stream_folha_abrir();
+  if (motivo) player_toast(i18n(motivo), 4500u);
 }
 static void recarregarFonteVOD(void) {
   uint64_t sessaoPerfil = nv_perfil_sessao_ler();
@@ -3391,6 +3404,29 @@ static void tentarProximaFonteVOD(void) {
   int atual, motivo = 0;
   if (!fonteVODAutomatica || player_id_canal()[0] || !player_aberto() ||
       player_quer_sair() || aguardandoFonte != 0 || !fonteVODDesde) return;
+#ifdef NV_ANDROID
+  // P1: The accepted file is pinned. Backend reconnection and strict URL
+  // renewal are the only automatic attempts; never substitute a sibling.
+  if (video_reconectando() || vodRenovandoDesde) return;
+  if (video_falhou() || player_fonte_falhou() || player_fonte_fora_cache()) {
+    selecionarAposFalhaVOD("Não foi possível recuperar esta fonte. Escolha uma fonte.");
+    return;
+  }
+  desde = SDL_GetTicks() - fonteVODDesde;
+  if (video_bufferando_ms() > VOD_FONTE_BUFFER_MS) {
+    static BufAvanco av;
+    VideoStats vs;
+    video_estatisticas(&vs);
+    if (bufavanco_segura(&av, fonteVODDesde, video_bufferando_ms(), SDL_GetTicks(),
+                        bufavanco_borda(video_pos(), vs.bufferSeg))) return;
+    selecionarAposFalhaVOD("A fonte parou de entregar dados. Escolha uma fonte.");
+  } else if (aberturaVencida(desde)) {
+    selecionarAposFalhaVOD("A fonte não respondeu a tempo. Escolha uma fonte.");
+  }
+  return;
+#else
+  // Preserve the webOS/Tizen source-switch policy; Android P1 is manual.
+
   // Warning clips already stopped their pipeline: never reconnect or retry
   // that provider. Preserve the not-cached card when no alternative remains.
   if (player_fonte_fora_cache()) {
@@ -3529,6 +3565,7 @@ static void tentarProximaFonteVOD(void) {
   printf("[fonte] automatico VOD descartou %d; verificando proxima (%d/%d)\n",
          atual, fonteVODTentativas + 1, VOD_FONTE_MAX_TENTATIVAS);
   marco("fonte VOD travou; tentando proxima");
+#endif // NV_ANDROID P1
 }
 
 // TOCAR UM CANAL, direto — o "OK assiste" do guia e o zap do CH+/-.
@@ -6590,6 +6627,13 @@ void app_atualizar(float dt, Uint32 agora) {
     // usuario (pedido 1) continua abrindo a folha de fontes.
     if (pedido == 2 && (fonteFalha || fonteVODTentativas >= VOD_FONTE_MAX_TENTATIVAS))
       pedido = 0;
+#ifdef NV_ANDROID
+    if (pedido) {
+      // A suspect duration is never permission to autoplay another release.
+      stream_preferir(stream_atual());
+      nomeParaFolha(); stream_folha_abrir();
+    }
+#else
     if (pedido && fonteFalha) {
       // O pedido explicito abre Fontes; um aviso de duracao nao e erro de
       // playback nem timeout e nao pode gastar a politica de failover.
@@ -6606,6 +6650,7 @@ void app_atualizar(float dt, Uint32 agora) {
         nomeParaFolha(); stream_folha_abrir();
       }
     }
+#endif
   }
   renovarVodInterrompido();
   tentarProximaFonteVOD();
@@ -6667,6 +6712,17 @@ void app_atualizar(float dt, Uint32 agora) {
     if (s) video_definir_dv(s->dolbyVision);
     if (s) video_definir_cabecalhos(s->cabecalhos);
     if (s) {
+      // A manual switch of the same episode retains last trustworthy time.
+      double trocaPos = -1.0;
+      int epAnteriorT = -1, epAnteriorE = -1;
+      if (player_aberto() && !player_id_canal()[0]) {
+        player_episodio_atual(&epAnteriorT, &epAnteriorE);
+        if (video_pronto() && !video_falhou()) {
+          double p = video_pos();
+          if (isfinite(p) && p > 0.0) trocaPos = p;
+        }
+        if (trocaPos < 0.0 && fonteFalhaPos >= 0.0) trocaPos = fonteFalhaPos;
+      }
       aguardandoFonte=0;
       limparFonteVOD();
       int titulo=player_aberto()?player_indice():detail_indice(), t=0,e=0;
@@ -6684,6 +6740,8 @@ void app_atualizar(float dt, Uint32 agora) {
       diagnostico_cancelar_vazao();
       player_abrir(cat_indice_vivo(titulo, imdb),NULL);
       player_definir_episodio(t,e);
+      if (epAnteriorT == t && epAnteriorE == e && !folhaInicioDepoisEscolha &&
+          trocaPos >= 0.0) player_definir_retomada_fonte(trocaPos);
       if(folhaInicioDepoisEscolha)player_do_inicio();
       folhaInicioDepoisEscolha=0;
       stream_definir_atual(fonte);
@@ -6712,7 +6770,14 @@ void app_atualizar(float dt, Uint32 agora) {
       if (player_id_canal()[0]) { canalFonteIdx = fonte; canalFonteDesde = SDL_GetTicks(); canalViaProxy = canalDiretoTentado = 0; }
     }
   }
-  if (aguardandoFonte != 2 && player_pediu_fontes()) {
+  if (player_aberto() && player_pediu_fontes()) {
+    // Change Stream cancels renewal/prepare immediately, even while waiting.
+    if (aguardandoFonte == 2 && !player_id_canal()[0]) {
+      novaGeracaoFonte(); limparFontePendente();
+      aguardandoFonte = 0; preparoEspera = 0;
+      limparFonteVOD(); player_voltar_a_esperar();
+      folhaParaTocar = 1; folhaCancelarTocar = 0;
+    }
     char base[24];
     stream_folha_contexto(player_linha_episodio());
     idBaseDoTitulo(base, sizeof base);
