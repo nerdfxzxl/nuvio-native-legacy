@@ -930,14 +930,33 @@ static int nomeInutil(const LegUiCand *c, const char *nome) {
   return 0;
 }
 // Copies `src` into `out` (<= 40 bytes + index), cutting on a UTF-8 boundary with "…".
-static void corteLimpo(char *out, size_t sz, const char *src) {
-  size_t n = strlen(src), max = sz > 1 ? sz - 1 : 0;
-  if (max >= sz) max = sz - 1;
-  if (n > max) {
-    n = max - 3;
-    while (n && ((unsigned char)src[n] & 0xC0) == 0x80) n--;
-    snprintf(out, sz, "%.*s\xe2\x80\xa6", (int)n, src);
-  } else snprintf(out, sz, "%s", src);
+// Filename cleanup is deliberately LOSSLESS apart from transport suffixes.
+// Subtitle presentation/metadata layout is a separate user design choice.
+static void nomeSemExtensao(const char *src, char *out, size_t max) {
+  if(!src||!max)return;
+  snprintf(out,max,"%s",src);
+  size_t n=strlen(out);
+  // Strip HTTP query fragments from names, never from playback URLs.
+  char *q=strchr(out,'?'); if(q){*q=0;n=(size_t)(q-out);}
+  q=strchr(out,'#'); if(q){*q=0;n=(size_t)(q-out);}
+  static const char *const extensions[]={
+    ".srt",".vtt",".ass",".ssa",".sub",".zip",".7z",".rar",".gz",NULL
+  };
+  for(int i=0;extensions[i];i++) {
+    size_t k=strlen(extensions[i]);
+    if(n>=k&&!strcasecmp(out+n-k,extensions[i])) {out[n-k]=0;break;}
+  }
+}
+// Do not discard release information at 40 characters. The subtitle title
+// renderer wraps the resulting UTF-8 string within the row.
+static void corteLimpo(char *out,size_t sz,const char *src){
+  if(!sz)return;
+  if(!src)src="";
+  size_t n=strlen(src);
+  if(n<sz){memcpy(out,src,n+1);return;}
+  n=sz-1;
+  while(n&&((unsigned char)src[n]&0xc0)==0x80)n--;
+  memcpy(out,src,n);out[n]=0;
 }
 // Title of candidate `i` among `cs[0..n)`: its name, else its language; equal
 // titles of one language get " (k)". Returns 1 when the title is a name.
@@ -945,15 +964,21 @@ int legendasui_titulo(const LegUiCand *cs, int n, int i, char *out, size_t sz) {
   const LegUiCand *c = &cs[i];
   const char *nome = c->embutida ? (c->nome[0] ? c->nome : strstr(c->rotulo, LU_SEP)) : (c->arquivo[0] ? c->arquivo : c->rotulo);
   int j, dup = 0, pos = 0, nomeado;
-  char outro[96];
+  char outro[256],limpo[256];
   if (c->embutida && !c->nome[0] && nome) nome += strlen(LU_SEP);
   nomeado = nome && !nomeInutil(c, nome);
-  corteLimpo(out, sz, nomeado ? nome : c->idioma[0] ? nomeIdioma(c->idioma) : c->rotulo);
+  nomeSemExtensao(nomeado?nome:"",limpo,sizeof limpo);
+  corteLimpo(out,sz,nomeado?limpo:
+             c->embutida?"Embedded track":"Subtitle");
   for (j = 0; j < n; j++) {
     const char *on = cs[j].embutida ? (cs[j].nome[0] ? cs[j].nome : strstr(cs[j].rotulo, LU_SEP)) : (cs[j].arquivo[0] ? cs[j].arquivo : cs[j].rotulo);
     if (j == i || cs[j].embutida != c->embutida || cs[j].tipo != c->tipo || !ling_casa(cs[j].idioma, c->idioma) || !ling_casa(c->idioma, cs[j].idioma)) continue;
     if (cs[j].embutida && !cs[j].nome[0] && on) on += strlen(LU_SEP);
-    corteLimpo(outro, sizeof outro, on && !nomeInutil(&cs[j], on) ? on : nomeIdioma(cs[j].idioma));
+    char candidate[256];
+    nomeSemExtensao(on&&!nomeInutil(&cs[j],on)?on:"",candidate,sizeof candidate);
+    corteLimpo(outro,sizeof outro,
+               on&&!nomeInutil(&cs[j],on)?candidate:
+               cs[j].embutida?"Embedded track":"Subtitle");
     if (strcmp(outro, out)) continue;
     dup = 1;
     if (j < i) pos++;
@@ -1038,6 +1063,10 @@ static void textoLinha(const LuiLinha *l, char *nome, size_t tn, char *sub, size
         if (l->slot == 0 && marca) juntar(sub, ts, marca);
         }
       }
+      // The EN chip already conveys the language; the active provider tab
+      // conveys source. Repeating "English", [SRT], filename, addon again
+      // under every release is visual noise in the new source selector.
+      if(fonteModo) sub[0]=0;
       if (l->slot == 1 && !legendasui_cand_secundaria_ok(c)) {
         sub[0] = 0;
         juntar(sub, ts, c->embutida ? i18n("Embutida como secundária: indisponível")
@@ -1054,7 +1083,7 @@ static void textoLinha(const LuiLinha *l, char *nome, size_t tn, char *sub, size
 
 static void ponteiroMenuAbrir(int i, int b);
 static void desenharLinha(const LuiLinha *l, int idx, int sel, float x, float y, float w, float a) {
-  char nome[96], sub[256];
+  char nome[256], sub[256];
   const char *idioma, *icone;
   int ativo, apagada;
   float dir = x + w - 22.0f, aL = a;
@@ -1086,7 +1115,10 @@ static void desenharLinha(const LuiLinha *l, int idx, int sel, float x, float y,
     // needs the width next to the < action > discs.)
     // In "Mais opções" the slot is the "Usar como" row at the top: no pill per
     // row, so the details (release name) get the width.
-    if (ativo) dir -= pilulaSlot(l->slot, dir, y + LU_LN_H * 0.5f, sel, aL) + 12.0f;
+    // Selected subtitle is already indicated by the checkmark. No "Main"
+    // pill or secondary-subtitle slot indicator in the source selector.
+    if (!fonteModo && ativo)
+      dir -= pilulaSlot(l->slot, dir, y + LU_LN_H * 0.5f, sel, aL) + 12.0f;
   }
   // #131: the active English-only selector has no hold-OK submenu,
   // secondary subtitle action, or "find others of this language" chevron.
@@ -1141,13 +1173,15 @@ static void desenharLinha(const LuiLinha *l, int idx, int sel, float x, float y,
     float tx = x + 22.0f + 52.0f + 18.0f, tw = dir - tx;
     int c = sel ? 255 : 219, cs = 153;
     // Release names may be long: show two lines instead of 40-byte truncation.
+    int nameLines=fonteModo?4:2;
+    float nameLeading=fonteModo?23.0f:26.0f;
     float hn = txt_bloco_corta(TXT_ILHA_FORTE, nome, c, c, c - 2,
-                                tx, 0.0f, tw, 26.0f, 0.0f, 2);
+                                tx, 0.0f, tw, nameLeading, 0.0f, nameLines);
     float hs = sub[0] ? txt_bloco_corta(TXT_ILHA_GENERO, sub, cs, cs, cs - 2,
                                          tx, 0.0f, tw, 21.0f, 0.0f, 2) : 0.0f;
     float h = hn + (hs > 0 ? 3.0f + hs : 0.0f), ty = y + (LU_LN_H - h) * .5f;
     txt_bloco_corta(TXT_ILHA_FORTE, nome, c, c, c - 2,
-                    tx, ty, tw, 26.0f, aL, 2);
+                    tx, ty, tw, nameLeading, aL, nameLines);
     if (hs > 0) txt_bloco_corta(TXT_ILHA_GENERO, sub, cs, cs, cs - 2,
                                  tx, ty + hn + 3.0f, tw, 21.0f, aL, 2);
   }
