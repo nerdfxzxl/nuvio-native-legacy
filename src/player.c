@@ -991,6 +991,7 @@ static float abrindoFundo;   // o preto da abertura, que sai junto com o cartao
 static Uint32 abrindoFundoUlt;
 // A TELA CINEMA da abertura (#205, abrecine.h): no lugar do cartao, por padrao.
 static AbreCine cine;
+static int cinemaEscapeFoco; /* delayed manual source-change escape only */
 // O botao em foco no modal do erro: 0 = Abrir Fontes, 1 = Voltar.
 static int erroBotao;
 static void erroEscolher(int i) {
@@ -1971,6 +1972,7 @@ void player_abrir(int indiceCatalogo, const char *url) {
   durFonteAcaoAte = 0; durFonteSkipEm = 0; durFonteManter = 0;
   abrindoExp = 0; abrindoT = 0.0f; abrindoDesde = 0;
   memset(&cine, 0, sizeof cine);
+  cinemaEscapeFoco = 0;
   cine.calado = 1;
   erroTitulo[0] = erroDica[0] = 0;
   pedGuia = pedZap = pedGuiaCheio = 0;
@@ -4414,7 +4416,17 @@ void player_evento(const SDL_Event *e) {
   // e o OK/Fontes nao mudam. Com a folha de Fontes aberta a tecla e dela
   // (app.c nem chega aqui). Canal sintonizando fica de fora.
   if (player_carregando() && !ehCanal() && !stream_folha_aberta()) {
-    // Na CINEMA, Para cima/Para baixo primeiro mostra a detalhada (#205).
+    /* Delayed manual escape takes precedence over the old Down-to-details. */
+    if (cine.viva && SDL_GetTicks() - cine.desde >= 15000u) {
+      if (k == SDLK_DOWN) { cinemaEscapeFoco = 1; return; }
+      if (k == SDLK_UP && cinemaEscapeFoco) { cinemaEscapeFoco = 0; return; }
+      if ((k == SDLK_RETURN || k == SDLK_KP_ENTER) && cinemaEscapeFoco) {
+        pedFontes = 1; cinemaEscapeFoco = 0; return;
+      }
+    }
+    if ((k == SDLK_RETURN || k == SDLK_KP_ENTER) && abrecine_cinema(&cine)) {
+      cine.detalhada = 1; abrindoExp = 1; return;
+    }
     if (abrecine_tecla(&cine, k)) return;
     if (k == SDLK_DOWN) { abrindoExp = 1; return; }
     if (k == SDLK_UP && abrindoExp) { abrindoExp = 0; return; }
@@ -6320,7 +6332,9 @@ void player_morph_de(GfxRect logo, GfxRect play) {
 // retangulos pequenos.
 static void desenharCinema(Uint32 agora, const CatItem *c, int furou) {
   GfxRect tela = { 0, 0, NV_TELA_W, NV_TELA_H };
-  float v = cine.veu, f = cine.foco, t = (float)(agora - cine.desde) / 1000.0f;
+  float f = cine.foco, t = (float)(agora - cine.desde) / 1000.0f;
+  /* Q34 selector-to-cinema fade, independent of the 200ms first-frame exit. */
+  float v = cine.veu * (ajustes_animacoes_reduzidas() || !cine.viva ? 1.0f : fminf(1.0f, t / 0.2f));
   float entra, cx = NV_TELA_W * 0.5f, tm, k, base, y, tx, topo;
   int reduz = ajustes_animacoes_reduzidas();
   // #508: preserve the saved Off / Art / Blurred art choice. Reuse the
@@ -6384,17 +6398,13 @@ static void desenharCinema(Uint32 agora, const CatItem *c, int furou) {
     GfxRect r;
     if (lh > 172.0f * sc) { lh = 172.0f * sc; lw = lh * ar; }
     r = (GfxRect){ canto ? lx : cx - lw * 0.5f, anel.y - gap - lh, lw, lh };
-    if (morph && l0.w > 0.0f) {
-      r.x = l0.x + (r.x - l0.x) * k; r.y = l0.y + (r.y - l0.y) * k;
-      r.w = l0.w + (r.w - l0.w) * k; r.h = l0.h + (r.h - l0.h) * k;
-    }
+    /* Q01: artwork/logo must be static. Only the overlay and loading arc animate. */
     topo = r.y;
-    gfx_rect(r, lg, tex_marca_escura(marca) ? GFX_MARCA : GFX_TEXTO, 0, 0, 0, 0, .96f, .96f, .97f,
-             v * entra);
+    gfx_rect(r, lg, tex_marca_escura(marca) ? GFX_MARCA : GFX_TEXTO, 0, 0, 0, 0, .96f, .96f, .97f, v);
   } else {
     TxtLinha l = txt_linha_corta(TXT_TITULO2, c ? c->titulo : "", 255, 255, 255, 255, 1400.0f);
     topo = anel.y - gap - l.h;
-    txt_desenhar_alpha(l, canto ? lx : cx - l.w * 0.5f, topo, v * entra);
+    txt_desenhar_alpha(l, canto ? lx : cx - l.w * 0.5f, topo, v);
   }
   // Dolby Vision slot 1: the mark above the logo (dvtelaui.c); the rest is this same drawing.
   dvtela_abertura_marca(canto, canto ? lx : cx, topo, v * entra);
@@ -6407,20 +6417,11 @@ static void desenharCinema(Uint32 agora, const CatItem *c, int furou) {
     ra.w = p0.w + (anel.w - p0.w) * k; ra.h = p0.h + (anel.h - p0.h) * k;
     if (aw > 0.0f) gfx_cor(ra, 0.5f, 1, 1, 1, aw * v);
   }
-  gfx_anel(ra, 0.5f, 3.0f, 1, 1, 1, 0.16f * v * entra);
-  // Como na carga da Home: o arco so enche com progresso medido.
-  // Samsung informa porcentagem; segundos de buffer dos demais nao sao %.
-  { VideoStats stats;
-    int pct;
-    float r, g, b, aa = v * entra * (morph ? (tm - 0.6f) / 0.4f : 1.0f);
-    video_estatisticas(&stats);
-    pct = !esperandoFonte && stats.bufferPct >= 0 && stats.bufferPct <= 100 ? stats.bufferPct : -1;
-    // O arco leva a cor do logo, como a Imersiva (dono, 14/10); sem paleta, o realce.
-    if (!corviva_logo_acento(&r, &g, &b)) corFocoPlayer(&r, &g, &b);
-    if (aa > 0.0f) {
-      if (pct > 0) gfx_arco(ra, 3.0f, 0.0f, pct / 100.0f, r, g, b, 0.9f * aa);
-      else if (pct < 0 && !reduz) gfx_arco(ra, 3.0f, fmodf(t / 1.2f, 1.0f), 0.25f, r, g, b, 0.9f * aa);
-    } }
+  /* HTTP startup has no genuine percentage. Native arc follows the official
+   * indeterminate geometry, not Media3 buffered-percent as a false readiness %. */
+  if (v * entra > 0.0f)
+    plrui_arco(ra.x + ra.w * .5f, ra.y + ra.h * .5f, ra.w, 1, 0,
+               agora, v * entra * (morph ? fmaxf(0.0f, (tm - .6f) / .4f) : 1.0f));
 
   // UMA LINHA QUIETA sob o anel: o episodio (so serie). O add-on so com o
   // ajuste ligado; a de demora so depois de 8 s.
@@ -6448,11 +6449,21 @@ static void desenharCinema(Uint32 agora, const CatItem *c, int furou) {
       txt_desenhar_alpha(d, canto ? tx : cx - d.w * 0.5f, y, v * entra);
       y += 34.0f;
     } }
-  // DEMOROU: uma linha so, curta e calma, que entra devagar.
-  if (abrecine_demorando(&cine, agora)) {
-    float d = (float)(agora - cine.desde - ABRECINE_DEMORA_MS) / 600.0f;
-    TxtLinha l = txt_linha(TXT_G19M, i18n("Só mais um instante…"), 243, 242, 239, 255);
-    txt_desenhar_alpha(l, canto ? tx : cx - l.w * 0.5f, y, 0.62f * v * (reduz || d > 1.0f ? 1.0f : d));
+  /* Real state only: no generic Just a moment and no invented progress. */
+  {
+    const char *estado = esperandoFonte ? "Preparing stream…" :
+        video_reconectando() ? "Reconnecting…" :
+        video_bufferando_ms() ? "Buffering…" : "Starting stream…";
+    TxtLinha l = txt_linha(TXT_G19M, i18n(estado), 243, 242, 239, 255);
+    txt_desenhar_alpha(l, canto ? tx : cx - l.w * .5f, y, .76f * v);
+    y += 34.0f;
+  }
+  /* Q26: escape appears only after a genuinely slow 15-second startup.
+   * Focus is never stolen; Down focuses it and OK confirms selection. */
+  if (cine.viva && agora - cine.desde >= 15000u) {
+    TxtLinha l = txt_linha(TXT_G19M, i18n("Change Stream"), 255, 255, 255,
+                            cinemaEscapeFoco ? 255 : 175);
+    txt_desenhar_alpha(l, canto ? tx : cx - l.w * .5f, y, v);
     y += 34.0f;
   }
   // Append DV information without moving existing loading content.
@@ -6553,11 +6564,18 @@ void player_desenhar(Uint32 agora) {
   // .tpk o furo acima ja espera a posicao. abrecine.h tem o teto.
   { static Uint32 cineUlt;
     int imagem = furar && (video_tocando() || video_pos() >= 0.25);
+#ifdef NV_ANDROID
+    /* READY or a progressing clock is not proof the video plane has a frame. */
+    imagem = video_quadro_visto() && video_superficie_estavel();
+#endif
     float dtc = cineUlt && agora - cineUlt < 100u ? (float)(agora - cineUlt) / 1000.0f : 1.0f / 60.0f;
 #ifdef NV_SHOT_HOOKS
     if (shotSemFuro) imagem = player_com_video() && !esperandoFonte && (video_tocando() || video_pos() >= 0.25);
 #endif
-    if (!player_com_video()) imagem = 1;
+    if (!player_com_video() && !player_carregando()) imagem = 1;
+#ifdef NV_ANDROID
+    if (comVideo && !video_quadro_visto()) imagem = 0;
+#endif
     cineUlt = agora;
     // The DV screen keeps the opening alive: it only falls with the real frame, DV or not.
     abrecine_passo(&cine, (player_carregando() || dvtela_ativa()) && !ehCanal(), imagem, ajustes_abertura_detalhada(),
