@@ -947,16 +947,19 @@ static void nomeSemExtensao(const char *src, char *out, size_t max) {
     if(n>=k&&!strcasecmp(out+n-k,extensions[i])) {out[n-k]=0;break;}
   }
 }
-// Do not discard release information at 40 characters. The subtitle title
-// renderer wraps the resulting UTF-8 string within the row.
+// Preserve complete names when the caller supplies the full row buffer.
+// Keep the previous UTF-8-safe ellipsis for small legacy/test callers.
 static void corteLimpo(char *out,size_t sz,const char *src){
   if(!sz)return;
   if(!src)src="";
   size_t n=strlen(src);
   if(n<sz){memcpy(out,src,n+1);return;}
-  n=sz-1;
+  if(sz<5){out[0]=0;return;}
+  n=sz-4; // reserve exactly 3 bytes for the UTF-8 ellipsis and one NUL
   while(n&&((unsigned char)src[n]&0xc0)==0x80)n--;
-  memcpy(out,src,n);out[n]=0;
+  memcpy(out,src,n);
+  memcpy(out+n,"\xe2\x80\xa6",3);
+  out[n+3]=0;
 }
 // Title of candidate `i` among `cs[0..n)`: its name, else its language; equal
 // titles of one language get " (k)". Returns 1 when the title is a name.
