@@ -297,11 +297,21 @@ void plrui_barra(float x, float y, float w, float frac, float buf, int foco,
     gfx_cor((GfxRect){ x + w * frac, yy, w * (buf - frac), h },
             0.0f, 0.84f, 0.86f, 0.90f, 0.58f * a);
   }
-  // Mesmo o primeiro pixel aparece: o raio 0,5 vale para qualquer largura >= h.
-  if (w * frac > 0.5f) {
-    float fw = w * frac;
-    if (fw < h) gfx_cor((GfxRect){ x, yy, fw, h }, 0.0f, ar, ag, ab, a);
-    else gfx_cor((GfxRect){ x, yy, fw, h }, 0.5f, ar, ag, ab, a);
+  // If the playhead jumps AHEAD of the last measured buffer end, show the
+  // unbuffered portion as a softer extension of the played/seek rail. Do not
+  // stretch the buffered range to follow the seek position and do not add a
+  // new chapter-like tick or thumb.
+  if (w*frac>0.5f) {
+    if (buf>0.001f && buf<frac-0.002f) {
+      float readyW=w*buf;
+      gfx_cor((GfxRect){x,yy,readyW,h},readyW<h?0.0f:0.5f,
+              ar,ag,ab,a);
+      gfx_cor((GfxRect){x+readyW,yy,w*(frac-buf),h},0.0f,
+              ar,ag,ab,a*0.42f);
+    } else {
+      float fw=w*frac;
+      gfx_cor((GfxRect){x,yy,fw,h},fw<h?0.0f:0.5f,ar,ag,ab,a);
+    }
   }
 }
 
