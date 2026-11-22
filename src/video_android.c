@@ -1323,7 +1323,7 @@ int  video_tocando(void) { return tocando; }
 int  video_pronto(void) {
   Uint32 desde;
   if (!prontoLoad) return 0;
-  if (primeiroQuadro) return 1;
+  if (primeiroQuadro || somenteAudio) return 1;
   desde = tocandoDesde;
   return desde && tocando && SDL_GetTicks() - desde >= ANDROID_FURO_PRAZO_MS;
 }
