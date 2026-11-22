@@ -1242,28 +1242,14 @@ static void halo(GfxRect a, const ContaPerfil *p, float f) {
   }
 }
 
-// O INDICADOR DE CARREGAMENTO sobre o avatar escolhido: o mesmo anel de doze
-// pontos do player (anelCarregando), num veu escuro para ler sobre qualquer
-// foto. Com animacoes reduzidas os pontos ficam parados e so o brilho pulsa —
-// continua dizendo "esperando" sem movimento de giro.
+// P2: reuse the same NuvioTV LoadingIndicator arc as the player, picker,
+// and detail activity. No independent twelve-dot wheel or reduced-motion
+// pulse; plrui_arco owns the official animation/reduced-motion behavior.
 static void giro(GfxRect av, Uint32 agora, float alfa, int reduzida) {
-  float cx = av.x + av.w * 0.5f, cy = av.y + av.h * 0.5f;
-  float raio = av.w * 0.24f, ponto = av.w * 0.05f;
-  float t = (float)(agora - preparandoDesde);
-  float giroAng = reduzida ? 0.0f : t * 0.006f;
-  float pulso = reduzida ? 0.75f + 0.25f * sinf(t * 0.004f) : 1.0f;
-  float ar, ag, ab;
-  int k;
-  if (ponto < 6.0f) ponto = 6.0f;
+  const float cx = av.x + av.w * 0.5f, cy = av.y + av.h * 0.5f;
+  (void)reduzida; // the shared arc checks the accessibility setting itself
   gfx_rect(av, 0, GFX_DISCO, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.70f * alfa);
-  ajustes_acento(&ar, &ag, &ab);
-  for (k = 0; k < 12; k++) {
-    float ang = k * 6.2831853f / 12.0f + giroAng;
-    float br = .18f + .82f * k / 11.0f;
-    GfxRect pt = { cx + cosf(ang) * raio - ponto * 0.5f,
-                   cy + sinf(ang) * raio - ponto * 0.5f, ponto, ponto };
-    gfx_cor(pt, .5f, ar, ag, ab, br * pulso * alfa);
-  }
+  plrui_arco(cx, cy, av.w * 0.48f, 0, 1, agora, alfa);
 }
 
 static void desenhaFundo(void) {
