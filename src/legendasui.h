@@ -97,7 +97,7 @@ typedef struct {
   char rotulo[64];   // embedded: track label; addon: the addon's label
   char nome[128];    // actual embedded track name; empty when not supplied
   char origem[64];   // provider name, "" for embedded
-  char arquivo[96];  // release/file name when the addon sent one
+  char arquivo[256]; // full release/file name; UI wraps instead of pretruncating at 96 bytes
   char codec[24];    // Matroska CodecID when probed
   char formato[8];   // "SRT"/"VTT"/"ASS"/"PGS" when actually known, else ""
   int  letreiro;     // forced / signs track
