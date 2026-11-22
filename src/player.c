@@ -5264,8 +5264,14 @@ void player_atualizar(float dt, Uint32 agora) {
   if (botao < 0 || botao >= PLR_NBTNS || !habilitadas[botao]) botao = PLR_PLAY;
   for (int i = 0; i < PLR_NBTNS; i++) {
     // Foco na barra: o botao fecha (antes ficava aberto sem texto).
-    float alvo = (visivel && habilitadas[i] && botao == i && !barraFoco) ? 1.0f : 0.0f;
-    focoB[i] = anim_mola_rebote(&focoBV[i], focoB[i], alvo, dt, 24.0f, 0.75f);
+    // Playback action is not focused when Video Time, seekbar or Info owns
+    // focus. Previously tempoFoco was omitted and two targets lit up.
+    float alvo = (visivel && !tempoFoco && !barraFoco &&
+                  !infoPanelFoco && !skipFoco && habilitadas[i] &&
+                  botao == i) ? 1.0f : 0.0f;
+    // A non-bouncing spring avoids overshoot/visible icon wobble on focus hops.
+    focoB[i]=anim_mola(focoB[i],alvo,dt,NV_MOLA_FOCO);
+    focoBV[i]=0.0f;
   }
 }
 
@@ -7320,18 +7326,13 @@ static void desenharOsdCorpo(Uint32 agora, float a, float ac, const CatItem *c) 
   }
   { float bufFrac = (!ehCanal() && duracaoSeg > 0.0f)
       ? anim_clamp(video_buffer_fim() / duracaoSeg,0.0f,1.0f) : 0.0f;
-    // The native backend can report zero buffering during the idle/seek-only
-    // OSD, even after reporting a genuine downloaded range. Keep the last
-    // observed buffer end for THIS playback session.
-    if (!ehCanal() && duracaoSeg > 0.0f && bufFrac <= frac) {
-      VideoStats stats;
-      video_estatisticas(&stats);
-      if(stats.bufferSeg>0.0)
-        bufFrac=anim_clamp((float)((posSeg+stats.bufferSeg)/duracaoSeg),0.0f,1.0f);
-    }
+    // Buffer is an absolute timeline endpoint, independent of a pending seek.
+    // No posSeg+buffer estimate: a 40s seek must be allowed to pass the old
+    // 30s buffer end. Keep the last measured endpoint for idle/seek-only OSD
+    // so the downloaded rail never disappears merely because controls fade.
     if(!ehCanal() && duracaoSeg > 0.0f) {
       if(bufFrac>barraBufferMem)barraBufferMem=bufFrac;
-      if(soBarra && bufFrac<frac+0.002f)bufFrac=barraBufferMem;
+      if(bufFrac<barraBufferMem)bufFrac=barraBufferMem;
     }
     plrui_barra(bx,yBarra,bw,frac,bufFrac,barraFoco,NULL,0,a);
   }
@@ -7422,28 +7423,33 @@ static void desenharOsdCorpo(Uint32 agora, float a, float ac, const CatItem *c) 
     const float yRow = yRowTopo + dy;
     PlrAcao acoes[PLR_NBTNS];
     int nAcoes = transporteAcoes(acoes);
-    float maxExtra = 0.0f;
+    float maxExtra = 0.0f, expanded = 0.0f;
     float baseW = nAcoes * PLR_BTN_D + (nAcoes - 1) * PLR_BTN_GAP;
-    // Never let a pill grow beyond the safe screen width. Extremely narrow
-    // screens retain the same capsule but show icons only (no second layout).
     float maxRow = NV_VTELA_W - PLR_MARGEM * 2.0f - 28.0f;
     int compacto = maxRow < baseW + 180.0f;
     for (int j = 0; j < nAcoes && !compacto; j++) {
-      const char *label = rotuloBotao(acoes[j].id);
-      float width = (float)txt_largura(TXT_G21B, label);
-      float extra = (22.0f + 30.0f + 12.0f + width + 28.0f) - PLR_BTN_D;
-      if (extra > maxExtra) maxExtra = extra;
+      int id=acoes[j].id;
+      float labelW=(float)txt_largura(TXT_G21B,rotuloBotao(id));
+      float extra=22.0f+30.0f+12.0f+labelW+28.0f-PLR_BTN_D;
+      if(extra>maxExtra)maxExtra=extra;
+      if(acoes[j].habilitada)
+        expanded+=extra*anim_clamp(focoB[id],0.0f,1.0f);
     }
-    if (baseW + maxExtra > maxRow) maxExtra = fmaxf(0.0f, maxRow - baseW);
-    // The shell width and left anchor do NOT follow the focused title.
-    // This avoids global horizontal re-centering when navigating either way.
-    float contentW = baseW + maxExtra;
-    float x = (NV_VTELA_W - contentW) * 0.5f;
-    GfxRect capsule = {x - 14.0f, yRow - 10.0f,
-                       contentW + 28.0f, diameter + 20.0f};
-    plrui_material(capsule, capsule.h * 0.5f, 0, af);
-    gfx_cor(capsule, 0.5f, 0.015f, 0.018f, 0.023f, af * 0.48f);
-    gfx_anel(capsule, 0.5f, 1.0f, 0.85f, 0.90f, 1.0f, af * 0.23f);
+    if (baseW + maxExtra > maxRow) maxExtra=fmaxf(0.0f,maxRow-baseW);
+    if(expanded>maxExtra)expanded=maxExtra;
+    // The compact pill shrinks back when ALL action focus springs settle.
+    // Crucially the icon row always starts at baseX: don't re-center its x
+    // based on whichever action happened to expand this frame. Labels push
+    // their trailing neighbours, while previous icons stay anchored.
+    float baseX=(NV_VTELA_W-baseW)*0.5f;
+    float x=baseX;
+    // Grow glass equally to the left and right of the resting shell. The
+    // extra left clearance gives space without shifting the icon row.
+    GfxRect capsule = {baseX-expanded-14.0f,yRow-10.0f,
+                       baseW+2.0f*expanded+28.0f,diameter+20.0f};
+    plrui_material(capsule,capsule.h*0.5f,0,af);
+    gfx_cor(capsule,0.5f,0.015f,0.018f,0.023f,af*0.48f);
+    gfx_anel(capsule,0.5f,1.0f,0.85f,0.90f,1.0f,af*0.23f);
 
     for (int j = 0; j < nAcoes; j++) {
       int id = acoes[j].id, enabled = acoes[j].habilitada;
