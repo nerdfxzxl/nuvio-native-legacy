@@ -27,7 +27,7 @@ pronto = between(v, "int  video_pronto(void) {", "int  video_ativo(void)")
 drawing = p.split("void player_desenhar(Uint32 agora)", 1)[1]
 nav_branch = between(p, "// Loading owns D-pad/OK", "// PAINEL DE PAUSA")
 back_branch = between(p.split("void player_evento(const SDL_Event *e)", 1)[1],
-    "if (k == SDLK_ESCAPE || k == SDLK_AC_BACK || k == SDLK_BACKSPACE ||\\n      k == SDLK_DELETE) {",
+    "if (k == SDLK_ESCAPE || k == SDLK_AC_BACK || k == SDLK_BACKSPACE ||\n      k == SDLK_DELETE) {",
     "// A FONTE NAO ABRIU")
 app_back = between(app, "// Back during startup/recovery", "// A BARRA LATERAL POR CIMA")
 app_change = between(app, "// The slow-loading escape", "// CANAL ESCOLHIDO NO GUIA")
