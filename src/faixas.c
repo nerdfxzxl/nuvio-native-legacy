@@ -1494,6 +1494,16 @@ void faixas_evento(const SDL_Event *e) {
 #endif
   SDL_Keycode k;
   if (!aberta) return;
+  // Back always closes the subtitle panel from Subtitles, Style, Sync or
+  // focused tab navigation. A font popup / +/- edit consumes only its first Back.
+  if(modo&&e->type==SDL_KEYDOWN&&
+     (e->key.keysym.sym==SDLK_AC_BACK||e->key.keysym.sym==SDLK_ESCAPE||
+      e->key.keysym.sym==SDLK_BACKSPACE)) {
+    if(estiloFontePopup){estiloFontePopup=0;ctl=-1;return;}
+    if(estiloEdit){estiloEdit=0;return;}
+    if(legendaSyncEdit){legendaSyncEdit=0;return;}
+    aberta=0;legendaTopoFoco=0;return;
+  }
   // F04: the subtitle LIST is the selector of legendasui.c (simple view and
   // "Mais opções"); the Estilo bar below stays here.
   if (modo && e->type == SDL_KEYDOWN && legendaTopoFoco) {
@@ -1902,12 +1912,11 @@ static void linhaLista(int col, int i, float x, float y, float w, float a) {
   if (!col) {
     int real = audioIndiceNaLinha(i);
     if (real < 0) {
-      GfxRect small = {x + 14.0f, y + 19.0f, 156.0f, 50.0f};
-      const char *label = audioMostrarTudo ? "Show Less" : "Show All";
-      TxtLinha t = txt_linha(TXT_ILHA_SEG, label, 239, 245, 255, 255);
-      plrui_material(small, 9.0f, 0, a);
-      if (sel) plrui_linha_foco(small, 9.0f, a);
-      txt_desenhar_alpha(t, small.x + 18.0f, small.y + (small.h - t.h)*0.5f, a);
+      // Show All/Less is a plain text row, not a separate rectangular chip.
+      GfxRect small={x+14.0f,y+19.0f,156.0f,50.0f};
+      const char *label=audioMostrarTudo?"Show Less":"Show All";
+      TxtLinha t=txt_linha(TXT_ILHA_SEG,label,239,245,255,255);
+      txt_desenhar_alpha(t,small.x+18.0f,small.y+(small.h-t.h)*.5f,a);
       return;
     }
     const VideoFaixa *f = video_audio(real);
