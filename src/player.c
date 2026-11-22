@@ -3414,20 +3414,19 @@ static void transporteMover(int direcao) {
 }
 static int transporteToque(void) { return telefoneui_ativo() && !ehCanal(); }
 static int transporteDuasLinhas(void) {
-  if (!transporteToque()) return 0;
-  PlrAcao a[PLR_NBTNS]; int n = transporteAcoes(a);
-  return NV_LAYOUT_REAL_H > NV_LAYOUT_REAL_W ||
-      (NV_VTELA_W - PLR_MARGEM * 2.0f) * gfx_escala_ui() < n * PLR_TOQUE_CELULA;
+  // The shared TV capsule is always ONE row, including touch devices.
+  return 0;
 }
 static int transportePrimeiraLinha(void) { return transporteSerie() ? 4 : 2; }
 static float transporteCelulaH(void) { return PLR_TOQUE_CELULA / gfx_escala_ui(); }
 static float transporteBarraY(void) {
-  if (!transporteToque()) return PLR_BARRA_Y;
-  int linhas = transporteDuasLinhas() ? 2 : 1;
-  return NV_VTELA_H - (64.0f + PLR_TOQUE_CELULA * linhas + 12.0f * (linhas - 1)) / gfx_escala_ui() - PLR_GAP_ROW;
+  // Use the existing TV OSD anchor for both Android phone and Android TV.
+  return PLR_BARRA_Y;
 }
 static int transporteCompacto(void) {
-  return transporteToque() || (!ehCanal() && NV_VTELA_W - PLR_MARGEM * 2.0f < 1280.0f);
+  // A touch screen is not intrinsically a compact layout; only real width
+  // constraints can hide a label, and they never break the capsule into discs.
+  return !ehCanal() && NV_VTELA_W - PLR_MARGEM * 2.0f < 1280.0f;
 }
 static int transporteMoverLinha(int direcao) {
   if (!transporteDuasLinhas()) return 0;
@@ -7411,85 +7410,84 @@ static void desenharOsdCorpo(Uint32 agora, float a, float ac, const CatItem *c) 
   // Depois do titulo: a miniatura fica POR CIMA dele enquanto a pessoa procura.
   seekrMiniatura(bx, bw, frac, yBarra, a);
 
-  // --- fileira de BOTOES ---------------------------------------------------
-  // Discos de 68 no material da ilha; o focado vira PILULA cheia no acento com
-  // o NOME DENTRO (o rotulo solto embaixo caia em y~1042, zona de overscan). A
-  // largura acompanha a mola do foco, entao os vizinhos andam junto.
-  // Com o foco na barra a fileira desce PLR_DESLIZE/2 e apaga (`fileira`).
+  // --- Shared glass transport: the SAME renderer on TV and Android touch ---
+  // The old "toque" path scattered isolated discs into full-width cells.
+  // Keep a constant centered outer pill instead. Expansion happens inside
+  // the capsule, with icon x fixed relative to its button's leading edge;
+  // the label appears to the RIGHT with a clipped, softly sliding reveal.
   if (fileira > 0.01f) {
-    float x = cx, af = ac * fileira, dy = (1.0f - fileira) * PLR_DESLIZE * 0.5f;
-    PlrAcao acoes[PLR_NBTNS]; int nAcoes = transporteAcoes(acoes);
-    int toque = transporteToque(), duas = transporteDuasLinhas(), primeira = transportePrimeiraLinha();
-    float celulaH = transporteCelulaH(), espaco = 12.0f / gfx_escala_ui();
-    float diametro = toque ? (PLR_TOQUE_CELULA - 16.0f) / gfx_escala_ui() : transporteCurto ?
-        fminf(PLR_BTN_D, (cw - (nAcoes - 1) * PLR_BTN_GAP) / nAcoes) : PLR_BTN_D;
-    float yRow = yRowTopo + dy;
-    // TV: a SINGLE CENTERED liquid-glass pill. Child buttons spring open
-    // inside the shared material; the touch layout keeps spacious hit targets.
-    if (!toque) {
-      float contentW = 0.0f;
-      for (int j = 0; j < nAcoes; j++) {
-        int id = acoes[j].id;
-        TxtLinha label = txt_linha(TXT_G21B, rotuloBotao(id), 243, 242, 239, 255);
-        float full = 22.0f + 30.0f + 12.0f + (float)label.w + 28.0f;
-        contentW += transporteCurto ? diametro : PLR_BTN_D + (full - PLR_BTN_D) * fmaxf(0.0f, focoB[id]);
-      }
-      contentW += (nAcoes - 1) * PLR_BTN_GAP;
-      x = (NV_VTELA_W - contentW) * 0.5f;
-      GfxRect capsule = {x - 14.0f, yRow - 10.0f, contentW + 28.0f, diametro + 20.0f};
-      plrui_material(capsule, capsule.h * 0.5f, 0, af);
-      gfx_cor(capsule, 0.5f, 0.015f, 0.018f, 0.023f, af * 0.48f);
-      gfx_anel(capsule, 0.5f, 1.0f, 0.85f, 0.90f, 1.0f, af * 0.23f);
+    const float af = ac * fileira;
+    const float dy = (1.0f - fileira) * PLR_DESLIZE * 0.5f;
+    const float diameter = PLR_BTN_D;
+    const float yRow = yRowTopo + dy;
+    PlrAcao acoes[PLR_NBTNS];
+    int nAcoes = transporteAcoes(acoes);
+    float maxExtra = 0.0f;
+    float baseW = nAcoes * PLR_BTN_D + (nAcoes - 1) * PLR_BTN_GAP;
+    // Never let a pill grow beyond the safe screen width. Extremely narrow
+    // screens retain the same capsule but show icons only (no second layout).
+    float maxRow = NV_VTELA_W - PLR_MARGEM * 2.0f - 28.0f;
+    int compacto = maxRow < baseW + 180.0f;
+    for (int j = 0; j < nAcoes && !compacto; j++) {
+      const char *label = rotuloBotao(acoes[j].id);
+      float width = (float)txt_largura(TXT_G21B, label);
+      float extra = (22.0f + 30.0f + 12.0f + width + 28.0f) - PLR_BTN_D;
+      if (extra > maxExtra) maxExtra = extra;
     }
+    if (baseW + maxExtra > maxRow) maxExtra = fmaxf(0.0f, maxRow - baseW);
+    // The shell width and left anchor do NOT follow the focused title.
+    // This avoids global horizontal re-centering when navigating either way.
+    float contentW = baseW + maxExtra;
+    float x = (NV_VTELA_W - contentW) * 0.5f;
+    GfxRect capsule = {x - 14.0f, yRow - 10.0f,
+                       contentW + 28.0f, diameter + 20.0f};
+    plrui_material(capsule, capsule.h * 0.5f, 0, af);
+    gfx_cor(capsule, 0.5f, 0.015f, 0.018f, 0.023f, af * 0.48f);
+    gfx_anel(capsule, 0.5f, 1.0f, 0.85f, 0.90f, 1.0f, af * 0.23f);
+
     for (int j = 0; j < nAcoes; j++) {
-      int i = acoes[j].id, habilitada = acoes[j].habilitada;
-      float f = habilitada ? focoB[i] : 0.0f, fAlpha = anim_clamp(f, 0.0f, 1.0f);
-      float alpha = habilitada ? af : af * 0.35f;
-      const char *ic = iconeBotao(i), *rot = rotuloBotao(i);
-      TxtLinha lr = txt_linha(TXT_G21B, rot, 0, 0, 0, 255);
-      float wCheio = 22.0f + 30.0f + 12.0f + (float)lr.w + 28.0f;
-      float w = transporteCurto ? diametro : PLR_BTN_D + (wCheio - PLR_BTN_D) * f;
-      GfxRect r = { x, yRow, w, diametro }, alvo = r;
-      if (toque) {
-        int linha = duas && j >= primeira, inicio = linha ? primeira : 0;
-        int colunas = duas ? (linha ? nAcoes - primeira : primeira) : nAcoes;
-        float celulaW = cw / colunas;
-        alvo = (GfxRect){cx + (j - inicio) * celulaW, yRow + linha * (celulaH + espaco), celulaW, celulaH};
-        r = (GfxRect){alvo.x + (celulaW - diametro) * 0.5f,
-                      alvo.y + (celulaH - diametro) * 0.5f, diametro, diametro};
-      }
-      float cyB = r.y + r.h * 0.5f;
-      int tinta = (int)(242.0f + (plrui_tinta() - 242.0f) * fAlpha);
-      float k = tinta / 255.0f;
-      if (fAlpha > 0.02f) plrui_pilula_foco(r, alpha * fAlpha);
-      if (toque && fAlpha < 0.98f) plrui_disco_osd(r, alpha * (1.0f - fAlpha));
+      int id = acoes[j].id, enabled = acoes[j].habilitada;
+      float f = enabled ? anim_clamp(focoB[id], 0.0f, 1.0f) : 0.0f;
+      float alpha = enabled ? af : af * 0.35f;
+      const char *icon = iconeBotao(id), *label = rotuloBotao(id);
+      float labelW = (float)txt_largura(TXT_G21B, label);
+      float extra = fminf(maxExtra,
+                   fmaxf(0.0f, 22.0f + 30.0f + 12.0f + labelW + 28.0f - diameter));
+      float width = diameter + extra * f;
+      GfxRect r = { x, yRow, width, diameter };
+      // Pointer hit targets follow the same pill geometry on mobile and TV.
+      GfxRect target = { r.x, r.y - 7.0f, r.w, r.h + 14.0f };
+      float cy = r.y + r.h * 0.5f;
+      int ink = (int)(242.0f + (plrui_tinta() - 242.0f) * f);
+      float k = ink / 255.0f;
+      if (f > 0.02f) plrui_pilula_foco(r, alpha * f);
       if (ponteiroNoPlayer() && af > 0.3f)
-        ponteiro_alvo(alvo.x, alvo.y, alvo.w, alvo.h, habilitada ? ponteiroBotao : NULL,
-                      habilitada ? ponteiroAtivarBotao : ponteiroBotaoInativo, i, 0);
-      { float tamanho = toque ? 64.0f / gfx_escala_ui() : 30.0f;
-        float ix = transporteCurto ? r.x + (diametro - tamanho) * 0.5f :
-          x + (PLR_BTN_D - 30.0f) * 0.5f + (22.0f - (PLR_BTN_D - 30.0f) * 0.5f) * fAlpha;
-        if (i == PLR_EPISODIOS && epE > 0)
-          episodeicon_draw((GfxRect){ix, cyB - tamanho * 0.5f, tamanho, tamanho}, k, k, k, alpha * 0.96f);
-        else
-          gfx_icone((GfxRect){ ix, cyB - tamanho * 0.5f, tamanho, tamanho }, ic, k, k, k, alpha * 0.96f);
-        if (!transporteCurto && fAlpha > 0.05f) {
-          TxtLinha l = txt_linha(TXT_G21B, rot, tinta, tinta, tinta, 255);
-          gfx_recorte(r.x, r.y, r.w, r.h);
-          txt_desenhar_alpha(l, ix + 30.0f + 12.0f, cyB - (float)l.h * 0.5f, af * fAlpha);
-          gfx_sem_recorte();
-        } }
-      if (!toque) x += w + PLR_BTN_GAP;
-    }
-    if (toque && transporteCurto && !barraFoco && transporteHabilitado(botao)) {
-      char atual[24], dur[24], total[32];
-      plrui_tempo(atual, sizeof atual, posVisSolto ? posVis : posSeg);
-      plrui_tempo(dur, sizeof dur, duracaoSeg); snprintf(total, sizeof total, "/ %s", dur);
-      float reserva = txt_largura(TXT_G22M, atual) + txt_largura(TXT_G22M, total) + 32.0f;
-      if (cw > reserva) {
-        TxtLinha l = txt_linha_corta(TXT_G21B, rotuloBotao(botao), 243, 242, 239, 235, cw - reserva);
-        txt_desenhar_alpha(l, cx, cyTempo - (float)l.h * 0.5f, af);
+        ponteiro_alvo(target.x, target.y, target.w, target.h,
+                      enabled ? ponteiroBotao : NULL,
+                      enabled ? ponteiroAtivarBotao : ponteiroBotaoInativo, id, 0);
+
+      // Keep the icon at x+19 whether the button is a 68px circle or an
+      // expanded labelled pill. It no longer slides aside to make room.
+      const float size = 30.0f;
+      const float ix = r.x + (diameter - size) * 0.5f;
+      if (id == PLR_EPISODIOS && epE > 0)
+        episodeicon_draw((GfxRect){ix, cy - size * 0.5f, size, size},
+                         k, k, k, alpha * 0.96f);
+      else
+        gfx_icone((GfxRect){ix, cy - size * 0.5f, size, size},
+                  icon, k, k, k, alpha * 0.96f);
+
+      // A short trailing-to-leading reveal keeps the text doing the moving.
+      // The label cannot paint outside its own expanding button.
+      if (!compacto && f > 0.04f) {
+        float reveal = anim_clamp((f - 0.11f) / 0.83f, 0.0f, 1.0f);
+        TxtLinha l = txt_linha(TXT_G21B, label, ink, ink, ink, 255);
+        float tx = ix + size + 12.0f + (1.0f - reveal) * 12.0f;
+        gfx_recorte(r.x, r.y, r.w, r.h);
+        txt_desenhar_alpha(l, tx, cy - (float)l.h * 0.5f, af * reveal);
+        gfx_sem_recorte();
       }
+      x += width + PLR_BTN_GAP;
     }
   }
 
