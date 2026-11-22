@@ -8,11 +8,10 @@
 #define NV_ABRECINE_H
 #include <SDL2/SDL.h>
 
-// Depois disto, UMA linha curta e tranquila aparece sob o logo.
+// Legacy slow-start flag remains available to older screens.
 #define ABRECINE_DEMORA_MS 8000u
-// Teto da espera pelo quadro real depois de o player dar a fonte por aberta:
-// fonte so de audio, ou host que nao anda a posicao, nao ficam na arte.
-#define ABRECINE_SEGURA_MS 4000u
+// There is deliberately no timeout that fades into an unrendered video plane.
+// Android audio-only handoff requires positively classified audio tracks.
 
 typedef struct {
   int viva;        // o quadro anterior estava abrindo
