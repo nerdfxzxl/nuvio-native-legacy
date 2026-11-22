@@ -1061,10 +1061,18 @@ void video_bombear(void) {
     fflush(stdout);
     reconBuscarMs = -1;
   }
-  if (!falhou && (!prontoLoad || reconBuscarMs >= 0 || (!pausaPedida && bufferando)) &&
+  if (!falhou && !reconPausado &&
+      (!prontoLoad || reconBuscarMs >= 0 || (!pausaPedida && bufferando)) &&
       nv_recon_expirou(&recon, SDL_GetTicks())) {
-    reconErroCod = 2002; reconErroPend = 1;
-    snprintf(erroTxt, sizeof erroTxt, "2002 player error: recovery timeout");
+    VideoStats v;
+    video_estatisticas(&v);
+    // An in-progress, slowly filling REMUX is not a hung recovery.
+    if (!bufavanco_segura(&reconBufferAvanco, sessao,
+                          SDL_GetTicks() - bufferDesde, SDL_GetTicks(),
+                          bufavanco_borda(pos, v.bufferSeg))) {
+      reconErroCod = 2002; reconErroPend = 1;
+      snprintf(erroTxt, sizeof erroTxt, "2002 player error: recovery timeout");
+    }
   }
   // A silent VOD stall also needs recovery when Media3 never emits an error.
   if (!falhou && reconPermitida && reconIniciou && !pausaPedida && !nv_recon_ativa(&recon) &&
@@ -1108,7 +1116,10 @@ void video_bombear(void) {
     }
   }
   if (falhou) recarregarPausa = -1;
-  if (nv_recon_vencida(&recon, SDL_GetTicks())) {
+  // A new user pause (including Android background) parks the pending
+  // restart. It can resume only after an explicit Play; Back fully cancels
+  // the generation in video_parar().
+  if (!reconPausado && nv_recon_vencida(&recon, SDL_GetTicks())) {
     printf("[video] reconectando: alvo %.0fs, tentativa %d\n", recon.alvo, recon.tentativa);
     fflush(stdout);
     reconFaixasPend = 1;
