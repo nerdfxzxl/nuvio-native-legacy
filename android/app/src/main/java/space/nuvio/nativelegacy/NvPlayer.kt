@@ -164,7 +164,7 @@ object NvPlayer {
     @JvmStatic external fun nativeIniciar()
     @JvmStatic external fun nativeLimitedStatus(): Int
     @JvmStatic external fun nativeTunneling(): Boolean
-    @JvmStatic external fun nativeEvento(tipo: Int, a: Int, b: Int)
+    @JvmStatic external fun nativeEvento(tipo: Int, a: Int, b: Int, geracao: Int)
     // flags (#287): 1 = forcada (SELECTION_FLAG_FORCED), 2 = SDH
     // (ROLE_FLAG_DESCRIBES_MUSIC_AND_SOUND); nome = Format.label.
     // mime/canais (#293): codec e canais da faixa de audio.
@@ -378,8 +378,9 @@ object NvPlayer {
         }
     }
 
-    private fun ev(tipo: Int, a: Int = 0, b: Int = 0) {
-        try { nativeEvento(tipo, a, b) } catch (e: UnsatisfiedLinkError) { Log.w(TAG, "evento $tipo sem lib: $e") }
+    private fun ev(tipo: Int, a: Int = 0, b: Int = 0, geracao: Int = geracaoNative) {
+        try { nativeEvento(tipo, a, b, geracao) }
+        catch (e: UnsatisfiedLinkError) { Log.w(TAG, "evento $tipo sem lib: $e") }
     }
 
     // One silent, surface-free player. Its request counter is independent of
@@ -1101,7 +1102,13 @@ object NvPlayer {
     }
     private var pausaPedida = false
     @JvmStatic fun pausar(p: Int) {
-        principal.post { pausaPedida = p != 0; player?.playWhenReady = !pausaPedida }
+        val pedido = pedidos.get()
+        // A queued pause from the previous source must not mutate a new player.
+        principal.post {
+            if (pedido != pedidos.get()) return@post
+            pausaPedida = p != 0
+            player?.playWhenReady = !pausaPedida
+        }
     }
     // Episode handoff arms this token before the old visible session closes.
     // Stop only that session; the exact selected preload keeps its queues.
@@ -1492,7 +1499,7 @@ object NvPlayer {
             }
             aplicarGanho()
             relatarCache(minha)
-            val ouv = ouvinte(minha); val ana = analitico(minha)
+            val ouv = ouvinte(minha, geracao); val ana = analitico(minha)
             ouvinteAtual = ouv; analiticoAtual = ana
             p.addListener(ouv)
             p.addAnalyticsListener(ana)
@@ -2003,14 +2010,18 @@ object NvPlayer {
 
     // --- eventos do player ----------------------------------------------------
 
-    private fun ouvinte(minha: Int) = object : Player.Listener {
+    private fun ouvinte(minha: Int, geracaoDaAbertura: Int) = object : Player.Listener {
+        // Capture the native generation when the listener is created; global
+        // geracaoNative may already belong to a replacement by callback time.
+        private fun ev(tipo: Int, a: Int = 0, b: Int = 0) =
+            NvPlayer.ev(tipo, a, b, geracaoDaAbertura)
         private var liveSegmentMs = -1
         private val live = LiveWindowRecovery(
             schedule = { tarefa, atraso -> principal.postDelayed(tarefa, atraso) },
             unschedule = { tarefa -> principal.removeCallbacks(tarefa) },
             active = { atual(minha) },
             status = { prazoMs ->
-                if (atual(minha)) ev(EV_LIVE_RECOVERY, prazoMs.toInt(), geracaoNative)
+                if (atual(minha)) ev(EV_LIVE_RECOVERY, prazoMs.toInt(), geracaoDaAbertura)
             },
         )
         init { recuperacaoLive = live }
@@ -2078,7 +2089,7 @@ object NvPlayer {
                 (manifest.mediaPlaylist.targetDurationUs / 1000L).coerceIn(0L, 60_000L).toInt() else 0
             if (segmentMs != liveSegmentMs) {
                 liveSegmentMs = segmentMs
-                ev(EV_LIVE_SEGMENT, segmentMs, geracaoNative)
+                ev(EV_LIVE_SEGMENT, segmentMs, geracaoDaAbertura)
             }
             if (!pronto) { aplicarFracao(p); return }
             val d = duracaoMs(p)

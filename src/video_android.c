@@ -722,8 +722,16 @@ enum { EV_PRONTO = 1, EV_TOCANDO = 2, EV_PAUSADO = 3, EV_FIM = 4, EV_ERRO = 5,
        EV_TAMANHO = 6, EV_BUFFER = 7, EV_PRIMEIRO_QUADRO = 8, EV_AUDIO_SEM_DECODER = 9,
        EV_SUPERFICIE_ESTAVEL = 10, EV_LIVE_RECOVERY = 11, EV_LIVE_SEGMENT = 12 };
 
-JNIEXPORT void JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativeEvento(JNIEnv *env, jclass cls, jint tipo, jint a, jint b) {
+JNIEXPORT void JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativeEvento(JNIEnv *env, jclass cls,
+    jint tipo, jint a, jint b, jint geracao) {
   (void)env; (void)cls;
+  // Every Media3 playback event belongs to one opening, not just position
+  // samples. A delayed READY/ERROR/PAUSE from the old player must never alter
+  // the state or rescue/error the newly selected source.
+  pthread_mutex_lock(&travaRetomada);
+  int atual = ativo && geracao > 0 && (unsigned)geracao == sessao;
+  pthread_mutex_unlock(&travaRetomada);
+  if (!atual) return;
   switch (tipo) {
     case EV_PRONTO:  if (!prontoLoad) marco("video: pronto (android)"); durMs = a; prontoLoad = 1; break;
     case EV_TOCANDO: tocando = 1; bufferando = 0; pausaVista = 0; if (!tocandoDesde) tocandoDesde = SDL_GetTicks() | 1; break;
