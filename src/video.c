@@ -3521,26 +3521,21 @@ void video_janela_fonte(int sx, int sy, int sw, int sh,
 double video_pos(void)      { return posSeg; }
 double video_duracao(void)  { return durSeg; }
 double video_buffer_fim(void) {
-  DtsBufferInfo b={0};double end=bufferSeg;
-  if(dtsSessao) {
-    DtsPlaybackStatus st={0};dts_playback_status(dtsSessao,&st);
-    if(!st.failed && st.prepared) {
-      if(st.buffered_until>end)end=st.buffered_until;
-      if(st.buffer.total>0 && st.buffer.contiguous_bytes>0 && durSeg>0) {
-        double estimate=posSeg+(double)st.buffer.contiguous_bytes*durSeg/(double)st.buffer.total;
-        if(estimate>end)end=estimate;
-      }
-      if(durSeg>0 && end>durSeg)end=durSeg;
-    }
-    return end;
+  // Return a measured ABSOLUTE buffered endpoint on the movie timeline,
+  // never a position-relative guess. Previously posSeg+contiguous_bytes was
+  // displayed as "downloaded until", causing the buffer bar to jump forward
+  // instantly whenever the user fast-seeked forward.
+  double end=bufferSeg;
+  if (dtsSessao) {
+    DtsPlaybackStatus st={0};
+    dts_playback_status(dtsSessao,&st);
+    if(!st.failed && st.prepared && st.buffered_until>0.0 &&
+       st.buffered_until>end) end=st.buffered_until;
   }
-  if(!dtsSessao && moviebuffer_info(&b)>0 && b.total>0 && b.ready_bytes>0 && durSeg>0) {
-    // Estimate only the standard buffered rail from measured payload and
-    // average file bitrate. No labels, counters or extra player overlay.
-    double estimate=bufferSeg+(double)b.ready_bytes*durSeg/(double)b.total;
-    if(estimate>end)end=estimate>durSeg?durSeg:estimate;
-  }
-  return end;
+  // The webOS/MKV bufferSeg is already absolute. Inferring additional
+  // seconds from payload bytes can mislead across ranged seeks; omit it.
+  if(durSeg>0 && end>durSeg)end=durSeg;
+  return end>0?end:0.0;
 }
 // webOS: so o buffer em SEGUNDOS e real (bufferRange do uMS); bytes, conexoes
 // e quadros o uMS nao conta. O host e o do link pedido (o uMS nao diz o final).
