@@ -29,6 +29,7 @@ leg = source("src/legenda.c")
 legh = source("src/legenda.h")
 p2p = source("src/p2pmotor.c")
 p2ph = source("src/p2pmotor.h")
+p2pabi = source("src/p2pmotor_motor.c")
 kotlin = source("android/app/src/main/java/space/nuvio/nativelegacy/NvPlayer.kt")
 native = source("src/video_android.c")
 cinema = player.split("static void desenharCinema(", 1)[1].split("static void ", 1)[0]
@@ -66,9 +67,29 @@ require("P2P stages from real motor milestone callbacks",
 require("P2P generation guard and reset on cancellation/failure",
         "atomic_load(&geracao) == p->g) estado.etapa" in p2p,
         "estado.etapa = P2PM_ETAPA_NENHUMA;" in p2p)
-require("never invent P2P piece readiness percent",
-        "Selected-file piece readiness is NOT exposed" in p2ph,
-        "engine API 4 lacks selected-file piece evidence" in player)
+require("engine's exact selected-stream stats ABI is wired, static and dlopen",
+        "nuvio_engine_get_stream_stats" in p2pabi,
+        "nuvio_engine_stream_stats_init_sized" in p2pabi,
+        "PEGA(get_stream_stats)" in p2pabi,
+        "st.contiguous_ready_bytes" in p2pabi,
+        "st.verified_file_bytes" in p2pabi,
+        "medicaoArquivo" in p2pabi)
+require("selected-file snapshot rejects stale stream and mismatched episode file",
+        "char tidAtual[65], sidAtual[65]" in p2p,
+        "medicao.indice_arquivo == (uint32_t)idxArquivo" in p2p,
+        "medicao.tamanho_arquivo == tamEsperado" in p2p,
+        "geracaoArquivo == atomic_load(&geracao)" in p2p,
+        "!strcmp(sidArquivo, sidAtual)" in p2p,
+        "idxArquivo == indiceArquivoAtual" in p2p,
+        "limparMedicaoArquivo(); // no stale" in p2p)
+require("P2P has real measured bytes, but NO guessed playable readiness percent",
+        "get_stream_stats()" in p2ph,
+        "NOT a playable-buffer readiness percentage" in p2ph,
+        "Verified from start" in player,
+        "p.prefixo_verificado" in player,
+        "p.medicao_arquivo && n < ABR_MAX" in player,
+        "0..100% readiness percentage" in player,
+        "Never turn them or total torrent payload bytes into a guessed %" in p2ph)
 require("HTTP measured payload from Media3 actual transfer events",
         "onBytesTransferred(source: DataSource" in kotlin,
         "lidos.addAndGet(bytesTransferred.toLong())" in kotlin)
