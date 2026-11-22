@@ -1,4 +1,5 @@
 #include "streams.h"
+#include "fonteid_p1.h"
 #include "episodeicon.h"
 #include "mediaurl.h"
 #include "plrui.h"
@@ -2494,6 +2495,13 @@ int stream_falha_verificar(FonteFalhaSessao *sessao, unsigned geracao, int escol
   free(c); free(fontes);
   return resultado;
 }
+// Immutable release identity: URLs, request headers and CDN tokens are deliberately
+// excluded. This contract is shared by the renewal lookup and final publication.
+static NvFonteId fonteIdP1(const Stream *s) {
+  NvFonteId id = { s->addonChave, s->infoHash, s->fileIdx, s->arquivo,
+                   s->rotulo, s->tamanhoBytes, s->bingeGroup };
+  return id;
+}
 int stream_vod_renovar(const AddonsConsulta *consulta, const char *id, const char *tipo,
                        int indice, unsigned geracao, int (*cancelado)(void *), void *ctx,
                        Stream *saida) {
@@ -2509,15 +2517,9 @@ int stream_vod_renovar(const AddonsConsulta *consulta, const char *id, const cha
   for (int i = 0; i < total; i++) {
     const Stream *s = &fontes[i];
     if (!antiga.addonChave[0] || strcmp(antiga.addonChave, s->addonChave)) continue;
-    // A URL is not an identity once its token expires. Require an exact file
-    // identity, or an unchanged release label with size/group corroboration.
-    int mesmo = antiga.infoHash[0]
-      ? !strcasecmp(antiga.infoHash, s->infoHash) && antiga.fileIdx == s->fileIdx
-      : antiga.arquivo[0] ? !strcmp(antiga.arquivo, s->arquivo)
-      : antiga.rotulo[0] && !strcmp(antiga.rotulo, s->rotulo) &&
-        ((antiga.tamanhoBytes && antiga.tamanhoBytes == s->tamanhoBytes) ||
-         (antiga.bingeGroup[0] && !strcmp(antiga.bingeGroup, s->bingeGroup)));
-    if (!mesmo || (antiga.tamanhoBytes && s->tamanhoBytes && antiga.tamanhoBytes != s->tamanhoBytes)) continue;
+    // Renewal may change only transport URL/headers, never the accepted release.
+    NvFonteId antigo = fonteIdP1(&antiga), novo = fonteIdP1(s);
+    if (!nv_fonte_mesma_liberacao(&antigo, &novo)) continue;
     if (achou >= 0) { achou = -1; break; } // Ambiguous releases must not resume another file.
     achou = i;
   }
@@ -2541,6 +2543,10 @@ int stream_vod_renovada_aplicar(int indice, unsigned geracao, const Stream *font
   if (!fonte || !fonte->url[0] || !nv_perfil_sessao_travar(sessao)) return 0;
   pthread_mutex_lock(&verTrava);
   int ok = geracao == listaGeracao && indice >= 0 && indice < n;
+  if (ok) {
+    NvFonteId antigo = fonteIdP1(&lista[indice]), novo = fonteIdP1(fonte);
+    ok = nv_fonte_mesma_liberacao(&antigo, &novo);
+  }
   if (ok) { lista[indice] = *fonte; atomic_fetch_add(&folhaRevisao, 1); }
   pthread_mutex_unlock(&verTrava);
   nv_perfil_sessao_destravar();
