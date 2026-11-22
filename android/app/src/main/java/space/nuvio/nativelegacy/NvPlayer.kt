@@ -58,7 +58,9 @@ import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.upstream.DefaultAllocator
 import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
 import java.io.InterruptedIOException
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 
 // Player do Nuvio no Android TV: Media3 ExoPlayer numa SurfaceView ATRAS da
 // SDLSurface (o C abre um furo transparente por onde ela aparece, ver
@@ -433,7 +435,36 @@ object NvPlayer {
     // parallel/cache chain; it never downloads the initial range a second time.
     // Starting with ParaleloDataSource would allocate its 4 MB prefetch chunks
     // outside LoadControl's allocator, defeating the preparation memory cap.
-    private class OrigemPlayer(@Volatile var fabrica: DataSource.Factory, private val carga: CargaPlayer) : DataSource.Factory {
+    // P2: count actual network payload transfer events, including HLS/DASH segment
+    // reads and serial HTTP. Do NOT count Media3 cache reads or parallel data
+    // delivery: ParaleloDataSource.Estat already owns real socket payloads.
+    // The counter belongs to RecursosPlayer, so a stale released downloader cannot
+    // contaminate the generation selected for nativeStats.
+    private class ContadorHttp {
+        private val lidos = AtomicLong()
+        private val redeAberta = AtomicBoolean(false)
+        val listener = object : TransferListener {
+            override fun onTransferInitializing(source: DataSource, dataSpec: DataSpec, isNetwork: Boolean) {}
+            override fun onTransferStart(source: DataSource, dataSpec: DataSpec, isNetwork: Boolean) {
+                if (isNetwork && source !is ParaleloDataSource) redeAberta.set(true)
+            }
+            override fun onBytesTransferred(source: DataSource, dataSpec: DataSpec,
+                                            isNetwork: Boolean, bytesTransferred: Int) {
+                if (isNetwork && source !is ParaleloDataSource && bytesTransferred > 0) {
+                    redeAberta.set(true)
+                    lidos.addAndGet(bytesTransferred.toLong())
+                }
+            }
+            override fun onTransferEnd(source: DataSource, dataSpec: DataSpec, isNetwork: Boolean) {}
+        }
+        fun bytes(): Long = if (redeAberta.get()) lidos.get() else -1L
+        fun medir(f: DataSource.Factory): DataSource.Factory = object : DataSource.Factory {
+            override fun createDataSource(): DataSource = f.createDataSource().also { it.addTransferListener(listener) }
+        }
+    }
+
+    private class OrigemPlayer(@Volatile var fabrica: DataSource.Factory,
+                               private val carga: CargaPlayer, private val contador: ContadorHttp) : DataSource.Factory {
         override fun createDataSource(): DataSource = object : DataSource {
             private var atual: DataSource? = null
             private var fabricaAberta: DataSource.Factory? = null
@@ -446,6 +477,7 @@ object NvPlayer {
             }
             private fun abrirFonte(dataSpec: DataSpec, fonte: DataSource.Factory): Long {
                 val d = fonte.createDataSource()
+                d.addTransferListener(contador.listener)
                 for (o in ouvintes) d.addTransferListener(o)
                 atual = d
                 fabricaAberta = fonte
@@ -638,6 +670,7 @@ object NvPlayer {
     private class RecursosPlayer(val carga: CargaPlayer, val alvoMs: Int, val idiomaAudio: String = "") {
         lateinit var p: ExoPlayer
         lateinit var origem: OrigemPlayer
+        val contadorHttp = ContadorHttp()
         lateinit var rede: (Long) -> DataSource.Factory
         lateinit var renderizadores: androidx.media3.exoplayer.DefaultRenderersFactory
         lateinit var fabricaMidia: DefaultMediaSourceFactory
@@ -1364,7 +1397,7 @@ object NvPlayer {
             }
             val origemPreparo = r.cache?.fabrica(serialHttp) ?: serialHttp
             val token = if (preparando) 0L else medidor.sessao(geracao).also { medidorToken = it }
-            r.origem = OrigemPlayer(if (preparando) origemPreparo else r.rede(token), r.carga)
+            r.origem = OrigemPlayer(if (preparando) origemPreparo else r.rede(token), r.carga, r.contadorHttp)
             // ON: platform decoder/passthrough first, FFmpeg only as fallback.
             // F06 tap is at the sink input; F07 gain stays in its processors.
             r.renderizadores = object : androidx.media3.exoplayer.DefaultRenderersFactory(act) {
@@ -1383,11 +1416,11 @@ object NvPlayer {
                 .setLoadErrorHandlingPolicy(PoliticaErroParalelo())
                 .setDataSourceFactory(if (limited) DefaultDataSource.Factory(act, r.origem) else LivePlaylistDataSource.Factory(
                     DefaultDataSource.Factory(act, r.origem),
-                    DefaultHttpDataSource.Factory().setAllowCrossProtocolRedirects(true)
+                    r.contadorHttp.medir(DefaultHttpDataSource.Factory().setAllowCrossProtocolRedirects(true)
                         .setConnectTimeoutMs(2000).setReadTimeoutMs(2000)
                         .setUserAgent(ua).setDefaultRequestProperties(props.filterKeys {
                             !it.equals("If-None-Match", true) && !it.equals("If-Modified-Since", true)
-                        }),
+                        })),
                     report = { Log.i(TAG, it) },
                     liveTsUri = Uri.parse(url).takeIf { LivePlaylistDataSource.isLiveTs(it) },
                 ))
@@ -1720,7 +1753,11 @@ object NvPlayer {
             perdidos = quadrosPerdidos
         }
         try {
-            nativeStats(if (e.usado) e.bytes.get() else -1L, buf,
+            // Parallel requests measure their own physical socket transfers.
+            // Otherwise use only HTTP transfer events (adaptive/serial/revalidation),
+            // never Media3's estimated bitrate or cached reads.
+            val bytesRede = if (e.usado) e.bytes.get() else recursosAtuais?.contadorHttp?.bytes() ?: -1L
+            nativeStats(bytesRede, buf,
                 bufferAlvoMs,
                 if (e.usado) e.conexoes.get().coerceAtLeast(0) else -1,
                 e.primeiroByteMs, perdidos, quadros, e.host,
