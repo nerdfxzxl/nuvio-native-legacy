@@ -331,6 +331,8 @@ void video_estatisticas(VideoStats *s);
 #ifdef NV_ANDROID
 /* Socket bytes over a rolling ~2.5s window; -1 when unknown/unsupported. */
 double video_download_bps(void);
+int video_carga_fase(void); /* 0 preparing, 1 building, 2 detecting, 3 starting */
+int video_somente_audio(void); /* Media3 READY with selected audio / no video tracks */
 #endif
 #if defined(__APPLE__) || defined(NV_LINUX_DESKTOP)
 void video_simular_estatisticas(const VideoStats *s);   // capturas; NULL zera
