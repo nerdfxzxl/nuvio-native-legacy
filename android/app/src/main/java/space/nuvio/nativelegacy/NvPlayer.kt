@@ -302,8 +302,19 @@ object NvPlayer {
         } catch (e: UnsatisfiedLinkError) { Log.w(TAG, "cache sem lib: $e") }
     }
 
+    // P2 first-frame handoff: keep Media3's video/audio decoding and clock
+    // running together, but hold only audible output until the first video
+    // frame AND the surface are stable. Muting via player volume does not
+    // transcode, downmix, reselect tracks or suppress network buffering.
+    private var somLiberado = false
+    private var volumeRequisitado = 1f
+    private fun aplicarVolume() { player?.volume = if (somLiberado) volumeRequisitado else 0f }
+    private fun liberarSom() {
+        if (!somLiberado) { somLiberado = true; aplicarVolume() }
+    }
     private fun aplicarGanho() {
-        player?.volume = GanhoMath.volumePlayer(ganhoPct)
+        volumeRequisitado = GanhoMath.volumePlayer(ganhoPct)
+        aplicarVolume()
         processador?.ganho = GanhoMath.reforco(ganhoPct)
         processador?.amplificacaoDb = amplificacaoDb
         processador?.baixoDb = baixoDb
@@ -1171,7 +1182,10 @@ object NvPlayer {
             }
         }
     }
-    @JvmStatic fun volume(pct: Int) { principal.post { player?.volume = pct.coerceIn(0, 100) / 100f } }
+    @JvmStatic fun volume(pct: Int) { principal.post {
+        volumeRequisitado = pct.coerceIn(0, 100) / 100f
+        aplicarVolume()
+    } }
     // F07: cache limit for the NEXT opens (MB, 0 = off) and the session volume
     // 0..200 (above 100 only while the audio is PCM).
     // #338: buffer size in MiB (0 Auto; C already clamped it to free RAM), sticky, read at open.
@@ -1494,6 +1508,7 @@ object NvPlayer {
         mostrarQuadro(url, tituloPedido)
         pedidoAtivo = pedido
         hdrRecriadoPara = ""; quadroVisto = false
+        somLiberado = false
         recriando = false; recriaAgendada = false; recuperouSuperficie = false; estavelEmitido = false
         principal.removeCallbacks(recriar)
         principal.removeCallbacks(estavelRun)
@@ -1616,6 +1631,7 @@ object NvPlayer {
         val p = player
         player = null
         pronto = false
+        somLiberado = false
         duracaoEnviada = -1
         videoW = 0; videoH = 0
         temJanela = false
@@ -1996,10 +2012,13 @@ object NvPlayer {
     private var hdrRecriadoPara = ""
     private var estavelEmitido = false
     private val estavelRun = Runnable {
-        if (player != null && quadroVisto && !estavelEmitido) {
+        if (player != null && quadroVisto && !estavelEmitido && !recriando && !recriaAgendada &&
+            superficie?.holder?.surface?.isValid == true) {
             estavelEmitido = true
             Log.i(TAG, "[aspect] superficie estavel (hdr=$ultHdr) sessao=$sessao soltando=${soltando != null} holder=${System.identityHashCode(superficie?.holder)}")
             ev(EV_SUPERFICIE_ESTAVEL)
+            esconderQuadro() // retain the previous frame until the new hardware plane is safe
+            liberarSom() // audio-only is separately confirmed by selected Media3 tracks
         }
     }
     private fun avaliarEstavel() {
@@ -2086,8 +2105,11 @@ object NvPlayer {
                         val selectedAudio = groups.any { g ->
                             g.type == C.TRACK_TYPE_AUDIO && (0 until g.length).any { i -> g.isTrackSelected(i) }
                         }
-                        if (selectedAudio && groups.none { it.type == C.TRACK_TYPE_VIDEO })
+                        if (selectedAudio && groups.none { it.type == C.TRACK_TYPE_VIDEO }) {
                             ev(EV_SO_AUDIO, 1)
+                            esconderQuadro()
+                            liberarSom() // no video plane exists to synchronize with
+                        }
                     }
                     ev(EV_CARGA_FASE, 3) // decoded tracks ready; awaiting rendered video frame
                     if (live.ready()) Log.i(TAG, "[live] janela recuperada na mesma sessao=$minha")
@@ -2168,7 +2190,8 @@ object NvPlayer {
         override fun onRenderedFirstFrame() {
             if (!atual(minha)) return
             Log.i(TAG, "[player] onRenderedFirstFrame renderer=video loadMs=${SystemClock.elapsedRealtime() - abriuEm} sessao=$sessao hdr=$ultHdr holder=${System.identityHashCode(superficie?.holder)} soltando=${soltando != null}")
-            esconderQuadro()
+            // Do not dismiss the retained previous frame before HDR/DV surface stability.
+            if (estavelEmitido) esconderQuadro()
             ev(EV_PRIMEIRO_QUADRO)
             quadroVisto = true
             logTaxaDeQuadros()
