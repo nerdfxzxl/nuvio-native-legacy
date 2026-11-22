@@ -73,4 +73,5 @@ for source in "${sources[@]}"; do
 done
 python3 tests/detail_netflix.py
 python3 tests/native_home_refinements.py
+python3 tests/player_panel_131_contract.py
 echo "Early Android C compiler check: passed (home, artwork, gesture, detail, trailer, episodes, metadata, player HUD, audio and subtitles)"
