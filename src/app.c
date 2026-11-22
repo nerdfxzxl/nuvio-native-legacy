@@ -6880,6 +6880,7 @@ void app_atualizar(float dt, Uint32 agora) {
 #endif
 #ifdef NV_ANDROID
     int fonteAnterior = stream_atual();
+    int restaurarFocoCarga = 0;
 #endif
     // The slow-loading escape also covers an already accepted URL and
     // same-source reconnect, not only the still-unresolved addon request.
@@ -6888,6 +6889,9 @@ void app_atualizar(float dt, Uint32 agora) {
     // browsing is unchanged; do not stop it until a replacement is selected.
     if (!player_id_canal()[0] &&
         (aguardandoFonte == 2 || player_carregando() || video_reconectando())) {
+#ifdef NV_ANDROID
+      restaurarFocoCarga = 1;
+#endif
       novaGeracaoFonte(); limparFontePendente();
       aguardandoFonte = 0; preparoEspera = 0;
       retomarDiretoPendente = 0;
@@ -6907,6 +6911,11 @@ void app_atualizar(float dt, Uint32 agora) {
     stream_preferir(base[0] ? fontepref_escolher_manual(base) : -1);
 #endif
     nomeParaFolha(); stream_folha_abrir();
+#ifdef NV_ANDROID
+    // Only a delayed loading escape restores the exact selected source.
+    // A normal manual browse and Q11 failed-recovery focus keep their rules.
+    if (restaurarFocoCarga) stream_folha_focar_fonte(fonteAnterior);
+#endif
   }
 
   // CANAL ESCOLHIDO NO GUIA — tela cheia ou faixa, mesma acao: toca direto.
