@@ -112,6 +112,21 @@ static void *buscar(void *arg) {
         q = js_prox(f);
       }
     }
+    // The official player shows higher-severity categories first: Severe
+    // warnings precede Mild, while the API's category order is retained
+    // for warnings with the same severity.
+    for (int left=1;left<n;left++) {
+      const char *rr=achado[left].r,*gg=achado[left].g;
+      int rank = !strcmp(gg,"Severe")?0:!strcmp(gg,"Moderate")?1:2;
+      int right=left-1;
+      while(right>=0) {
+        int prior = !strcmp(achado[right].g,"Severe")?0:
+                    !strcmp(achado[right].g,"Moderate")?1:2;
+        if(prior<=rank)break;
+        achado[right+1]=achado[right];right--;
+      }
+      achado[right+1].r=rr;achado[right+1].g=gg;
+    }
     free(corpo);
     pthread_mutex_lock(&trava);
     // So publica se o titulo ainda e este: trocar de filme durante a busca
