@@ -33,6 +33,7 @@
 #include "abrecine.h"
 #ifdef NV_ANDROID
 #include "loading_telemetry_p2.h"
+#include "loading_nav_p2c.h"
 #include "p2pmotor.h"
 #endif
 #include "ilhacart.h"
@@ -998,7 +999,7 @@ static AbreCine cine;
 static int cinemaEscapeFoco; /* delayed manual source-change escape only */
 static int cinemaEscapeDisponivel(Uint32 agora) {
   /* Source-owned loading clock, not a timer based on rendered percent. */
-  return cine.viva && (Uint32)(agora - cine.desde) >= 15000u;
+  return nv_loading_change_ready(agora, cine.desde, cine.viva);
 }
 // O botao em foco no modal do erro: 0 = Abrir Fontes, 1 = Voltar.
 static int erroBotao;
@@ -4433,7 +4434,7 @@ void player_evento(const SDL_Event *e) {
       if (k == SDLK_UP && cinemaEscapeFoco) { cinemaEscapeFoco = 0; return; }
     } else cinemaEscapeFoco = 0;
     if (k == SDLK_RETURN || k == SDLK_KP_ENTER || k == SDLK_SPACE) {
-      if (cinemaEscapeFoco && cinemaEscapeDisponivel(SDL_GetTicks())) {
+      if (nv_loading_change_confirm(cinemaEscapeDisponivel(SDL_GetTicks()), cinemaEscapeFoco)) {
         pedFontes = 1;
         cinemaEscapeFoco = 0;
       } else {
