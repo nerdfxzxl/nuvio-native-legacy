@@ -34,6 +34,11 @@ dependencies {
 }
 
 tasks.withType<Test>().configureEach {
+    // Robolectric downloads android-all-instrumented at test runtime, bypassing
+    // Gradle's dependency cache. repo1.maven.org returned HTTP 429 on CI
+    // (debug build #131); Maven Central's alternate official endpoint avoids
+    // its repo1-specific throttle while retaining all graphics assertions.
+    systemProperty("robolectric.dependency.repo.url", "https://repo.maven.apache.org/maven2")
     testLogging {
         events("passed", "failed")
         exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
