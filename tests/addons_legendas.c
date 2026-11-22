@@ -298,5 +298,28 @@ int main(void) {
     }
   }
 
+  // Format A: a service ID is not a human subtitle filename. Preserve a
+  // separately supplied full movie release name, not subtitle%2F...zip.
+  {
+    const char *release="A.Story.Of.Derry.2026.1080p.HMAX.WEB-DL.DDP5.1.srt";
+    char json[1024];
+    snprintf(json,sizeof json,
+      "{\"subtitles\":[{\"lang\":\"eng\",\"url\":\"https://fixture.invalid/sub.srt\","
+      "\"subtitleFileName\":\"subtitle%%2F3752803-8674841.zip\","
+      "\"movieReleaseName\":\"%s\"}]}",release);
+    responses[0]=json;run(1,"tt606","movie");
+    assert(nLegs==1&&!strcmp(legs[0].arquivo,release));
+    // A genuine filename longer than the previous 96-byte limit survives
+    // through addon snapshot/candidate copying for multi-line display.
+    char longRelease[220];
+    for(int i=0;i<205;i++)longRelease[i]=(char)('a'+(i%26));
+    strcpy(longRelease+205,".srt");
+    snprintf(json,sizeof json,
+      "{\"subtitles\":[{\"lang\":\"eng\",\"url\":\"https://fixture.invalid/sub.srt\","
+      "\"subtitleFileName\":\"%s\"}]}",longRelease);
+    responses[0]=json;run(1,"tt606","movie");
+    assert(nLegs==1&&!strcmp(legs[0].arquivo,longRelease));
+  }
+
   puts("addon subtitles: provider fairness, real origin, ordered languages, empty/missing/HTTP and episode checks ok");
 }
