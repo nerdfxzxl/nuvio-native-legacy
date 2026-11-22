@@ -196,6 +196,8 @@ static int nLinhasV;
 
 static int mais, alvo, aberto;
 static int fonteModo, fonteAtiva, fonteFoco, fonteBarraFoco, nFontes;
+static float fonteScroll, fonteScrollAlvo;
+static Uint32 fonteUltAtualiza;
 static struct { int addon; char nome[64]; } fontes[ADDONS_MAX+1];
 static unsigned fontesVersao = ~0u;
 static int fontesEmbutidas = -1;
@@ -318,11 +320,40 @@ static void linhaCandidata(int i, int slot, const char *chave) {
 
 // Source IDs are installed addon indices, not subtitle-list positions.
 // Build a pill for every enabled subtitle addon even when it yielded no hits.
+static int fonteContem(const char *str,const char *needle) {
+  if (!str||!needle||!*needle) return 0;
+  for(;*str;str++) {
+    const char *a=str,*b=needle;
+    while(*a&&*b&&tolower((unsigned char)*a)==tolower((unsigned char)*b)){a++;b++;}
+    if(!*b)return 1;
+  }
+  return 0;
+}
+static void fonteNome(int i,char out[64]) {
+  const char *nome=addons_nome(i);
+  const char *manifesto=addons_nome_por_id(addons_id_manifesto(i));
+  const char *base=addons_base(i);
+  if(manifesto&&*manifesto)nome=manifesto;
+  // The public addon name is the manifest/display name, never the manifest URL
+  // or the secret configuration path baked into an installed source.
+  if(fonteContem(nome,"aiostreams")||fonteContem(base,"aiostreams")) {
+    snprintf(out,64,"%s",fonteContem(nome,"pro")?"AIOStreams Pro":"AIOStreams");
+  } else if(fonteContem(nome,"subdl")||fonteContem(base,"subdl")) {
+    snprintf(out,64,"SubDL");
+  } else if(nome&&*nome&&!fonteContem(nome,"http")&&!fonteContem(nome,".com")&&
+            !fonteContem(nome,".app")&&!fonteContem(nome,".xyz")&&
+            !fonteContem(nome,".stremio")) snprintf(out,64,"%s",nome);
+  else snprintf(out,64,"Addon %d",i+1);
+}
 static void montarFontes(void) {
-  int emb=0,previous=nFontes && fonteAtiva<nFontes?fontes[fonteAtiva].addon:-2;
+  int emb=0;
+  int previous=nFontes&&fonteAtiva<nFontes?fontes[fonteAtiva].addon:-2;
+  int previousFocus=nFontes&&fonteFoco<nFontes?fontes[fonteFoco].addon:previous;
   unsigned versao=addons_versao();
-  for(int i=0;i<nCand;i++) if(cand[i].embutida) {emb=1;break;}
-  if(fontesVersao==versao && fontesEmbutidas==emb) return;
+  Uint32 now=SDL_GetTicks();
+  for(int i=0;i<nCand;i++)if(cand[i].embutida){emb=1;break;}
+  if(fontesVersao==versao&&fontesEmbutidas==emb&&now-fonteUltAtualiza<900u)return;
+  fonteUltAtualiza=now;
   fontesVersao=versao; fontesEmbutidas=emb; nFontes=0;
   if(emb) {
     fontes[nFontes].addon=-1;
@@ -330,14 +361,14 @@ static void montarFontes(void) {
   }
   for(int i=0;i<addons_n() && nFontes<ADDONS_MAX+1;i++) {
     if(!addons_ativo(i) || (addons_sondado(i) && !addons_fornece(i,ADD_LEGENDA))) continue;
-    const char *nome=addons_nome(i);
     fontes[nFontes].addon=i;
-    snprintf(fontes[nFontes].nome,64,"%s",nome&&*nome?nome:"Addon");
+    fonteNome(i,fontes[nFontes].nome);
     nFontes++;
   }
   fonteAtiva=0;
   for(int i=0;i<nFontes;i++) if(fontes[i].addon==previous) {fonteAtiva=i;break;}
   fonteFoco=fonteAtiva;
+  for(int i=0;i<nFontes;i++)if(fontes[i].addon==previousFocus){fonteFoco=i;break;}
 }
 static void fonteEscolher(int i) {
   if(i<0||i>=nFontes)return;
@@ -362,7 +393,9 @@ static void montarLinhas(void) {
     for(i=0;i<nCand;i++) {
       int match=origin==-1 ? cand[i].embutida :
                 origin>=0 && !cand[i].embutida && cand[i].leg.addonIndice==origin;
-      if(match) {
+      // Only explicitly English subtitle tracks are offered in this player
+      // selector (the installed addon's other-language results are untouched).
+      if(match && cand[i].idioma[0] && ling_casa(cand[i].idioma,"en")) {
         char key[96]; snprintf(key,sizeof key,"source|%s",cand[i].id);
         linhaCandidata(i,0,key);
       }
@@ -460,7 +493,9 @@ void legendasui_abrir(void) {
   char prim[24];
   int i;
   aberto = 1; mais = ajustes_legendas_todas() || !temPreferencia(); ver = 0; menu = okPendente = okLongo = 0; alvo = 0; rolagemZerar(); aviso[0] = 0;
-  fonteModo=1; fonteBarraFoco=0; fonteAtiva=fonteFoco=nFontes=0; fontesVersao=~0u; fontesEmbutidas=-1;
+  fonteModo=1; fonteBarraFoco=0; fonteAtiva=fonteFoco=nFontes=0;
+  fonteScroll=fonteScrollAlvo=0.0f; fonteUltAtualiza=0;
+  fontesVersao=~0u; fontesEmbutidas=-1;
   focoChave[0] = 0; foco = 0;
   capturar(); montarFontes(); idPrimario(prim);
   // Open the provider containing the active subtitle, without changing it.
@@ -606,8 +641,9 @@ static void abrirMenu(void) {
 void legendasui_atualizar(float dt) {
   // Molas do dropdown, por quadro (faixas_atualizar): abertura e foco por linha.
   menuT = anim_mola(menuT, menu ? 1.0f : 0.0f, dt, NV_MOLA_TELA);
+  fonteScroll=anim_mola(fonteScroll,fonteScrollAlvo,dt,NV_MOLA_FOCO);
   for (int i = 0; i < 3; i++) menuFocoA[i] = anim_mola(menuFocoA[i], menu && i == menuFoco ? 1.0f : 0.0f, dt, NV_MOLA_FOCO);
-  if (aberto && !menu && okPendente && !okLongo && SDL_GetTicks() - okDesde >= NV_HOLD_MS) {
+  if (!fonteModo && aberto && !menu && okPendente && !okLongo && SDL_GetTicks() - okDesde >= NV_HOLD_MS) {
     okLongo = 1;
     abrirMenu();
   }
@@ -648,6 +684,37 @@ int legendasui_evento(const SDL_Event *e) {
   k = e->key.keysym.sym;
   ok = k == SDLK_RETURN || k == SDLK_KP_ENTER;
   l = nLinhasV ? &linhas[foco] : NULL;
+  // Source-driven subtitle UI has no secondary subtitle or hold-OK menu.
+  // Important: handle focused source pills BEFORE the old hold-OK handler.
+  if(fonteModo) {
+    if(e->type==SDL_KEYUP)return LEGUI_TRATADO;
+    if(k==SDLK_ESCAPE||k==SDLK_AC_BACK||k==SDLK_BACKSPACE) {
+      aberto=0;return LEGUI_FECHAR;
+    }
+    if(fonteBarraFoco){
+      if(k==SDLK_UP)return LEGUI_ABAS;
+      if(k==SDLK_DOWN){fonteBarraFoco=0;return LEGUI_TRATADO;}
+      if(k==SDLK_LEFT&&fonteFoco>0)fonteFoco--;
+      if(k==SDLK_RIGHT&&fonteFoco<nFontes-1)fonteFoco++;
+      if(ok&&!e->key.repeat)fonteEscolher(fonteFoco);
+      return LEGUI_TRATADO;
+    }
+    if(k==SDLK_UP) {
+      if(foco==0){fonteBarraFoco=1;fonteFoco=fonteAtiva;}
+      else focar(foco-1);
+      return LEGUI_TRATADO;
+    }
+    if(k==SDLK_DOWN){if(foco<nLinhasV-1)focar(foco+1);return LEGUI_TRATADO;}
+    if(k==SDLK_LEFT||k==SDLK_RIGHT){
+      fonteBarraFoco=1;fonteFoco=0;return LEGUI_TRATADO;
+    }
+    if(ok&&!e->key.repeat&&l){
+      if(l->tipo==LR_NENHUMA)escolher(0,NULL);
+      if(l->tipo==LR_CAND&&l->cand>=0)escolher(0,&cand[l->cand]);
+      return LEGUI_TRATADO;
+    }
+    return LEGUI_TRATADO;
+  }
   if (ok && e->type == SDL_KEYUP) {
     int pendente = okPendente;
     legendasui_atualizar(0.0f);
@@ -779,6 +846,16 @@ static void ponteiroAtraso(int i, int cx) {
   if (!ponteiroAqui(i) || linhas[i].tipo != LR_ATRASO) return;
   ponteiroLinha(i, 0);
   mudarAtraso(ponteiro_x() < (float)cx ? -50 : 50);
+}
+static void ponteiroFonte(int i,int b) {
+  (void)b;
+  if(i<0||i>=nFontes)return;
+  fonteBarraFoco=1;fonteFoco=i;
+}
+static void ponteiroFonteEscolher(int i,int b) {
+  (void)b;
+  if(i<0||i>=nFontes)return;
+  fonteEscolher(i);
 }
 static void ponteiroAbaEstilo(int a, int b) { (void)a; (void)b; if (aberto) faixas_aba_estilo(1); }
 static void ponteiroAbaSync(int a, int b) { (void)a; (void)b; if (aberto) faixas_aba_sync(1); }
@@ -1155,27 +1232,47 @@ void legendasui_corpo(GfxRect c, float a) {
     ponteiro_alvo(x0+cell,y,cell,58.0f,NULL,ponteiroAbaEstilo,0,0);
     ponteiro_alvo(x0+2*cell,y,cell,58.0f,NULL,ponteiroAbaSync,0,0);
   }
-  // Provider tabs are views, not track selections; changing one never
-  // invokes the video or subtitle pipeline.
+  // Smooth, bounded horizontal pill strip like the source-selector addon row.
+  // Focus and selected source are independent; scrolling moves the strip.
   {
-    float sy=y+68.0f, width=136.0f, gap=7.0f, slot=0.0f;
-    int viewed=fonteBarraFoco?fonteFoco:fonteAtiva;
-    int first=viewed>2?viewed-2:0;
-    gfx_recorte(x0+6.0f,sy,w-12.0f,47.0f);
-    for(int k=first;k<nFontes;k++) {
-      float xx=x0+10.0f+slot*(width+gap);
-      if(xx>x0+w)break;
-      GfxRect pill={xx,sy+3.0f,width,36.0f};
+    float sy=y+68.0f,gap=8.0f;
+    float stripX=x0+8.0f,stripW=w-16.0f,position=0.0f;
+    int watched=fonteBarraFoco?fonteFoco:fonteAtiva;
+    float currentX=0.0f,currentW=0.0f;
+    float width[ADDONS_MAX+1];
+    for(int k=0;k<nFontes;k++){
+      float ww=(float)txt_largura(TXT_ILHA_SUB,fontes[k].nome)+42.0f;
+      width[k]=ww<108.0f?108.0f:ww>204.0f?204.0f:ww;
+      if(k==watched){currentX=position;currentW=width[k];}
+      position+=width[k]+gap;
+    }
+    float maxScroll=position>0.0f?position-gap-stripW:0.0f;
+    if(maxScroll<0)maxScroll=0;
+    if(currentX-fonteScrollAlvo<0.0f)fonteScrollAlvo=currentX-10.0f;
+    else if(currentX+currentW-fonteScrollAlvo>stripW)fonteScrollAlvo=currentX+currentW-stripW+10.0f;
+    if(fonteScrollAlvo<0)fonteScrollAlvo=0;
+    if(fonteScrollAlvo>maxScroll)fonteScrollAlvo=maxScroll;
+    if(fonteScroll>maxScroll)fonteScroll=maxScroll;
+    gfx_recorte(stripX,sy,stripW,48.0f);
+    float xx=stripX-fonteScroll;
+    for(int k=0;k<nFontes;k++) {
+      float ww=width[k];
+      GfxRect pill={xx,sy+3.0f,ww,38.0f};
       int selected=k==fonteAtiva;
       int focused=fonteBarraFoco&&k==fonteFoco;
-      if(selected)gfx_cor(pill,18.0f/pill.h,.97f,.975f,.99f,a);
-      else gfx_cor(pill,18.0f/pill.h,.15f,.17f,.20f,.53f*a);
-      if(focused)gfx_anel(pill,18.0f/pill.h,2.0f,
-                         selected?.24f:1.0f,selected?.30f:1.0f,selected?.40f:1.0f,a);
-      TxtLinha t=txt_linha_corta(TXT_ILHA_SUB,fontes[k].nome,
-                      selected?25:209,selected?30:214,selected?37:225,255,width-17.0f);
-      txt_desenhar_alpha(t,pill.x+(pill.w-t.w)*.5f,pill.y+(pill.h-t.h)*.5f,a);
-      slot+=1.0f;
+      if(xx+ww>=stripX&&xx<=stripX+stripW) {
+        if(selected)gfx_cor(pill,19.0f/pill.h,.97f,.975f,.99f,a);
+        else gfx_cor(pill,19.0f/pill.h,.16f,.18f,.21f,.77f*a);
+        if(focused)gfx_anel(pill,19.0f/pill.h,2.0f,
+                            selected?.24f:1.0f,selected?.30f:1.0f,selected?.40f:1.0f,a);
+        TxtLinha t=txt_linha_corta(TXT_ILHA_SUB,fontes[k].nome,
+                       selected?25:227,selected?30:233,selected?37:240,255,ww-25.0f);
+        txt_desenhar_alpha(t,pill.x+(pill.w-t.w)*.5f,pill.y+(pill.h-t.h)*.5f,a);
+        if(pont && pill.x>=stripX && pill.x+pill.w<=stripX+stripW)
+          ponteiro_alvo(pill.x,pill.y,pill.w,pill.h,
+                        ponteiroFonte,ponteiroFonteEscolher,k,0);
+      }
+      xx+=ww+gap;
     }
     gfx_recorte(c.x,c.y,c.w,c.h);
   }
