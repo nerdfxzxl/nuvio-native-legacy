@@ -4743,7 +4743,30 @@ void app_evento(const SDL_Event *e) {
     saiuPorCima = (e->key.keysym.sym == SDLK_UP);
   }
   if (spotAtalho(e) && spotPode()) { spotAbrir(e->key.keysym.sym == SPOT_TECLA_VOZ); return; }
-  if (player_aberto()) { player_evento(e); return; }
+  if (player_aberto()) {
+    // Back during startup/recovery is a cancellation, not merely a visual
+    // dismissal. Invalidate late URL-renewal/torrent callbacks immediately,
+    // before the player's exit animation can finish.
+    int carga = !player_id_canal()[0] && (player_carregando() || video_reconectando());
+    int saindoAntes = player_quer_sair();
+    player_evento(e);
+    if (carga && !saindoAntes && player_quer_sair()) {
+      novaGeracaoFonte();
+      limparFontePendente();
+      aguardandoFonte = 0;
+      preparoEspera = 0;
+      retomarDiretoPendente = 0;
+      torrentSessao++;
+      p2pmotor_cancelar();
+      diagnostico_cancelar_vazao();
+      limparFonteVOD();
+#ifdef NV_ANDROID
+      p1PosEscolha = -1.0;
+      p1AlvoEscolha[0] = 0;
+#endif
+    }
+    return;
+  }
   // A BARRA LATERAL POR CIMA DA PAGINA DO TITULO (dono, 03/10: "pode abrir por
   // cima"): ESQUERDA no comeco de uma fileira pede a barra e a pagina fica
   // viva embaixo. Aberta, a tecla e dela; recolhendo, ja volta para a pagina.
@@ -6858,10 +6881,19 @@ void app_atualizar(float dt, Uint32 agora) {
 #ifdef NV_ANDROID
     int fonteAnterior = stream_atual();
 #endif
-    // Change Stream cancels renewal/prepare immediately, even while waiting.
-    if (aguardandoFonte == 2 && !player_id_canal()[0]) {
+    // The slow-loading escape also covers an already accepted URL and
+    // same-source reconnect, not only the still-unresolved addon request.
+    // Cancel before opening Dynamic Clock so a stale network callback cannot
+    // replace the user's explicit manual choice. Normal playing-state source
+    // browsing is unchanged; do not stop it until a replacement is selected.
+    if (!player_id_canal()[0] &&
+        (aguardandoFonte == 2 || player_carregando() || video_reconectando())) {
       novaGeracaoFonte(); limparFontePendente();
       aguardandoFonte = 0; preparoEspera = 0;
+      retomarDiretoPendente = 0;
+      torrentSessao++;
+      p2pmotor_cancelar();
+      diagnostico_cancelar_vazao();
       limparFonteVOD(); player_voltar_a_esperar();
       folhaParaTocar = 1; folhaCancelarTocar = 0;
     }
