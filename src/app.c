@@ -1429,9 +1429,16 @@ static void vigiarFonteGuardada(void) {
   { char alvo[64]; alvoPlayer(alvo, sizeof alvo);
     fontevolta_esquecer_alvo(alvo, sessao_usuario(), perfis_ativo(), motivo); }
   if (fonteFalhaPos > 0.0) player_definir_retomada_fonte(fonteFalhaPos);
+#ifdef NV_ANDROID
   // Saved Resume accepted this file; its failure cannot silently pick another.
   renovarListaDoPlayer();
   selecionarAposFalhaVOD("A fonte anterior falhou. Escolha uma fonte.");
+#else
+  player_voltar_a_esperar();
+  limparFonteVOD();
+  renovarListaDoPlayer();
+  aguardandoFonte = 1;
+#endif
 }
 // ID BASE DO TITULO EM JOGO, sem ":temporada:episodio".
 //
@@ -1769,7 +1776,13 @@ static void processarFonteJob(void) {
         definirFonteVOD(s->url);
         vodRenovou = 1;
         fonteVODDesde = fonteManualDesde = SDL_GetTicks() | 1u;
-      } else selecionarAposFalhaVOD("A fonte não respondeu a tempo. Escolha uma fonte.");
+      } else {
+#ifdef NV_ANDROID
+        selecionarAposFalhaVOD("A fonte não respondeu a tempo. Escolha uma fonte.");
+#else
+        player_erro_fonte_motivo(i18n("A fonte não respondeu a tempo."), NULL);
+#endif
+      }
     }
     addons_consulta_liberar(job->consulta); job->consulta = NULL;
   } else if (tipo == FJOB_FALHA) {
@@ -3119,7 +3132,11 @@ static void vigiarAberturaManual(void) {
     sondarAposRecusa();
     fonteManualDesde = 0;
     marcarFonteMorta(stream_atual());
-    if (!player_fonte_falhou()) player_erro_fonte();   // the cause comes from the player error
+#ifdef NV_ANDROID
+    selecionarAposFalhaVOD("A fonte escolhida não abriu. Escolha uma fonte.");
+#else
+    if (!player_fonte_falhou()) player_erro_fonte();
+#endif
     return;
   }
   if (!fontevolta_abertura_vencida(&g, FONTE_MANUAL_PRAZO_MS) &&
@@ -3128,7 +3145,11 @@ static void vigiarAberturaManual(void) {
   fflush(stdout);
   fonteManualDesde = 0;
   marcarFonteMorta(stream_atual());
+#ifdef NV_ANDROID
+  selecionarAposFalhaVOD("A fonte não respondeu a tempo. Escolha uma fonte.");
+#else
   player_erro_fonte_motivo(i18n("A fonte não respondeu a tempo."), NULL);
+#endif
 }
 // PRAZO DE ABERTURA (#202, inicio.h): 15 s sem nenhum sinal de vida, 30 s com
 // dado chegando — e o curto so quando a proxima candidata nao e pior que esta
@@ -3320,7 +3341,13 @@ static void guardarPosicaoFonteFalha(void) {
 static void renovarVodInterrompido(void) {
   if (vodRenovandoDesde) {
     if ((Sint32)(SDL_GetTicks() - vodRenovandoDesde) >= 30000) {
+#ifdef NV_ANDROID
       selecionarAposFalhaVOD("A recuperação da fonte demorou demais. Escolha uma fonte.");
+#else
+      novaGeracaoFonte(); limparFontePendente();
+      vodRenovandoDesde = 0; aguardandoFonte = 0;
+      player_erro_fonte_motivo(i18n("A fonte não respondeu a tempo."), NULL);
+#endif
     }
     return;
   }

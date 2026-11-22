@@ -1591,6 +1591,11 @@ object NvPlayer {
         ouvinteAtual = null; analiticoAtual = null
         soltando = null
         if (p != null) {
+            // Stop audible playback on the main looper before async release:
+            // an old decoder must never overlap the newly chosen source.
+            try { p.playWhenReady = false } catch (e: Exception) {
+                Log.w(TAG, "pause before async release: ${e.javaClass.simpleName}")
+            }
             // Remove listeners before posting stop/release to the application looper.
             try { if (ouv != null) p.removeListener(ouv) } catch (e: Exception) { }
             try { if (ana != null) p.removeAnalyticsListener(ana) } catch (e: Exception) { }
