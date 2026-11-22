@@ -7436,7 +7436,16 @@ static void desenharOsdCorpo(Uint32 agora, float a, float ac, const CatItem *c) 
         expanded+=extra*anim_clamp(focoB[id],0.0f,1.0f);
     }
     if (baseW + maxExtra > maxRow) maxExtra=fmaxf(0.0f,maxRow-baseW);
-    if(expanded>maxExtra)expanded=maxExtra;
+    // Recompute the actual sum of visible expansions after clamping label
+    // widths. During a focus handoff TWO buttons can be partially expanded;
+    // the shell must cover both until the outgoing spring finishes.
+    expanded=0.0f;
+    for(int j=0;j<nAcoes && !compacto;j++) {
+      int id=acoes[j].id;
+      float width=(float)txt_largura(TXT_G21B,rotuloBotao(id));
+      float extra=fminf(maxExtra,fmaxf(0.0f,22.0f+30.0f+12.0f+width+28.0f-PLR_BTN_D));
+      if(acoes[j].habilitada)expanded+=extra*anim_clamp(focoB[id],0.0f,1.0f);
+    }
     // The compact pill shrinks back when ALL action focus springs settle.
     // Crucially the icon row always starts at baseX: don't re-center its x
     // based on whichever action happened to expand this frame. Labels push
