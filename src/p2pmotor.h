@@ -202,6 +202,16 @@ typedef struct {
   uint64_t tamanho_arquivo, prefixo_verificado, bytes_verificados;
 } P2pmArquivoMedicao;
 
+// Pure validity/selected-file gate. This is NOT a readiness-% calculation.
+// A legitimate zero-piece snapshot is valid only with confirmed file identity.
+static inline int p2pm_medicao_corresponde(const P2pmArquivoMedicao *s,
+                                           int indice, uint64_t tamanho) {
+  return s && indice >= 0 && tamanho > 0 &&
+         s->indice_arquivo == (uint32_t)indice && s->tamanho_arquivo == tamanho &&
+         s->prefixo_verificado <= s->bytes_verificados &&
+         s->bytes_verificados <= tamanho;
+}
+
 typedef struct {
   const char *dados, *cache;
   uint64_t ram, disco, upload_bps;
