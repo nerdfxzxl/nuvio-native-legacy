@@ -239,7 +239,7 @@ typedef struct {
   // ate a hora de baixar. Link que nem assim cabe e descartado (addons.c).
   char url[1024];
   char provedor[64]; // nome do addon que devolveu esta legenda
-  char arquivo[96];  // subtitleFileName / movieReleaseName as sent; "" = not sent
+  char arquivo[256]; // full subtitleFileName / movieReleaseName (up to 255 UTF-8 bytes)
   char id[256];      // identidade enviada pelo addon; "" = nao enviada
   int addonIndice;   // origem para dedup por id+addon
 } Legenda;
