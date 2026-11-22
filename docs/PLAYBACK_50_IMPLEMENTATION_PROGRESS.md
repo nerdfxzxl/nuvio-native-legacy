@@ -1,7 +1,7 @@
 # Nuvio Legacy — Q01–Q50 Implementation Progress
 
 **Last updated:** 2026-11-23
-**Status:** P0 COMPLETE; P1 SOURCE IMPLEMENTATION COMPLETE; **P2 SOURCE ACCEPTANCE REVIEW FAILED — P2 REMAINS INCOMPLETE (Q10/Q14/Q26/Q27 post-READY navigation defect); Q18 PLAYABLE-READINESS % EXPLICITLY DEFERRED BY OWNER**. P2-A/B/C source checkpoints preserved. Full NDK/Android/Media3 compilation and device validation deferred to authorized P7/P8. No APK/Actions authorized.
+**Status:** P0 COMPLETE; P1 SOURCE IMPLEMENTATION COMPLETE; **P2 SOURCE IMPLEMENTATION ACCEPTED — Q18 explicitly deferred; Android/NDK/Media3 compilation and device validation pending P7/P8. P3 source work authorized.** Earlier P2, P2-A/B/C and P2-D source checkpoints preserved. No APK or GitHub Actions authorized.
 **Branch:** `feature/official-stream-selector` (not `master`).
 **Prior feature baseline:** `6171645e05d2137d2a1e9ed1b113687246acd7ca` — docs: lock subtitle filename Format A and unbuilt wrapping/parser test handoff.
 **Latest planning commits:** master specification `7d3c81d81aee309843dd2f0b767c6ef3c2d59723`; work packages `b059a7a9a42ae2b91d87bff0a03bfeb314d0f647`; this progress tracker is an additional documentation-only commit. **Recheck actual HEAD at the beginning of every session.**
@@ -24,7 +24,7 @@
 |---|---|---|---|---|
 | P0 | Baseline, inventory, preservation | COMPLETE — source audit only | [`d0ff5a1`](https://github.com/nerdfxzxl/nuvio-native-legacy/commit/d0ff5a1f44fc42034c867ca149a21e1814d2f77c) (documentation) | GitHub branch diff/source/test scripts inspected; **no tests, compile or APK run** |
 | P1 | State/source identity/cancellation | **SOURCE IMPLEMENTATION COMPLETE; Android APK/TV unverified** | `abe5479` through `0df37f5` (all 13 exact SHAs in P1 checkpoint below) | Native GCC/Clang identity PASS; 32/32 source assertions PASS; all 7 modified C/header preprocessor balances PASS; full Android compilation unavailable |
-| P2 | Cinematic/arc/status/speed | **IN PROGRESS — P2-A/P2-B/P2-C source checkpointed; Q18 and runtime gates open** | Original P2, P2-A, P2-B and P2-C chronological commit registers below; latest tracker HEAD | P2-C 45/45 live source checks, 15/15 mirrored C11 GCC/Clang/ASan+UBSan, 9/9 #if balances; **full Android/TV tests NOT RUN** |
+| P2 | Cinematic/arc/status/speed | **SOURCE ACCEPTED (P2-D final review); Q18 explicitly deferred, runtime gates pending** | Original P2, P2-A/B/C plus 15 P2-D source/test commits; full register below | P2-D 41/41 host C11 GCC + Clang ASan/UBSan; P2-C 15/15; P2-B Kotlin 17/17; live source checks; **no NDK/Media3 build or TV tests** |
 | P3 | Selector/reload/recovery | NOT STARTED | — | — |
 | P4 | Buffer/network/cache/seek | NOT STARTED | — | — |
 | P5 | Fidelity/HDR/surface/audio route | NOT STARTED | — | — |
@@ -32,7 +32,7 @@
 | P7 | Integration/regression, post-#134 | NOT STARTED | — | — |
 | P8 | One cached APK + device tests | BLOCKED — NEEDS BUILD AUTHORIZATION | — | — |
 
-**Q01–Q50 implementation count: 10/50 addressed in the P1 source implementation; P2 has partial work and is NOT counted complete** (Q03, Q04, Q08, Q09, Q11, Q14, Q19, Q22, Q35, Q48). **Zero P1 changes have Android APK/TV device verification**. Some behaviors already exist in Legacy; inspect and classify them during P0 rather than duplicating code or claiming they are absent. “Committed” ≠ “compiled” ≠ “APK built” ≠ “device tested”.
+**Q01–Q50 coverage:** P1's ten source-decision IDs were checkpointed; P2's assigned scope has now passed its **source-only acceptance review**, with Q18 current-playhead embedded-P2P readiness percentage explicitly deferred. This is **not** 50/50 implementation, full Android compilation, APK integration, or TV verification. P3–P8 remain unimplemented. “Committed” ≠ “compiled” ≠ “APK built” ≠ “device tested”.
 
 ## Change log
 
@@ -41,7 +41,7 @@
 
 ## Immediate next action
 
-**P0 and P1 source checkpoints are complete; P2 is now partially implemented and MUST be finished before P3 begins.** Start from this branch's latest HEAD; retain P1 source/session gates and the eight protected post-#134 refinements. **Do not infer native/TV validation from source checks.** At the first authorized future native/Android environment, run `bash tools/android/preflight-c.sh`, the targeted P1 harnesses and Android compilation; at authorized P7/P8 device QA check native/Media3 track restoration, source selector focus/reload, Q22 versus Q44 pause, first frame, ARC and saved Resume. No workflow or APK may be triggered before a separate explicit build authorization. P8 remains blocked.
+**P2 source implementation is now ACCEPTED (P2-D correction and final review below); P3 source development is authorized but NOT started by this session.** Begin P3 only from freshly verified branch HEAD, preserving P0/P1, all P2 source decisions and post-#134 refinements. **Q18 remains deliberately deferred**, with real unknown/indeterminate states. At P7 run NDK/SDL/C, Android/Media3/Kotlin/Gradle and identity/navigation test integration; at P7/P8 run hardware TV/ARC/HDR/DV and real TorBox/HTTP/HLS/DASH/P2P tests. No GitHub Actions, workflow changes or APK before separate owner authorization.
 
 **P0 known integration issue:** Android `src/video_android.c:video_buffer_fim()` currently returns nonzero only for live streams, while `src/player.c` uses that API for the VOD buffer rail; `src/video.c` updated after #134 is a non-Android target path. See [P0 baseline](PLAYBACK_50_P0_BASELINE.md) and ensure P4/P7 resolves and tests actual Android VOD buffer endpoint. The early native syntax preflight omits several newly changed files; add coverage before P8. Linux compatibility of subtitle C harness scripts also needs checking. Full detailed Q01–Q50 prose document is not yet archived in GitHub; the in-repo master register is condensed.
 
@@ -341,7 +341,7 @@ Start from the **current branch HEAD after this tracker commit**, verify HEAD, r
 **End of P2-C assignment. P2 still PARTIAL; DO NOT start P3.** No GitHub Actions dispatched, no APK built, no workflow trigger modified. Next session must re-verify actual branch HEAD and preserve this entire P2-C sequence along with the five authoritative documents.
 
 
-## P2 final source acceptance review — 2026-11-23 (NOT ACCEPTED; no P3)
+## P2 final source acceptance review — 2026-11-23 (HISTORICAL FAILURE; superseded by P2-D review below)
 
 **Assigned boundary:** Source-only final audit of P2, P2-A, P2-B, P2-C. No P3 feature implementation, APK, GitHub Actions, workflow triggers or player-source modifications authorized or undertaken. **Initial verified branch HEAD:** `a909e4a9e729fcb23852b1196ad0cbbbc86db7b5` (P2-C documentation checkpoint). Review performed against actual committed `feature/official-stream-selector` GitHub source, all five authority documents and every P2 checkpoint. This update is documentation-only.
 
@@ -380,3 +380,63 @@ Start from the **current branch HEAD after this tracker commit**, verify HEAD, r
 ### Exact next action / gate
 
 **NO P3.** A separately authorized *narrow P2 source-fix session* should resolve and regression-test the post-READY unfinished visual-handoff/escape bug above without touching Q18 readiness %, P2-A/B/C working code or unbuilt post-#134 refinements. Then repeat the source acceptance review. Only when **all other non-deferred P2 source requirements are satisfied** may the tracker record **“P2 source implementation checkpoint accepted, with Q18 explicitly deferred and Android/device validation pending.”** P7 compilation and P7/P8 TV tests are independent future gates; P8 APK/Actions remain blocked without separate build authorization.
+## P2-D implementation + FINAL P2 source acceptance review — 2026-11-23 (SOURCE ACCEPTED)
+
+**Initial HEAD:** \`a28987f6c7863bf9ea67f7de98f636d6465f1f00\` on \`feature/official-stream-selector\`. **Last verified source/test HEAD before this tracker commit:** \`281f5d400c25d0d100ad7aeaf5641eddadae88a6\`. The documentation commit that records this verdict follows it; always resolve the latest branch ref before future work. Reviewed all five authoritative documents, the entire prior failed source review, P2/P2-A/B/C checkpoints and latest committed P2-D source. **P3 was not implemented.**
+
+**FINAL SOURCE VERDICT: P2 SOURCE IMPLEMENTATION ACCEPTED — Q18 explicitly deferred; Android/NDK/Media3 compilation and device validation pending P7/P8. P3 source work authorized.**
+
+### Confirmed P2-D correction (Q10/Q14/Q26/Q27)
+
+The historical source failure was genuine: Android's \`video_pronto()\` returned READY after an elapsed three-second fallback even without a first video frame, or before a rendered frame had a stable hardware surface. Legacy then stopped owning loading navigation while the cinematic veil remained. The fix is a real **separation of media readiness, current-SurfaceView first-frame/stability, backend startup, and incomplete cinematic handoff**:
+
+1. \`src/video_android.c\`: removes the three-second false-positive READY shortcut; backend media ready now requires active + READY + first rendered frame or positively identified audio-only. Adds current-surface \`quadroSuperficie\`, invalidated on a SurfaceView recreation and set again by \`EV_PRIMEIRO_QUADRO\`; retains historical session first-frame status for ongoing playback, and preserves strict source-generation event guards.
+2. \`src/loading_handoff_p2d.h\`: shared pure C predicates distinguish Media3 readiness, current stable frame/confirmed audio-only, and loading input ownership; none infer pixels from an elapsed timer.
+3. \`src/abrecine.c/.h\`: \`abrecine_navegacao()\` owns loading navigation while opening OR while the veil has not fully disappeared, including the 200ms exit. An unstable surface during the fade resets the fade to full coverage and waits for a real stable current-surface frame; reduced-motion still skips only the animation, not the readiness requirement.
+4. \`src/player.c\`: \`player_carregando()\` retains navigation through the unfinished visual handoff, while \`abrecine_passo()\` receives separate backend-opening state to avoid a self-perpetuating fade. The 15-second Change Stream predicate retains source-clock ownership while the cinematic is actually pending. It never auto-focuses: Down focuses; only focused OK selects; direct OK opens diagnostics. Loading Back remains immediate, with source-generation/P2P/pending-work invalidation in the existing \`app.c\` handler. Focus resets after full handoff, explicit new source, error or exit.
+5. Genuine audio-only does not wait for a video frame; ordinary playback/rebuffer/same-source retained frame and Live TV's compact tuning continue on their existing distinct paths; HDR/DV never use an inaccurate SDR snapshot.
+
+**P2-D chronological source/test commits (15; exact SHAs):**
+- \`8f7b76fdae0db029c6d490fd0cf6729e07124670\` — shared readiness/ownership predicates.
+- \`ffc69454b3ac07070c617403b9309fbe769d7ddb\` — cinematic navigation API declaration.
+- \`97ce9bee0b4449f89c31375f02183597057ebeee\` — veil lifetime and surface-instability fade restart.
+- \`54c76605bdf81165fe89c2c2b8b4a1c0c9f53906\` — remove fake Android READY and distinguish current-surface frame.
+- \`554e1630b4b282a31bb905debd88ae4a86dacfcc\` — player input/visual ownership and reset.
+- \`af71897a93a18e2a3449749bba9cbb2f2f33e7ff\` — host-only SDL stub.
+- \`d83bf49c9ec0182b668b49277034627d7f915688\` — actual cinematic C11 regression harness.
+- \`ccc8f1bb54dad56141a6d95983828a3a7246288f\` — host C11 test runner.
+- \`9724a877871bf1dc43b7ef2b388664d8a583590a\` — adjust P2-C source contract for corrected ownership.
+- \`140a82d645145d2c2acf145d0d01f1c27786c2ca\` — P2-D cross-module source contract.
+- \`32c02eafb9762e2cfc2b7fb505d08d5de55ebda6\` — source-contract drawing scope.
+- \`0b2b450bd73857423e1f17003d13df58cf0f10f2\` — source-contract Back/arc scope.
+- \`1b7f5f7e4ccaa871f6bdf880eb6c0a80a1b3fe55\` — disambiguate Live TV numeric-cancel from player Back.
+- \`c00d3894f0e29e40602e0eb8804826ea55dd7f2a\` — newline matching in source test.
+- \`281f5d400c25d0d100ad7aeaf5641eddadae88a6\` — print actual newlines in C test results.
+
+### Focused verification (actual evidence and boundaries)
+
+- **PASS — 41/41 P2-D real cinematic C11 checks**, GCC \`-std=c11 -O1 -g -Wall -Wextra -Werror\` and Clang \`-fsanitize=address,undefined -fno-omit-frame-pointer\`, both executed. This used manually materialized **GitHub-blob-hash-verified** \`src/abrecine.c\`, \`abrecine.h\`, \`loading_nav_p2c.h\`, \`loading_handoff_p2d.h\` and \`tests/playback_p2d_handoff.c\`. Includes READY/no frame after three seconds, frame/unstable surface, exact 15s delayed visibility, explicit Down→OK versus direct OK, partial handoff, surface instability mid-fade, exact 200ms completion, reduced motion, confirmed audio-only, no rebuffer takeover and Live TV exclusion. A **minimal local \`anim.h\` math stub** and committed host-only SDL types substitute for full UI/NDK. Not a full checked-out Android application build.
+- **PASS — 15/15 P2-C timer/focus checks** under host GCC and Clang ASan+UBSan, using manually materialized hash-verified \`tests/playback_p2c_nav.c\` and committed policy header. Includes SDL tick-wrap boundaries.
+- **PASS — 17/17 P2-B frame-hold policy checks** under host \`kotlinc\` and \`java -jar\` using hash-verified \`FrameHoldP2B.kt\` and its original test. Verifies SDR eligibility, out-of-buffer seeks and async snapshot generation ownership; does NOT compile Media3.
+- **PASS — 35 P2-D cross-file source predicates reviewed on live GitHub content** (three early false source-check results were faulty contract scoping to Live TV's digit handler and a too-narrow drawing region; fixed, and inspected against the actual Back handler/arc). The checked-in \`tests/playback_p2d_source_contract.py\` was authored and inspected but **not executed in a complete checkout**. **PASS — 27/27** additional P2 semantic/source-preservation assertions across shared arc, no fake percentages, UI statuses, Media3 first-frame, audio-only, network, P2P, P1 cancellation, selector isolation and P2-B frame hold.
+- **PASS — 13/13** preprocessor conditional nesting checks over inspected C/header sources. This is NOT native syntax compilation. GitHub compare from \`a28987f\` to pre-tracker \`281f5d4\`: **15 commits ahead, zero behind**, only \`src/abrecine.c/.h\`, \`src/loading_handoff_p2d.h\`, \`src/player.c\`, \`src/video_android.c\` and P2-C/P2-D regression files changed. No \`.github/workflows/*\` files, build trigger, master branch or post-#134 handoff were changed.
+- **NOT RUN:** host regression shell/Python commands in a complete authenticated checkout; P1/P2/P2-A end-to-end C integration; \`tools/android/preflight-c.sh\`; Android NDK/SDL/Gradle/Media3/Kotlin integration compilation; APK; GitHub Actions; hardware Android TV D-pad/Back/first-frame/surface/HDR/Dolby Vision/HDMI ARC tests; real TorBox/HTTP/HLS/DASH/embedded P2P throughput behavior. These gates remain **P7 compilation/integration** and **P7/P8 device validation**. Static evidence is not a certification of Android TV compatibility. Source checks exercise code paths and contractual ownership, not the full Android event loop.
+
+### FINAL P2 requirement source-disposition matrix (P2 + P2-A/B/C/D)
+
+| Requirement IDs | Final source checkpoint | Verification still pending |
+|---|---|---|
+| Q01/Q07/Q17/Q23/Q34 | **SOURCE VERIFIED**: shared official-derived loader arc including reduced motion; saved cinema backdrop mode/four-stop gradient and static logo/fallback; status animation and visual handoff. | Pixel-perfect compositing, elapsed transitions and TV artwork/gradient checks P7/P8. |
+| Q02/Q12/Q13 | **SOURCE VERIFIED**: generation-bound Media3 loading phases; event-based subtitle and P2P milestones when reported; distinct rebuffer/reconnect indicators. | Real subtitle fetch/stream types and actual display behavior P7/P8. |
+| Q05/Q06/Q15/Q21/Q28/Q29 | **SOURCE VERIFIED subject to documented hardware limits**: source-selected first-frame + stable-surface transition, audio-only proof, audio sequencing, SDR bounded source-owned PixelCopy retained frame on seek/recovery, HDR/DV no fake SDR conversion. | Hardware buffering/seek/surface recreation, Dolby Vision/HDR, audio sync, ARC P7/P8; HDR/DV may still briefly flash black on some TVs. |
+| Q10/Q14/Q26/Q27 | **P2-D SOURCE DEFECT FIXED AND SOURCE VERIFIED**: startup and veil retain loading ownership, 15s Change Stream, Down→OK vs OK diagnostics, Back cancellation/generation invalidation and complete focus reset through 200ms exit. | Real remote/navigation and stale asynchronous callback/device acceptance P7/P8. |
+| Q16 | **SOURCE VERIFIED**: cinematic only VOD, independent trailers and compact Live TV path preserved. | Live channel retuning/trailer on real TV P7/P8. |
+| Q18 | **OWNER-AUTHORIZED EXPLICIT DEFERRAL**: actual selected-file piece statistics survive; genuine current-playhead contiguous playable-buffer readiness denominator/percentage is **not implemented**. Truthfully indeterminate, never fabricate %; owner chiefly uses TorBox. **Does not block P3 source development.** | Separate future feature decision/engine evidence if reauthorized. |
+| Q24/Q25 | **SOURCE VERIFIED**: real HTTP HLS/DASH/serial TransferListener rate with parallel counter exclusions, generation-safe JNI, smoothing and B/s, KB/s, MB/s unknown omission; genuine embedded P2P speed and peers. | Network/cache/redirect telemetry truth on Android/real endpoints P7/P8. |
+
+### Remaining issues, scope and next authorized work
+
+**No remaining non-deferred P2 source-implementation blocker identified in this final branch review.** Prior Q10/Q14/Q26/Q27 proven defect was fixed in committed source and covered by positive host/source regressions. This does **not** erase the explicitly deferred Q18 or certify device runtime. P0's Android VOD \`video_buffer_fim()\` rail deficiency remains assigned to **P4/P7**, not misreported as P2-complete. Existing P1 source identities, P2-A measured piece bytes, P2-B HDR-safe frame retention, P2-C global spinner/navigation, and the nine documented groups of unbuilt post-#134 refinements remain preserved. P7/P8 must check their full integrated runtime. Full native/Android compilation is deferred to P7, TV verification to P7/P8, and any APK/CI action still requires separate authorization.
+
+**P3 source work authorized by this SOURCE checkpoint only; P3 NOT STARTED in this session.** **No GitHub Actions, APK, workflow trigger modification or master-branch change.**
+
