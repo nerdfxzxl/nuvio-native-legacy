@@ -6321,10 +6321,11 @@ void player_fundo_fora_do_furo(GfxRect furo, int recuado, const CatItem *c) {
 }
 
 // A3: o logo e o Play do detalhe no ultimo quadro dele (player_morph_de).
-static GfxRect morphLogo, morphPlay;
+static GfxRect morphPlay;
 static Uint32 morphEm;
 void player_morph_de(GfxRect logo, GfxRect play) {
-  morphLogo = logo; morphPlay = play; morphEm = SDL_GetTicks();
+  (void)logo; /* title logo never morphs */
+  morphPlay = play; morphEm = SDL_GetTicks();
 }
 
 // A TELA CINEMA DA ABERTURA (#205, abrecine.h). Tudo multiplicado pelo veu,
@@ -6384,7 +6385,7 @@ static void desenharCinema(Uint32 agora, const CatItem *c, int furou) {
   // do detalhe so se ele estava na tela quando a abertura comecou.
   static Uint32 morphDe;
   static int morph;
-  static GfxRect l0, p0;
+  static GfxRect p0;
   // B3 (Canto): same morph, same art and veil; only the targets move. Logo at the
   // bottom left (x 96, 0.744 of the A3 size), the 44 px ring under it, lines beside the ring.
   int canto = ajustes_abertura_estilo();
@@ -6392,7 +6393,7 @@ static void desenharCinema(Uint32 agora, const CatItem *c, int furou) {
   GfxRect anel = canto ? (GfxRect){ lx, 940.0f, 44.0f, 44.0f } : (GfxRect){ cx - 28.0f, 756.0f, 56.0f, 56.0f }, ra = anel;
   if (v <= 0.0f) return;
   if (morphDe != cine.desde) {
-    morphDe = cine.desde; l0 = morphLogo; p0 = morphPlay;
+    morphDe = cine.desde; p0 = morphPlay;
     morph = !reduz && morphEm && p0.w > 0.0f && (Sint32)(cine.desde - morphEm) < 1000;
   }
   tm = !morph || t >= 0.9f ? 1.0f : t > 0.0f ? t / 0.9f : 0.0f;
@@ -6489,7 +6490,15 @@ static void desenharCinema(Uint32 agora, const CatItem *c, int furou) {
   {
     const char *estado = esperandoFonte ? "Preparing stream…" :
         video_reconectando() ? "Reconnecting…" :
-        video_bufferando_ms() ? "Buffering…" : "Starting stream…";
+        video_bufferando_ms() && video_quadro_visto() ? "Buffering…" : "Starting stream…";
+#ifdef NV_ANDROID
+    if (!esperandoFonte && !video_reconectando()) {
+      int fase = video_carga_fase();
+      estado = fase == 1 ? "Building player…" :
+               fase == 2 ? "Detecting stream format…" :
+               fase == 3 ? "Starting stream…" : "Preparing stream…";
+    }
+#endif
     TxtLinha l = txt_linha(TXT_G19M, i18n(estado), 243, 242, 239, 255);
     txt_desenhar_alpha(l, canto ? tx : cx - l.w * .5f, y, .76f * v);
     y += 34.0f;
@@ -6604,7 +6613,7 @@ void player_desenhar(Uint32 agora) {
     int imagem = furar && (video_tocando() || video_pos() >= 0.25);
 #ifdef NV_ANDROID
     /* READY or a progressing clock is not proof the video plane has a frame. */
-    imagem = video_quadro_visto() && video_superficie_estavel();
+    imagem = (video_quadro_visto() && video_superficie_estavel()) || video_somente_audio();
 #endif
     float dtc = cineUlt && agora - cineUlt < 100u ? (float)(agora - cineUlt) / 1000.0f : 1.0f / 60.0f;
 #ifdef NV_SHOT_HOOKS
@@ -6612,7 +6621,7 @@ void player_desenhar(Uint32 agora) {
 #endif
     if (!player_com_video() && !player_carregando()) imagem = 1;
 #ifdef NV_ANDROID
-    if (comVideo && !video_quadro_visto()) imagem = 0;
+    if (comVideo && !video_quadro_visto() && !video_somente_audio()) imagem = 0;
 #endif
     cineUlt = agora;
     // The DV screen keeps the opening alive: it only falls with the real frame, DV or not.
