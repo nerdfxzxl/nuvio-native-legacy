@@ -49,6 +49,20 @@ static int aberta, coluna, foco[3];
 static int legendaSyncPagina, legendaSyncFoco;
 static int legendaTopoFoco, legendaTopoIndice, legendaSyncEdit, legendaSyncLado;
 static int estiloEdit, estiloLado, estiloFontePopup, estiloFonteFoco;
+// Shared OK-hold ramp for subtitle Style/Sync and audio +/- controls.
+// SDL key repeat drives it; no background timer or auto-adjustment.
+static Uint32 ajusteHoldDesde, ajusteHoldUltimo;
+static int ajusteRepetir(int repetindo) {
+  Uint32 agora=SDL_GetTicks();
+  if (!repetindo) { ajusteHoldDesde=ajusteHoldUltimo=agora;return 1; }
+  if (!ajusteHoldDesde) ajusteHoldDesde=agora;
+  Uint32 dur=agora-ajusteHoldDesde;
+  Uint32 intervalo=dur>1700u?60u:dur>800u?95u:140u;
+  if (agora-ajusteHoldUltimo<intervalo) return 0;
+  ajusteHoldUltimo=agora;
+  return dur>1700u?4:dur>800u?2:1;
+}
+static void ajusteSoltar(void){ajusteHoldDesde=ajusteHoldUltimo=0;}
 static float legendaTabCursor;
 // #202: foco na linha da velocidade e o ultimo valor pedido pela folha.
 static int velFoco, velPedidaUi = VEL_NORMAL;
@@ -577,7 +591,7 @@ static void audioAjNovaSessao(void) {
   audioAjEnviar();
 }
 static void audioAjPasso(int dir, int rep) {
-  int step = (rep >= 8 ? 2 : 1) * (dir > 0 ? 1 : -1);
+  int step = (rep > 0 ? rep : 1) * (dir > 0 ? 1 : -1);
   int *v = audioAjFoco == 0 ? &audioAjAmp : audioAjFoco == 1 ? &audioAjBass : &audioAjCenter;
   int min = audioAjFoco == 0 ? 0 : audioAjFoco == 1 ? -12 : -10;
   int max = audioAjFoco == 0 ? 10 : audioAjFoco == 1 ? 6 : 30;
@@ -596,7 +610,7 @@ static void audioAjTecla(SDL_Keycode k, int rep) {
   int ok = k == SDLK_RETURN || k == SDLK_KP_ENTER;
   if (k == SDLK_UP || k == SDLK_DOWN) {
     // Moving vertically always exits +/- focus without requiring Back or OK.
-    audioAjEdit = 0;
+    audioAjEdit = 0; ajusteSoltar();
     if (k == SDLK_UP && audioAjFoco == 0) {
       audioTopoFoco = 1; audioTopoIndice = audioPagina;
     } else if (k == SDLK_UP && audioAjFoco > 0) audioAjFoco--;
@@ -605,14 +619,17 @@ static void audioAjTecla(SDL_Keycode k, int rep) {
   }
   if (audioAjFoco <= 2) {
     if (!audioAjEdit) {
-      if (ok && !rep) { audioAjEdit = 1; audioAjLado = 0; }
+      if (ok && !rep) { audioAjEdit = 1; audioAjLado = 0; ajusteSoltar(); }
       return; // Arrows on a row never change the value.
     }
     if (k == SDLK_LEFT && audioAjLado > 0) audioAjLado--;
     else if (k == SDLK_RIGHT && audioAjLado < 2) audioAjLado++;
-    else if (ok && !rep) {
-      if (audioAjLado == 2) audioAjResetar();
-      else audioAjPasso(audioAjLado == 0 ? -1 : 1, 0);
+    else if (ok) {
+      if (audioAjLado == 2) { if (!rep) audioAjResetar(); }
+      else {
+        int count=ajusteRepetir(rep);
+        if (count) audioAjPasso(audioAjLado == 0 ? -1 : 1, count);
+      }
     }
   } else if (audioAjFoco == 3) {
     if (!audioAjEdit) {
@@ -1436,7 +1453,9 @@ static void estiloAjPasso(int i,int dir) {
       break;
     }
     case 3: {
-      int v=e->tamanho+dir*12; // 120 native = 100% displayed
+      // 3 native units = 2.5% on the 120-unit / 100%-display baseline.
+      // Small single taps; long holds use the same ramp as other sliders.
+      int v=e->tamanho+dir*3;
       if(v<60)v=60;if(v>240)v=240;
       changed=v!=e->tamanho;e->tamanho=v;
       break;
@@ -1483,7 +1502,7 @@ static int estiloTecla(SDL_Keycode k, int rep) {
   }
   if(k==SDLK_UP || k==SDLK_DOWN) {
     // Vertical movement exits the +/- controls, exactly like Audio.
-    estiloEdit=0;
+    estiloEdit=0; ajusteSoltar();
     if(k==SDLK_UP && *f>0)(*f)--;
     else if(k==SDLK_UP){legendaTopoFoco=1;legendaTopoIndice=1;}
     else if(k==SDLK_DOWN && *f<8)(*f)++;
@@ -1529,7 +1548,10 @@ static int estiloTecla(SDL_Keycode k, int rep) {
   }
   if(k==SDLK_LEFT && estiloLado>0)estiloLado--;
   else if(k==SDLK_RIGHT && estiloLado<1)estiloLado++;
-  else if(ok && !rep) estiloAjPasso(*f,estiloLado==0?-1:1);
+  else if(ok) {
+    int count=ajusteRepetir(rep);
+    if(count) estiloAjPasso(*f,(estiloLado==0?-1:1)*count);
+  }
   return 1;
 }
 
@@ -1542,15 +1564,20 @@ void faixas_evento(const SDL_Event *e) {
 #endif
   SDL_Keycode k;
   if (!aberta) return;
-  // Back always closes the subtitle panel from Subtitles, Style, Sync or
-  // focused tab navigation. A font popup / +/- edit consumes only its first Back.
-  if(modo&&e->type==SDL_KEYDOWN&&
+  if(e->type==SDL_KEYUP &&
+      (e->key.keysym.sym==SDLK_RETURN || e->key.keysym.sym==SDLK_KP_ENTER)) {
+    ajusteSoltar();
+    if((!modo&&audioAjEdit)||(modo&&(estiloEdit||legendaSyncEdit))) return;
+  }
+  // Back has one consistent meaning in every Audio / Subtitles subpage:
+  // close the entire sheet, even during +/- editing or a font dropdown.
+  if(e->type==SDL_KEYDOWN && !e->key.repeat &&
      (e->key.keysym.sym==SDLK_AC_BACK||e->key.keysym.sym==SDLK_ESCAPE||
       e->key.keysym.sym==SDLK_BACKSPACE)) {
-    if(estiloFontePopup){estiloFontePopup=0;ctl=-1;return;}
-    if(estiloEdit){estiloEdit=0;return;}
-    if(legendaSyncEdit){legendaSyncEdit=0;return;}
-    aberta=0;legendaTopoFoco=0;return;
+    aberta=0;audioTopoFoco=legendaTopoFoco=0;
+    audioAjEdit=estiloEdit=legendaSyncEdit=estiloFontePopup=0;
+    ctl=-1;ajusteSoltar();
+    return;
   }
   // F04: the subtitle LIST is the selector of legendasui.c (simple view and
   // "Mais opções"); the Estilo bar below stays here.
@@ -1589,10 +1616,15 @@ void faixas_evento(const SDL_Event *e) {
       legendaSyncEdit=0; legendaTopoFoco=1; legendaTopoIndice=2;
     } else if (key == SDLK_DOWN) {
       legendaSyncEdit=0;
-    } else if (ok && !e->key.repeat) {
-      if (!legendaSyncEdit) { legendaSyncEdit=1; legendaSyncLado=0; }
-      else if (legendaSyncLado == 2) legendasui_sync_reset();
-      else legendasui_sync_passo(legendaSyncLado == 0 ? -50 : 50);
+    } else if (ok) {
+      if (!legendaSyncEdit) {
+        if (!e->key.repeat) { legendaSyncEdit=1;legendaSyncLado=0; }
+      } else if (legendaSyncLado == 2) {
+        if (!e->key.repeat) legendasui_sync_reset();
+      } else {
+        int count=ajusteRepetir(e->key.repeat);
+        if(count) legendasui_sync_passo((legendaSyncLado==0?-50:50)*count);
+      }
     } else if (legendaSyncEdit && key == SDLK_LEFT && legendaSyncLado>0) legendaSyncLado--;
     else if (legendaSyncEdit && key == SDLK_RIGHT && legendaSyncLado<2) legendaSyncLado++;
     return;
