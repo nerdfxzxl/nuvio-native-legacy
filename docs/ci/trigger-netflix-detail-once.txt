@@ -40,3 +40,5 @@ Build #131, 2026-11-22: verified English-only subtitle addon pill selection and 
 Build #132, 2026-11-22: retry #131 after fixing external Robolectric HTTP 429 on repo1.maven.org by using repo.maven.apache.org. Keep real Android graphics tests required; same subtitle/seekbar/parental fixes; no native/Gradle/FFmpeg/P2P cache key changes.
 
 Build #133, 2026-11-22: retry after both Maven Central endpoints returned HTTP 429 for Robolectric runtime; use upstream-approved Google mirror while retaining all graphics tests. Keep source changes, earlier green ARM64 native preflight, and caches intact.
+
+Build #134, 2026-11-22: unified TV/mobile centered player capsule with icon-anchored label reveal; Home hero text/actions lower and black artwork veils removed via render-scoped shader flag. [ui-fast] Trigger targeted ARM64 compile + tests/player_home_polish_134.py only; last broad NDK/artwork/Android graphics test passed at #133. Retain full native Gradle build and APK upload.
