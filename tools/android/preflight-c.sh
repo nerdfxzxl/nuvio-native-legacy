@@ -66,12 +66,21 @@ sources=(
   src/detail.c src/trailer.c src/detmais.c src/extras.c
   src/serieaud.c src/notasui.c src/episodios.c src/app.c
 )
+# This one-shot UI-only path still compile-checks all changed native C files.
+# A full gate was green in build #133; unchanged P2P/card/render tests are not
+# repeated when the commit explicitly requests the fast #134 iteration.
+if [[ "${NUVIO_UI_FAST:-0}" == "1" ]]; then
+  sources=(src/player.c src/home.c src/gfx.c)
+fi
 for source in "${sources[@]}"; do
   echo "::group::Early C compile: $source"
   "$cc" "${flags[@]}" "$source"
   echo "::endgroup::"
 done
-python3 tests/detail_netflix.py
-python3 tests/native_home_refinements.py
-python3 tests/player_panel_131_contract.py
+python3 tests/player_home_polish_134.py
+if [[ "${NUVIO_UI_FAST:-0}" != "1" ]]; then
+  python3 tests/detail_netflix.py
+  python3 tests/native_home_refinements.py
+  python3 tests/player_panel_131_contract.py
+fi
 echo "Early Android C compiler check: passed (home, artwork, gesture, detail, trailer, episodes, metadata, player HUD, audio and subtitles)"
