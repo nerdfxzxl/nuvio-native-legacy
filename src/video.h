@@ -405,6 +405,10 @@ enum {
 };
 int  video_dts_estado(void);
 int  video_legenda_atual(void);   // -1 = desligada
+#ifdef NV_ANDROID
+// Capture only compatible native tracks when explicitly switching source.
+void video_p1_guardar_faixas_manual(void);
+#endif
 
 void video_escolher_audio(int i);
 void video_escolher_legenda(int i);   // -1 desliga

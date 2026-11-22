@@ -6713,6 +6713,7 @@ void app_atualizar(float dt, Uint32 agora) {
     if (s) {
       // A manual switch of the same episode retains last trustworthy time.
       double trocaPos = -1.0;
+      int aspectoAnterior = player_aberto() ? player_aspecto() : -1;
       int epAnteriorT = -1, epAnteriorE = -1;
       if (player_aberto() && !player_id_canal()[0]) {
         player_episodio_atual(&epAnteriorT, &epAnteriorE);
@@ -6736,11 +6737,17 @@ void app_atualizar(float dt, Uint32 agora) {
       // cwTocar: o Continuar assistindo reescreve o outro no quadro seguinte.
       // Consumida aqui uma unica vez; o titulo continua o da pagina aberta.
       consumirFolhaTocar(&t, &e);
+      int mesmaParte = epAnteriorT == t && epAnteriorE == e && !folhaInicioDepoisEscolha;
+#ifdef NV_ANDROID
+      if (mesmaParte) video_p1_guardar_faixas_manual();
+#endif
       diagnostico_cancelar_vazao();
       player_abrir(cat_indice_vivo(titulo, imdb),NULL);
       player_definir_episodio(t,e);
-      if (epAnteriorT == t && epAnteriorE == e && !folhaInicioDepoisEscolha &&
-          trocaPos >= 0.0) player_definir_retomada_fonte(trocaPos);
+      if (mesmaParte) {
+        if (trocaPos >= 0.0) player_definir_retomada_fonte(trocaPos);
+        if (aspectoAnterior >= 0) player_aspecto_repor_troca(aspectoAnterior);
+      }
       if(folhaInicioDepoisEscolha)player_do_inicio();
       folhaInicioDepoisEscolha=0;
       stream_definir_atual(fonte);

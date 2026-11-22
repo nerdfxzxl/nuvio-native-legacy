@@ -302,6 +302,8 @@ typedef enum {
 #define PLR_TOAST_MS     1400u
 
 int         player_aspecto(void);              // modo atual (PlrAspecto)
+// Restore a manual source switch without persisting a temporary setting.
+void        player_aspecto_repor_troca(int modo);
 const char *player_aspecto_rotulo(int modo);   // "Cinema Zoom", "Encaixar"...
 void        player_aspecto_definir(int modo);  // aplica e grava
 void        player_aspecto_ciclar(void);       // proximo modo + aviso na tela

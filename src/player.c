@@ -1808,6 +1808,12 @@ static void playerTelaAtualizar(void) {
 }
 #endif
 
+void player_aspecto_repor_troca(int modo) {
+  if (modo < 0 || modo >= PLR_ASP_N) return;
+  aspecto = modo;
+  aspArmar();
+  aplicarAspecto();
+}
 void player_aspecto_definir(int modo) {
   if (modo < 0 || modo >= PLR_ASP_N) modo = PLR_ASP_ORIGINAL;
   aspecto = modo;

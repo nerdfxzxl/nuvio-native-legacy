@@ -352,6 +352,10 @@ static int envX, envY, envW, envH, envEnc, temEnv;
 static volatile int superficieEstavel;
 static volatile int ativo, prontoLoad, primeiroQuadro, falhou, terminou, tocando, largura, altura;
 static volatile int conflito, semDecoderAudio;
+// Native track identities to carry over one explicit same-episode source switch.
+// Ordinal indices are not transferable between unrelated releases.
+static VideoFaixa p1Audio, p1Leg;
+static int p1AudioValido, p1LegValida, p1FaixasPendentes;
 // PAUSA CONFIRMADA (player_suspender): o pedido daqui e o evento 3 do Kotlin
 // DEPOIS dele. O evento chega do fio principal ~3 ms depois (medido na TCL,
 // 02/10); um evento 2 (tocando) no meio desfaz a confirmacao.
@@ -511,7 +515,39 @@ JNIEXPORT void JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativeFaixasFim(JN
     fflush(stdout);
     return;
   }
-  escolherAudioPreferido();
+  // Explicit same-episode source replacement: restore only tracks with a
+  // matching language + codec/channel (audio) or language + subtitle kind.
+  // Never carry ordinal n from file A to arbitrary track n in file B.
+  int restaurouAudio = 0;
+  if (p1FaixasPendentes) {
+    p1FaixasPendentes = 0;
+    if (p1AudioValido) {
+      int melhor = -1, pontuacao = -1, empatou = 0;
+      for (int k = 0; k < nAudio; k++) {
+        const VideoFaixa *f = &faixaAudio[k];
+        if (!f->idioma[0] || strcmp(f->idioma, p1Audio.idioma)) continue;
+        int pontos = 1;
+        if (p1Audio.codec[0] && !strcmp(f->codec, p1Audio.codec)) pontos += 2;
+        if (p1Audio.canais > 0 && f->canais == p1Audio.canais) pontos++;
+        if (pontos > pontuacao) { melhor = k; pontuacao = pontos; empatou = 0; }
+        else if (pontos == pontuacao) empatou = 1;
+      }
+      if (melhor >= 0 && !empatou) { video_escolher_audio(melhor); restaurouAudio = 1; }
+    }
+    if (p1LegValida && !releitura) {
+      int unica = -1;
+      for (int k = 0; k < nLeg; k++) {
+        const VideoFaixa *f = &faixaLeg[k];
+        if (!f->idioma[0] || strcmp(f->idioma, p1Leg.idioma) ||
+            f->tipoLeg != p1Leg.tipoLeg) continue;
+        if (unica >= 0) { unica = -1; break; }
+        unica = k;
+      }
+      if (unica >= 0) video_escolher_legenda(unica);
+    }
+    p1AudioValido = p1LegValida = 0;
+  }
+  if (!restaurouAudio) escolherAudioPreferido();
 }
 
 // Texto da legenda embutida em vigor, valido por `durMs` (estimada no Kotlin:
@@ -1091,6 +1127,7 @@ void video_bombear(void) {
   }
 }
 void video_parar(void) {
+  p1FaixasPendentes = p1AudioValido = p1LegValida = 0;
   novaRetomada(-1);
   capmkv_zerar();   // fio de capitulos em voo nao alimenta o proximo titulo
   nv_recon_zerar(&recon);
@@ -1279,6 +1316,16 @@ int  video_mkv_sondado(void) { return 2; }
 void video_sondar_mkv_agora(void) {}
 int  video_audio_atual(void) { return audioAtual; }
 int  video_legenda_atual(void) { return legAtual; }
+void video_p1_guardar_faixas_manual(void) {
+  const VideoFaixa *a = video_audio(audioAtual);
+  const VideoFaixa *l = video_legenda(legAtual);
+  p1AudioValido = a && a->idioma[0];
+  p1LegValida = l && l->idioma[0];
+  if (p1AudioValido) p1Audio = *a;
+  if (p1LegValida) p1Leg = *l;
+  p1FaixasPendentes = p1AudioValido || p1LegValida;
+}
+
 void video_escolher_audio(int i) {
   if (i < 0 || i >= nAudio) return;
   audioAtual = i;
