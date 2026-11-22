@@ -24,7 +24,7 @@ def check(name, passed):
     checks.append((name, bool(passed)))
 
 pronto = between(v, "int  video_pronto(void) {", "int  video_ativo(void)")
-drawing = between(p, "void player_desenhar(Uint32 agora)", "void player_osd")
+drawing = p.split("void player_desenhar(Uint32 agora)", 1)[1]
 nav_branch = between(p, "// Loading owns D-pad/OK", "// PAINEL DE PAUSA")
 back_branch = between(p, "if (k == SDLK_ESCAPE || k == SDLK_AC_BACK", "// A FONTE NAO ABRIU")
 app_back = between(app, "// Back during startup/recovery", "// A BARRA LATERAL POR CIMA")
