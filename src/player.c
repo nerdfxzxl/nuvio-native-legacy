@@ -6006,6 +6006,22 @@ static char abrFit1[160], abrFit2[160];
 /* Event-derived status shared by cinema and detailed fallback card.  The
  * Loading state is not a stopwatch-based claim of fetching subtitles. */
 static const char *estadoCargaP2(void) {
+#ifdef NV_ANDROID
+  // p2pmotor publishes these only when the matching engine event occurs.
+  // No percentage is displayed: engine API 4 lacks selected-file piece evidence.
+  if (esperandoFonte) {
+    P2pmEstado p2p = {0}; p2pmotor_estado(&p2p);
+    switch (p2p.etapa) {
+      case P2PM_ETAPA_INICIANDO: return "Starting P2P engine…";
+      case P2PM_ETAPA_METADADOS: return "Fetching torrent metadata…";
+      case P2PM_ETAPA_ARQUIVOS: return "Selecting video file…";
+      case P2PM_ETAPA_PREPARANDO: return "Preparing P2P stream…";
+      case P2PM_ETAPA_BYTES: return "Buffering initial pieces…";
+      case P2PM_ETAPA_PRONTO: return "Starting stream…";
+      default: break;
+    }
+  }
+#endif
   if (esperandoFonte) return "Preparing stream…";
   if (video_reconectando()) return "Reconnecting…";
 #ifdef NV_ANDROID

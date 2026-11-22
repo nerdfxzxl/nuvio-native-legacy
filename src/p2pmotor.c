@@ -1008,6 +1008,7 @@ void p2pmotor_limpar_sobra(void) {
 void p2pmotor_cancelar(void) {
   atomic_fetch_add(&geracao, 1u);
   pthread_mutex_lock(&trava);
+  estado.etapa = P2PM_ETAPA_NENHUMA;
   pthread_cond_broadcast(&sinal);
   pthread_mutex_unlock(&trava);
 }
@@ -1381,6 +1382,13 @@ typedef struct {
 
 static int cancelado(void *u) { return atomic_load(&geracao) != ((Pedido *)u)->g; }
 
+/* Only the current request may publish a new P2P loading milestone. */
+static void registrarEtapa(Pedido *p, P2pmEtapa etapa) {
+  pthread_mutex_lock(&trava);
+  if (resolvendo && atomic_load(&geracao) == p->g) estado.etapa = etapa;
+  pthread_mutex_unlock(&trava);
+}
+
 // 1 achou, 0 prazo, -1 erro do torrent (`*espaco` se foi falta de espaco),
 // -2 cancelado. Eventos de outro pedido sao descartados (e contados).
 static int esperar(Pedido *p, int tipo, uint64_t rid, const char *tid, double prazo,
@@ -1463,6 +1471,7 @@ static int resolverCom(Pedido *p, const char *h, int fileIdx, const char *fontes
   if (sidVelho[0] && p->o->parar_stream) p->o->parar_stream(p->m, sidVelho);
   if (!mesmo) {
     double t0 = agora();
+    registrarEtapa(p, P2PM_ETAPA_METADADOS);
     // Um torrent por vez: outro hash solta o anterior (pecas, pares e cache).
     soltarTorrent(p);
     if (!p2p_magnet(h, fontes, magnet, sizeof magnet)) return P2P_ERR_HASH;
@@ -1495,6 +1504,7 @@ static int resolverCom(Pedido *p, const char *h, int fileIdx, const char *fontes
     printf("[p2p-motor] %.8s: metadados em %.1f s\n", h, agora() - t0);
   }
   if (cancelado(p)) { r = -2; goto falhou; }
+  registrarEtapa(p, P2PM_ETAPA_ARQUIVOS);
   // Arquivos. O teto vem ANTES de alocar: torrent com 100 mil arquivos nao
   // vira 100 mil mallocs; olhamos os primeiros P2PM_MAX_ARQ.
   if (p->o->qtd_arquivos(p->m, tid, &qtd) != 0 || qtd == 0) { soltarTorrent(p); return P2P_ERR_SEM_VIDEO; }
@@ -1551,6 +1561,7 @@ static int resolverCom(Pedido *p, const char *h, int fileIdx, const char *fontes
     soltarTorrent(p);
     return P2P_ERR_SEM_VIDEO;
   }
+  registrarEtapa(p, P2PM_ETAPA_PREPARANDO);
   if (p->o->preparar(p->m, tid, (uint32_t)idx, &rid) != 0) { soltarTorrent(p); return P2P_ERR_RECUSOU; }
   r = esperar(p, P2PM_EV_PREPARADO, rid, tid, 10, &ev, &espaco);
   if (r != 1) goto falhou;
@@ -1563,6 +1574,7 @@ static int resolverCom(Pedido *p, const char *h, int fileIdx, const char *fontes
   pthread_mutex_lock(&trava);
   snprintf(sidAtual, sizeof sidAtual, "%s", ev.sid);
   pthread_mutex_unlock(&trava);
+  registrarEtapa(p, P2PM_ETAPA_BYTES);
   // Os primeiros KB de VIDEO tem de chegar (a mesma prova do servidor
   // Stremio): metadados sem ninguem semeando prenderiam o player em
   // "carregando". A sonda e cancelada pela mesma geracao.
@@ -1591,6 +1603,7 @@ static int resolverCom(Pedido *p, const char *h, int fileIdx, const char *fontes
     if (L < sizeof prefixoUrl) { memcpy(prefixoUrl, ev.url, L); prefixoUrl[L] = 0; }
   }
   pthread_mutex_unlock(&trava);
+  registrarEtapa(p, P2PM_ETAPA_PRONTO);
   printf("[p2p-motor] %.8s: arquivo %d pronto\n", h, idx);
   return P2P_OK;
 falhou:
@@ -1616,6 +1629,7 @@ int p2pmotor_resolver(const char *hash, int fileIdx, const char *fontes,
   pthread_mutex_lock(&trava);
   if (resolvendo) { pthread_mutex_unlock(&trava); return P2P_ERR_OCUPADO; }
   resolvendo = 1;
+  estado.etapa = P2PM_ETAPA_INICIANDO;
   // Uma parada em curso (destroy de segundos) ou a vigia lendo eventos: espera
   // no sinal (a trava fica solta), acordando com cancelamento.
   fimEspera = agora() + 15;
@@ -1639,6 +1653,7 @@ int p2pmotor_resolver(const char *hash, int fileIdx, const char *fontes,
   }
   memset(&p, 0, sizeof p);
   p.o = o; p.m = motor; p.g = g;
+  estado.etapa = P2PM_ETAPA_INICIANDO; /* subir() resets the state */
   usuarios++;
   pthread_mutex_unlock(&trava);
 
@@ -1647,6 +1662,7 @@ int p2pmotor_resolver(const char *hash, int fileIdx, const char *fontes,
   pthread_mutex_lock(&trava);
   usuarios--;
   resolvendo = 0;
+  estado.etapa = e == P2P_OK ? P2PM_ETAPA_PRONTO : P2PM_ETAPA_NENHUMA;
   pthread_cond_broadcast(&sinal);
   pthread_mutex_unlock(&trava);
   if (e != P2P_OK) url[0] = 0;

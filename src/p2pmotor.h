@@ -155,8 +155,17 @@ int p2pmotor_motivo_parada(void);
 
 // Orcamento e uso, para a tela dizer a verdade. Copia sob a trava curta; os
 // numeros sao os da ultima volta da vigia (nao faz I/O).
+// P2: real engine state transitions, not stopwatch-derived or invented progress.
+// Selected-file piece readiness is NOT exposed by nuvio-engine API 4;
+// a percentage must remain unknown until that engine evidence exists.
+typedef enum {
+  P2PM_ETAPA_NENHUMA = 0, P2PM_ETAPA_INICIANDO,
+  P2PM_ETAPA_METADADOS, P2PM_ETAPA_ARQUIVOS,
+  P2PM_ETAPA_PREPARANDO, P2PM_ETAPA_BYTES, P2PM_ETAPA_PRONTO
+} P2pmEtapa;
 typedef struct {
   int ativo;
+  P2pmEtapa etapa;
   uint64_t disco_teto, disco_duro, disco_usado, livre;
   uint64_t ram_teto, ram_duro, ram_usada;
   uint64_t baixando_bps;
