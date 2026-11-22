@@ -227,7 +227,7 @@ extern int trakt_scrobble_alvo(int, const TraktScrobbleAlvo *, double, double,
 // numero pode fazer sozinho.
 // 12 s -> 6 s (dono, 05/10: metade do tempo em tela; a pilula da hora segura
 // 1600 -> 800 ms em plrilha.c, a animacao em si nao mudou).
-#define PG_SEG_TOTAL      6.0f
+#define PG_SEG_TOTAL      9.5f
 // Depois disto o aviso nao entra mais: e um aviso do comeco do filme, e a
 // resposta pode chegar tarde. Ver a nota no desenho.
 #define PG_LIMITE_SEG     45.0f
@@ -6897,8 +6897,8 @@ void player_desenhar(Uint32 agora) {
     if (np > 0 && pgDesde &&
         (float)(agora - pgDesde) / 1000.0f < PG_SEG_TOTAL) {
       tg = (float)(agora - pgDesde) / 1000.0f;
-      // NASCE DA ILHA DO RELOGIO (plrguia.c): a pilula cresce ate o corpo com
-      // as linhas e volta a hora quando a janela fecha. Cede aos outros pedidos.
+      // Official-style independent top-left notice, no Dynamic Clock expansion.
+      // Native line and stagger timings are in plrguia.c.
       { const CatItem *ci = item();
         plrguia_pedir(tg, anim, ci ? ci->classificacao : ""); }
     }
