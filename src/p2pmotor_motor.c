@@ -45,6 +45,7 @@ static struct {
   __typeof__(nuvio_engine_file_init_sized) *file_init_sized;
   __typeof__(nuvio_engine_stream_request_init_sized) *stream_request_init_sized;
   __typeof__(nuvio_engine_stats_init_sized) *stats_init_sized;
+  __typeof__(nuvio_engine_stream_stats_init_sized) *stream_stats_init_sized;
   __typeof__(nuvio_engine_create) *create;
   __typeof__(nuvio_engine_destroy) *destroy;
   __typeof__(nuvio_engine_add_torrent) *add_torrent;
@@ -55,6 +56,7 @@ static struct {
   __typeof__(nuvio_engine_remove_torrent) *remove_torrent;
   __typeof__(nuvio_engine_stop_stream) *stop_stream;
   __typeof__(nuvio_engine_get_stats) *get_stats;
+  __typeof__(nuvio_engine_get_stream_stats) *get_stream_stats;
 } F;
 static int carregado;
 static pthread_once_t umaVez = PTHREAD_ONCE_INIT;
@@ -85,8 +87,10 @@ static void carregar(void) {
   PEGA(api_version) PEGA(version_string) PEGA(protocol_backend_version) PEGA(status_message)
   PEGA(config_init_sized) PEGA(torrent_request_init_sized) PEGA(event_init_sized)
   PEGA(file_init_sized) PEGA(stream_request_init_sized) PEGA(stats_init_sized)
+  PEGA(stream_stats_init_sized)
   PEGA(create) PEGA(destroy) PEGA(add_torrent) PEGA(poll_event) PEGA(get_file_count)
   PEGA(get_file) PEGA(prepare_stream) PEGA(remove_torrent) PEGA(stop_stream) PEGA(get_stats)
+  PEGA(get_stream_stats)
 #undef PEGA
   if (F.api_version() != NUVIO_ENGINE_API_VERSION) {
     erroCarga = "libnuvio_engine.so has another API version";
@@ -107,6 +111,7 @@ static void carregar(void) {
 #define nuvio_engine_file_init_sized (*F.file_init_sized)
 #define nuvio_engine_stream_request_init_sized (*F.stream_request_init_sized)
 #define nuvio_engine_stats_init_sized (*F.stats_init_sized)
+#define nuvio_engine_stream_stats_init_sized (*F.stream_stats_init_sized)
 #define nuvio_engine_create (*F.create)
 #define nuvio_engine_destroy (*F.destroy)
 #define nuvio_engine_add_torrent (*F.add_torrent)
@@ -117,6 +122,7 @@ static void carregar(void) {
 #define nuvio_engine_remove_torrent (*F.remove_torrent)
 #define nuvio_engine_stop_stream (*F.stop_stream)
 #define nuvio_engine_get_stats (*F.get_stats)
+#define nuvio_engine_get_stream_stats (*F.get_stream_stats)
 #endif
 
 static const char *versao(void) {
@@ -238,9 +244,29 @@ static int stats(void *m, P2pmStats *s) {
   return 0;
 }
 
+// This API is present in pinned nuvio-engine 02938d7 (API 3), including the
+// patched API 4 build. It reads verified torrent piece availability, not the
+// aggregate received-byte counter. File index and opaque stream ID come
+// directly from the engine. Its prefix starts at file offset zero; this is
+// NOT a metric for a later seek or an entire playable buffer window.
+static int medicaoArquivo(void *m, const char *sid, P2pmArquivoMedicao *out) {
+  nuvio_engine_stream_stats st;
+  if (!m || !sid || !sid[0] || !out) return -1;
+  nuvio_engine_stream_stats_init(&st);
+  if (nuvio_engine_get_stream_stats((nuvio_engine *)m, sid, &st)
+        != NUVIO_ENGINE_STATUS_OK) return -1;
+  if (!st.file_size || st.contiguous_ready_bytes > st.verified_file_bytes ||
+      st.verified_file_bytes > st.file_size) return -1;
+  out->indice_arquivo = st.file_index;
+  out->tamanho_arquivo = st.file_size;
+  out->prefixo_verificado = st.contiguous_ready_bytes;
+  out->bytes_verificados = st.verified_file_bytes;
+  return 0;
+}
+
 static const P2pmOps REAIS = {
   versao, criar, destruir, addMagnet, evPoll, qtdArquivos, arquivo, preparar,
-  pararStream, remover, stats
+  pararStream, remover, stats, medicaoArquivo
 };
 const P2pmOps *p2pmotor_ops_reais(void) {
 #ifdef NV_P2P_MOTOR_DLOPEN
