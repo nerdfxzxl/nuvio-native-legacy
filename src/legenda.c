@@ -15,6 +15,7 @@ static pthread_mutex_t trava = PTHREAD_MUTEX_INITIALIZER;
 static LegendaCue *cues;
 static int nCues, ligada;
 static unsigned geracao;
+static unsigned baixandoGeracao; // current external URL request, under trava
 // A MAIOR DURACAO DO ARQUIVO, e o motivo dela existir esta em legenda_cues:
 // com os blocos ordenados por INICIO, achar os que estao vivos num instante
 // exige olhar para tras — e sem saber ate onde, "para tras" e o arquivo
@@ -784,6 +785,15 @@ static PreDownload *downloadSessao(const char *url) {
   p->next = downloadsSessao; downloadsSessao = p;
   return p;
 }
+int legenda_baixando(void) {
+  int ativo;
+  pthread_mutex_lock(&trava);
+  ativo = (ligada && baixandoGeracao && baixandoGeracao == geracao) ||
+          (preDownload && !preDownload->terminou && preDownload->sessao == preGeracao);
+  pthread_mutex_unlock(&trava);
+  return ativo;
+}
+
 void legenda_pre_baixar(const char *url) {
   PreDownload *p;
   if (!url || !*url) return;
@@ -826,6 +836,7 @@ static void *baixar(void *u) {
   for(i=0;i<n;i++){ double d=v[i].fim-v[i].inicio; if(d>dur)dur=d; }
   pthread_mutex_lock(&trava);
   if(p->g==geracao&&ligada){
+    if (baixandoGeracao == p->g) baixandoGeracao = 0;
     free(cues);cues=v;nCues=n;maiorDur=dur;v=NULL;
     aceitarAss=ass ? 1 : plain ? 2 : 0;
     assrender_geracao(geracao);
@@ -870,7 +881,7 @@ unsigned legenda_carregar_idioma(const char *url, const char *idioma, LegendaBai
     preDescartar("outra escolha");
     p->pre = downloadSessao(url);
   }
-  ligada=1;p->g=++geracao;free(cues);cues=NULL;nCues=0;maiorDur=0;
+  ligada=1;p->g=++geracao;baixandoGeracao=p->g;free(cues);cues=NULL;nCues=0;maiorDur=0;
   pthread_mutex_unlock(&trava);
   assrender_geracao(p->g);
   assrender_limpar_fontes();
@@ -880,6 +891,7 @@ unsigned legenda_carregar_idioma(const char *url, const char *idioma, LegendaBai
   else {
     pthread_mutex_lock(&trava);
     if (p->pre) preLiberar(p->pre);
+    if (baixandoGeracao == g && geracao == g) baixandoGeracao = 0;
     pthread_mutex_unlock(&trava);
     if(pronto)pronto(NULL,g,0,u); free(p);
   }
@@ -898,7 +910,7 @@ static unsigned definirCorpo(const char *corpo, int checar, unsigned dono) {
   for(i=0;i<n;i++){ double d=v[i].fim-v[i].inicio; if(d>dur)dur=d; }
   pthread_mutex_lock(&trava);
   if(checar && geracao!=dono){ pthread_mutex_unlock(&trava); free(v); free(plain); return 0; }
-  ligada=1;geracao++;g=geracao;free(cues);cues=v;nCues=n;maiorDur=dur;
+  ligada=1;geracao++;g=geracao;baixandoGeracao=0;free(cues);cues=v;nCues=n;maiorDur=dur;
   pthread_mutex_unlock(&trava);
   assrender_geracao(g);
   assrender_limpar();
@@ -967,7 +979,7 @@ void legenda_atualizar_corpo(const char *corpo) {
 void legenda_desligar(void) {
   pthread_mutex_lock(&trava);
   preDescartar(i18n("legenda desligada"));
-  ligada=0;geracao++;free(cues);cues=NULL;nCues=0;maiorDur=0;
+  ligada=0;geracao++;baixandoGeracao=0;free(cues);cues=NULL;nCues=0;maiorDur=0;
   pthread_mutex_unlock(&trava);
   assrender_geracao(geracao);
   assrender_limpar_fontes();

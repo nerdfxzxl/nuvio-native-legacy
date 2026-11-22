@@ -57,6 +57,8 @@ unsigned legenda_carregar_com(const char *url, LegendaBaixada pronto, void *u);
 unsigned legenda_carregar_idioma(const char *url, const char *idioma, LegendaBaixada pronto, void *u);
 // Um candidato por play; carregar_com adota pelo link, no mesmo fio/callback.
 void legenda_pre_baixar(const char *url);
+// P2: nonblocking, generation-safe status for external subtitle fetch and prefetch.
+int legenda_baixando(void);
 void legenda_pre_descartar(const char *motivo);
 void legenda_pre_reiniciar(void);
 void legenda_desligar(void);

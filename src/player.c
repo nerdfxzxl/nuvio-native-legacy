@@ -6024,6 +6024,7 @@ static const char *estadoCargaP2(void) {
 #endif
   if (esperandoFonte) return "Preparing stream…";
   if (video_reconectando()) return "Reconnecting…";
+  if (legenda_baixando()) return "Fetching subtitles…";
 #ifdef NV_ANDROID
   switch (video_carga_fase()) {
     case 1: return "Building player…";
