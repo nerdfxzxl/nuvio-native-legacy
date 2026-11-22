@@ -31,6 +31,7 @@
 #include "memlog.h"
 #include "dvtela.h"
 #include "abrecine.h"
+#include "loading_handoff_p2d.h"
 #ifdef NV_ANDROID
 #include "loading_telemetry_p2.h"
 #include "loading_nav_p2c.h"
@@ -999,7 +1000,8 @@ static AbreCine cine;
 static int cinemaEscapeFoco; /* delayed manual source-change escape only */
 static int cinemaEscapeDisponivel(Uint32 agora) {
   /* Source-owned loading clock, not a timer based on rendered percent. */
-  return nv_loading_change_ready(agora, cine.desde, cine.viva);
+  return nv_loading_change_ready(agora, cine.desde,
+    aberto && !erroFonte && !saindo && !ehCanal() && abrecine_navegacao(&cine));
 }
 // O botao em foco no modal do erro: 0 = Abrir Fontes, 1 = Voltar.
 static int erroBotao;
@@ -1055,6 +1057,7 @@ void player_erro_fonte(void) {
   }
 #endif
   esperandoFonte = 0; erroFonte = 1; visivel = 0; tocando = 0; soBarra = 0;
+  cinemaEscapeFoco = 0;
   erroBotao = 0;
   erroTitulo[0] = erroDica[0] = 0;   // erro sem motivo nao herda o do anterior
   erroCausaDoPlayer();
@@ -2365,6 +2368,10 @@ void player_definir_fonte(const char *url) {
   esperandoFonte = 0;
   erroFonte = 0;
   cinemaEscapeFoco = 0; /* A newly accepted source never inherits old focus. */
+  /* Re-arm the source-owned 15s clock and visual handoff: changing sources
+   * while the prior cinema is still visible must never inherit its age. */
+  memset(&cine, 0, sizeof cine);
+  cine.calado = 1;
   dvTelaFonte(url);
 #ifdef NV_ANDROID
   if (preTituloLegendaUsar(url)) { tocarFonte(url); return; }
@@ -2419,8 +2426,14 @@ int player_duracao_midia(double *seg) {
   return 1;
 }
 
-// Esta abrindo o fluxo: ha video pedido, mas ainda nao ha imagem.
-int  player_carregando(void) { return esperandoFonte || (comVideo && !video_pronto()); }
+// Backend startup and visual handoff are deliberately separate. Media3 READY
+// or its first frame can precede the SurfaceView and the 200ms cinematic exit.
+// Keep loading input owned until the final overlay frame has disappeared.
+static int fonteAindaAbrindo(void) { return esperandoFonte || (comVideo && !video_pronto()); }
+int player_carregando(void) {
+  return nv_p2d_loading_owner(esperandoFonte, comVideo, video_pronto(),
+      aberto && abrecine_navegacao(&cine), ehCanal(), erroFonte, saindo);
+}
 int  player_controles_visiveis(void) { return visivel; }
 int   player_foco_na_barra(void) { return barraFoco; }
 // UP belongs to the player while controls are up (button row -> seek bar, bar ->
@@ -6745,8 +6758,8 @@ void player_desenhar(Uint32 agora) {
   { static Uint32 cineUlt;
     int imagem = furar && (video_tocando() || video_pos() >= 0.25);
 #ifdef NV_ANDROID
-    /* READY or a progressing clock is not proof the video plane has a frame. */
-    imagem = (video_quadro_visto() && video_superficie_estavel()) || video_somente_audio();
+    /* First frame on the CURRENT stable surface, not READY/position. */
+    imagem = nv_p2d_visual_ready(video_quadro_visto(), video_superficie_estavel(), video_somente_audio());
 #endif
     float dtc = cineUlt && agora - cineUlt < 100u ? (float)(agora - cineUlt) / 1000.0f : 1.0f / 60.0f;
 #ifdef NV_SHOT_HOOKS
@@ -6754,13 +6767,18 @@ void player_desenhar(Uint32 agora) {
 #endif
     if (!player_com_video() && !player_carregando()) imagem = 1;
 #ifdef NV_ANDROID
-    if (comVideo && !video_quadro_visto() && !video_somente_audio()) imagem = 0;
+    if (comVideo && !video_somente_audio())
+      imagem = imagem && video_quadro_visto() && video_superficie_estavel();
 #endif
     cineUlt = agora;
     // The DV screen keeps the opening alive: it only falls with the real frame, DV or not.
-    abrecine_passo(&cine, (player_carregando() || dvtela_ativa()) && !ehCanal(), imagem, ajustes_abertura_detalhada(),
-                   agora, dtc, ajustes_animacoes_reduzidas());
-    if (!cine.viva || erroFonte || saindo || ehCanal()) cinemaEscapeFoco = 0;
+    /* Use BACKEND state here. Feeding player_carregando() back into the
+     * overlay would keep the fade alive forever, since that public predicate
+     * deliberately includes the pending cinematic visual handoff. */
+    abrecine_passo(&cine, !erroFonte && !saindo && !ehCanal() &&
+                   (fonteAindaAbrindo() || dvtela_ativa()), imagem,
+                   ajustes_abertura_detalhada(), agora, dtc, ajustes_animacoes_reduzidas());
+    if (!abrecine_navegacao(&cine) || erroFonte || saindo || ehCanal()) cinemaEscapeFoco = 0;
     if (erroFonte || saindo || ehCanal()) cine.veu = 0.0f; }
   // Live video below (hardware plane): the glass of the frame is translucent
   // flat glass, no capture, no blur; the video shows through the hole.
