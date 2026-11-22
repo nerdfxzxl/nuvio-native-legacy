@@ -3048,6 +3048,12 @@ void player_ciclo_evento(Uint32 tipo) {
       gravarProgressoParcial(1, "background");
     }
     player_descartar_retido(); retomamorna_cancelar();
+#ifdef NV_ANDROID
+    // Activity.onPause also pauses Media3; the native intent must agree so an
+    // in-flight reconnect cannot silently start playback behind Android UI.
+    if ((tipo == SDL_APP_WILLENTERBACKGROUND || tipo == SDL_APP_DIDENTERBACKGROUND) &&
+        aberto && comVideo) video_pausar(1);
+#endif
   }
 }
 

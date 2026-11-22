@@ -3401,7 +3401,6 @@ static void abrirFonteManualDireta(const Stream *s) {
 }
 static void tentarProximaFonteVOD(void) {
   Uint32 desde;
-  int atual, motivo = 0;
   if (!fonteVODAutomatica || player_id_canal()[0] || !player_aberto() ||
       player_quer_sair() || aguardandoFonte != 0 || !fonteVODDesde) return;
 #ifdef NV_ANDROID
@@ -3426,7 +3425,7 @@ static void tentarProximaFonteVOD(void) {
   return;
 #else
   // Preserve the webOS/Tizen source-switch policy; Android P1 is manual.
-
+  int atual, motivo = 0;
   // Warning clips already stopped their pipeline: never reconnect or retry
   // that provider. Preserve the not-cached card when no alternative remains.
   if (player_fonte_fora_cache()) {

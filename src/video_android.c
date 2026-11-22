@@ -35,6 +35,7 @@
 #include "capmkv.h"
 #include "audioinfo.h"
 #include "video_reconexao.h"
+#include "bufavanco.h"
 #include "idioma.h"
 #include "linguas.h"
 #include "audioescolha.h"
@@ -394,6 +395,7 @@ static pthread_mutex_t travaRetomada = PTHREAD_MUTEX_INITIALIZER;
 // RECONEXAO (video_reconexao.h): igual ao .tpk. O evento 5 so ANOTA; a
 // decisao e o recarregar sao do video_bombear.
 static NvReconexao recon;
+static BufAvanco reconBufferAvanco; // actual buffer progress vetoes false stalls
 static int reconProxima, reconPermitida, reconIniciou;
 static volatile int reconErroPend, reconErroCod, reconErroVideo;
 static int reconAudio = -1, reconLeg = -1;
@@ -729,7 +731,7 @@ JNIEXPORT void JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativeEvento(JNIEn
   // samples. A delayed READY/ERROR/PAUSE from the old player must never alter
   // the state or rescue/error the newly selected source.
   pthread_mutex_lock(&travaRetomada);
-  int atual = ativo && geracao > 0 && (unsigned)geracao == sessao;
+  int atual = ativo && (geracao == 0 || (unsigned)geracao == sessao);
   pthread_mutex_unlock(&travaRetomada);
   if (!atual) return;
   switch (tipo) {
@@ -816,6 +818,7 @@ static int abrirSessao(int inicioMs, int fracao) {
   temEnv = 0;   // a SurfaceView nova ainda nao recebeu janela nenhuma
   if (!travaLeg) travaLeg = SDL_CreateMutex();
   unsigned geracao = novaRetomada(-1);
+  memset(&reconBufferAvanco, 0, sizeof reconBufferAvanco);
   env = ambiente();
   if (!env) { falhou = 1; printf("[video] android: NvPlayer indisponivel\n"); fflush(stdout); return 0; }
   // F07: the cache limit is sticky in Kotlin (read at each open), so it only
@@ -1030,8 +1033,16 @@ void video_bombear(void) {
   // A silent VOD stall also needs recovery when Media3 never emits an error.
   if (!falhou && reconPermitida && reconIniciou && !pausaPedida && !nv_recon_ativa(&recon) &&
       bufferando && SDL_GetTicks() - bufferDesde >= NV_RECON_PRAZO_MS) {
-    reconErroCod = 2002; reconErroPend = 1;
-    snprintf(erroTxt, sizeof erroTxt, "2002 player error: stalled download");
+    VideoStats v;
+    video_estatisticas(&v);
+    // Large REMUX streams may take more than 30s to fill a safe buffer. Only
+    // treat it as a stall if its buffered edge stopped advancing over 10s.
+    if (!bufavanco_segura(&reconBufferAvanco, sessao,
+                          SDL_GetTicks() - bufferDesde, SDL_GetTicks(),
+                          bufavanco_borda(pos, v.bufferSeg))) {
+      reconErroCod = 2002; reconErroPend = 1;
+      snprintf(erroTxt, sizeof erroTxt, "2002 player error: stalled download");
+    }
   }
   if (reconErroPend) {
     int antes = recon.tentativa;
@@ -1043,7 +1054,10 @@ void video_bombear(void) {
                       eraRecarga ? recarregarPosMs / 1000.0 : pos)) {
       if (!antes && !eraRecarga) {
         reconAudio = audioAtual; reconLeg = legAtual;
-        reconPausado = pausaPedida;
+        // P1 Q22: automatic same-source recovery starts playing even if the
+        // old session was paused. A NEW pause/Back/background during recovery
+        // overrides this through video_pausar() or video_parar().
+        reconPausado = 0;
       }
       if (recon.tentativa != antes) {
         printf("[video] conexao caiu (%d): tentativa %d/%d, espera %us\n",
