@@ -9,7 +9,7 @@
 
 static int checks;
 #define CHECK(x) do { ++checks; if (!(x)) { \
-  fprintf(stderr, "P2-D FAIL at line %d: %s\\n", __LINE__, #x); return 1; \
+  fprintf(stderr, "P2-D FAIL at line %d: %s\n", __LINE__, #x); return 1; \
 } } while (0)
 
 int main(void) {
@@ -82,6 +82,6 @@ int main(void) {
   CHECK(abrecine_navegacao(&audio) && audio.veu == 1.0f);
   abrecine_passo(&audio, 0, 1, 0, 600u, .016f, 1);
   CHECK(!abrecine_navegacao(&audio) && audio.veu == 0.0f);
-  printf("P2-D real cinematic handoff: %d checks PASS\\n", checks);
+  printf("P2-D real cinematic handoff: %d checks PASS\n", checks);
   return 0;
 }
