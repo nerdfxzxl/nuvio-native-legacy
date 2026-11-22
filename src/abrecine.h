@@ -25,8 +25,8 @@ typedef struct {
 } AbreCine;
 
 // Por quadro. abrindo = o player espera a fonte/o primeiro quadro; imagem = o
-// primeiro quadro real ja aparece (no .tpk, o furo so abre com a posicao
-// andando); detalhadaPadrao = o ajuste. Uma abertura nova recomeca do zero.
+// primeiro quadro real ja aparece (Android needs rendered frame + stable surface;
+// audio-only must be explicitly confirmed); nova abertura recomeca do zero.
 void abrecine_passo(AbreCine *a, int abrindo, int imagem, int detalhadaPadrao,
                     Uint32 agora, float dt, int reduzidas);
 // 1 = desenhar a tela cinema neste quadro (e esconder o cartao da ilha).
