@@ -446,6 +446,11 @@ typedef struct {
   int familia;    // TxtFamilia; aplicada ao overlay externo (OpenSubtitles)
   int negrito;    // 1 = peso negrito no overlay (so o que o app desenha)
   int corBorda;   // -1 unset (legacy outline); 0 Black, 1 White, 2 Yellow, 3 Green, 4 Blue, 5 Red
+  // Subtitle presentation independent of the old 8-position native control.
+  int offsetHalfPct; // -40..40 = -20.0%..+20.0% in 0.5% steps; positive moves up
+  int hdrBrightness; // 25..100%; brightness of app-rendered text in HDR only
+  int shadowOpacity; // 0..100%; used when shadow is enabled
+  int shadowSize;    // 0..14 pixels; used when shadow is enabled
 } VideoLegendaEstilo;
 
 #define VIDEO_LEG_NCORES 6
