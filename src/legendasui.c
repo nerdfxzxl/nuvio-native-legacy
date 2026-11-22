@@ -1034,15 +1034,35 @@ static int nomeCandidato(const LegUiCand *c,char out[256]) {
   // release in its label. Do not mistake "English" or "Sync status" for one.
   name=c->rotulo;
   if(name&&*name) {
-    const char *sep=strstr(name,LU_SEP);
-    if(sep && (!strncasecmp(name,"English",7)||
-               !strncasecmp(name,"EN",2)))name=sep+strlen(LU_SEP);
+    // Labels may be "English  ·  Release" or "EN · Release"; language is
+    // already visible in the EN badge and must not be repeated in the title.
+    size_t prefix=!strncasecmp(name,"English",7)?7:
+                  !strncasecmp(name,"EN",2)?2:0;
+    if(prefix&&(name[prefix]==' '||name[prefix]==':'||
+                name[prefix]=='-'||name[prefix]=='.'||name[prefix]=='|')) {
+      const char *rest=name+prefix;
+      while(*rest) {
+        unsigned char ch=(unsigned char)*rest;
+        if(isspace(ch)||ch==':'||ch=='-'||ch=='.'||ch=='|'||
+           ch=='['||ch==']') {rest++;continue;}
+        if(ch==0xc2 && (unsigned char)rest[1]==0xb7) {rest+=2;continue;}
+        break;
+      }
+      if(*rest)name=rest;
+    }
     nomeSemExtensao(name,out,256);
+    // A plain provider/status label is not an alternative release filename.
+    // There is no reliable way to reconstruct a release from an opaque ID.
+    char lower[256];
+    size_t j=0;
+    for(;out[j]&&j+1<sizeof lower;j++)
+      lower[j]=(char)tolower((unsigned char)out[j]);
+    lower[j]=0;
     if(out[0]&&!nomeOpaco(out)&&!nomeInutil(c,out)&&
-       strcasecmp(out,"Sync status")&&
-       strcasecmp(out,"Weak sync")&&
-       strcasecmp(out,"Not synced")&&
-       strcasecmp(out,"Syncs when picked"))return 1;
+       strcasecmp(out,c->origem)&&
+       !strstr(lower,"not synced")&&!strstr(lower,"weak sync")&&
+       !strstr(lower,"sync status")&&
+       !strstr(lower,"syncs when picked"))return 1;
   }
   snprintf(out,256,"Subtitle");
   return 0;
