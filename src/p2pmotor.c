@@ -1252,10 +1252,7 @@ static void *vigiaFio(void *x) {
     // a real opaque stream ID and an actual selected file index.
     if (sidArquivo[0] && idxArquivo >= 0 && tamEsperado &&
         o->medicao_arquivo && o->medicao_arquivo(m, sidArquivo, &medicao) == 0 &&
-        medicao.indice_arquivo == (uint32_t)idxArquivo &&
-        medicao.tamanho_arquivo == tamEsperado &&
-        medicao.prefixo_verificado <= medicao.bytes_verificados &&
-        medicao.bytes_verificados <= medicao.tamanho_arquivo)
+        p2pm_medicao_corresponde(&medicao, idxArquivo, tamEsperado))
       medicaoValida = 1;
     if (lerEventos) {
       P2pmEvento ev;
