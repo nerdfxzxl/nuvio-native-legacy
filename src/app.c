@@ -1883,6 +1883,14 @@ iniciarPendente:
   }
 }
 static void cancelarFonteSeSaiu(void) {
+#ifdef NV_ANDROID
+  // A canceled/closed recovery picker must never lend its saved position to
+  // a later opening of the same title.
+  if (!player_aberto() || player_quer_sair()) {
+    p1PosEscolha = -1.0;
+    p1AlvoEscolha[0] = 0;
+  }
+#endif
   int jobSessao = (fioFonteVivo && (fonteJob.tipo == FJOB_STALKER || fonteJob.tipo == FJOB_FALHA ||
                                                   fonteJob.tipo == FJOB_RENOVAR_VOD)) ||
                    fontePendenteTipo == FJOB_STALKER || fontePendenteTipo == FJOB_FALHA ||
@@ -6842,8 +6850,14 @@ void app_atualizar(float dt, Uint32 agora) {
       if (player_id_canal()[0]) { canalFonteIdx = fonte; canalFonteDesde = SDL_GetTicks(); canalViaProxy = canalDiretoTentado = 0; }
     }
   }
+#ifdef NV_ANDROID
   if (player_aberto() && player_pediu_fontes()) {
+#else
+  if (aguardandoFonte != 2 && player_pediu_fontes()) {
+#endif
+#ifdef NV_ANDROID
     int fonteAnterior = stream_atual();
+#endif
     // Change Stream cancels renewal/prepare immediately, even while waiting.
     if (aguardandoFonte == 2 && !player_id_canal()[0]) {
       novaGeracaoFonte(); limparFontePendente();
@@ -6854,8 +6868,12 @@ void app_atualizar(float dt, Uint32 agora) {
     char base[24];
     stream_folha_contexto(player_linha_episodio());
     idBaseDoTitulo(base, sizeof base);
+#ifdef NV_ANDROID
     stream_preferir(fonteAnterior >= 0 ? fonteAnterior :
                      base[0] ? fontepref_escolher_manual(base) : -1);
+#else
+    stream_preferir(base[0] ? fontepref_escolher_manual(base) : -1);
+#endif
     nomeParaFolha(); stream_folha_abrir();
   }
 
