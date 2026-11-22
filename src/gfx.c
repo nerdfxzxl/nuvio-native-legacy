@@ -101,6 +101,7 @@ int gfx_veu_na_arte = 0;
 float gfx_desliza_atual = 0.0f;
 float gfx_opacidade_grupo = 1.0f;
 float gfx_osd_mult = 1.0f;
+int gfx_hero_sem_degrade_atual;
 float gfx_hdr_ui = 1.0f;
 int gfx_hdr_output;
 // Tamanho real do alvo da tela (em retina, maior que 1920x1080). Guardado aqui
@@ -629,6 +630,7 @@ static const char *FS_CORPO[GFX_NMODOS] = {
   "  float xd = vUv.x - uDesliza;\n"
   "  float dentro = step(0.0, xd) * step(xd, 1.0);\n"
   "  vec3 c = texture2D(uTex, clamp(cover(vec2(xd, vUv.y)), 0.0, 1.0)).rgb;\n"
+  "  if (uFoco < -0.5) { gl_FragColor = nv_dither(c, uCor.a*dentro); return; }\n"
   "  vec3 bg = uFundo;\n"   // #0d0d0d fora do estilizado
   "  float y = vUv.y;\n"
   "  float av = clamp((y-0.820)/0.072,0.0,1.0)*0.25\n"
@@ -842,6 +844,7 @@ static const char *FS_CORPO[GFX_NMODOS] = {
   "  float xd = vUv.x - uDesliza;\n"
   "  float dentro = step(0.0, xd) * step(xd, 1.0);\n"
   "  vec3 c = texture2D(uTex, clamp(cover(vec2(xd, vUv.y)), 0.0, 1.0)).rgb;\n"
+  "  if (uFoco < -0.5) { gl_FragColor = nv_dither(c, uCor.a*dentro); return; }\n"
   "  vec3 bg = uFundo;\n"
   "  float y = vUv.y;\n"
   "  float av = clamp((y-0.640)/0.108,0.0,1.0)*0.35\n"
@@ -1315,6 +1318,7 @@ static const char *FS_CORPO[GFX_NMODOS] = {
   "    else          uv.x = (uv.x - 0.5) * ra + 0.5;\n"
   "  }\n"
   "  vec3 c = texture2D(uTex, clamp(uv, 0.0, 1.0)).rgb;\n"
+  "  if (uFoco < -0.5) { gl_FragColor = nv_dither(c, uCor.a*m*dentro); return; }\n"
   "  float ge = smoothstep(0.62, 0.0, vUv.x) * 0.80 * uFoco;\n"
   "  float gb = smoothstep(uCor.r > 0.0 ? uCor.r : 0.38, 1.0, vUv.y) * 0.72 * uFoco;\n"
   "  c *= 1.0 - clamp(ge + gb - ge * gb, 0.0, 1.0);\n"
@@ -1368,7 +1372,7 @@ static const char *FS_CORPO[GFX_NMODOS] = {
   "                 - clamp((t-0.46)/0.30,0.0,1.0)*0.40\n"
   "                 - clamp((t-0.76)/0.24,0.0,1.0)*0.16;\n"
   "  ah *= step(vUv.x, 0.45);\n"
-  "  float rampa = clamp(ah + av - ah*av, 0.0, 1.0);\n"
+  "  float rampa = uFoco < -0.5 ? 0.0 : clamp(ah + av - ah*av, 0.0, 1.0);\n"
   "  vec3 dst = (uAmbOn > 0.5) ? texture2D(uAmb, vAmb).rgb : bg;\n"
   "  vec3 cB = texture2D(uTexB, clamp(coverAsp(vec2(xd, vUv.y), uTexAspB), 0.0, 1.0)).rgb;\n"
   "  vec4 dB = (uVaza > 0.5) ? nv_dither(cB, uAlfaB * dentro * (1.0 - rampa)) : nv_dither(mix(cB, bg, rampa), uAlfaB * dentro);\n"
@@ -1393,7 +1397,7 @@ static const char *FS_CORPO[GFX_NMODOS] = {
   "                 - clamp((t-0.46)/0.30,0.0,1.0)*0.38\n"
   "                 - clamp((t-0.76)/0.24,0.0,1.0)*0.42;\n"
   "  ah *= step(vUv.x, 0.65);\n"
-  "  float rampa = clamp(ah + av - ah*av, 0.0, 1.0);\n"
+  "  float rampa = uFoco < -0.5 ? 0.0 : clamp(ah + av - ah*av, 0.0, 1.0);\n"
   "  vec3 dst = (uAmbOn > 0.5) ? texture2D(uAmb, vAmb).rgb : bg;\n"
   "  vec3 cB = texture2D(uTexB, clamp(coverAsp(vec2(xd, vUv.y), uTexAspB), 0.0, 1.0)).rgb;\n"
   "  vec4 dB = (uVaza > 0.5) ? nv_dither(cB, uAlfaB * dentro * (1.0 - rampa)) : nv_dither(mix(cB, bg, rampa), uAlfaB * dentro);\n"
@@ -1614,6 +1618,7 @@ static const char *FS_CORPO[GFX_NMODOS] = {
   "    else          uv.x = (uv.x - 0.5) * ra + 0.5;\n"
   "  }\n"
   "  vec3 c = texture2D(uTex, clamp(uv, 0.0, 1.0)).rgb;\n"
+  "  if (uFoco < -0.5) { gl_FragColor = vec4(c, 1.0); return; }\n"
   "  float ge = smoothstep(0.62, 0.0, vUv.x) * 0.80 * uFoco;\n"
   "  float gb = smoothstep(uCor.r > 0.0 ? uCor.r : 0.38, 1.0, vUv.y) * 0.72 * uFoco;\n"
   "  c *= 1.0 - clamp(ge + gb - ge * gb, 0.0, 1.0);\n"
@@ -2692,7 +2697,12 @@ void gfx_rect(GfxRect r, GLuint tex, GfxModo modo, float foco,
   // quadro tipico da home sao centenas de gfx_rect, a maioria em modos que nao
   // usam foco/parallax/texAsp, entao o teste barato aqui poupa a chamada cara.
   glUniform4f(P->rect, r.x, r.y, r.w, r.h);
-  if (P->foco >= 0)   glUniform1f(P->foco, foco);
+  if (P->foco >= 0) {
+    int heroMode = modo == GFX_HERO || modo == GFX_HERO_CHEIO ||
+                   modo == GFX_VITRINE || modo == GFX_VITRINE_DIN ||
+                   modo == GFX_HERO_CAM || modo == GFX_HERO_CHEIO_CAM;
+    glUniform1f(P->foco, (gfx_hero_sem_degrade_atual && heroMode) ? -1.0f : foco);
+  }
   // #410: o especular da arte tambem obedece a Reflexo/Profundidade.
   // uFoco continua inteiro: contraste e rebordo nao sao intensidade de reflexo.
   if (P->reflexo >= 0)
