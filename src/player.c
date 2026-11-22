@@ -2329,6 +2329,7 @@ void player_definir_retomada_fonte(double segundos) {
 }
 void player_definir_fonte(const char *url) {
   if ((!aberto && !mini) || !url || !*url) return;
+  barraBufferMem=0.0f;
   fonteAcaoInvalidar();
   // A primeira fonte ainda pode aproveitar a legenda antecipada na espera.
   if (comVideo) legenda_pre_descartar(i18n("troca de fonte"));
@@ -2359,6 +2360,7 @@ void player_definir_fonte(const char *url) {
 
 void player_voltar_a_esperar(void) {
   if (!aberto) return;
+  barraBufferMem=0.0f;
   fonteAcaoInvalidar();
   legenda_pre_descartar(i18n("fonte descartada"));
   // A fonte foi descartada: a tela do DV sai e o cartao de sempre conta a
