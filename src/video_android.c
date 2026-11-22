@@ -10,10 +10,9 @@
 //    a SurfaceView por layout, entao um retangulo MAIOR que a tela e com origem
 //    NEGATIVA e valido e o pai recorta o excedente. No Tizen 9 o ROI fora da
 //    painel apagava o plano (#188/#195); aqui nao existe esse limite.
-//  * O furo so abre com imagem: video_pronto() so fica 1 depois do evento 8
-//    (onRenderedFirstFrame). player.c ja abre o furo quando player_com_video()
-//    (comVideo && video_pronto()) e nao precisa mudar. Sem quadro nenhum
-//    (so audio) o furo abre 3 s depois de tocar, como o .tpk faz.
+//  * video_pronto() requires a real onRenderedFirstFrame (event 8), or
+//    positively identified audio-only media. There is no elapsed-time
+//    fallback to a hardware video plane with no rendered image.
 //  * HDR/Dolby Vision/Atmos vem do Format das faixas (nativeHdr).
 //  * Audio sem decoder: evento 9 (extensao do contrato), nao erro.
 //
@@ -45,6 +44,7 @@
 #include "tex_cache.h"
 #include "velocidade.h"
 #include "loading_telemetry_p2.h"
+#include "loading_handoff_p2d.h"
 #include "redefit.h"
 #include <SDL2/SDL.h>
 #include <jni.h>
@@ -352,9 +352,10 @@ static char cabecalhos[2048];
 // ULTIMA JANELA ENTREGUE ao Kotlin (dedupe de reenvio; ver janelaSeMudou, la
 // embaixo, onde a regra vive junto das funcoes que enviam).
 static int envX, envY, envW, envH, envEnc, temEnv;
-// prontoLoad = o player preparou (evento 1); primeiroQuadro = evento 8.
-// video_pronto() so e 1 com imagem (ver o cabecalho).
-static volatile int superficieEstavel;
+// READY, first frame in this playback session, and first frame on the CURRENT
+// SurfaceView are distinct. Recreating the surface must not reset Media3's
+// session history, but must gate the first cinematic visual handoff.
+static volatile int superficieEstavel, quadroSuperficie;
 static volatile int ativo, prontoLoad, primeiroQuadro, falhou, terminou, tocando, largura, altura;
 static volatile int cargaFase, somenteAudio;
 static volatile int conflito, semDecoderAudio;
@@ -400,7 +401,6 @@ static char tituloArmado[96], tituloSessao[96], tituloEnviado[96];
 static int ganhoEnviado = CB_VOL_NORMAL;
 static int retomadaInicialEstado = -1;
 static pthread_mutex_t travaRetomada = PTHREAD_MUTEX_INITIALIZER;
-#define ANDROID_FURO_PRAZO_MS 3000u   // sem quadro (so audio): abre 3 s depois de tocar
 
 // RECONEXAO (video_reconexao.h): igual ao .tpk. O evento 5 so ANOTA; a
 // decisao e o recarregar sao do video_bombear.
@@ -826,9 +826,9 @@ JNIEXPORT void JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativeEvento(JNIEn
       }
       else if (a >= 100) bufferando = 0;
       break;
-    case EV_PRIMEIRO_QUADRO: marco("video: primeiro quadro (android)"); primeiroQuadro = 1; break;
+    case EV_PRIMEIRO_QUADRO: marco("video: primeiro quadro (android)"); primeiroQuadro = quadroSuperficie = 1; break;
     case EV_SUPERFICIE_ESTAVEL: superficieEstavel = 1; break;
-    case EV_SUPERFICIE_INVALIDADA: superficieEstavel = 0; break; // old surface invalid
+    case EV_SUPERFICIE_INVALIDADA: superficieEstavel = 0; quadroSuperficie = 0; break; // old surface frame cannot authorize new handoff
     case EV_AUDIO_SEM_DECODER: semDecoderAudio = 1; break;
     case EV_CARGA_FASE: if (a >= 0 && a <= 3) cargaFase = a; break;
     case EV_SO_AUDIO: if (a == 1) somenteAudio = 1; break;
@@ -866,7 +866,7 @@ static int abrirSessao(int inicioMs, int fracao, int mesmaFonte) {
   unsigned preparado = preparoAdotar;
   preparoAdotar = 0;
   JNIEnv *env;
-  ativo = 1; superficieEstavel = 0; prontoLoad = primeiroQuadro = falhou = terminou = tocando = 0;
+  ativo = 1; superficieEstavel = quadroSuperficie = 0; prontoLoad = primeiroQuadro = falhou = terminou = tocando = 0;
   cargaFase = somenteAudio = 0;
   velEnviada = 100;
   largura = altura = durMs = posMs = posNativoMs = 0; bufferando = 1; bufferDesde = SDL_GetTicks();
@@ -1184,7 +1184,7 @@ void video_parar(void) {
       kInt(mPararMantendoPreparo, (int)preparoAdotar);
     else { preparoAdotar = 0; kSemArg(mParar); }
   }
-  ativo = prontoLoad = primeiroQuadro = tocando = 0; superficieEstavel = 0;
+  ativo = prontoLoad = primeiroQuadro = tocando = 0; superficieEstavel = quadroSuperficie = 0;
   cargaFase = somenteAudio = 0;
   pausaPedida = pausaVista = 0;
   tex_pressao_reproducao(0);
@@ -1326,18 +1326,14 @@ void video_definir_cabecalhos(const char *c) { snprintf(cabecalhos, sizeof cabec
 const char *video_cabecalhos(void) { return cabecalhos; }
 void video_definir_mp4(int m) { (void)m; }
 int  video_tocando(void) { return tocando; }
-// 1 SO COM IMAGEM: e o que abre o furo (player_com_video). Fonte sem quadro
-// (so audio) cai no prazo de ANDROID_FURO_PRAZO_MS depois de tocar.
+// Media3 READY/playback clock alone never proves that a frame exists.
+// Audio-only is allowed solely after the selected track-type confirmation.
 int  video_pronto(void) {
-  Uint32 desde;
-  if (!prontoLoad) return 0;
-  if (primeiroQuadro || somenteAudio) return 1;
-  desde = tocandoDesde;
-  return desde && tocando && SDL_GetTicks() - desde >= ANDROID_FURO_PRAZO_MS;
+  return ativo && nv_p2d_media_ready(prontoLoad, primeiroQuadro, somenteAudio);
 }
 int  video_ativo(void) { return ativo; }
 int  video_superficie_estavel(void) { return superficieEstavel; }
-int  video_quadro_visto(void) { return primeiroQuadro; }
+int  video_quadro_visto(void) { return ativo && quadroSuperficie; }
 int  video_somente_audio(void) { return ativo && prontoLoad && somenteAudio; }
 int  video_carga_fase(void) { return ativo ? cargaFase : 0; }
 int  video_falhou(void) { return falhou; }
