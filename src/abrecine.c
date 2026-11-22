@@ -14,10 +14,12 @@ void abrecine_passo(AbreCine *a, int abrindo, int imagem, int detalhadaPadrao,
   if (a->viva) a->fim = agora;
   a->viva = 0;
   if (a->veu <= 0.0f) return;
-  // Sem quadro real a tela segura (no .tpk/LG o furo mostraria o vazio).
-  if (!imagem && agora - a->fim < ABRECINE_SEGURA_MS) return;
-  a->veu = reduzidas ? 0.0f : anim_mola(a->veu, 0.0f, dt, 6.0f);
-  if (a->veu < 0.01f) a->veu = 0.0f;
+  /* Never expose an unrendered video plane just because a timeout expired.
+   * The caller must establish a real first frame (or explicitly-confirmed
+   * audio-only presentation) before the independent 200ms exit fade starts. */
+  if (!imagem) return;
+  a->veu = reduzidas ? 0.0f : (agora - a->fim >= 200u ? 0.0f :
+                              1.0f - (float)(agora - a->fim) / 200.0f);
 }
 
 int abrecine_osd_calado(const AbreCine *a) { return a->calado; }
