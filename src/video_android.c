@@ -60,7 +60,7 @@
 
 static jclass    gCls;      // GlobalRef: FindClass de fio do SDL nao acha classe do app
 static jmethodID mAbrir, mParar, mPausar, mBuscar, mVolume, mJanela, mEscolher;
-static jmethodID mAbrirPosicao, mJanelaPronta, mLimitedConnections;
+static jmethodID mAbrirPosicao, mAbrirRecuperacao, mJanelaPronta, mLimitedConnections;
 // 2.0.3 (opcional): abrirRetomada(url, cab, inicioMs, fracao, geracao). So o
 // percentual conhecido (retomada da conta, sem registro local): o Kotlin
 // aplica fracao/10000 da duracao do CONTAINER antes do primeiro quadro.
@@ -93,6 +93,10 @@ static int resolverMetodos(JNIEnv *env) {
   // depois da duracao. A ausencia deste metodo nao derruba a ponte inteira.
   mAbrirPosicao = (*env)->GetStaticMethodID(env, gCls, "abrirPosicao", "(Ljava/lang/String;Ljava/lang/String;II)V");
   if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); mAbrirPosicao = NULL; }
+  // P2-B optional: only bounded SAME-source native retries may ask to hold
+  // a video frame. A user-selected new release never uses this method.
+  mAbrirRecuperacao = (*env)->GetStaticMethodID(env, gCls, "abrirRecuperacao", "(Ljava/lang/String;Ljava/lang/String;II)V");
+  if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); mAbrirRecuperacao = NULL; }
   mAbrirRetomada = (*env)->GetStaticMethodID(env, gCls, "abrirRetomada", "(Ljava/lang/String;Ljava/lang/String;III)V");
   if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); mAbrirRetomada = NULL; }
   mCache = (*env)->GetStaticMethodID(env, gCls, "cache", "(I)V");
@@ -778,7 +782,7 @@ JNIEXPORT jint JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativeLimitedStatu
 enum { EV_PRONTO = 1, EV_TOCANDO = 2, EV_PAUSADO = 3, EV_FIM = 4, EV_ERRO = 5,
        EV_TAMANHO = 6, EV_BUFFER = 7, EV_PRIMEIRO_QUADRO = 8, EV_AUDIO_SEM_DECODER = 9,
        EV_SUPERFICIE_ESTAVEL = 10, EV_LIVE_RECOVERY = 11, EV_LIVE_SEGMENT = 12,
-       EV_CARGA_FASE = 13, EV_SO_AUDIO = 14 };
+       EV_CARGA_FASE = 13, EV_SO_AUDIO = 14, EV_SUPERFICIE_INVALIDADA = 15 };
 
 JNIEXPORT void JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativeEvento(JNIEnv *env, jclass cls,
     jint tipo, jint a, jint b, jint geracao) {
@@ -824,6 +828,7 @@ JNIEXPORT void JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativeEvento(JNIEn
       break;
     case EV_PRIMEIRO_QUADRO: marco("video: primeiro quadro (android)"); primeiroQuadro = 1; break;
     case EV_SUPERFICIE_ESTAVEL: superficieEstavel = 1; break;
+    case EV_SUPERFICIE_INVALIDADA: superficieEstavel = 0; break; // old surface invalid
     case EV_AUDIO_SEM_DECODER: semDecoderAudio = 1; break;
     case EV_CARGA_FASE: if (a >= 0 && a <= 3) cargaFase = a; break;
     case EV_SO_AUDIO: if (a == 1) somenteAudio = 1; break;
@@ -857,7 +862,7 @@ int  video_iniciar_auto(void) { return video_iniciar(); }
 int  video_registro_negado(void) { return 0; }
 
 // Abre urlAtual no Kotlin. Serve a fonte nova e ao recarregar da reconexao.
-static int abrirSessao(int inicioMs, int fracao) {
+static int abrirSessao(int inicioMs, int fracao, int mesmaFonte) {
   unsigned preparado = preparoAdotar;
   preparoAdotar = 0;
   JNIEnv *env;
@@ -949,13 +954,16 @@ static int abrirSessao(int inicioMs, int fracao) {
         fflush(stdout);
         (*env)->CallStaticVoidMethod(env, gCls, mAbrir, u, c);
       }
-    } else if (mAbrirPosicao) {
+    } else if (mAbrirPosicao || (mesmaFonte && mAbrirRecuperacao)) {
       if (fracao > 0 && inicioMs <= 0) {
         printf("[video] retomada: casca sem abrirRetomada, o player busca depois do pronto\n");
         fflush(stdout);
       }
       if (inicioMs > 0) estadoRetomada(0);
-      (*env)->CallStaticVoidMethod(env, gCls, mAbrirPosicao, u, c, (jint)inicioMs, (jint)geracao);
+      // Recovery-only optional ABI; manual release changes use normal open.
+      (*env)->CallStaticVoidMethod(env, gCls,
+          mesmaFonte && mAbrirRecuperacao ? mAbrirRecuperacao : mAbrirPosicao,
+          u, c, (jint)inicioMs, (jint)geracao);
       if ((*env)->ExceptionCheck(env)) {
         (*env)->ExceptionClear(env);
         estadoRetomada(-1);
@@ -1004,7 +1012,7 @@ int video_tocar_retomada(const char *u, double segundos, double pct) {
   cacheArmado = -1;
   snprintf(tituloSessao, sizeof tituloSessao, "%s", playerSessao ? tituloArmado : "");
   tituloArmado[0] = 0;
-  return abrirSessao(inicioMs, fracao);
+  return abrirSessao(inicioMs, fracao, 0);
 }
 int video_tocar_posicao(const char *u, double segundos) { return video_tocar_retomada(u, segundos, 0.0); }
 
@@ -1043,7 +1051,7 @@ int video_recarregar(void) {
   reconAudio = audioAtual; reconLeg = legAtual; reconFaixasPend = 1;
   reconBuscarMs = -1;
   recarregarPosMs = alvo;
-  if (!abrirSessao(alvo, 0)) { recarregarPausa = -1; return 0; }
+  if (!abrirSessao(alvo, 0, 1)) { recarregarPausa = -1; return 0; }
   recarregarPausa = pausado;
   // As duas chamadas entram na mesma fila do Kotlin: a pausa pertence ao
   // player novo, antes do prepare completar, sem alterar o audio preferido.
@@ -1149,7 +1157,7 @@ void video_bombear(void) {
     reconFaixasPend = 1;
     reconBuscarMs = recarregarPausa < 0 && recon.alvo > 1.0 ? (int)(recon.alvo * 1000.0) : -1;
     if (!abrirSessao(recarregarPausa >= 0 ? recarregarPosMs :
-                     (int)(recon.alvo * 1000.0), 0))
+                     (int)(recon.alvo * 1000.0), 0, 1))
       { reconErroCod = -1; reconErroPend = 1; }
     else if (recarregarPausa > 0) video_pausar(1);
     else if (recarregarPausa < 0 && reconPausado) {
