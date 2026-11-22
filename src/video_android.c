@@ -352,6 +352,7 @@ static int envX, envY, envW, envH, envEnc, temEnv;
 // video_pronto() so e 1 com imagem (ver o cabecalho).
 static volatile int superficieEstavel;
 static volatile int ativo, prontoLoad, primeiroQuadro, falhou, terminou, tocando, largura, altura;
+static volatile int cargaFase, somenteAudio;
 static volatile int conflito, semDecoderAudio;
 // Native track identities to carry over one explicit same-episode source switch.
 // Ordinal indices are not transferable between unrelated releases.
@@ -776,7 +777,8 @@ JNIEXPORT jint JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativeLimitedStatu
 
 enum { EV_PRONTO = 1, EV_TOCANDO = 2, EV_PAUSADO = 3, EV_FIM = 4, EV_ERRO = 5,
        EV_TAMANHO = 6, EV_BUFFER = 7, EV_PRIMEIRO_QUADRO = 8, EV_AUDIO_SEM_DECODER = 9,
-       EV_SUPERFICIE_ESTAVEL = 10, EV_LIVE_RECOVERY = 11, EV_LIVE_SEGMENT = 12 };
+       EV_SUPERFICIE_ESTAVEL = 10, EV_LIVE_RECOVERY = 11, EV_LIVE_SEGMENT = 12,
+       EV_CARGA_FASE = 13, EV_SO_AUDIO = 14 };
 
 JNIEXPORT void JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativeEvento(JNIEnv *env, jclass cls,
     jint tipo, jint a, jint b, jint geracao) {
@@ -823,6 +825,8 @@ JNIEXPORT void JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativeEvento(JNIEn
     case EV_PRIMEIRO_QUADRO: marco("video: primeiro quadro (android)"); primeiroQuadro = 1; break;
     case EV_SUPERFICIE_ESTAVEL: superficieEstavel = 1; break;
     case EV_AUDIO_SEM_DECODER: semDecoderAudio = 1; break;
+    case EV_CARGA_FASE: if (a >= 0 && a <= 3) cargaFase = a; break;
+    case EV_SO_AUDIO: if (a == 1 && prontoLoad) somenteAudio = 1; break;
     case EV_LIVE_SEGMENT:
       pthread_mutex_lock(&travaRetomada);
       if (ativo && (unsigned)b == sessao) liveSegmentoMs = a > 60000 ? 60000u : a > 0 ? (unsigned)a : 0u;
@@ -858,6 +862,7 @@ static int abrirSessao(int inicioMs, int fracao) {
   preparoAdotar = 0;
   JNIEnv *env;
   ativo = 1; superficieEstavel = 0; prontoLoad = primeiroQuadro = falhou = terminou = tocando = 0;
+  cargaFase = somenteAudio = 0;
   velEnviada = 100;
   largura = altura = durMs = posMs = posNativoMs = 0; bufferando = 1; bufferDesde = SDL_GetTicks();
   tocandoDesde = 0; semDecoderAudio = 0; erroTxt[0] = 0; reconErroVideo = 0;
@@ -1172,6 +1177,7 @@ void video_parar(void) {
     else { preparoAdotar = 0; kSemArg(mParar); }
   }
   ativo = prontoLoad = primeiroQuadro = tocando = 0; superficieEstavel = 0;
+  cargaFase = somenteAudio = 0;
   pausaPedida = pausaVista = 0;
   tex_pressao_reproducao(0);
 }
@@ -1324,6 +1330,8 @@ int  video_pronto(void) {
 int  video_ativo(void) { return ativo; }
 int  video_superficie_estavel(void) { return superficieEstavel; }
 int  video_quadro_visto(void) { return primeiroQuadro; }
+int  video_somente_audio(void) { return ativo && prontoLoad && somenteAudio; }
+int  video_carga_fase(void) { return ativo ? cargaFase : 0; }
 int  video_falhou(void) { return falhou; }
 int  video_audio_nao_suportado(void) { return semDecoderAudio; }
 int  video_seek_desistiu(void) { return 0; }
