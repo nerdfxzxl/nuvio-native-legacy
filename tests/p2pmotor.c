@@ -214,7 +214,7 @@ static void fPararStream(void *m, const char *sid) { (void)sid; ENTRA(m); SAI(m)
 static void fRemover(void *m, const char *tid) { (void)tid; ENTRA(m); SAI(m); }
 static int fStats(void *m, P2pmStats *s) { ENTRA(m); s->ram_usada = cfg.ram; s->pares = 3; SAI(m); return 0; }
 static const P2pmOps FALSO = { fVersao, fCriar, fDestruir, fAdd, fPoll, fQtd, fArq, fPreparar,
-                               fPararStream, fRemover, fStats };
+                               fPararStream, fRemover, fStats, NULL }; // no engine piece API in fake
 
 static int livreFalso(const char *pasta, uint64_t *l) {
   (void)pasta;
