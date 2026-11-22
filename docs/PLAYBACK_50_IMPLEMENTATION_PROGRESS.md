@@ -1,7 +1,7 @@
 # Nuvio Legacy — Q01–Q50 Implementation Progress
 
 **Last updated:** 2026-11-22
-**Status:** P0 COMPLETE; P1 SOURCE IMPLEMENTATION COMPLETE; **P2 IN PROGRESS — COMMITTED SOURCE CHECKPOINT, NOT COMPLETE**. P2 host timing and source contracts passed; full native/Kotlin compilation and TV QA unavailable. NO APK/ACTIONS RUN AUTHORIZED.
+**Status:** P0 COMPLETE; P1 SOURCE IMPLEMENTATION COMPLETE; **P2 IN PROGRESS — P2-A/P2-B/P2-C SOURCE CHECKPOINTED, P2 NOT COMPLETE**. P2-C native loader/navigation audit and focused source policy tests passed at the stated scopes; full native/Android compilation and TV QA remain unavailable. NO APK/ACTIONS RUN AUTHORIZED.
 **Branch:** `feature/official-stream-selector` (not `master`).
 **Prior feature baseline:** `6171645e05d2137d2a1e9ed1b113687246acd7ca` — docs: lock subtitle filename Format A and unbuilt wrapping/parser test handoff.
 **Latest planning commits:** master specification `7d3c81d81aee309843dd2f0b767c6ef3c2d59723`; work packages `b059a7a9a42ae2b91d87bff0a03bfeb314d0f647`; this progress tracker is an additional documentation-only commit. **Recheck actual HEAD at the beginning of every session.**
@@ -24,7 +24,7 @@
 |---|---|---|---|---|
 | P0 | Baseline, inventory, preservation | COMPLETE — source audit only | [`d0ff5a1`](https://github.com/nerdfxzxl/nuvio-native-legacy/commit/d0ff5a1f44fc42034c867ca149a21e1814d2f77c) (documentation) | GitHub branch diff/source/test scripts inspected; **no tests, compile or APK run** |
 | P1 | State/source identity/cancellation | **SOURCE IMPLEMENTATION COMPLETE; Android APK/TV unverified** | `abe5479` through `0df37f5` (all 13 exact SHAs in P1 checkpoint below) | Native GCC/Clang identity PASS; 32/32 source assertions PASS; all 7 modified C/header preprocessor balances PASS; full Android compilation unavailable |
-| P2 | Cinematic/arc/status/speed | **IN PROGRESS — 4 scoped source checkpoints, acceptance gaps below** | 22 exact P2 source/test commits in checkpoint below; current HEAD tracker commit | GCC+Clang mirrored header/abrecine timing PASS; 30/30 source checks PASS; 7/7 #if balances PASS; **full Android/TV tests NOT RUN** |
+| P2 | Cinematic/arc/status/speed | **IN PROGRESS — P2-A/P2-B/P2-C source checkpointed; Q18 and runtime gates open** | Original P2, P2-A, P2-B and P2-C chronological commit registers below; latest tracker HEAD | P2-C 45/45 live source checks, 15/15 mirrored C11 GCC/Clang/ASan+UBSan, 9/9 #if balances; **full Android/TV tests NOT RUN** |
 | P3 | Selector/reload/recovery | NOT STARTED | — | — |
 | P4 | Buffer/network/cache/seek | NOT STARTED | — | — |
 | P5 | Fidelity/HDR/surface/audio route | NOT STARTED | — | — |
@@ -290,3 +290,52 @@ Start from the **current branch HEAD after this tracker commit**, verify HEAD, r
 4. **Next step only when separately assigned/authorized:** run host scripts against an authenticated checkout plus Media3/NDK source integration checks, then later real TV verification under a separately authorized build/device gate. Preserve all checkpoints and the post-#134 handoff.
 
 **Actions/CI/APK:** **NONE.** No workflow dispatch, APK build or build trigger change; no P3 and no P2-A rework. **Bounded P2-B session stops at this documentation checkpoint.**
+
+## P2-C bounded checkpoint — 2026-11-22 (Q01/Q07/Q10/Q14/Q16/Q26/Q27)
+
+**Assignment:** global native loading-indicator and remote-navigation audit ONLY; P2-A and P2-B source checkpoints retained; no P3, P2P readiness rework, unrelated playback changes, workflow triggers, GitHub Actions or APK. **Initial verified HEAD:** `4cc66454530c2d7ed0071b1afb10351d11a1b269`. **Last source/test HEAD:** `9e964dd496554ffcaf42e094bc0e3dcdc2070a94`. The subsequent documentation commit is the final P2-C checkpoint; always verify its actual branch SHA before continuing.
+
+**Outcome: P2-C bounded SOURCE checkpoint completed; Android runtime/TV verification remains OPEN, and P2 as a whole remains PARTIAL.** Existing shared `plrui_arco` and `nv_arc_quadro` are still the only native active loading arc implementation. Gray arc rounded caps now use the same opacity as their curved stroke; diameter, 2-second pacing, shadow, reduced-motion fallback and all call sites retain their shared behavior. No new spinner implementation was created. Existing semantic UI animations (Dynamic Clock refresh-arrow rotation, progress/tracks, focus rings, diagnostic shimmer, audio-active bars and home skeletons) were deliberately preserved.
+
+### Global spinner audit — exact source scope, not a device pass
+
+- Using the authenticated branch source, inspected **all 355 root-level `src/*.c`**, **all 40 root-level `src/*.inc`**, and **all 453 root-level `src/*.h`** against spinner/arc/rotation/loader patterns; then examined **18 `src/dts` native source/header files** and **six `src/novidades/*.inc`** UI fragments. Total examined: **872** native root/subdir files; external third-party vendor trees and unrelated JavaScript/Android system splash implementations are outside the bespoke native-UI inventory. The audited tree comes from initial HEAD with source subtree `187f774ab87b907be7bdac0070d9800ea4073c6b`; edited `player.c`, `plrui.c`, `streams.c` and new header were subsequently re-fetched.
+- No remaining app-drawn legacy twelve-dot spinner or independent custom native loader was identified among the source candidates. The already-corrected profile loader stays on `plrui_arco`; source `player.c`, `pessoas.c`, `recenviar.c`, `aovivoui.c`, `dvtelaui.c`, `ilha.c` and `plrilha.c` call the shared arc wrappers. `gfx_arco` is the low-level primitive, not an extra app spinner.
+- Preserved: selector's semantically rotating refresh arrow and live audio bars, home/details focus borders, screen-geometry transforms, legitimate measured/indeterminate loading rails, and reduced-motion branches. System splash gray dots mentioned in `abertura.h` are an OS-level splash reference, not a native twelve-dot loop. Pattern-based static audit **cannot guarantee every visible frame**; verify perceptual parity on Android TV.
+
+### P2-C exact chronological source/test commits (15 before tracker)
+
+1. `065e104e84adc4510a244c860cd4263969d88993` — `src/player.c`: 15-second Change Stream focus/OK routing; explicit OK diagnostics in cinematic, expanded and fallback loading card; visible underline, no accidental addon/settings activation.
+2. `e78c54e175a23fe18f1bd00665f8ac9847ab83b0` — `src/app.c`: on Back during loading/recovery, immediately invalidate pending URL jobs/P2P/diagnostic callbacks; manual Change Stream now cancels accepted-source loading/reconnection, not only unresolved addon state; selector Back can return to detail cleanly.
+3. `73357e8b441f8ec356f9385c7924a69ca566a952` — `src/streams.c`: one-shot, row-only focus restoration for prior manually selected source, when still present; no autoplay/selection.
+4. `f60e26f9ce34e9bd4499676a3b9d94e7307faa41` — `src/streams.h`: declares focused restoration API.
+5. `33ca0a517eee6026f6b769deb7e6f82f7d4ffe20` — `src/app.c`: call that API **only for loading escape**; first-play/default and failed-recovery selector focus logic unchanged.
+6. `f2be109b5754516488b6112e965f4291e81b61d4` — `src/plrui.c`: consistent shared arc rounded-cap/stroke opacity.
+7. `7bd265312ee4a1fddb79a96f1939e663e22f7ece` — `src/player.c`: loading OK not intercepted by an old info-OSD or source-toast shortcut.
+8. `70cf33579fa121aeb52ac8ed4171af4d66173255` — `src/loading_nav_p2c.h`: pure tick-wrap-safe 15000ms/focus confirmation policy for host testing.
+9. `256b40d1da1579336981593918e459d1029748ec` — `src/player.c`: use shared policy.
+10. `eee756878e9dccf28675e183792a7312f94d6529` — `tests/playback_p2c_nav.c`: 15 C11 elapsed/focus boundary cases.
+11. `1df095ce408c0a6285fa31140158420a0b9f2cba` — C11 test correction: exact uint32 wraparound boundary (caught by actual host run).
+12. `7e9c9946779d0d0115fe74059f61ecba1bfd5c45` — `tests/playback_p2c_nav.sh`: repeatable local host compiler runner; no CI/APK.
+13. `21f2871860f2afb3f6af2b188e0c5edfb1f2faf3` — `tests/playback_p2c_navigation_contract.py`: read-only source regression contracts for shared arc, navigation, session cancellation, P2-A/B fidelity and selector isolation.
+14. `c0b1f3770eb6761cae134f22b4e1861f62681f77` — `src/streams.h`: clarify distinct P1 recovery vs P2-C manual row focus contracts.
+15. `9e964dd496554ffcaf42e094bc0e3dcdc2070a94` — `src/player.c`: clear stale delayed focus when cinematic loading ends, errors or exits.
+
+### Checks actually executed
+
+- **PASS, 45/45:** connected live GitHub source checks for 15-second policy, Down-focus-only, explicit OK confirmation, no hidden OSD/toast hijack, Back and source generation cancellation, row-only selector focus, shared arc callers, capped/real P2-A telemetry, P2-B PixelCopy/Media3/SufaceView ownership, and original first-frame/HDR guards. This is NOT execution of the checked-in Python contract.
+- **PASS, 9/9:** source-level `#if/#else/#endif` nesting balance on P2-C changed C/header/test paths. This is NOT a C typecheck or a native link.
+- **PASS on a separately materialized **mirrored** C11 header/test fixture:** GCC and Clang (`-std=c11 -O1 -g -Wall -Wextra -Werror`) plus Clang ASan+UBSan executed **15/15** policy boundary cases, including exact 15000ms and timer wrap. The initial mirrored test exposed an off-by-one *test expectation*, subsequently corrected in GitHub. This was **not** running the committed shell test inside an authenticated checkout.
+- **PASS GitHub compare** from initial HEAD `4cc6645...` through source/test HEAD `9e964dd...`: **ahead 15, behind 0, nine changed paths** (`src/app.c`, `src/loading_nav_p2c.h`, `src/player.c`, `src/plrui.c`, `src/streams.c`, `src/streams.h`, and the three `tests/playback_p2c_*` files). No `.github/workflows/` path, Android player/SurfaceView source, P2P engine source, P0/P1 handoff document, or other P3 file was edited.
+- **NOT RUN / NOT PASSED:** direct `python3 tests/playback_p2c_navigation_contract.py` or `sh tests/playback_p2c_nav.sh` in an authenticated local checkout; full Legacy SDL C syntax/NDK, Kotlin/Media3/Gradle, JNI link, APK or Actions; Android TV D-pad/Back, first-frame/HDR/DV, buffering/recovery, selector animation, screen-reader or physical HDMI ARC tests. GitHub DNS from host execution is unavailable; no complete authenticated checkout, Android SDK/NDK or physical TV was available. Do not overstate source checks as an integrated build.
+
+### Remaining P2 acceptance gaps after P2-C (P3 NOT STARTED)
+
+1. **Q18 BLOCKED:** P2-A still supplies real selected-file verified-byte evidence, but no genuine selected-file **current-playhead contiguous playable readiness denominator**. Unknown percentage remains indeterminate; no synthetic progress added. No new engine/API work in P2-C.
+2. **Q01/Q02/Q16/Q17/Q23/Q34 visual/status parity:** official cinematic gradient/pixel color, static artwork/logo, real event-driven subtitle/torrent/HTTP statuses, title/logo fallback, startup vs rebuffer vs seek vs same-source recovery distinctions, reduced motion and fade ordering still need TV/device evidence. Some stream types/remote P2P hooks are not fully verified. P2-C made no new backdrop, logo animation or false readiness rail.
+3. **Q24 and network telemetry:** real HTTP/HLS/DASH/serial byte-count correctness and cache-hit/redirect behavior require actual Media3/Android/network tests, not simulated throughput.
+4. **Q05/Q06/Q12/Q13/Q28/Q29 P2-B validation:** real frame hold during in/out-buffer seeks, same-source network recovery, surface replacement, hardware decoder and A/V sync remains device-dependent; HDR/Dolby Vision still deliberately skip an inaccurate SDR snapshot and may flash black.
+5. **Q07/Q10/Q14/Q26/Q27 device acceptance:** verify shared spinner geometry/opacity, card text and accessibility, every remote focus/OK/Down/Up/Back path, status changes, selector focus restored after cancellation, old async callback isolation, and Android audio-only versus video first-frame gating. Newly committed source policy is NOT TV-certified.
+6. **Integration gates:** full source regression scripts, native/NDK/Media3 compilation, debug APK and actual TV smoke testing remain unrun and require separate authorization. All post-#134 unbuilt refinements must survive the eventual integrated build; no previously completed P0/P1/P2-A/B source was intentionally rewritten.
+
+**End of P2-C assignment. P2 still PARTIAL; DO NOT start P3.** No GitHub Actions dispatched, no APK built, no workflow trigger modified. Next session must re-verify actual branch HEAD and preserve this entire P2-C sequence along with the five authoritative documents.
