@@ -25,7 +25,9 @@ check("geracaoDaAbertura" in kotlin and "int atual = ativo &&" in backend,
 check("pedido != pedidos.get()" in kotlin and "p.playWhenReady = false" in kotlin,
       "late pause and decoder release are bounded")
 check("static void selecionarAposFalhaVOD(const char *motivo)" in app and
-      "stream_preferir(indice)" in app and "folhaParaTocar = 1" in app,
+      "stream_folha_focar_primeira_disponivel()" in app and
+      "stream_folha_recarregar_externo()" in app and
+      "folhaParaTocar = 1" in app,
       "failed recovery selects source UI without auto-accept")
 start = app.index("static void tentarProximaFonteVOD(void) {")
 end = app.index("// TOCAR UM CANAL", start)

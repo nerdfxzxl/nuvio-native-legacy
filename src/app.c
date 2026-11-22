@@ -493,7 +493,9 @@ static int    antAberta = -1;
 static int    antPreAuto, antPreTent;
 static Uint32 antPreDesde;
 static void limparFonteVOD(void);
+#ifdef NV_ANDROID
 static void selecionarAposFalhaVOD(const char *motivo);
+#endif
 static int tocarParteGuardada(void);   // partes.h, mais abaixo
 // FONTE PROVOU TOCAR: a posicao andou >= 2 s reais nesta candidata, seja qual for
 // a duracao da midia e o estado de aguardandoFonte (automatica, manual, aberta
@@ -3389,21 +3391,25 @@ static void renovarVodInterrompido(void) {
 #endif
   }
 }
-// After an accepted VOD fails, the user owns the next selection.
+#ifdef NV_ANDROID
+// On exhausted same-source recovery, user choice owns the next attempt.
 static void selecionarAposFalhaVOD(const char *motivo) {
   if (!player_aberto() || player_quer_sair() || player_id_canal()[0]) return;
-  int indice = stream_atual();
   novaGeracaoFonte(); // invalidate late async renewal and automatic jobs
   limparFontePendente();
   aguardandoFonte = 0; preparoEspera = 0;
   retomarDiretoPendente = 0; vodRenovandoDesde = 0;
   limparFonteVOD();
-  player_voltar_a_esperar(); // stop the failed decoder before showing options
-  stream_preferir(indice); // keep last accepted source focused, not playing
+  player_voltar_a_esperar(); // stop failed decoder before showing options
   folhaParaTocar = 1; folhaCancelarTocar = 0;
   nomeParaFolha(); stream_folha_abrir();
+  // Q11: refresh asynchronously and focus first available result, with no
+  // automatic click/Play. The picker also stays responsive while loading.
+  stream_folha_focar_primeira_disponivel();
+  stream_folha_recarregar_externo();
   if (motivo) player_toast(i18n(motivo), 4500u);
 }
+#endif
 static void recarregarFonteVOD(void) {
   uint64_t sessaoPerfil = nv_perfil_sessao_ler();
   if (!player_aberto() || player_quer_sair() || player_id_canal()[0] ||

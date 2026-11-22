@@ -3949,6 +3949,9 @@ static int *ordem;
 static float *linhaY, *linhaH;
 static unsigned char *linhaCabProv;
 static int ordemCap, nOrdem;
+// Recovery has a one-shot focus request, surviving an initially empty list.
+// It never authorizes source selection or changes other sheet openings.
+static int p1RecuperacaoFoco;
 static float secY[FOLHA_GRUPOS], alturaTotal;
 static int secN[FOLHA_GRUPOS];
 // A linha em foco abre (abreFoco 0->1) e a que perdeu o foco fecha (abreAnt
@@ -5056,6 +5059,7 @@ void stream_folha_abrir(void) {
   memset(memoriasAba, 0, sizeof memoriasAba);
   selosAnimFoco = -1; // A fresh selector opening gets one badge-strip pass.
   folhaNavegou = 0;
+  p1RecuperacaoFoco = 0;
   folhaBusca[0] = 0;
   buscaAnim = 0.0f;
   provChipOffset = provChipVel = provChipTarget = 0.0f;
@@ -5105,6 +5109,11 @@ void stream_folha_abrir(void) {
          fitFoto.n, diag, pass, conhecidos, pesados,
          fitFotoOrigem == SF_DUR_MEDIA ? "media" : fitFotoOrigem == SF_DUR_METADATA ? "metadata" : "unknown");
   fflush(stdout);
+}
+// Q11: only the recovery path requests this. When addons are still loading,
+// stream_folha_atualizar() applies the focus when the first usable row arrives.
+void stream_folha_focar_primeira_disponivel(void) {
+  if (aberta && !canalFolha) p1RecuperacaoFoco = 1;
 }
 // Present episode actions INSIDE the native Dynamic Clock island, using
 // exactly the same expansion and focus owner as the stream selection panel.
@@ -5745,6 +5754,21 @@ void stream_folha_atualizar(float dt, Uint32 agora) {
       focoFixoY = foco >= 0 && foco < nOrdem ? linhaTopo(foco) : 0;
     } }
   montar(automaticaDaFolha());
+  // On failed recovery, focus the first AVAILABLE stream (not a rejected,
+  // outside-cache or informational row). A user D-pad move takes precedence.
+  if (p1RecuperacaoFoco) {
+    if (folhaNavegou || !aberta) p1RecuperacaoFoco = 0;
+    else if (grupo == 1) {
+      for (int row = 0; row < nOrdem; row++) {
+        int i = ordem[row];
+        if (i < 0 || i >= n || !stream_fonte_disponivel(&lista[i])) continue;
+        foco = focoVisto = row; linhaAnt = -1; abreFoco = 1;
+        rolagem = fmaxf(0.0f, linhaTopo(row) - NV_TELA_H * 0.4f);
+        p1RecuperacaoFoco = 0;
+        break;
+      }
+    }
+  }
   nf=nOrdem;
   if(grupo==2 && !chipsOcultos(NULL,0)) grupo=0;
   if(grupo==1 && foco>=nf) foco=nf>0?nf-1:0;
