@@ -13,13 +13,15 @@ void abrecine_passo(AbreCine *a, int abrindo, int imagem, int detalhadaPadrao,
     return;
   }
   a->viva = 0;
-  if (a->veu <= 0.0f) return;
-  /* Never expose the hardware plane before Media3's first frame and surface
-   * confirmation. READY may arrive up to hundreds of ms earlier. */
-  if (!imagem) return;
+  if (a->veu <= 0.0f) { a->fim = 0; return; }
+  /* READY is insufficient. If a SurfaceView becomes unstable even DURING
+   * the visual exit, hide its plane again and require a fresh stable 200ms
+   * handoff. This is not a forced loading timeout. */
+  if (!imagem) { a->fim = 0; a->veu = 1.0f; return; }
   if (!a->fim) a->fim = agora ? agora : 1u;
   a->veu = reduzidas ? 0.0f : (agora - a->fim >= 200u ? 0.0f :
                               1.0f - (float)(agora - a->fim) / 200.0f);
+  if (a->veu <= 0.0f) a->fim = 0;
 }
 
 int abrecine_osd_calado(const AbreCine *a) { return a->calado; }
@@ -29,6 +31,7 @@ void abrecine_acordou(AbreCine *a, int carregando) {
 }
 
 int abrecine_cinema(const AbreCine *a) { return a->veu > 0.0f && !a->detalhada; }
+int abrecine_navegacao(const AbreCine *a) { return a->viva || a->veu > 0.0f; }
 
 int abrecine_demorando(const AbreCine *a, Uint32 agora) {
   return a->viva && agora - a->desde >= ABRECINE_DEMORA_MS;
