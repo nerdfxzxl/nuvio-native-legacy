@@ -156,8 +156,10 @@ int p2pmotor_motivo_parada(void);
 // Orcamento e uso, para a tela dizer a verdade. Copia sob a trava curta; os
 // numeros sao os da ultima volta da vigia (nao faz I/O).
 // P2: real engine state transitions, not stopwatch-derived or invented progress.
-// Selected-file piece readiness is NOT exposed by nuvio-engine API 4;
-// a percentage must remain unknown until that engine evidence exists.
+// API 4 already includes get_stream_stats(): verified pieces and contiguous
+// bytes of the selected file FROM OFFSET ZERO. These bytes are genuine but
+// are NOT a playable-buffer readiness percentage after seek/window eviction.
+// Never turn them or total torrent payload bytes into a guessed %.
 typedef enum {
   P2PM_ETAPA_NENHUMA = 0, P2PM_ETAPA_INICIANDO,
   P2PM_ETAPA_METADADOS, P2PM_ETAPA_ARQUIVOS,
@@ -170,6 +172,11 @@ typedef struct {
   uint64_t ram_teto, ram_duro, ram_usada;
   uint64_t baixando_bps;
   unsigned pares;
+  // From get_stream_stats() for the CURRENT stream ID + chosen file index.
+  // All zero, including medicao_arquivo, if absent/stale/inconsistent.
+  int medicao_arquivo;
+  uint32_t indice_arquivo;
+  uint64_t tamanho_arquivo, prefixo_verificado, bytes_verificados;
 } P2pmEstado;
 void p2pmotor_estado(P2pmEstado *e);
 
@@ -190,6 +197,11 @@ typedef struct {
   uint64_t rid;
   char tid[65], sid[65], url[512], msg[256];
 } P2pmEvento;
+typedef struct {
+  uint32_t indice_arquivo;
+  uint64_t tamanho_arquivo, prefixo_verificado, bytes_verificados;
+} P2pmArquivoMedicao;
+
 typedef struct {
   const char *dados, *cache;
   uint64_t ram, disco, upload_bps;
@@ -216,6 +228,9 @@ typedef struct {
   void (*parar_stream)(void *motor, const char *sid);
   void (*remover)(void *motor, const char *tid);
   int  (*stats)(void *motor, P2pmStats *s);
+  // API 4 get_stream_stats; NULL in test doubles or unavailable backends.
+  // sid is the exact opaque stream ID returned by PREPARADO, not a torrent hash.
+  int  (*medicao_arquivo)(void *motor, const char *sid, P2pmArquivoMedicao *s);
 } P2pmOps;
 // NULL sem -DNV_P2P_MOTOR (ou, no .tpk, sem a libnuvio_engine.so no pacote).
 const P2pmOps *p2pmotor_ops_reais(void);
