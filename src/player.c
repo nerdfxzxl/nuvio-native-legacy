@@ -6000,7 +6000,7 @@ static void arteCarregando(float x, float y, float w, float a) {
 // ativo/pronto, ver o trilho abaixo): nao entram, em vez de um numero inventado.
 // NUNCA a URL: ela pode carregar a chave do debrid.
 typedef struct { char rot[40]; char val[220]; } AbrLinha;
-#define ABR_MAX 10
+#define ABR_MAX 11
 static int abrFitIdx = -2;
 static char abrFit1[160], abrFit2[160];
 /* Event-derived status shared by cinema and detailed fallback card.  The
@@ -6008,7 +6008,8 @@ static char abrFit1[160], abrFit2[160];
 static const char *estadoCargaP2(void) {
 #ifdef NV_ANDROID
   // p2pmotor publishes these only when the matching engine event occurs.
-  // No percentage is displayed: engine API 4 lacks selected-file piece evidence.
+  // No readiness percentage: API 4 has true selected-file prefix piece bytes,
+  // but not an honest current-playhead readiness denominator after seek/eviction.
   if (esperandoFonte) {
     P2pmEstado p2p = {0}; p2pmotor_estado(&p2p);
     switch (p2p.etapa) {
@@ -6088,6 +6089,16 @@ static int linhasAbrindo(const Stream *st, AbrLinha *L) {
       p2pmotor_estado(&p);
       if (p.ativo) {
         bps = (double)p.baixando_bps;
+        if (p.medicao_arquivo && n < ABR_MAX) {
+          // Genuine verified bitfield prefix of THIS selected file, not
+          // total torrent download bytes or a guessed playable readiness %.
+          // This may shrink when the disk window evicts early pieces.
+          snprintf(L[n].rot, sizeof L[n].rot, "Verified from start");
+          snprintf(L[n].val, sizeof L[n].val, "%.1f / %.1f MiB",
+                   (double)p.prefixo_verificado / 1048576.0,
+                   (double)p.tamanho_arquivo / 1048576.0);
+          n++;
+        }
         if (n < ABR_MAX) {
           snprintf(L[n].rot, sizeof L[n].rot, "Peers");
           snprintf(L[n].val, sizeof L[n].val, "%u", p.pares);
@@ -6411,7 +6422,9 @@ void player_morph_de(GfxRect logo, GfxRect play) {
 // retangulos pequenos.
 /* P2 telemetry: display only real socket bytes or active engine counters.
  * Unknown throughput is absent, never shown as 0. This never reads URL tokens
- * or invents a 0..100% readiness percentage for HTTP/remote P2P. */
+ * or invents a 0..100% readiness percentage for HTTP/remote P2P.
+ * Genuine selected-file piece bytes are reserved for the detailed card until
+ * the engine exposes a current-playhead readiness target as well. */
 static void desenharTelemetriaCarga(float cx, float y, int canto, float xCanto, float a) {
 #ifdef NV_ANDROID
   char velocidade[64] = "", texto[112] = "";
