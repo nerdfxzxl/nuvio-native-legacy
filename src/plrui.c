@@ -347,10 +347,13 @@ void plrui_arco(float cx, float cy, float d, int cinza, int sombra,
   theta1 = (arc.inicio + arc.fracao) * 6.2831853f;
   x0 = cx + sinf(theta0) * raio; y0 = cy - cosf(theta0) * raio;
   x1 = cx + sinf(theta1) * raio; y1 = cy - cosf(theta1) * raio;
+  float arcAlfa = (cinza ? .70f : 1.0f) * a;
   if (sombra) gfx_arco(r, esp + 2.0f, arc.inicio, arc.fracao, 0, 0, 0, 0.22f * a);
-  gfx_arco(r, esp, arc.inicio, arc.fracao, cr, cg, cb, (cinza ? .70f : 1.0f) * a);
-  gfx_cor((GfxRect){x0 - esp*.5f, y0 - esp*.5f, esp, esp}, .5f, cr, cg, cb, a);
-  gfx_cor((GfxRect){x1 - esp*.5f, y1 - esp*.5f, esp, esp}, .5f, cr, cg, cb, a);
+  gfx_arco(r, esp, arc.inicio, arc.fracao, cr, cg, cb, arcAlfa);
+  // Match the rounded caps to the same tint/opacity as the curved stroke.
+  // Previously gray indicators had two conspicuously brighter endpoints.
+  gfx_cor((GfxRect){x0 - esp*.5f, y0 - esp*.5f, esp, esp}, .5f, cr, cg, cb, arcAlfa);
+  gfx_cor((GfxRect){x1 - esp*.5f, y1 - esp*.5f, esp, esp}, .5f, cr, cg, cb, arcAlfa);
 }
 void plrui_anel(float cx, float cy, float d, int cinza, Uint32 agora, float a) {
   plrui_arco(cx, cy, d, cinza, 0, agora, a);
