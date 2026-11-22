@@ -1409,7 +1409,13 @@ static void vigiarFonteGuardada(void) {
     if (d == FV_ABRIU) {
       printf("[voltafonte] abriu em %u ms sem busca\n", (unsigned)desde);
       fflush(stdout);
+#ifdef NV_ANDROID
+      // Keep watching the accepted saved URL after first frame; without a
+      // list index it would otherwise have no failure->selector owner.
+      voltaAtiva = 2;
+#else
       voltaAtiva = fontefalha_ativa() ? 2 : 0;
+#endif
       return;
     } }
   if (!motivo) return;
@@ -3376,7 +3382,11 @@ static void renovarVodInterrompido(void) {
   player_toast(i18n("Conexão caiu, reconectando…"), 3000);
   if (pedirFonteJob(FJOB_RENOVAR_VOD, geracao, alvo, 0) < 0) {
     vodRenovandoDesde = 0; aguardandoFonte = 0;
+#ifdef NV_ANDROID
+    selecionarAposFalhaVOD("Não foi possível renovar esta fonte. Escolha uma fonte.");
+#else
     player_erro_fonte();
+#endif
   }
 }
 // After an accepted VOD fails, the user owns the next selection.
@@ -6805,6 +6815,7 @@ void app_atualizar(float dt, Uint32 agora) {
     }
   }
   if (player_aberto() && player_pediu_fontes()) {
+    int fonteAnterior = stream_atual();
     // Change Stream cancels renewal/prepare immediately, even while waiting.
     if (aguardandoFonte == 2 && !player_id_canal()[0]) {
       novaGeracaoFonte(); limparFontePendente();
@@ -6815,7 +6826,8 @@ void app_atualizar(float dt, Uint32 agora) {
     char base[24];
     stream_folha_contexto(player_linha_episodio());
     idBaseDoTitulo(base, sizeof base);
-    stream_preferir(base[0] ? fontepref_escolher_manual(base) : -1);
+    stream_preferir(fonteAnterior >= 0 ? fonteAnterior :
+                     base[0] ? fontepref_escolher_manual(base) : -1);
     nomeParaFolha(); stream_folha_abrir();
   }
 
