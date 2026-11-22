@@ -1369,7 +1369,8 @@ static const char *prefsArquivo(void) {
 // ajustes.txt, que espelha as chaves de layout do app web. Padrao: tamanho 2
 // (o do aparelho), branco, sem fundo, posicao central, contorno.
 // -1 preserves the legacy outline preference until a border colour is chosen.
-static VideoLegendaEstilo legEstilo = { 120, 0, 0, 3, 1, 0, 0, TXT_FAMILIA_INTER, 0, -1 };
+static VideoLegendaEstilo legEstilo = { 120, 0, 0, 3, 1, 0, 0, TXT_FAMILIA_INTER, 0, -1,
+                                       0, 100, 82, 4 };
 // Ver player_leg_estilo_tocou, em player.h: o que a pessoa mexeu vence o que o
 // arquivo ASS pede. Persistido junto com o resto — a preferencia nao pode
 // valer so ate desligar a TV.
@@ -1378,7 +1379,9 @@ static int legTocado = PLR_LEG_NADA;
 static int prefsGravar(void);
 static void prefsLer(void) {
   prefsLidas = 1;
-  legEstilo.corBorda = -1;
+  legEstilo.corBorda=-1;
+  legEstilo.offsetHalfPct=0;legEstilo.hdrBrightness=100;
+  legEstilo.shadowOpacity=82;legEstilo.shadowSize=4;
   FILE *f = fopen(prefsArquivo(), "r");
   char chave[64]; int v, sinalNovo = 0, temAtraso = 0, bordaExplicita = 0;
   if (!f) return;
@@ -1404,6 +1407,10 @@ static void prefsLer(void) {
     else if (!strcmp(chave, "leg_familia") && v >= 0 && v < TXT_FAMILIA_N) legEstilo.familia = v;
     else if (!strcmp(chave, "leg_negrito") && (v == 0 || v == 1)) legEstilo.negrito = v;
     else if (!strcmp(chave, "leg_tocado")  && v >= 0) legTocado = v;
+    else if (!strcmp(chave, "leg_offset_half_pct") && v >= -40 && v <= 40) legEstilo.offsetHalfPct=v;
+    else if (!strcmp(chave, "leg_hdr_brightness") && v >= 25 && v <= 100) legEstilo.hdrBrightness=v;
+    else if (!strcmp(chave, "leg_shadow_opacity") && v >= 0 && v <= 100) legEstilo.shadowOpacity=v;
+    else if (!strcmp(chave, "leg_shadow_size") && v >= 0 && v <= 14) legEstilo.shadowSize=v;
   }
   fclose(f);
   // Older players wrote default Black even when no border colour was chosen.
@@ -1435,6 +1442,10 @@ static int prefsGravar(void) {
   fprintf(f, "leg_tocado %d\n", legTocado);
   fprintf(f, "leg_cor_borda %d\n", legEstilo.corBorda);
   fprintf(f, "leg_cor_borda_explicita 1\n");
+  fprintf(f, "leg_offset_half_pct %d\n",legEstilo.offsetHalfPct);
+  fprintf(f, "leg_hdr_brightness %d\n",legEstilo.hdrBrightness);
+  fprintf(f, "leg_shadow_opacity %d\n",legEstilo.shadowOpacity);
+  fprintf(f, "leg_shadow_size %d\n",legEstilo.shadowSize);
   int erro = ferror(f);
   if (fclose(f)) erro = 1;
   if (erro || rename(temporario, destino)) { remove(temporario); return 0; }
@@ -1450,7 +1461,8 @@ void player_leg_estilo_mudou(void) {
   if (prefsGravar()) sync_proteger_ajustes_locais();
 }
 const VideoLegendaEstilo *player_leg_estilo_padrao(void) {
-  static const VideoLegendaEstilo padrao = {120, 0, 0, 3, 1, 0, 0, TXT_FAMILIA_INTER, 0, 0};
+  static const VideoLegendaEstilo padrao = {120, 0, 0, 3, 1, 0, 0, TXT_FAMILIA_INTER, 0, 0,
+                                             0, 100, 82, 4};
   return &padrao;
 }
 static int estiloPreparar(const VideoLegendaEstilo *estilo, int tocou) {
@@ -1461,6 +1473,10 @@ static int estiloPreparar(const VideoLegendaEstilo *estilo, int tocou) {
       estilo->fundo < 0 || estilo->fundo > 4 || estilo->posicao < 0 || estilo->posicao > 7 ||
       estilo->borda < 0 || estilo->borda > 2 || estilo->opacidade < 0 || estilo->opacidade > 3 ||
       estilo->negrito < 0 || estilo->negrito > 1 ||
+      estilo->offsetHalfPct < -40 || estilo->offsetHalfPct > 40 ||
+      estilo->hdrBrightness < 0 || estilo->hdrBrightness > 100 ||
+      estilo->shadowOpacity < 0 || estilo->shadowOpacity > 100 ||
+      estilo->shadowSize < 0 || estilo->shadowSize > 14 ||
       estilo->atrasoMs < -LEG_ATRASO_MANUAL_MAX || estilo->atrasoMs > LEG_ATRASO_MANUAL_MAX) return 0;
   player_leg_estilo_carregar();
   VideoLegendaEstilo antes = legEstilo;
@@ -1471,7 +1487,10 @@ static int estiloPreparar(const VideoLegendaEstilo *estilo, int tocou) {
     if (antes.corBorda != estilo->corBorda) legTocado |= PLR_LEG_COR_BORDA;
     if (antes.borda != estilo->borda) legTocado |= PLR_LEG_BORDA;
     if (antes.fundo != estilo->fundo) legTocado |= PLR_LEG_FUNDO;
-    if (antes.posicao != estilo->posicao) legTocado |= PLR_LEG_POSICAO;
+    if (antes.posicao != estilo->posicao ||
+        antes.offsetHalfPct != estilo->offsetHalfPct) legTocado |= PLR_LEG_POSICAO;
+    if (antes.shadowOpacity != estilo->shadowOpacity ||
+        antes.shadowSize != estilo->shadowSize) legTocado |= PLR_LEG_BORDA;
     if (antes.negrito != estilo->negrito) legTocado |= PLR_LEG_NEGRITO;
   }
   if (tocou >= 0) player_leg_estilo_tocou(tocou);
@@ -5504,7 +5523,10 @@ static void desenharBloco(const LegBloco *bl, float x0, float y, float alpha, in
     // 2 direita (x0 e a borda direita).
     float x = alinha == 0 ? x0 : alinha == 1 ? x0 - l.w * .5f : x0 - l.w;
     if (legEstilo.fundo) { float fa = legEstilo.fundo * .16f * alpha; gfx_cor((GfxRect){x-18,y-6,l.w+36,l.h+12},.16f,0,0,0,fa); }
-    txt_desenhar_borda(bl->borda[i], x, y, legEstilo.borda, alpha);
+    if(legEstilo.borda==2)
+      txt_desenhar_alpha(bl->borda[i],x+legEstilo.shadowSize,
+                         y+legEstilo.shadowSize,alpha*legEstilo.shadowOpacity/100.0f);
+    else txt_desenhar_borda(bl->borda[i],x,y,legEstilo.borda,alpha);
     txt_desenhar_alpha(l, x, y, alpha); y += l.h + 5;
   }
 }
@@ -5603,6 +5625,7 @@ static float baseLegendaPrincipal(void) {
   // previa da barra de estilo mostrou isso na primeira captura.
   if (legEstilo.posicao >= 3) base -= (legEstilo.posicao - 3) * 48.f;
   else base += (3 - legEstilo.posicao) * 20.f;
+  base -= (float)legEstilo.offsetHalfPct * .005f * NV_VTELA_H;
   return base;
 }
 
@@ -5610,10 +5633,13 @@ static void desenharLegendaPrincipal(float *topoPilha);
 static void desenharLegendaExternaCorpo(void);
 /* A legenda e conteudo do filme, nao interface: o brilho do player nao a toca. */
 static void desenharLegendaExterna(void) {
-  const float osd = gfx_osd_mult;
-  gfx_osd_mult = 1.0f;
+  const float osd=gfx_osd_mult,hdr=gfx_hdr_ui;
+  gfx_osd_mult=1.0f;
+  // Text only: HDR brightness is independent from general player OSD.
+  if(gfx_hdr_output)gfx_hdr_ui=hdr*
+    (legEstilo.hdrBrightness>0?legEstilo.hdrBrightness/100.0f:1.0f);
   desenharLegendaExternaCorpo();
-  gfx_osd_mult = osd;
+  gfx_osd_mult=osd;gfx_hdr_ui=hdr;
 }
 static void desenharLegendaExternaCorpo(void) {
   /* F04: SECOND SUBTITLE (legendasui.h). Before every primary early return
@@ -5693,6 +5719,8 @@ static void desenharLegendaPrincipal(float *topoPilha){
       style.background = legEstilo.fundo >= 0 && legEstilo.fundo <= 4 ? legEstilo.fundo : 0;
       style.border = legEstilo.borda; style.bold = legEstilo.negrito;
       style.outlineRgb = (int)ajustes_leg_borda_rgb(legEstilo.corBorda);
+      style.shadowOpacity=legEstilo.shadowOpacity;
+      style.shadowSize=legEstilo.shadowSize;
       style.overrides = legTocado;
       if (assrender_fonte_local_ativa(legfontes_caminho(0))) {
         snprintf(style.font, sizeof style.font, "%s", legfontes_nome_ass(0));
