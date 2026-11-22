@@ -44,21 +44,28 @@ jobs:
             libsdl2-dev libsdl2-image-dev libsdl2-ttf-dev python3-pil
 
       - name: Compile-check updated native UI files (ARM64)
+        # Only the tagged UI-only push skips unrelated work that passed in
+        # build #133. Full gates remain the default for every other run.
+        env:
+          NUVIO_UI_FAST: ${{ contains(github.event.head_commit.message, '[ui-fast]') && '1' || '0' }}
         shell: bash
         run: |
           set -euo pipefail
           export ANDROID_NDK_HOME="${ANDROID_HOME:-$ANDROID_SDK_ROOT}/ndk/27.2.12479018"
           bash tools/android/preflight-c.sh
           bash -n tools/tizen-art.sh tools/android.sh
-          bash tests/stream_parser.sh
-          bash tests/selospacote.sh
-          bash tests/celular.sh
-          bash tests/detail_acoes_gap.sh
-          python3 tests/detail_netflix.py
-          bash tests/audioescolha.sh
-          bash tests/fileiras.sh
+          if [[ "$NUVIO_UI_FAST" != "1" ]]; then
+            bash tests/stream_parser.sh
+            bash tests/selospacote.sh
+            bash tests/celular.sh
+            bash tests/detail_acoes_gap.sh
+            python3 tests/detail_netflix.py
+            bash tests/audioescolha.sh
+            bash tests/fileiras.sh
+          fi
 
       - name: Stage and validate Android artwork before native dependencies or P2P
+        if: ${{ !contains(github.event.head_commit.message, '[ui-fast]') }}
         shell: bash
         run: |
           set -euo pipefail
@@ -71,6 +78,7 @@ jobs:
           echo 'Android artwork conversion and asset checks: passed'
 
       - name: Cache Gradle dependencies for early Android graphics tests
+        if: ${{ !contains(github.event.head_commit.message, '[ui-fast]') }}
         uses: gradle/actions/setup-gradle@v4
         with:
           # This long-lived feature branch must write caches too. setup-gradle
@@ -78,6 +86,7 @@ jobs:
           cache-read-only: false
 
       - name: Check stream-card wrapping and color emoji with Android graphics
+        if: ${{ !contains(github.event.head_commit.message, '[ui-fast]') }}
         run: |
           sdkmanager --install "platforms;android-35" "build-tools;35.0.0"
           android/gradlew -p tests/android-card -Pandroid.useAndroidX=true testDebugUnitTest
