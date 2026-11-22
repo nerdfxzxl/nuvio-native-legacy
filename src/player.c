@@ -996,6 +996,10 @@ static Uint32 abrindoFundoUlt;
 // A TELA CINEMA da abertura (#205, abrecine.h): no lugar do cartao, por padrao.
 static AbreCine cine;
 static int cinemaEscapeFoco; /* delayed manual source-change escape only */
+static int cinemaEscapeDisponivel(Uint32 agora) {
+  /* Source-owned loading clock, not a timer based on rendered percent. */
+  return cine.viva && (Uint32)(agora - cine.desde) >= 15000u;
+}
 // O botao em foco no modal do erro: 0 = Abrir Fontes, 1 = Voltar.
 static int erroBotao;
 static void erroEscolher(int i) {
@@ -2359,6 +2363,7 @@ void player_definir_fonte(const char *url) {
   duracaoReal = durCurtaAvisado = durPassouAvisado = 0;
   esperandoFonte = 0;
   erroFonte = 0;
+  cinemaEscapeFoco = 0; /* A newly accepted source never inherits old focus. */
   dvTelaFonte(url);
 #ifdef NV_ANDROID
   if (preTituloLegendaUsar(url)) { tocarFonte(url); return; }
@@ -2383,6 +2388,7 @@ void player_voltar_a_esperar(void) {
   mkvass_parar();
   mkvass_video_aberto(0);
   esperandoFonte = 1; erroFonte = 0; tocando = 1; pausaPessoa = 0;
+  cinemaEscapeFoco = 0;
   erroTitulo[0] = erroDica[0] = 0;
   retomadaAplicada = 0; inicioImagem = 0;
 }
@@ -4398,6 +4404,7 @@ void player_evento(const SDL_Event *e) {
       return;
     }
 #endif
+    cinemaEscapeFoco = 0;
     saindo = 1; pediuSair = 1;
     return;
   }
@@ -4414,30 +4421,33 @@ void player_evento(const SDL_Event *e) {
     return;
   }
 
-  // ABRINDO A FONTE: BAIXO expande o cartao e CIMA o recolhe. Antes o BAIXO aqui
-  // so movia o foco dos botoes do OSD, que fica apagado enquanto a fonte abre
-  // (anim = 0): a tecla nao fazia nada visivel. Voltar continua cancelando (acima)
-  // e o OK/Fontes nao mudam. Com a folha de Fontes aberta a tecla e dela
-  // (app.c nem chega aqui). Canal sintonizando fica de fora.
+  // Loading owns D-pad/OK, without leaking those keys into the hidden OSD.
+  // After 15 seconds Down FOCUSES Change Stream; it never activates it.
+  // Both cinema and the expanded/native fallback card render that focus.
+  // Back (handled above) remains an immediate cancel request.
   if (player_carregando() && !ehCanal() && !stream_folha_aberta()) {
-    /* Delayed manual escape takes precedence over the old Down-to-details. */
-    if (cine.viva && SDL_GetTicks() - cine.desde >= 15000u) {
+    if (cinemaEscapeDisponivel(SDL_GetTicks())) {
       if (k == SDLK_DOWN) { cinemaEscapeFoco = 1; return; }
       if (k == SDLK_UP && cinemaEscapeFoco) { cinemaEscapeFoco = 0; return; }
-      if ((k == SDLK_RETURN || k == SDLK_KP_ENTER) && cinemaEscapeFoco) {
-        pedFontes = 1; cinemaEscapeFoco = 0; return;
+    } else cinemaEscapeFoco = 0;
+    if (k == SDLK_RETURN || k == SDLK_KP_ENTER || k == SDLK_SPACE) {
+      if (cinemaEscapeFoco && cinemaEscapeDisponivel(SDL_GetTicks())) {
+        pedFontes = 1;
+        cinemaEscapeFoco = 0;
+      } else {
+        // OK always reveals genuine loading diagnostics, even when the
+        // detailed card is already shown; it never silently opens a source.
+        cine.detalhada = 1;
+        abrindoExp = 1;
       }
+      return;
     }
-    if ((k == SDLK_RETURN || k == SDLK_KP_ENTER) && abrecine_cinema(&cine)) {
-      cine.detalhada = 1; abrindoExp = 1; return;
-    }
-    if (abrecine_tecla(&cine, k)) return;
+    if (abrecine_tecla(&cine, k)) { abrindoExp = 1; return; }
     if (k == SDLK_DOWN) { abrindoExp = 1; return; }
-    if (k == SDLK_UP && abrindoExp) { abrindoExp = 0; return; }
-    if ((k == SDLK_RETURN || k == SDLK_KP_ENTER) && !abrecine_cinema(&cine)) {
-      if (stream_n() > 0 && addons_busca_parcial()) { pedFontes = 1; return; }
-      if (motivoInicio[0]) { pedAjFonte = 1; return; }
-    }
+    if (k == SDLK_UP) { abrindoExp = 0; return; }
+    if (k == SDLK_LEFT || k == SDLK_RIGHT) return;
+    // Physical Play/Pause and other non-navigation keys retain their existing
+    // playback semantics, including explicit user-pause recovery precedence.
   }
 
   // PAINEL DE PAUSA: com ele de pe, a tecla e DELE. Vem antes de tudo o que
@@ -6132,7 +6142,9 @@ static float alturaExpandido(void) {
 // dica "OK Ajustes" na ponta. So existe com motivo, e a altura acompanha.
 #define ABR_MOTIVO_H 40.0f
 static float alturaCarregando(void) {
-  return (abrindoExp ? alturaExpandido() : ABR_COMPACTO_H) + (motivoInicio[0] ? ABR_MOTIVO_H : 0.0f);
+  return (abrindoExp ? alturaExpandido() : ABR_COMPACTO_H)
+       + (motivoInicio[0] ? ABR_MOTIVO_H : 0.0f)
+       + (cinemaEscapeDisponivel(abrindoAgora) ? 34.0f : 0.0f);
 }
 // A mola que cruza o compacto e o expandido (chamada por quadro, fora do corpo).
 static void abrindoAtualizar(Uint32 agora) {
@@ -6269,6 +6281,18 @@ static void corpoCarregando(GfxRect r, float a, void *u) {
             gfx_cor((GfxRect){ x0 + aba, yy, x1 - x0 - aba * 2.0f, 4.0f }, 0.5f, ar, ag, ab, ae);
         }
       } }
+  }
+  // The delayed escape also exists in the detailed/fallback card. Only a
+  // visible, deliberately focused control can authorize a source change.
+  if (cinemaEscapeDisponivel(agora)) {
+    TxtLinha l = txt_linha(TXT_G19M, i18n("Change Stream"), 255, 255, 255,
+                           cinemaEscapeFoco ? 255 : 175);
+    float xx = x + (w - (float)l.w) * .5f;
+    float yy = r.y + r.h - (motivoInicio[0] ? ABR_MOTIVO_H : 0.0f) - 27.0f;
+    txt_desenhar_alpha(l, xx, yy, a);
+    if (cinemaEscapeFoco)
+      gfx_cor((GfxRect){xx, yy + (float)l.h + 2.0f, (float)l.w, 2.0f},
+              0.0f, 1, 1, 1, .78f * a);
   }
   motivoDesenhar(r, a);
 }
@@ -6609,10 +6633,14 @@ static void desenharCinema(Uint32 agora, const CatItem *c, int furou) {
   y += 29.0f;
   /* Q26: escape appears only after a genuinely slow 15-second startup.
    * Focus is never stolen; Down focuses it and OK confirms selection. */
-  if (cine.viva && agora - cine.desde >= 15000u) {
+  if (cinemaEscapeDisponivel(agora)) {
     TxtLinha l = txt_linha(TXT_G19M, i18n("Change Stream"), 255, 255, 255,
                             cinemaEscapeFoco ? 255 : 175);
-    txt_desenhar_alpha(l, canto ? tx : cx - l.w * .5f, y, v);
+    float xx = canto ? tx : cx - l.w * .5f;
+    txt_desenhar_alpha(l, xx, y, v);
+    if (cinemaEscapeFoco)
+      gfx_cor((GfxRect){xx, y + (float)l.h + 2.0f, (float)l.w, 2.0f},
+              0.0f, 1, 1, 1, .78f * v);
     y += 34.0f;
   }
   // Append DV information without moving existing loading content.
