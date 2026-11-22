@@ -4,20 +4,20 @@
 void abrecine_passo(AbreCine *a, int abrindo, int imagem, int detalhadaPadrao,
                     Uint32 agora, float dt, int reduzidas) {
   if (abrindo) {
-    if (!a->viva) { a->detalhada = detalhadaPadrao; a->desde = agora; a->foco = 0.0f; a->calado = 1; }
+    if (!a->viva && a->veu < 0.01f) { a->detalhada = detalhadaPadrao; a->desde = agora; a->foco = 0.0f; a->calado = 1; }
     a->viva = 1;
+    a->fim = 0; /* 200ms exit starts only when the frame is confirmed */
     a->veu = 1.0f;
     // O recuo da arte leva ~1 s: o corte para a tela de espera nao se ve.
     a->foco = reduzidas ? 1.0f : anim_mola(a->foco, 1.0f, dt, 3.0f);
     return;
   }
-  if (a->viva) a->fim = agora;
   a->viva = 0;
   if (a->veu <= 0.0f) return;
-  /* Never expose an unrendered video plane just because a timeout expired.
-   * The caller must establish a real first frame (or explicitly-confirmed
-   * audio-only presentation) before the independent 200ms exit fade starts. */
+  /* Never expose the hardware plane before Media3's first frame and surface
+   * confirmation. READY may arrive up to hundreds of ms earlier. */
   if (!imagem) return;
+  if (!a->fim) a->fim = agora ? agora : 1u;
   a->veu = reduzidas ? 0.0f : (agora - a->fim >= 200u ? 0.0f :
                               1.0f - (float)(agora - a->fim) / 200.0f);
 }
