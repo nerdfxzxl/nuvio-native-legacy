@@ -282,8 +282,9 @@ float plrui_seg(const char *const *rotulos, const int *contagem, int n, float se
 
 void plrui_barra(float x, float y, float w, float frac, float buf, int foco,
                  const float *caps, int nCaps, float a) {
-  float ar, ag, ab, h = foco ? 10.0f : 6.0f, yy = foco ? y - 2.0f : y;
-  int i;
+  float ar, ag, ab, h = foco ? 10.0f : 8.0f, yy = foco ? y - 1.0f : y;
+  // Timeline chapter ticks and the oversized focus thumb are intentionally off.
+  (void)caps; (void)nCaps;
   if (a <= 0.002f) return;
   if (frac < 0.0f) frac = 0.0f;
   if (frac > 1.0f) frac = 1.0f;
@@ -301,14 +302,6 @@ void plrui_barra(float x, float y, float w, float frac, float buf, int foco,
     float fw = w * frac;
     if (fw < h) gfx_cor((GfxRect){ x, yy, fw, h }, 0.0f, ar, ag, ab, a);
     else gfx_cor((GfxRect){ x, yy, fw, h }, 0.5f, ar, ag, ab, a);
-  }
-  for (i = 0; i < nCaps; i++)
-    gfx_cor((GfxRect){ x + w * caps[i] - 1.5f, yy - 4.0f, 3.0f, h + 8.0f }, 0.5f, 1, 1, 1, 0.55f * a);
-  if (foco) {
-    float cx = x + w * frac, cy = yy + h * 0.5f;
-    gfx_rect((GfxRect){ cx - 26.0f, cy - 20.0f, 52.0f, 56.0f }, 0, GFX_SOMBRA, 1.0f, 0, 0, 0.5f,
-             0, 0, 0, 0.5f * a);
-    gfx_cor((GfxRect){ cx - 13.0f, cy - 13.0f, 26.0f, 26.0f }, 0.5f, 1, 1, 1, a);
   }
 }
 
