@@ -1647,6 +1647,7 @@ int p2pmotor_resolver(const char *hash, int fileIdx, const char *fontes,
   }
   if (e != P2P_OK) {
     resolvendo = 0;
+    estado.etapa = P2PM_ETAPA_NENHUMA;
     pthread_cond_broadcast(&sinal);
     pthread_mutex_unlock(&trava);
     return e;

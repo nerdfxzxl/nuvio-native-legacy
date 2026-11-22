@@ -6562,11 +6562,34 @@ static void desenharCinema(Uint32 agora, const CatItem *c, int furou) {
       txt_desenhar_alpha(d, canto ? tx : cx - d.w * 0.5f, y, v * entra);
       y += 34.0f;
     } }
-  /* Real state only: no generic Just a moment and no invented progress. */
+  /* P2: event-based status labels crossfade independently from the cinema
+   * backdrop. A fresh opening resets the transition, so no prior source can
+   * leak stale metadata/P2P messages into the next selected source. */
   {
-    const char *estado = estadoCargaP2();
-    TxtLinha l = txt_linha(TXT_G19M, i18n(estado), 243, 242, 239, 255);
-    txt_desenhar_alpha(l, canto ? tx : cx - l.w * .5f, y, .76f * v);
+    static Uint32 aberturaStatus, alterouStatus;
+    static char statusAtual[96], statusAntigo[96];
+    const char *proximo = estadoCargaP2();
+    float progresso;
+    if (aberturaStatus != cine.desde) {
+      aberturaStatus = cine.desde; alterouStatus = 0;
+      statusAntigo[0] = 0;
+      snprintf(statusAtual, sizeof statusAtual, "%s", proximo);
+    } else if (strcmp(statusAtual, proximo)) {
+      snprintf(statusAntigo, sizeof statusAntigo, "%s", statusAtual);
+      snprintf(statusAtual, sizeof statusAtual, "%s", proximo);
+      alterouStatus = agora;
+    }
+    progresso = reduz || !alterouStatus ? 1.0f :
+      fminf(1.0f, (float)(agora - alterouStatus) / 180.0f);
+    if (statusAntigo[0] && progresso < 1.0f) {
+      TxtLinha velha = txt_linha(TXT_G19M, i18n(statusAntigo), 243, 242, 239, 255);
+      txt_desenhar_alpha(velha, canto ? tx : cx - velha.w * .5f, y,
+                         .76f * v * (1.0f - progresso));
+    }
+    {
+      TxtLinha nova = txt_linha(TXT_G19M, i18n(statusAtual), 243, 242, 239, 255);
+      txt_desenhar_alpha(nova, canto ? tx : cx - nova.w * .5f, y, .76f * v * progresso);
+    }
     y += 34.0f;
   }
   desenharTelemetriaCarga(cx, y, canto, tx, v);
