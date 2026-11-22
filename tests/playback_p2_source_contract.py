@@ -24,6 +24,7 @@ def require(name, *clauses):
 gfxh = source("src/gfx.h")
 gfx = source("src/gfx.c")
 player = source("src/player.c")
+profiles = source("src/perfilsel.c")
 leg = source("src/legenda.c")
 legh = source("src/legenda.h")
 p2p = source("src/p2pmotor.c")
@@ -92,5 +93,9 @@ require("manual 15-second Change Stream and Back remote behavior",
         "saindo = 1; pediuSair = 1;" in player)
 require("global shared loading arc and reduced motion",
         "plrui_arco(" in cinema, "ajustes_animacoes_reduzidas()" in player)
+require("profile-selection loading uses shared official arc, not twelve dots",
+        "plrui_arco(cx, cy, av.w * 0.48f" in profiles,
+        "for (k = 0; k < 12; k++)" not in profiles)
+
 
 print("P2 SOURCE CONTRACTS: PASS (source-only, not native/Android/device verified)")
