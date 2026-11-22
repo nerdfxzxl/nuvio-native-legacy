@@ -350,6 +350,7 @@ static float anim = 0.0f;          // 0..1 seguindo `visivel`, por mola
 // ou o ponteiro devolve os controles inteiros, como antes. `cheio` e a mola
 // desse resto: 0 com so a barra, 1 com tudo.
 static int   soBarra = 0;
+static float barraBufferMem;
 static float cheio = 1.0f;
 static float focoB[PLR_NBTNS];     // mola de foco de cada botao
 static float focoBV[PLR_NBTNS];    // underdamped spring velocity for premium bounce
@@ -1938,6 +1939,7 @@ void player_abrir(int indiceCatalogo, const char *url) {
     // overlay do guia dependem dela. Idempotente.
     if (canalSessao) { guia_carregar(); epg_iniciar(); } }
   tocando = 1; pausaPessoa = 0; retomandoSalto = 0; visivel = 1; anim = 0.0f; entrada = 0.0f; soBarra = 0; cheio = 1.0f; fileira = 1.0f;
+  barraBufferMem=0.0f;
   pedFontes = erroFonte = pedFaixas = pedProxT = pedProxE = trocaEpisodio = 0; inicioImagem = 0;
   durFonteAvisada = durFontePulou = pedProximaFonte = durFonteCurta = durFonteForaCache = 0;
   durFonteAcaoAte = 0; durFonteSkipEm = 0; durFonteManter = 0;
@@ -7273,7 +7275,9 @@ static void desenharOsdCorpo(Uint32 agora, float a, float ac, const CatItem *c) 
   // During stopped/paused playback the full action row can fade, so the
   // time label belongs directly above the progress bar, never floating
   // where the controls used to be.
-  if (pausaPessoa || !tocando) cyTempo = yBarra - 25.0f;
+  // Only the seek-only/idle OSD anchors time above the bar. The full player,
+  // including paused playback, keeps time below it beside transport controls.
+  if (soBarra) cyTempo = yBarra - 25.0f;
   float frac = ehCanal()
              ? fracCanal()
              : (duracaoSeg > 0.0f ? anim_clamp(posVis / duracaoSeg, 0.0f, 1.0f) : 0.0f);
@@ -7285,29 +7289,23 @@ static void desenharOsdCorpo(Uint32 agora, float a, float ac, const CatItem *c) 
     ponteiro_alvo(bx, yBarra - folga, bw, 6.0f + folga * 2.0f, ponteiroBarra, ponteiroBuscar, 0, 0);
     ponteiro_alvo_arrastavel();
   }
-  { float bufFrac = (!ehCanal() && duracaoSeg > 0.0f) ? anim_clamp(video_buffer_fim() / duracaoSeg, 0.0f, 1.0f) : 0.0f;
-    // OS CORTES DO TheIntroDB (abertura, resumo, creditos) que o player ja
-    // tem: onde cada trecho comeca e acaba, discretos sobre o trilho.
-    float caps[16];
-    int nCaps = 0;
-    if (!ehCanal() && duracaoSeg > 0.0f) {
-      IntroTrecho tr[8];
-      int nt = intro_trechos(tr, 8), i;
-      for (i = 0; i < nt && nCaps < 15; i++) {
-        caps[nCaps++] = (float)(tr[i].inicio / duracaoSeg);
-        if (tr[i].fim > 0.0) caps[nCaps++] = (float)(tr[i].fim / duracaoSeg);
-      }
-      for (i = 0; i < nCaps; i++) if (caps[i] <= 0.0f || caps[i] >= 1.0f) caps[i--] = caps[--nCaps];
-    }
-    // Native player may report buffer end as 0 while exposing buffer-ahead
-    // seconds in VideoStats; use the latter when the former is stale.
+  { float bufFrac = (!ehCanal() && duracaoSeg > 0.0f)
+      ? anim_clamp(video_buffer_fim() / duracaoSeg,0.0f,1.0f) : 0.0f;
+    // The native backend can report zero buffering during the idle/seek-only
+    // OSD, even after reporting a genuine downloaded range. Keep the last
+    // observed buffer end for THIS playback session.
     if (!ehCanal() && duracaoSeg > 0.0f && bufFrac <= frac) {
-      VideoStats s;
-      video_estatisticas(&s);
-      if (s.bufferSeg > 0.0)
-        bufFrac = anim_clamp((float)((posSeg + s.bufferSeg) / duracaoSeg), 0.0f, 1.0f);
+      VideoStats stats;
+      video_estatisticas(&stats);
+      if(stats.bufferSeg>0.0)
+        bufFrac=anim_clamp((float)((posSeg+stats.bufferSeg)/duracaoSeg),0.0f,1.0f);
     }
-    plrui_barra(bx, yBarra, bw, frac, bufFrac, barraFoco, caps, nCaps, a); }
+    if(!ehCanal() && duracaoSeg > 0.0f) {
+      if(bufFrac>barraBufferMem)barraBufferMem=bufFrac;
+      if(soBarra && bufFrac<frac+0.002f)bufFrac=barraBufferMem;
+    }
+    plrui_barra(bx,yBarra,bw,frac,bufFrac,barraFoco,NULL,0,a);
+  }
 
   // --- O TITULO: o LOGO, e o texto so na falta dele -------------------------
   // (O dono tinha pedido texto em 2026-09; o mockup aprovado em 03/10 volta ao
