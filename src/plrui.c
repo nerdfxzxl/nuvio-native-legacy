@@ -1,5 +1,6 @@
 // Pecas do player no Glass UI — ver plrui.h.
 #include "plrui.h"
+#include "loading_arc_p2.h"
 #include "ajustes.h"
 #include "anim.h"
 #include "idioma.h"
@@ -324,44 +325,41 @@ void plrui_trilho(GfxRect r, float frac, float cr, float cg, float cb, float a) 
     gfx_cor((GfxRect){ r.x, r.y, r.w * frac, r.h }, r.w * frac >= r.h ? 0.5f : 0.0f, cr, cg, cb, a);
 }
 
-static void anelPontos(float cx, float cy, float d, int cinza, int sombra, Uint32 agora, float a);
+/* Shared native NuvioTV LoadingIndicator: 2000ms, expanding/shrinking
+ * arc with rounded caps. Used in player, source picker and other legacy UI.
+ * The background is transparent; there is no fake percentage progress. */
+void plrui_arco(float cx, float cy, float d, int cinza, int sombra,
+                Uint32 agora, float a) {
+  NvLoadingArcP2 arc = nv_arc_quadro(agora, ajustes_animacoes_reduzidas());
+  float cr = 0.953f, cg = 0.949f, cb = 0.937f;
+  float esp = fmaxf(2.0f, d * (50.0f * .75f / 350.0f) / (300.0f * .75f / 350.0f));
+  float raio, theta0, theta1, x0, y0, x1, y1;
+  GfxRect r;
+  if (d <= 0.0f || a <= 0.0f) return;
+  if (!cinza && !sombra) ajustes_acento(&cr, &cg, &cb);
+  if (sombra) { cr = cg = cb = 0.96f; }
+  if (esp > d * 0.27f) esp = d * 0.27f;
+  /* NuvioTV: painted circle diameter 300/350 * .75 of host square,
+   * stroke 50/350 * .75. d is the bounding-box width in Legacy. */
+  r = (GfxRect){ cx - d * .5f, cy - d * .5f, d, d };
+  raio = (d - esp) * .5f;
+  theta0 = arc.inicio * 6.2831853f;
+  theta1 = (arc.inicio + arc.fracao) * 6.2831853f;
+  x0 = cx + sinf(theta0) * raio; y0 = cy - cosf(theta0) * raio;
+  x1 = cx + sinf(theta1) * raio; y1 = cy - cosf(theta1) * raio;
+  if (sombra) gfx_arco(r, esp + 2.0f, arc.inicio, arc.fracao, 0, 0, 0, 0.22f * a);
+  gfx_arco(r, esp, arc.inicio, arc.fracao, cr, cg, cb, (cinza ? .70f : 1.0f) * a);
+  gfx_cor((GfxRect){x0 - esp*.5f, y0 - esp*.5f, esp, esp}, .5f, cr, cg, cb, a);
+  gfx_cor((GfxRect){x1 - esp*.5f, y1 - esp*.5f, esp, esp}, .5f, cr, cg, cb, a);
+}
 void plrui_anel(float cx, float cy, float d, int cinza, Uint32 agora, float a) {
-  anelPontos(cx, cy, d, cinza, 0, agora, a);
+  plrui_arco(cx, cy, d, cinza, 0, agora, a);
 }
-// O ANEL SOLTO: so os pontos girando, sem disco por tras (dono, 05/10: "tira o
-// fundo cinza opaco"). Sem placa, o contraste sobre cena clara vem de uma
-// sombra suave sob CADA ponto (um disco preto maior e fraco), nao de um fundo.
 void plrui_anel_solto(float cx, float cy, float d, Uint32 agora, float a) {
-  anelPontos(cx, cy, d, 0, 1, agora, a);
+  plrui_arco(cx, cy, d, 1, 1, agora, a);
 }
-static void anelPontos(float cx, float cy, float d, int cinza, int sombra, Uint32 agora, float a) {
-  float cr = 0.953f, cg = 0.949f, cb = 0.937f, rp = d / 14.0f, ra = d * 0.5f - 6.0f;
-  int k, giro;
-  if (!cinza && !sombra) ajustes_acento(&cr, &cg, &cb);   // solto: branco, o acento some em cena clara
-  // Gira por passos de 1/12 (o desenho do mockup e parado; aqui a cauda anda).
-  giro = ajustes_animacoes_reduzidas() ? 0 : (int)((agora / 83u) % 12u);
-  for (k = 0; k < 12; k++) {
-    float ang = (k / 12.0f) * 6.2831853f;
-    int idade = ((12 - k) + giro) % 12;
-    float op = 0.15f + 0.85f * (float)idade / 11.0f;
-    float px = cx + sinf(ang) * ra, py = cy - cosf(ang) * ra;
-    if (sombra) {
-      float rs = rp + 3.0f;
-      gfx_cor((GfxRect){ px - rs, py - rs + 1.0f, rs * 2.0f, rs * 2.0f }, 0.5f, 0, 0, 0, 0.30f * op * a);
-    }
-    gfx_cor((GfxRect){ px - rp, py - rp, rp * 2.0f, rp * 2.0f }, 0.5f, cr, cg, cb,
-            op * a * (cinza ? 0.7f : 1.0f));
-  }
-}
-
 void plrui_respira(float cx, float cy, float d, Uint32 agora, float a) {
-  float cr, cg, cb, p;
-  ajustes_acento(&cr, &cg, &cb);
-  p = ajustes_animacoes_reduzidas() ? 1.0f
-      : 0.70f + 0.30f * sinf((float)agora * (6.2831853f / 1200.0f));
-  gfx_rect((GfxRect){ cx - d * 0.5f - 6.0f, cy - d * 0.5f - 6.0f, d + 12.0f, d + 12.0f }, 0,
-           GFX_DISCO, 0, 0, 0, 0, cr, cg, cb, 0.22f * a * p);
-  gfx_cor((GfxRect){ cx - d * 0.5f, cy - d * 0.5f, d, d }, 0.5f, cr, cg, cb, a);
+  plrui_arco(cx, cy, fmaxf(d, 18.0f), 0, 0, agora, a);
 }
 
 void plrui_sep(float x, float yc, float a) {
