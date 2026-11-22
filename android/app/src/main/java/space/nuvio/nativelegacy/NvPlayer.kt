@@ -96,6 +96,7 @@ object NvPlayer {
     private const val EV_LIVE_SEGMENT = 12
     private const val EV_CARGA_FASE = 13 // observed Media3 startup milestones
     private const val EV_SO_AUDIO = 14  // READY with selected audio and no video tracks
+    private const val EV_SUPERFICIE_INVALIDADA = 15 // same session; rebuilt hardware plane
 
     private const val TELA_W = 1920   // coordenadas de layout do app
     private const val TELA_H = 1080
@@ -243,7 +244,7 @@ object NvPlayer {
     // PixelCopy reads the hardware Surface, not SDL's transparent framebuffer.
     // Never wait for it on exit. One small bitmap and one request, no decoder held.
     @JvmStatic fun quadro(acao: Int): Int {
-        if (acao == 3) return if (quadroVisivel) 1 else 0
+        if (acao == 3) return if (quadroVisivel || retidoVisivel) 1 else 0
         principal.post {
             if (acao == 0) { esquecerQuadro(); return@post }
             if (acao == 2) { mostrarQuadro(quadroUrl, quadroTitulo); return@post }
@@ -278,6 +279,93 @@ object NvPlayer {
         v.setImageBitmap(b); v.isFocusable = false
         c.addView(v, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
         quadroView = v; quadroVisivel = true
+    }
+
+    // P2-B transient hold is NOT the warm-resume cache. It exists solely for
+    // the current Media3 session or a native-authorized SAME-source recovery.
+    // Never retain an SDR PixelCopy across a manual source/episode change.
+    private var retidoBitmap: Bitmap? = null
+    private var retidoView: ImageView? = null
+    @Volatile private var retidoVisivel = false
+    private var retidoPedido = 0
+    private fun limparRetido() {
+        retidoPedido++
+        retidoVisivel = false
+        retidoView?.let { (it.parent as? FrameLayout)?.removeView(it) }
+        retidoView = null
+        retidoBitmap?.recycle()
+        retidoBitmap = null
+    }
+    private fun mostrarRetido(bitmap: Bitmap, sv: SurfaceView) {
+        val c = camada
+        if (c == null) { bitmap.recycle(); return }
+        limparRetido()
+        val v = ImageView(c.context)
+        v.isFocusable = false
+        v.setBackgroundColor(android.graphics.Color.BLACK)
+        v.scaleType = ImageView.ScaleType.FIT_XY
+        v.setImageBitmap(bitmap)
+        // Copy the actual video-plane geometry (crop/aspect/PiP), not the
+        // full screen; otherwise a zoomed or letterboxed frame is stretched.
+        val lp = (sv.layoutParams as? FrameLayout.LayoutParams)?.let {
+            FrameLayout.LayoutParams(it)
+        } ?: FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT,
+                                      FrameLayout.LayoutParams.MATCH_PARENT)
+        c.addView(v, lp)
+        v.bringToFront()
+        retidoBitmap = bitmap
+        retidoView = v
+        retidoVisivel = true
+    }
+    private fun podeCapturarRetido(p: ExoPlayer, sv: SurfaceView): Boolean {
+        if (android.os.Build.VERSION.SDK_INT < 26 || retidoVisivel) return false
+        val f = p.videoFormat
+        val transfer = f?.colorInfo?.colorTransfer
+        val hdrTransfer = transfer == C.COLOR_TRANSFER_ST2084 || transfer == C.COLOR_TRANSFER_HLG
+        return FrameHoldP2B.mayCopy(
+            quadroVisto, sv.holder.surface.isValid, player === p && superficie === sv,
+            ultHdr.isNotEmpty() && !ultHdr.equals("none", ignoreCase = true),
+            decoderDv || f?.sampleMimeType == MimeTypes.VIDEO_DOLBY_VISION,
+            hdrTransfer
+        )
+    }
+    // PixelCopy is asynchronous: bounded capture, NO main-thread wait for
+    // GPU/decoder, and fail-open if unavailable (secure video, memory, HAL).
+    // Only the original request/session/surface may publish the bitmap.
+    private fun capturarRetido(p: ExoPlayer, sv: SurfaceView, pedido: Int, seguir: () -> Unit) {
+        if (!podeCapturarRetido(p, sv)) { seguir(); return }
+        val origem = sessao
+        val token = ++retidoPedido
+        val width = sv.width.coerceAtLeast(1)
+        val height = sv.height.coerceAtLeast(1)
+        // At most 1920x1080 RGBA (about 8 MiB), not a full 4K copy on low-RAM TVs.
+        val scale = minOf(1.0, kotlin.math.sqrt(2073600.0 / (width.toDouble() * height)))
+        val bitmap = try {
+            Bitmap.createBitmap((width * scale).toInt().coerceAtLeast(1),
+                (height * scale).toInt().coerceAtLeast(1), Bitmap.Config.ARGB_8888)
+        } catch (_: OutOfMemoryError) { seguir(); return }
+        var terminou = false
+        val prazo = Runnable {
+            if (!terminou) { terminou = true; seguir() }
+        }
+        principal.postDelayed(prazo, 160L)
+        try {
+            PixelCopy.request(sv, bitmap, { resultado ->
+                if (terminou) { bitmap.recycle(); return@request }
+                terminou = true
+                principal.removeCallbacks(prazo)
+                if (resultado == PixelCopy.SUCCESS && token == retidoPedido &&
+                    FrameHoldP2B.ownsResult(pedido, pedidos.get(), origem, sessao,
+                        player === p, superficie === sv)) {
+                    mostrarRetido(bitmap, sv)
+                } else bitmap.recycle()
+                seguir()
+            }, principal)
+        } catch (_: Exception) {
+            principal.removeCallbacks(prazo)
+            if (!terminou) { terminou = true; bitmap.recycle(); seguir() }
+            else bitmap.recycle()
+        }
     }
     private var cacheMidia: CacheMidia? = null
     private var cacheEstado = CacheSessao.DESLIGADO
@@ -1115,7 +1203,7 @@ object NvPlayer {
         soltarPreparo()
         pedidos.incrementAndGet()
         liberar()
-        esquecerQuadro(); CacheMidia.descartar("app exit")
+        esquecerQuadro(); limparRetido(); CacheMidia.descartar("app exit")
         val sv = superficie
         if (sv != null) (sv.parent as? FrameLayout)?.removeView(sv)
         superficie = null
@@ -1133,6 +1221,17 @@ object NvPlayer {
             if (pedido == pedidos.get()) abrirMain(url, cabecalhos, false, inicioMs.coerceAtLeast(0), geracao, pedido)
         }
     }
+    // Only called by Android native's bounded SAME-source rebuffer/network
+    // restart. No user-selected release/episode may call this entry point.
+    @JvmStatic fun abrirRecuperacao(url: String, cabecalhos: String, inicioMs: Int, geracao: Int) {
+        cancelarPreparo(0)
+        val pedido = pedidos.incrementAndGet()
+        principal.post {
+            if (pedido == pedidos.get())
+                abrirMain(url, cabecalhos, false, inicioMs.coerceAtLeast(0), geracao,
+                    pedido, mesmaFonte = true)
+        }
+    }
     @JvmStatic fun abrirRetomada(url: String, cabecalhos: String, inicioMs: Int, fracao: Int, geracao: Int) {
         cancelarPreparo(0)
         val pedido = pedidos.incrementAndGet()
@@ -1144,7 +1243,7 @@ object NvPlayer {
     @JvmStatic fun parar() {
         cancelarPreparo(0)
         val pedido = pedidos.incrementAndGet()
-        principal.post { if (pedido == pedidos.get()) liberar() }
+        principal.post { if (pedido == pedidos.get()) { limparRetido(); liberar() } }
     }
     private var pausaPedida = false
     @JvmStatic fun pausar(p: Int) {
@@ -1176,10 +1275,20 @@ object NvPlayer {
     @JvmStatic fun buscar(ms: Int) {
         val pedido = pedidos.get()
         principal.post {
-            if (pedido == pedidos.get()) {
-                relatarAudio(sessao, "seek alvoMs=$ms")
-                player?.seekTo(ms.coerceAtLeast(0).toLong())
-            }
+            if (pedido != pedidos.get()) return@post
+            val p = player ?: return@post
+            val alvo = ms.coerceAtLeast(0).toLong()
+            relatarAudio(sessao, "seek alvoMs=$ms")
+            // In-buffer seeks and ordinary buffering keep the SAME hardware
+            // SurfaceView. For a provably forward out-of-buffer seek, make a
+            // best-effort SDR hold before the decoder may flush its output.
+            val sv = superficie
+            if (sv != null && FrameHoldP2B.beyondKnownBuffer(
+                    alvo, p.currentPosition, p.bufferedPosition, p.isCurrentMediaItemLive)) {
+                capturarRetido(p, sv, pedido) {
+                    if (pedido == pedidos.get() && player === p) p.seekTo(alvo)
+                }
+            } else p.seekTo(alvo)
         }
     }
     @JvmStatic fun volume(pct: Int) { principal.post {
@@ -1473,7 +1582,8 @@ object NvPlayer {
 
     private fun abrirMain(url: String, cabecalhos: String, reabrindo: Boolean,
                           inicioMs: Int, geracao: Int, pedido: Int, fracao: Int = 0, esperaInicio: Long = -1L,
-                          preparada: Preparo? = null) {
+                          preparada: Preparo? = null, mesmaFonte: Boolean = false,
+                          capturaTentada: Boolean = false) {
         if (pedido != pedidos.get()) {
             preparada?.recursos?.let { soltarRecursosPreparo(it) }
             return
@@ -1483,6 +1593,21 @@ object NvPlayer {
             preparada?.recursos?.let { soltarRecursosPreparo(it) }
             confirmarRetomada(geracao, false)
             return
+        }
+        // A full source switch always drops an old temporary frame even when
+        // the URL happens to look similar. Native recovery explicitly opts in.
+        if (!mesmaFonte && esperaInicio < 0) limparRetido()
+        if (mesmaFonte && !capturaTentada && esperaInicio < 0) {
+            val antigo = player
+            val sv = superficie
+            if (antigo != null && sv != null) {
+                capturarRetido(antigo, sv, pedido) {
+                    if (pedido == pedidos.get())
+                        abrirMain(url, cabecalhos, reabrindo, inicioMs, geracao, pedido,
+                            fracao, esperaInicio, preparada, mesmaFonte, true)
+                }
+                return
+            }
         }
         val espera = if (esperaInicio < 0) SystemClock.elapsedRealtime() else esperaInicio
         if (esperaInicio < 0) {
@@ -1497,7 +1622,8 @@ object NvPlayer {
             val ms = SystemClock.elapsedRealtime() - espera
             if (liberacoesEmCurso.get() > 0 && (limitedNext || limitedSession || ms < 3000)) {
                 principal.postDelayed({
-                    abrirMain(url, cabecalhos, reabrindo, inicioMs, geracao, pedido, fracao, espera, preparada)
+                    abrirMain(url, cabecalhos, reabrindo, inicioMs, geracao, pedido, fracao, espera,
+                        preparada, mesmaFonte, true)
                 }, 25)
                 return
             }
@@ -1688,6 +1814,10 @@ object NvPlayer {
         observarJanela(sv)
         c.addView(sv, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
         superficie = sv
+        // The newly created hardware layer must stay UNDER any snapshot
+        // retained from this same source, including the existing warm cache.
+        quadroView?.bringToFront()
+        retidoView?.bringToFront()
     }
 
     // QUANTO O MEDIA3 SEGUROU O FIO PRINCIPAL ao perder a superficie (recriar,
@@ -2018,6 +2148,7 @@ object NvPlayer {
             Log.i(TAG, "[aspect] superficie estavel (hdr=$ultHdr) sessao=$sessao soltando=${soltando != null} holder=${System.identityHashCode(superficie?.holder)}")
             ev(EV_SUPERFICIE_ESTAVEL)
             esconderQuadro() // retain the previous frame until the new hardware plane is safe
+            limparRetido()
             liberarSom() // audio-only is separately confirmed by selected Media3 tracks
         }
     }
@@ -2191,7 +2322,7 @@ object NvPlayer {
             if (!atual(minha)) return
             Log.i(TAG, "[player] onRenderedFirstFrame renderer=video loadMs=${SystemClock.elapsedRealtime() - abriuEm} sessao=$sessao hdr=$ultHdr holder=${System.identityHashCode(superficie?.holder)} soltando=${soltando != null}")
             // Do not dismiss the retained previous frame before HDR/DV surface stability.
-            if (estavelEmitido) esconderQuadro()
+            if (estavelEmitido) { esconderQuadro(); limparRetido() }
             ev(EV_PRIMEIRO_QUADRO)
             quadroVisto = true
             logTaxaDeQuadros()
