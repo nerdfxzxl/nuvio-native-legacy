@@ -5660,7 +5660,9 @@ static void desenhaHero(Uint32 agora, float saida) {
   // rampas fica constante no crossfade. Desenhado DEPOIS do furo, com alfa:
   // no .tpk/LG/Android o plano de video aparece com 1 - alfa sob a rampa.
   if (aTrailer > 0.0f && aTrailer < 0.995f) gfx_furo_alfa(furo, aTrailer);
-  if (aTrailer > 0.0f && (modoHero == GFX_HERO || modoHero == GFX_HERO_CHEIO))
+  // No separate dark ramp reappears when the Home hero trailer starts.
+  if (!gfx_hero_sem_degrade_atual && aTrailer > 0.0f &&
+      (modoHero == GFX_HERO || modoHero == GFX_HERO_CHEIO))
     gfx_rect(r, 0, modoHero, 0, 1.0f, 0, 0.0f, 0, 0, 0, aTrailer);
   gfx_tex_aspect_atual = 0.0f;
   heroArteRect = r;
@@ -5686,9 +5688,13 @@ static void desenhaHero(Uint32 agora, float saida) {
   float empurraMax = lay == HOME_LAYOUT_MODERNA ? empurraHero() : ANC(NV_HOME_HERO_EMPURRA);
   float aBotao = anim_clamp(empurra / empurraMax, 0.0f, 1.0f);
   float base = heroBaseCopia(lay, r, empurra, descidaCopy);
-  // Correct the upward offset visible on the full-screen editorial hero:
-  // move title, synopsis and action together, keeping the artwork untouched.
-  if (cheio || lay == HOME_LAYOUT_DINAMICA) base += ANC(22.0f);
+  // Anchor the MAIN hero's synopsis and View Details nearer the visible
+  // screen bottom (not just the bottom of the old artwork crop). Move the
+  // whole copy block together so synopsis, button and logo retain their gaps.
+  // Do not pull the copy over the first row in Standard or row-focus states.
+  if (lay == HOME_LAYOUT_MODERNA && focoHero) base += ANC(82.0f);
+  else if (lay == HOME_LAYOUT_DINAMICA) base += ANC(70.0f);
+  else if (cheio) base += ANC(22.0f);
   // Padrao e Dinamica ancoram o bloco na BASE DO PROPRIO DESTAQUE (e o botao
   // sempre existe, com o foco ou sem ele): o texto anda com a arte, e nao com
   // as fileiras como na Moderna.
@@ -7945,7 +7951,12 @@ static void home_desenhar_(Uint32 agora) {
   if ((ajustes_hero_ligado() || dinPalcoSplit() || palcoFundoModo != PALCO_ATUAL) &&
       !vazioQr && palcoFundoAlpha > 0.004f) {
     gfx_opacidade_grupo = palcoFundoModo == PALCO_ATUAL ? palcoFundoAlpha : 1.0f;
+    // Main Home hero only: bypass its dark artwork gradients. The graphics
+    // context is immediately restored; detail, cards and other UI retain the
+    // existing shader behavior and source artwork cropping.
+    gfx_hero_sem_degrade_atual = 1;
     desenhaHero(agora, pd);
+    gfx_hero_sem_degrade_atual = 0;
     gfx_opacidade_grupo = 1.0f;
   }
   if (ajustes_hero_ligado() && !vazioQr && heroVisivelToque() > 0.25f) {
