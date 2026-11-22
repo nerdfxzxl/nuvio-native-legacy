@@ -11,10 +11,14 @@
 #include "escala.h"
 #include <string.h>
 
-#define PG_LEFT  68.0f
-#define PG_TOP   72.0f
-#define PG_ROW   29.0f
-#define PG_LINE  3.0f
+// Official Compose uses 3dp line, 18dp rows, 11sp type and a 10dp
+// inner gap. Native's virtual-to-physical scale is different: these are
+// calibrated TV-layout coordinates, not literal Compose dp values.
+#define PG_LEFT  60.0f
+#define PG_TOP   30.0f
+#define PG_ROW   58.0f
+#define PG_LINE  8.0f
+#define PG_GAP   29.0f
 
 static float pgEase(float t) {
   t=anim_clamp(t,0.0f,1.0f);
@@ -37,17 +41,14 @@ void plrguia_pedir(float tg,float osd,const char *classificacao) {
   float alpha=pgEase(tg/.30f)*(1.0f-pgEase((tg-containerEnd)/.20f));
   if(alpha<=.002f)return;
   float line=pgEase((tg-.30f)/.40f)*(1.0f-pgEase((tg-lineEnd)/.30f));
-  float lineHeight=(float)n*20.0f+(float)(n-1)*9.0f;
-  float accentR,accentG,accentB;
-  ajustes_acento(&accentR,&accentG,&accentB);
+  // Real Nuvio has no dark rounded plaque behind the labels. The vertical
+  // accent runs alongside the full three-row text stack.
+  float lineHeight=(float)(n-1)*PG_ROW+47.0f;
   ESCALA_INI();
-  // Subtle dark veil only near the top-left text, not a giant glass clock.
-  GfxRect shade={PG_LEFT-20.0f,PG_TOP-23.0f,490.0f,lineHeight+56.0f};
-  gfx_cor(shade,16.0f/shade.h,.018f,.022f,.032f,.25f*alpha);
   if(line>.001f) {
     float h=lineHeight*line;
     gfx_cor((GfxRect){PG_LEFT,PG_TOP,PG_LINE,h},.5f,
-            accentR,accentG,accentB,alpha);
+            1.0f,1.0f,1.0f,alpha);
   }
   for(int i=0;i<n;i++) {
     float onset=.7f+i*.28f+.08f;
@@ -57,13 +58,16 @@ void plrguia_pedir(float tg,float osd,const char *classificacao) {
     float yy=PG_TOP+i*PG_ROW;
     const char *label=parental_rotulo(i),*severity=parental_gravidade(i);
     if(!label||!severity)continue;
-    TxtLinha title=txt_linha(TXT_G16B,label,243,244,248,255);
-    TxtLinha dot=txt_linha(TXT_ILHA_APOIO," · ",130,134,145,255);
-    TxtLinha level=txt_linha(TXT_ILHA_APOIO,severity,183,188,199,255);
-    float tx=PG_LEFT+PG_LINE+14.0f;
-    txt_desenhar_alpha(title,tx,yy,itemA*.9f);
-    txt_desenhar_alpha(dot,tx+title.w,yy,itemA*.5f);
-    txt_desenhar_alpha(level,tx+title.w+dot.w,yy,itemA*.68f);
+    // The 11sp Compose labels read like ~22 native virtual pixels on this
+    // renderer. All three components share one baseline and stagger together.
+    TxtLinha title=txt_linha(TXT_G26B,label,244,245,247,255);
+    TxtLinha dot=txt_linha(TXT_G22M," · ",140,140,144,255);
+    TxtLinha level=txt_linha(TXT_G22M,severity,170,173,178,255);
+    float tx=PG_LEFT+PG_LINE+PG_GAP;
+    float textY=yy+10.0f;
+    txt_desenhar_alpha(title,tx,textY,itemA*.90f);
+    txt_desenhar_alpha(dot,tx+title.w,textY,itemA*.55f);
+    txt_desenhar_alpha(level,tx+title.w+dot.w,textY,itemA*.65f);
   }
   ESCALA_FIM();
 }
