@@ -32,7 +32,7 @@ for pattern in (
     compiler.append(first(pattern))
 
 java = os.environ.get("NUVIO_TEST_JAVA", "java")
-compiler_cp = os.pathsep.join(str(jar) for jar in compiler)
+compiler_cp = os.pathsep.join(str(jar) for jar in [*compiler, stdlib])
 cases = [
     ("provenance and strong HTTP validators",
      ["CacheProvaP4C.kt"], "CacheProvaP4CTest.kt", "CacheProvaP4CTestKt"),
