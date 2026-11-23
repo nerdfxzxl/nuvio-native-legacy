@@ -46,6 +46,7 @@ class CacheMidia private constructor(
     private val prova: String?,
     private val tituloProva: String,
     private val urlBase: String,
+    private val totalDeclarado: Long,
     val pedidoMb: Int,
     val limiteMb: Int,
     val estado: CacheSessao.Estado,
@@ -142,7 +143,8 @@ class CacheMidia private constructor(
         // Session cache or the reason there is none: (cache, state).
         fun criar(dirCache: File, pedidoMb: Int, aoFalhar: (Boolean) -> Unit,
                   escopo: String = "", prova: String? = null,
-                  titulo: String = "", url: String = ""): Pair<CacheMidia?, Int> {
+                  titulo: String = "", url: String = "",
+                  totalDeclarado: Long = 0L): Pair<CacheMidia?, Int> {
             if (pedidoMb <= 0) return null to CacheSessao.DESLIGADO
             val r = raiz(dirCache)
             r.mkdirs()
@@ -168,7 +170,7 @@ class CacheMidia private constructor(
                 val c = SimpleCache(pasta, LeastRecentlyUsedCacheEvictor(limite.toLong() shl 20))
                 Log.i(TAG, "on: $limite MB (asked $pedidoMb, ${livre shr 20} MB free)")
                 CacheMidia(pasta, c, sessao, escopo, prova, titulo, url,
-                    pedidoMb, limite, CacheSessao.Estado(aoFalhar)) to CacheSessao.ATIVO
+                    totalDeclarado, pedidoMb, limite, CacheSessao.Estado(aoFalhar)) to CacheSessao.ATIVO
             } catch (e: Exception) {
                 Log.w(TAG, "cache init failed: $e")
                 fio.execute { CacheSessao.apagar(pasta) }
@@ -346,6 +348,7 @@ class CacheMidia private constructor(
         val url = d.uri?.toString() ?: spec.uri.toString()
         val nova = CacheProvaP4C.observada206(url, headers, spec.position)
         val antiga = representacao
+        if (nova != null && totalDeclarado > 0 && nova.total != totalDeclarado) return false
         if (antiga != null && (nova == null || !antiga.mesma(nova))) return false
         if (nova != null && antiga == null) representacao = nova
         return true
