@@ -84,6 +84,12 @@ void cacheboost_backend_cache(int mb);
 // none), and the order to drop the cache kept from the last title (profile
 // switch). Android only: webOS/Tizen have no disk cache, so these are no-ops.
 void cacheboost_backend_titulo(const char *id);
+// P4-C: exact profile/catalog/release proof for the NEXT Android player open.
+// This is never inferred from filename, title text, file size or signed URL.
+// Missing/ambiguous fields are passed empty and prevent warm cache reuse.
+void cacheboost_backend_identidade(const char *conta, int perfil, const char *catalogo,
+                                   const char *addon, const char *torrent,
+                                   int arquivo, unsigned long long bytes);
 void cacheboost_backend_descartar(void);
 // #338: buffer size in MiB for the NEXT open (0 = Auto, the backend default).
 void cacheboost_backend_buffer(int mb);
