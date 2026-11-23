@@ -775,3 +775,35 @@ Older P4-C and P4 final reviews marked FAILED or PARTIAL above are historical ch
 **Highest-priority next task:** run the real committed PCM processor replay with proper Media3 jars; implement P5-A native/Media3 route fidelity and distinct Audio Playback Error actions. Then complete and test P5-B, P5-C, P5-D, and perform final source acceptance before changing P6 authorization. A test-only CI workflow would require **new explicit owner authorization**; it has **not** been dispatched. Keep `docs/ci/trigger-netflix-detail-once.txt`, workflows, and master unchanged. No APK was built. Hardware/runtime integration stays reserved for P7/P8; Q18 remains explicitly owner-deferred.
 
 **FINAL P5 SOURCE VERDICT AT THIS CHECKPOINT: P5 SOURCE ACCEPTANCE FAILED — P5 remains PARTIAL; P6 NOT AUTHORIZED.** This supersedes no successful P5 acceptance because none exists.
+
+
+## P5-A continuation — conservative original-language selection checkpoint (2026-11-23; P5 STILL PARTIAL)
+
+**Starting verified branch HEAD:** `6a6a656a8352f6e0d58351ea8577c29f45eac876`; GitHub compare showed identical HEAD before the writes. Reviewed all five canonical repository documents, the latest P5-A and Q37 checkpoints, relevant expanded owner Library spec §2.6/Phase 5, production `src/audioescolha.c` / `src/video_android.c` / `NvPlayer.kt`, and the committed native track-choice tests. No P0–P4 implementation re-started.
+
+### Commits in order
+
+1. `86836e1b6592e5f4d2878529af7231fe30af3451` — `src/audioescolha.c`. Fixed a narrow Q36 violation: when a known original-language track was unavailable, automatic choice previously fell through to English/Malayalam, silently changing the language. It now retains the current track selection rather than selecting a dub. Explicit remembered user choice and playable highest-quality original-language choice remain prioritized. Does not change release/source or Media3 sink.
+2. `725ad5589706b118105f0d63924b69365cdd3330` — `tests/audioescolha.c`. Updated the explicit unavailable-original regression expectation to `-1` with `AUDIOESC_NADA`, rather than accepting automatic English fallback.
+3. `05ecb5c5e4d9ca7c28570b38c301afb78c52f9c6` — `src/audioescolha.h`. Corrected outdated high-level selection comments; explicitly acknowledges that native codec scoring does **not** validate Android sink/output-route compatibility.
+
+### Actual verification, with limits
+
+- **PASS: 6/6 source-structural assertions**, executed against the freshly fetched committed production and test file contents: original-only auto-choice; remembered manual identity; `pode` candidate guard; missing-original conservative behavior; explicit changed native test assertion; documented no-dub contract. These are **not** C test execution.
+- **NOT RUN: `bash tests/audioescolha.sh` and production native C compilation.** The local container has a C compiler but no authenticated checked-out repository or accessible network-mounted dependency tree. GitHub connector reads remote files but does not mount the project for native linking. A 6/6 predicate result is not a native binary PASS.
+- **NOT RUN: committed actual production `GanhoAudioProcessor` Media3 Kotlin PCM replay** (`tests/cacheboost_android.py`), target Android API35/Media3 1.8.0 production `NvPlayer.kt` compile, Kotlin audio sink integration, live Android output, HDMI ARC or TV. Local host has Kotlin but no Android API35 `android.jar` or Media3 AARs; user did **not** authorize P5 GitHub Actions. Prior P5-A 14/14 independent numeric assertions and Q37 10/10 JVM policy tests remain historical, not rerun in this checkpoint.
+- **No APK, GitHub Actions, workflows, release, master merge, MPV, Q18, P6, or P0–P4 cache/transport code modified.** No physical playback test. This is a narrowly bounded behavior change and its test contract; its actual C execution remains a required follow-up.
+
+### P5 acceptance status
+
+| Scope | Remaining non-deferred source blocker |
+| --- | --- |
+| **P5-A / Q36** | Actual Kotlin/Media3 PCM replay; native C regression execution; Android track sample-rate/codec/channel and sink/output-route capability evidence; correct lossless passthrough/faithful PCM policy for ARC; real unsupported-audio fail-closed behavior and three-action **Audio Playback Error** with navigation. Current native `pode=1` assumption is **not** evidence of route support. The change above prevents one automatic language substitution only. |
+| **P5-B / Q37/Q39** | Genuine Dolby Vision profile, decoder/display checks and independent same-release HDR10 base-layer proof, no fabricated support, decoder/DRM/surface/error classification, bounded quality-preserving fallback and three-action **Video Playback Error**. Existing pure Kotlin `HdrPolicyP5` correction stays intact. |
+| **P5-C / Q29/Q38/Q47** | First-frame/surface-generation integration regressions, actual persisted opt-in **AFR OFF by default** with supported mode selection/restoration, evidence-guided surface retention rather than forced recreation. Preserve the existing first-frame and P2-B last-frame gates. |
+| **P5-D / Q49** | Real audio device callbacks, debounced HDMI ARC/BT/internal speaker re-probe, sink renegotiation without needless video/source restart, track/position/adjustment preservation and truthful error on incompatible output. Keep `setAudioAttributes(..., false)`. |
+| **P0–P4** | No implementations changed beyond the native audio preference function; broad preservation tests **not rerun**. Earlier accepted source checkpoints remain as documented. |
+| **P7/P8** | Full Android compile/JNI/Gradle integration, physical TV DV/HDR/MEMC, ARC passthrough/channel route, renderer first-frame timing, playback UX/D-pad and final post-#134 integrated APK pending their own authorized gates. |
+| **Q18** | Explicitly owner-deferred. Do not restart. |
+
+**FINAL P5 SOURCE ACCEPTANCE (current checkpoint): FAILED — P5 remains PARTIAL; P6 NOT AUTHORIZED.** This checkpoint does not supersede any source gate and does not claim a P5 phase passed. Next: test the actual PCM processor with correct Media3 classpath under new express test-only CI authorization or an accessible Android SDK checkout; implement end-to-end Q36 sink/route/error wiring before P5-B/C/D; compile and run committed test cases, then repeat final acceptance.
