@@ -17,6 +17,7 @@ import androidx.media3.common.Format
  *
  * No audio-device callbacks or route renegotiation here: that belongs to P5-D.
  */
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 internal object AudioOutputProbeP5A {
     data class Observation(
         val routeType: Int,
@@ -46,7 +47,8 @@ internal object AudioOutputProbeP5A {
 
     fun encoding(mime: String): Int = when (mime.lowercase()) {
         "audio/ac3", "audio/ac-3" -> AudioFormat.ENCODING_AC3
-        "audio/eac3", "audio/e-ac3", "audio/eac3-joc" -> AudioFormat.ENCODING_E_AC3
+        "audio/eac3", "audio/e-ac3" -> AudioFormat.ENCODING_E_AC3
+        "audio/eac3-joc" -> AudioFormat.ENCODING_E_AC3_JOC
         "audio/vnd.dts", "audio/dts" -> AudioFormat.ENCODING_DTS
         "audio/true-hd", "audio/truehd" -> AudioFormat.ENCODING_DOLBY_TRUEHD
         "audio/vnd.dts.hd", "audio/dts-hd" -> AudioFormat.ENCODING_DTS_HD
