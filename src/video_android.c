@@ -840,7 +840,12 @@ JNIEXPORT void JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativeEvento(JNIEn
     case EV_PAUSADO: tocando = 0; if (pausaPedida) pausaVista = 1; break;
     case EV_FIM:     terminou = 1; tocando = 0; break;
     // Sem `falhou` aqui: o video_bombear decide entre reconectar e desistir.
-    case EV_ERRO:    reconErroCod = a; reconErroVideo = b == 2; /* Media3 C.TRACK_TYPE_VIDEO */
+    case EV_ERRO:    if (b == 1) { /* Media3 audio renderer: do not retry as a network stall. */
+                       semDecoderAudio = 1; reconErroPend = 0; tocando = 0;
+                       printf("[video] android: erro terminal de audio %d\n", a);
+                       break;
+                     }
+                     reconErroCod = a; reconErroVideo = b == 2; /* Media3 C.TRACK_TYPE_VIDEO */
                      reconErroPend = 1; tocando = 0;
                      snprintf(erroTxt, sizeof erroTxt, "%d player error:%d", a, b);
                      printf("[video] android: erro do player %d (%d)\n", a, b); break;
@@ -1117,6 +1122,19 @@ int video_recarregar(void) {
   // player novo, antes do prepare completar, sem alterar o audio preferido.
   if (pausado) video_pausar(1);
   return 1;
+}
+int video_audio_retry(void) {
+  /* Explicit Retry on Q36's audio card; never choose a different URL/release.
+   * This calls abrirSessao, which advances sessao before any old callbacks
+   * can be applied and retains the Kotlin source identity. The UI allows at
+   * most one retry per selected stream. */
+  int posicao = posNativoMs > 0 ? posNativoMs : 0;
+  if (!ativo || !urlAtual[0] || !ambiente()) return 0;
+  reconAudio = audioAtual; reconLeg = legAtual; reconFaixasPend = 1;
+  reconErroPend = 0;
+  nv_recon_zerar(&recon);
+  reconBuscarMs = -1; recarregarPausa = -1; reconPausado = 0;
+  return abrirSessao(posicao, 0, 1);
 }
 int  video_reconectando(void) {
   return nv_recon_ativa(&recon) && (recon.pendente || !prontoLoad) ? recon.tentativa : 0;
