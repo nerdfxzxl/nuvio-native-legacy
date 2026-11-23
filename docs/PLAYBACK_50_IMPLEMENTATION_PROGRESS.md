@@ -542,3 +542,74 @@ Ran the actual downloader and its 24 JUnit tests on a host JVM against Media3 1.
 - Execute actual checked-out `CacheMidia.kt` / `NvPlayer.kt` Media3/API35 compile plus targeted JVM/host corruption, validator, range, eviction, cancellation and telemetry tests. Distinguish those source tests from P7/P8 real TorBox playback and hardware validation.
 
 **Final verdict: P4 SOURCE IMPLEMENTATION NOT ACCEPTED — P4 remains PARTIAL. P5 is NOT authorized.** The nine P4-C commits above are safe bounded source work, not Q42 completion. Preserve every P0–P3 protection and the previous P4-D/A/B test/source commits; do not restart Q18. No workflow trigger, APK, or master modification. **Next session:** verify new HEAD including this tracker commit, read five authoritative docs plus this checkpoint, finish P4-C source/host gaps first, rerun P4 tests, then re-review Q24–Q25/Q28/Q40–Q43. Only when all non-deferred P4 source criteria pass may tracker authorize P5. P7/P8 integration and Android TV/device tests still required afterward.
+
+## P4-C — Q42 follow-up implementation and FINAL P4 source acceptance review — 2026-11-23 (PARTIAL; ACCEPTANCE FAILED)
+
+**Authorized starting HEAD:** `2f375fe69462e4a0aa5c0eda35e189760119fe57`. Read the authoritative master specification, work packages, implementation progress (including the five failed P4-C/Q42 acceptance blockers), P0 baseline and all post-#134 refinements. Verified the feature branch before editing. GitHub connector commits modify only `feature/official-stream-selector`; no master merge, GitHub Actions dispatch, APK, P5 work or workflow-trigger edits. **Pre-tracker-review HEAD:** `7bc56fb7d5fcc74c4f6c589959466f500b63d7bc`, 37 commits ahead of the authorized starting HEAD, zero behind; 14 paths modified or added, none under `.github/workflows/`. The progress tracker commit itself follows this section.
+
+### Exact P4-C source/test commits, chronological (37 before this tracker)
+
+1. `203152e02716a15676aed1b8b00579a5c93ef6e3` — new fail-closed `CacheProvaP4C.kt`: account/profile/catalog/addon/torrent-file proof, header fingerprint and strong 206/ETag/total/encoding policy.
+2. `189c0aeca5864189cf7ab04e504e541d4fcb68c4` — native source-identity bridge declaration (`src/cacheboost.h`).
+3. `1ab1da0161ece4e9200b641bc43c639c8e0facbe` — non-Android source-identity hook (`src/cacheboost.c`).
+4. `b84e3edec5791a75ef2ec02c4ae3c69125410b72` — selected account/profile/catalog/addon/torrent hash/file index/bytes from `src/player.c`.
+5. `5480be075795a353674e7a452d372f3f4a878ebe` — JNI Kotlin cacheIdentity bridge in `src/video_android.c`.
+6. `785b04d4902c35f46b97d34e21fd25fa921173e6` — nullable URI path policy correction.
+7. `50432e59903ad0ba62f144aa7cd2ae80210380e4` — `NvPlayer.kt` native identity callback and header-scoped cache creation.
+8. `d3176ee9c1ff0006f8b86f34457a273a16045482` — snapshot provenance before queued open, recovery, resume and prepared adoption.
+9. `4af505905424a6e35da3ecb6dd27617a7ccde9e3` — per-session Media3 SHA key isolation includes release/header scope.
+10. `ad39c04dddf3e31ecdd12cddbcc178a85612dd9a` — scoped `CacheMidia.kt` creation, idempotent release, non-destructive cleanup.
+11. `55ae7c8f0d14c4cc9da5c88e834fc0457940d254` — cache release follows player and prepared-source release callbacks.
+12. `c31b82e8d6792a385a18237e72fa7df3133a3765` — `CacheSpanP4C.kt` bounded SHA-256 manifest for completed Media3 spans.
+13. `396ef1c1512fddb680caf64e5186da07744fb848` — canonical-path treatment and registered-span lookup.
+14. `c891b4cb9a1ee5e08d4d4a6a07f4fadbca36207a` — Media3 span registration, validation, removal and digest pruning.
+15. `67f92097de1a4b1d8195744e4c478446bcfcc08d` — exact-offset HTTP fallback wrapper for cached read errors.
+16. `e9ca6e3833270b034b52212c46a6f85d13a8c39a` — `tests/CacheProvaP4CTest.kt` identity/range/renewal JVM tests.
+17. `07a678f801aa4b54145d93ddb2e71dd6e57643c5` — `tests/CacheSpanP4CTest.kt` real file hash, corruption, truncation, symlink and eviction tests.
+18. `23c01406ac085894878dd7b1bc6febe19889e476` — never normalize corrupt bytes by re-registering the same cache span.
+19. `351f332cdbd869b5c4b6867c517bc049117b4777` — re-registration regression.
+20. `54a880521878581ed04d1549aaf42aa4eb582f56` — include both production P4-C classes in the existing API35/Media3 Kotlin compile script.
+21. `429f457a1a1cf0f15fedc3fcc17061f3524fd1d0` — source-side bounded HTTP 206 validator parser.
+22. `a0e67fb913f1cb8462b72fd4e0750af256be47c8` — validate remote representation on prospective disk hits.
+23. `c389363c3784f227cf3db61d15333869f9e341b7` — verify 206 observed lengths/ranges in JVM tests.
+24. `5c2eb02bdc3989467594f3cd0cb4faacb2048119` — one-slot, proven last-title cache held open; signed URL still quarantined.
+25. `6e7854a240d907a87ccf81d87274f4537bcc8b5f` — reuse old cache key only after strong 206 remote continuity probe.
+26. `85085071d1f693092ce0198ba6d3cc87ce4bfb6f` — reject reduced storage eligibility; validate actual redirected CDN endpoint.
+27. `e0d5bae591dcc10824ff6e3385667b883ae36980` — player stop/renewal lifecycle and safe cache handoff.
+28. `70fdff8418307ae9feb42f0d868751e3e37163ec` — exact source/header scope key regressions.
+29. `efc5a7139a3dd102bc50c30128a402c4966f0789` — check changed HTTP representation on cache-hole reads before bytes reach decoder.
+30. `fbcc9fcbea4fbabcdd3449035b5e8b588572382d` — reject 206 total length contradictory to selected-file metadata.
+31. `3ec0bec87197f79dfa1c7de22cba57071353625b` — native per-file size carried into Kotlin validator.
+32. `2192ee681d6bf61e15753ed15200fd7ac0480e86` — reject malformed Content-Length.
+33. `6562a1edc9b87a89547afa10c1dcec7df54153b5` — no canceled-loader retry; HTTP fallback restricted to eligible cached-span failures.
+34. `0cbcc6de9315f49b43d61956b1b9d16fe9b7129b` — wire `CargaPlayer.cancelada` into cache DataSource.
+35. `1ccd3c92dcbb09d952d3e57d2cc0e0d53153a8d9` — invalidation epoch cancels stale pending warm retention across profile/account/cache-off changes.
+36. `ea175037c79e44cd7b1872ecd71d15585d2c4486` — committed native/JNI/Media3 ownership source-contract suite (not executed directly from checkout).
+37. `7bc56fb7d5fcc74c4f6c589959466f500b63d7bc` — malformed Content-Length JVM regression.
+
+### Actual current-session tests, exact boundaries
+
+- **PASS:** Host Kotlin 1.9.0 compiled the *byte-identical committed production* `CacheProvaP4C.kt` (Git blob `160bee4f0e61d49d659553c29e92ea2dc79ba578`) and `tests/CacheProvaP4CTest.kt` (Git blob `d309d5d68d23c04f231a45ca71f8dbab35b0900f`); `java -jar` ran **36 passed assertions**. Checked exact identity permutations, account/profile, title/episode/addon/file/hash, headers, signed-query rotation, strong/weak/changed/missing ETag, CDN scope, range and total, Content-Encoding, malformed lengths.
+- **PASS:** Same host compiled *byte-identical committed production* `CacheSpanP4C.kt` (Git blob `83bf0aa2f0c9778ed6fe2277132b6cc2fc585c20`) and `tests/CacheSpanP4CTest.kt` (Git blob `a7d8fe22f78f278dd71005b0636bb574e5d2f84d`); `java -jar` ran **16 passed assertions**, including real disk-byte replacement, truncation, out-of-root/symlink refusal, failed corruption normalization and eviction/manifest cleanup. Verified each local source SHA using `git hash-object` against the exact remote blobs before claiming source compilation.
+- **PASS (source inspection only):** Independently re-fetched the production native/JNI/Kotlin P4-C files on the branch and evaluated **15 source wiring/contracts predicates**, covering JNI descriptor, native provenance, strong-validator policy, SHA disk hashes, alias guard, close-after-release, cancellation, physical network-byte scope and disk settings. This is source *inspection*, not executed Android code. `tests/playback_p4c_source_contract.py` is committed as a reproducible checkout test, **not run as a Python script** here.
+- **PASS (repository comparison):** 37 source/test commits ahead / zero behind at pre-tracker HEAD; changed paths limited to existing Kotlin cache/player, native provenance hooks, and tests. No workflow-trigger edits, GitHub Actions run, APK, merge, P5 source work, media-quality/HDR/DV/audio-processing edit, or Dynamic Clock change.
+- **HISTORICAL, not rerun now:** P4-D native buffered-endpoint/seek C tests, P4-A RAM profile C/JVM tests, P4-B 24 HTTP JUnit tests and its API35/Media3 targeted compile remain as recorded in their earlier checkpoints. P0–P3 and post-#134 refinements are preserved; their full tests were not rerun.
+- **NOT EXECUTED:** Full/targeted new `CacheMidia.kt` + `NvPlayer.kt` production API35/Media3 compile (no authenticated repo checkout, Android SDK, Media3 jars or Gradle dependency cache available in this session); new JNI/native host GCC build; integrated fake-Media3/HTTP server tests for rotation/redirect, midstream change, LRU eviction, concurrent readers/writers, early cancellation, rapid source changes, warm slot expiry/reopen, next episode and network-byte callbacks; Android device/TorBox/HDR/DV/ARC/TV tests. The historical `tests/cacheboost_android.py` was updated to include new classes but cannot run without its Android/Media3 toolchain. Do not confuse local source-policy compilation with whole application compilation.
+
+### FINAL P4 source acceptance disposition (Q24–Q25 / Q28 / Q40–Q43)
+
+| Requirement | Final source disposition at this checkpoint |
+| --- | --- |
+| **Q24–Q25** physical HTTP throughput and truthful unit conversion | **Prior P4-B/P2 source checkpoint preserved**, including disjoint parallel/serial transport counters and 1 s/2.5 s measuring policy. P4-C wrapper forwards listeners and never uses disk-file transfer events as network bytes; no new runtime test. |
+| **Q28** truthful Android VOD buffered endpoint, held frame and seeks | **Prior P4-D/P2-B source checkpoint preserved**, unchanged exact decoder/frame behavior; device verification remains P7/P8. |
+| **Q40** two independent RAM profiles, strictly Below 30 Mbps | **Prior P4-A source checkpoint preserved**; disk cache does not touch bitrate/profile classification or quality. |
+| **Q41** parallel HTTP, strict range correctness, bounded memory and serial fallback | **Prior P4-B source checkpoint preserved**; HTTP cache delegates upstream unchanged except for bounded new representation-validation request and safe bypass. Prior 24 tests historical. |
+| **Q42** stable identity, TorBox renewal, span integrity, eviction, storage and lifecycle | **IMPLEMENTED IN COMMITTED SOURCE, BUT NOT FULLY SOURCE-ACCEPTED:** Native/JNI provenance, fail-closed identity, per-header key, strong same-origin/path 206/ETag/total/encoding validation before aliased hit, actual-redirect check, SHA-verified complete spans, safe fallback, 3h bounded single-cache retention, eviction/reserve, deferred safe release, cancel/epoch guards. Missing validators/ambiguous media, changed CDN or representation fall back to fresh HTTP. **Critical remaining acceptance evidence:** actual production Media3/API35 compilation and integrated cross-source cache/HTTP/lifecycle regressions, especially rapid switches, concurrent eviction, next-episode adoption and physical-byte count on cache hits; unknown actual-source compile or runtime defects must not be treated as passed. |
+| **Q43** source ownership / rapid seeking | **Prior P4-D/P1/P3 source checkpoint preserved**; snapshot provenance, cancel guards and source generation fields added, but the combined new cache-loader paths remain integration-unverified. |
+| **Q18** embedded P2P ready percentage | **EXPLICIT OWNER DEFERRAL**; no changes or synthetic value. |
+
+**Outstanding non-deferred source acceptance gate:** The new cache `DataSource`, JNI bridge and warm retention remain **uncompiled together against actual API35/Media3/NDK production dependencies**, and essential Q42 release/rotation/concurrency/cancellation/telemetry regression behavior is not yet executed against production adapters. JVM proof/span policy checks and source predicates cannot establish byte-safe actual Media3 cache IO, true range-shifted telemetry, JNI linkage or close/reopen absence of races. Until those bounded tests demonstrate no defects, Q42 and final P4 source acceptance must remain gated. The safe implementation intentionally refuses reuse when file/hash/account/validator evidence is absent, rather than guessing identity. No Q18 or P4-A/B/D restart is warranted.
+
+**FINAL VERDICT: P4 SOURCE ACCEPTANCE FAILED — P4 remains PARTIAL; P5 not authorized.**
+
+**Precise resumable next action:** Verify branch HEAD including this tracker update, then run `tests/cacheboost_android.py` with Android 35/Media3 1.8.0/Kotlin dependencies and fix any *actual production* compilation errors. Run the committed `tests/playback_p4c_source_contract.py`, `tests/CacheProvaP4CTest.kt`, `tests/CacheSpanP4CTest.kt`, `tests/CacheSessaoP4CTest.kt`, focused native C regressions, and add/execute integrated Media3/HTTP range/revalidation/cache-hit/cancel/reopen/preload tests using a local deterministic range server. Inspect and fix any failed cases, then repeat the FINAL P4 review of all Q24–Q25/Q28/Q40–Q43 in the same subsequent bounded session. Until those tests establish correctness, do not authorize P5 or claim Android playback/NDK build. P7/P8 remain the separate real Android TV/TorBox/HDR/DV/ARC and complete integration gates.
