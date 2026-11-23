@@ -2026,6 +2026,31 @@ static void linhaLista(int col, int i, float x, float y, float w, float a) {
                grupo[0] && detalhe[0] ? " · " : "", detalhe);
       snprintf(sub, sizeof sub, "%s%s%s", sufixo,
                sufixo[0] && antigo[0] ? " · " : "", antigo);
+#ifdef NV_ANDROID
+      // Q36: facts come from source Format and CURRENT output probe, not
+      // guessed codec branding. Keep one native row; no invented bit depth.
+      if (f->amostraHz > 0 || f->bits > 0 || f->bitrate > 0) {
+        char met[72] = "", part[32];
+        if (f->amostraHz > 0) snprintf(met, sizeof met, "%d Hz", f->amostraHz);
+        if (f->bits > 0) {
+          snprintf(part, sizeof part, "%s%d-bit", met[0] ? "/" : "", f->bits);
+          strncat(met, part, sizeof met - strlen(met) - 1);
+        }
+        if (f->bitrate > 0) {
+          snprintf(part, sizeof part, "%s%d kbps", met[0] ? " · " : "", f->bitrate / 1000);
+          strncat(met, part, sizeof met - strlen(met) - 1);
+        }
+        if (met[0]) {
+          size_t n = strlen(sub);
+          snprintf(sub + n, sizeof sub - n, "%s%s", n ? " · " : "", met);
+        }
+      }
+      { const char *saida = f->saidaFiel ? (f->passthroughSaida ? "Bitstream-capable" : "PCM-capable")
+                          : f->saidaIncerta ? "Output unverified" : "Output unsupported";
+        size_t n = strlen(sub);
+        snprintf(sub + n, sizeof sub - n, "%s%s", n ? " · " : "", saida);
+      }
+#endif
     }
   } else if (i == 0) {
     snprintf(nome, sizeof nome, "%s", i18n("Nenhuma"));
