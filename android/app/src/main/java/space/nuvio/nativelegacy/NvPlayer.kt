@@ -859,9 +859,14 @@ object NvPlayer {
         r.liberado = true
         r.adotado = false
         r.carga.cancelada = true
-        if (r.construido()) liberarEmFundo(r.p, null) { liberarFontePreparo(r) }
-        else liberarFontePreparo(r)
-        r.cache?.liberar()
+        if (r.construido()) liberarEmFundo(r.p, null) {
+            liberarFontePreparo(r)
+            // Media3 loader threads must be finished before SimpleCache release.
+            r.cache?.liberar()
+        } else {
+            liberarFontePreparo(r)
+            r.cache?.liberar()
+        }
     }
 
     @JvmOverloads @JvmStatic fun preparar(url: String, cabecalhos: String, inicioMs: Int, fracao: Int,
@@ -1824,6 +1829,8 @@ object NvPlayer {
         sessao++
         medidor.encerrar()
         val recursos = recursosAtuais
+        val cacheParaLiberar = cacheMidia
+        cacheMidia = null
         recursos?.adotado = false
         recursos?.carga?.cancelada = true
         recursos?.liberado = true
@@ -1857,14 +1864,14 @@ object NvPlayer {
             try { sv?.layoutParams = FrameLayout.LayoutParams(1, 1) } catch (e: Exception) { }
             // A superficie velha fica com o player velho; a proxima abertura cria outra.
             superficie = null
-            liberarEmFundo(p, sv) { recursos?.let { liberarFontePreparo(it) } }
-        }
-        // F07: the session cache goes with its player (released and deleted
-        // off the main thread, after the canceled loaders unwind).
-        // Session-only disk spans: no cross-reopen reuse from signed URLs.
-        // PixelCopy's warm frame remains separate and is unchanged.
-        cacheMidia?.liberar()
-        cacheMidia = null
+            liberarEmFundo(p, sv) {
+                recursos?.let { liberarFontePreparo(it) }
+                cacheParaLiberar?.liberar()
+            }
+        } else cacheParaLiberar?.liberar()
+        // P4-C: last Media3 loader/decoder has stopped before the 1500 ms
+        // delayed cache cleanup starts; never release while readers run.
+        // PixelCopy's visual warm frame remains separate and unchanged.
         tituloAberto = ""
         cacheEstado = CacheSessao.DESLIGADO
         cacheTiques = 0
