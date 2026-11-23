@@ -15,6 +15,7 @@ import androidx.media3.datasource.cache.SimpleCache
 import androidx.media3.datasource.cache.CacheSpan
 import java.io.File
 import java.io.IOException
+import java.io.InterruptedIOException
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
@@ -198,14 +199,15 @@ class CacheMidia private constructor(
     // Called from the NEW Media3 loader. The retired player has fully
     // stopped by the time it placed this cache in the warm slot. No network
     // request may occur on the main Android UI thread.
-    private fun validarRetomada(upstream: DataSource.Factory, spec: DataSpec): Boolean? {
+    private fun validarRetomada(upstream: DataSource.Factory, spec: DataSpec,
+                                cancelada: () -> Boolean): Boolean? {
         synchronized(guarda) {
             val candidato = urlPendente ?: return null
             if (candidato != spec.uri.toString()) return null
             urlPendente = null // exactly one validation per retained ownership
             val old = chaveBase()
             val aprovado = !liberacaoAgendada && validar(old) &&
-                spansExistem(old) && validarRemoto(upstream, spec)
+                spansExistem(old) && validarRemoto(upstream, spec, cancelada)
             if (aprovado) {
                 aliasAtiva = candidato
             } else {
@@ -321,7 +323,9 @@ class CacheMidia private constructor(
     // consume previously cached spans. Retain all signed URL/request headers.
     // Missing/weak validator, changed object, redirect origin, 200 response,
     // gzip, timeouts or storage error => do NOT consume cached bytes.
-    private fun validarRemoto(upstream: DataSource.Factory, spec: DataSpec): Boolean {
+    private fun validarRemoto(upstream: DataSource.Factory, spec: DataSpec,
+                              cancelada: () -> Boolean): Boolean {
+        if (cancelada() || Thread.currentThread().isInterrupted) return false
         val esperado = representacao ?: return false
         if (spec.httpRequestHeaders.keys.any { it.equals("Range", true) }) return false
         val probe = try { spec.buildUpon().setPosition(0L).setLength(1L).build() }
@@ -332,9 +336,9 @@ class CacheMidia private constructor(
             val headers = rede.responseHeaders
             val url = rede.uri?.toString() ?: spec.uri.toString()
             val recebida = CacheProvaP4C.resposta206(url, headers, 0, 1, 1)
-            if (!esperado.mesma(recebida)) return false
+            if (!esperado.mesma(recebida) || cancelada() || Thread.currentThread().isInterrupted) return false
             val byte = ByteArray(1)
-            rede.read(byte, 0, 1) == 1
+            rede.read(byte, 0, 1) == 1 && !cancelada() && !Thread.currentThread().isInterrupted
         } catch (_: Exception) {
             false
         } finally {
@@ -371,7 +375,7 @@ class CacheMidia private constructor(
         return esperada.mesma(CacheProvaP4C.observada206(url, headers, inicio))
     }
 
-    fun fabrica(upstream: DataSource.Factory): DataSource.Factory {
+    fun fabrica(upstream: DataSource.Factory, cancelada: () -> Boolean = { false }): DataSource.Factory {
         val media3 = CacheDataSource.Factory()
             .setCache(cache)
             .setUpstreamDataSourceFactory(upstream)
@@ -395,12 +399,32 @@ class CacheMidia private constructor(
                 private var consumidos = 0L
                 private var noCache = false
 
+                private fun conferirCancelamento() {
+                    if (cancelada() || Thread.currentThread().isInterrupted)
+                        throw InterruptedIOException("cache loader canceled")
+                }
+
+                private fun podeVoltarRede(e: IOException): Boolean {
+                    if (cancelada() || Thread.currentThread().isInterrupted ||
+                        e is InterruptedIOException ||
+                        generateSequence(e.cause) { it.cause }.take(8).any {
+                            it is InterruptedException || it is java.util.concurrent.CancellationException ||
+                                it is InterruptedIOException
+                        }) return false
+                    val spec = original ?: return false
+                    val absoluto = spec.position + consumidos
+                    if (absoluto < spec.position) return false
+                    return try { cache.getCachedLength(chave, absoluto, 1L) > 0 }
+                           catch (_: Exception) { false }
+                }
+
                 private fun criar(factory: DataSource.Factory): DataSource =
                     factory.createDataSource().also { d ->
                         for (listener in listeners) d.addTransferListener(listener)
                     }
 
                 private fun usarRede(): Long {
+                    conferirCancelamento()
                     val spec = original ?: throw IOException("DataSpec not opened")
                     try { atual?.close() } catch (_: Exception) {}
                     descartarChave(chave)
@@ -408,6 +432,7 @@ class CacheMidia private constructor(
                     noCache = true
                     val d = criar(upstream)
                     return try {
+                        conferirCancelamento()
                         val restante = d.open(spec.subrange(consumidos))
                         atual = d
                         restante
@@ -418,14 +443,16 @@ class CacheMidia private constructor(
                 }
 
                 override fun open(dataSpec: DataSpec): Long {
+                    conferirCancelamento()
                     original = dataSpec
                     consumidos = 0L
-                    val retomadaValidada = validarRetomada(upstream, dataSpec)
+                    val retomadaValidada = validarRetomada(upstream, dataSpec, cancelada)
+                    conferirCancelamento()
                     chave = chaveUrl(dataSpec.uri.toString())
                     val haviaSpans = spansExistem(chave)
                     noCache = !validar(chave) ||
                         (haviaSpans && retomadaValidada != true &&
-                         !validarRemoto(upstream, dataSpec))
+                         !validarRemoto(upstream, dataSpec, cancelada))
                     if (haviaSpans && noCache) {
                         descartarChave(chave)
                         representacao = null
@@ -440,7 +467,7 @@ class CacheMidia private constructor(
                             usarRede()
                         } else n
                     } catch (e: IOException) {
-                        if (noCache) throw e
+                        if (noCache || !podeVoltarRede(e)) throw e
                         usarRede()
                     }
                 }
@@ -460,7 +487,7 @@ class CacheMidia private constructor(
                         if (n > 0) consumidos += n
                         n
                     } catch (e: IOException) {
-                        if (noCache || e is RepresentacaoMudou) throw e
+                        if (noCache || e is RepresentacaoMudou || !podeVoltarRede(e)) throw e
                         usarRede()
                         val n = atual!!.read(buffer, offset, length)
                         if (n > 0) consumidos += n
