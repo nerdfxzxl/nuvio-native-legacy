@@ -1,6 +1,7 @@
 name: P4 cache verification (tests only - no APK)
 
 # Dedicated push trigger; existing APK workflow paths are left untouched.
+# P4 Robolectric integration rerun: mirror dependency fallback for Maven 429.
 on:
   workflow_dispatch:
   push:
