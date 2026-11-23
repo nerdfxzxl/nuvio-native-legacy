@@ -1,7 +1,7 @@
 # Nuvio Legacy — Q01–Q50 Implementation Progress
 
 **Last updated:** 2026-11-23
-**Status:** P0 COMPLETE; P1 SOURCE IMPLEMENTATION COMPLETE; **P2 SOURCE IMPLEMENTATION ACCEPTED — Q18 explicitly deferred; Android/NDK/Media3 compilation and device validation pending P7/P8. P3 source work authorized.** Earlier P2, P2-A/B/C and P2-D source checkpoints preserved. No APK or GitHub Actions authorized.
+**Status:** P0/P1 checkpointed. P2 and P3 source accepted. P4 in progress. Q18 remains owner-deferred. P5 awaits P4 source acceptance.
 **Branch:** `feature/official-stream-selector` (not `master`).
 **Prior feature baseline:** `6171645e05d2137d2a1e9ed1b113687246acd7ca` — docs: lock subtitle filename Format A and unbuilt wrapping/parser test handoff.
 **Latest planning commits:** master specification `7d3c81d81aee309843dd2f0b767c6ef3c2d59723`; work packages `b059a7a9a42ae2b91d87bff0a03bfeb314d0f647`; this progress tracker is an additional documentation-only commit. **Recheck actual HEAD at the beginning of every session.**
@@ -25,14 +25,14 @@
 | P0 | Baseline, inventory, preservation | COMPLETE — source audit only | [`d0ff5a1`](https://github.com/nerdfxzxl/nuvio-native-legacy/commit/d0ff5a1f44fc42034c867ca149a21e1814d2f77c) (documentation) | GitHub branch diff/source/test scripts inspected; **no tests, compile or APK run** |
 | P1 | State/source identity/cancellation | **SOURCE IMPLEMENTATION COMPLETE; Android APK/TV unverified** | `abe5479` through `0df37f5` (all 13 exact SHAs in P1 checkpoint below) | Native GCC/Clang identity PASS; 32/32 source assertions PASS; all 7 modified C/header preprocessor balances PASS; full Android compilation unavailable |
 | P2 | Cinematic/arc/status/speed | **SOURCE ACCEPTED (P2-D final review); Q18 explicitly deferred, runtime gates pending** | Original P2, P2-A/B/C plus 15 P2-D source/test commits; full register below | P2-D 41/41 host C11 GCC + Clang ASan/UBSan; P2-C 15/15; P2-B Kotlin 17/17; live source checks; **no NDK/Media3 build or TV tests** |
-| P3 | Selector/reload/recovery | NOT STARTED | — | — |
-| P4 | Buffer/network/cache/seek | NOT STARTED | — | — |
+| P3 | Selector/reload/recovery | SOURCE ACCEPTED | 17 source/test commits through `03acb8861d583ef7fec6c10d65673399bd3e7343` | Final review below, hardware pending |
+| P4 | Buffer/network/cache/seek | PARTIAL | See P4 checkpoints below | Android integration and TV pending |
 | P5 | Fidelity/HDR/surface/audio route | NOT STARTED | — | — |
 | P6 | Background/credits/post-play | NOT STARTED | — | — |
 | P7 | Integration/regression, post-#134 | NOT STARTED | — | — |
 | P8 | One cached APK + device tests | BLOCKED — NEEDS BUILD AUTHORIZATION | — | — |
 
-**Q01–Q50 coverage:** P1's ten source-decision IDs were checkpointed; P2's assigned scope has now passed its **source-only acceptance review**, with Q18 current-playhead embedded-P2P readiness percentage explicitly deferred. This is **not** 50/50 implementation, full Android compilation, APK integration, or TV verification. P3–P8 remain unimplemented. “Committed” ≠ “compiled” ≠ “APK built” ≠ “device tested”.
+**Q01–Q50 coverage:** P1's ten source-decision IDs were checkpointed; P2's assigned scope has now passed its **source-only acceptance review**, with Q18 current-playhead embedded-P2P readiness percentage explicitly deferred. This is **not** 50/50 implementation, full Android compilation, APK integration, or TV verification. P3 passed its source checkpoint. See P4 below. P5–P8 remain pending. “Committed” ≠ “compiled” ≠ “APK built” ≠ “device tested”.
 
 ## Change log
 
@@ -41,9 +41,7 @@
 
 ## Immediate next action
 
-**P2 source implementation is now ACCEPTED (P2-D correction and final review below); P3 source development is authorized but NOT started by this session.** Begin P3 only from freshly verified branch HEAD, preserving P0/P1, all P2 source decisions and post-#134 refinements. **Q18 remains deliberately deferred**, with real unknown/indeterminate states. At P7 run NDK/SDL/C, Android/Media3/Kotlin/Gradle and identity/navigation test integration; at P7/P8 run hardware TV/ARC/HDR/DV and real TorBox/HTTP/HLS/DASH/P2P tests. No GitHub Actions, workflow changes or APK before separate owner authorization.
-
-**P0 known integration issue:** Android `src/video_android.c:video_buffer_fim()` currently returns nonzero only for live streams, while `src/player.c` uses that API for the VOD buffer rail; `src/video.c` updated after #134 is a non-Android target path. See [P0 baseline](PLAYBACK_50_P0_BASELINE.md) and ensure P4/P7 resolves and tests actual Android VOD buffer endpoint. The early native syntax preflight omits several newly changed files; add coverage before P8. Linux compatibility of subtitle C harness scripts also needs checking. Full detailed Q01–Q50 prose document is not yet archived in GitHub; the in-repo master register is condensed.
+Continue the outstanding P4 subphases listed at the end of this tracker. Android compilation remains assigned to P7 and device verification to P7/P8.
 
 - **2026-11-22 / P2 source checkpoint:** Added reusable native animated loading arc, source-scoped Media3 startup phase events, measured byte-rate and P2P engine telemetry, first-frame gated fades and native tests. This is NOT the complete P2 acceptance gate; see appended P2 checkpoint.
 - **2026-11-22 / P1 source implementation:** Completed 13 scoped source commits, identity harness compilation and 32/32 source assertions; see detailed checkpoint. No GitHub Actions, APK or workflow changes.
@@ -487,3 +485,9 @@ The historical source failure was genuine: Android's `video_pronto()` returned R
 - **NOT RUN:** existing full `tests/fonte_ordem_addon.sh` or other SDL/integration suites; complete checked-out P3 Python test; Android NDK/SDL source compilation; Gradle/Kotlin/Media3 build; Android TV or hardware remote navigation; actual TorBox HTTP, addon timeout/order, HLS/DASH, HDR/DV, subtitle and ARC behavior. A GitHub-authenticated full checkout/Android SDK/device was unavailable in this execution environment. Native/Android compilation remains **P7**, integration and actual-device evidence **P7/P8**. Previously reported P0/P1/P2 checkpoints are preserved source baselines, not freshly rerun full suites.
 
 **Final source-acceptance ruling:** **No outstanding non-deferred P3 source blocker identified in the reviewed committed changes.** P3 is accepted **at the source implementation checkpoint only**, not asserted to be an Android APK/TV runtime PASS. Q18 remains explicitly deferred; pre-existing P0 Android VOD buffered-range rail is still assigned to P4/P7 rather than silently claimed fixed. **P4 SOURCE WORK MAY BEGIN** only as a separate authorized package. No P4 work performed in this session.
+
+## P4-D — Android VOD buffering rail and seek ownership (2026-11-23)
+
+Started at `127ef3e41db6ae651fdad7fb37dcbf26e83347c8`. Took the independently testable P0 defect first. Source/test commit `847b950a6b2c90561cd4bc52587a2e6156faf919`. Q28/Q43: Media3 current-window bufferedPosition reaches the Android OSD, including decreases. A masked seek destination without measured data ahead, invalid VOD samples and old source or seek callbacks yield no rail. Preserve signed Live window coordinates and existing D-pad burst accumulation. Superseded queued seeks share the original player and SurfaceView, with P2-B SDR capture on the final forward out-of-buffer seek.
+
+Ran `python3 tests/playback_p4_vod.py` against the production native callback, reset and getter under host GCC. Passed unknown duration, invalid/negative or past-duration samples, decrease, zero ahead, stale revisions/generations, Live, and stopped playback. P1 identity, P2 timing/piece/frame policy, P2-C navigation, P2-D handoff, P3 reload host runners passed. P1/P2-B/P2-C/P2-D/P3 Python source contracts and both post-134 OSD/panel checks passed. The older P2 source script still expects the pre-P2-C inline 15s expression; the current P2-C/D contracts and compiled timer tests pass. No full Android/Media3 or device run. P4-A/B/C and final integration review outstanding. P5 remains gated.
