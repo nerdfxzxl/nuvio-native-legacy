@@ -115,12 +115,12 @@ check("TorBox HTTP source is passed through unchanged",
       "video_definir_cabecalhos(s->cabecalhos);" in direct)
 check("P1 same-source renewal verifies source provenance",
       "nv_fonte_mesma_liberacao(&antigo, &novo)" in streams and
-      "stream_vod_renovada_aplicar" in streams and "same-source" in resume)
+      "stream_vod_renovada_aplicar" in streams and "FONTEVOLTA_VALIDADE_MS" in resume)
 check("saved Resume respects explicit manual selection",
       "fontevolta_toca_guardada(int escolherManual" in resume and
       "retomarDiretoPendente" in app and "tocarFonteGuardada()" in app)
 check("next-episode preload and user action gates preserved",
-      "player_precarregar_proxima_fonte" in app and
+      "proximopreparo_consumir(alvo, &preparada)" in app and
       "player_pediu_proximo(&t,&e)" in app and "abrirProximoEpisodio" in app)
 check("P2-D cinematic visible handoff and 200ms fade preserved",
       "a->viva || a->veu > 0.0f" in cinema and
