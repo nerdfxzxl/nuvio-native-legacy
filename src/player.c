@@ -1899,6 +1899,14 @@ static void armarTituloGuardado(void) {
   if (!ehCanal()) alvoStream(alvo, sizeof alvo);
   cacheboost_backend_morno(ajustes_retomada_morna());
   cacheboost_backend_titulo(alvo);
+  // Native source proof belongs to the *selected* addon/release, not a title
+  // label or the TorBox signed URL. Unknown index/hash => fail closed on Kotlin.
+  const Stream *st = !ehCanal() ? stream_item(stream_atual()) : NULL;
+  const char *hash = st && st->infoHash[0] ? st->infoHash :
+                     st && st->hashTorrent[0] ? st->hashTorrent : "";
+  cacheboost_backend_identidade(sessao_usuario(), perfis_ativo(), alvo,
+      st ? (st->addonChave[0] ? st->addonChave : st->provedor) : "",
+      hash, st ? st->fileIdx : -1, st ? (unsigned long long)st->tamanhoBytes : 0ULL);
 }
 
 void player_abrir(int indiceCatalogo, const char *url) {
