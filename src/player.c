@@ -7060,7 +7060,7 @@ void player_desenhar(Uint32 agora) {
     gfx_cor(tela, 0, 0, 0, 0, (ajustes_vidro() ? 0.58f : 0.65f) * entrada);
     memset(&pd, 0, sizeof pd);
     pd.icone = "aj_triangle-alert"; pd.corIcone = 1;
-    pd.texto = erroAudioP5A ? "Audio Playback Error" : i18n("Fonte");
+    pd.texto = erroAudioP5A ? "Audio" : i18n("Fonte");
     pd.w = erroLargura(); pd.h = alturaErro();
     pd.corpo = corpoErro; pd.modal = 1; pd.video = 1;
     plrilha_pedir(&pd);
