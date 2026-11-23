@@ -92,8 +92,17 @@ internal object AudioOutputProbeP5A {
             (!arc || channels <= 2) && explicitProfile(route, fmt)
         val enc = encoding(mime)
         val mask = channelMask(channels)
+        val hdSource = mime.contains("truehd", ignoreCase = true) ||
+            mime.contains("true-hd", ignoreCase = true) ||
+            mime.contains("dts.hd", ignoreCase = true) ||
+            mime.contains("dts-hd", ignoreCase = true)
+        // A generic HDMI route can conceal a TV -> ARC downstream connection.
+        // Never assert HD encoded delivery without an explicitly observed eARC
+        // path; decoder presence or HDMI ports are not an eARC guarantee.
+        val hdTransportProven = type == AudioDeviceInfo.TYPE_HDMI_EARC
         val canBitstream = if (route == null || enc == 0 || mask == 0 ||
-            hz <= 0 || enc !in route.encodings || dsp) false else try {
+            hz <= 0 || enc !in route.encodings || dsp ||
+            (hdSource && !hdTransportProven)) false else try {
             val af = AudioFormat.Builder().setEncoding(enc).setSampleRate(hz)
                 .setChannelMask(mask).build()
             val support = AudioManager.getDirectPlaybackSupport(af, attrs)
