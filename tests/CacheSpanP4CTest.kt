@@ -20,7 +20,7 @@ fun main() {
         file.writeBytes(payload.clone().also { it[8191] = (it[8191] + 1).toByte() })
         check(!registry.valido(span))
         // A trusted old hash must NOT be replaced by calling registrar again.
-        check(!registry.valido(span))
+        check(!registry.registrar(span) && !registry.valido(span))
 
         // Truncated interrupted write cannot be accepted.
         file.writeBytes(payload.copyOf(100))
