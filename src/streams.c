@@ -132,6 +132,7 @@ static void medirCabecalho(void);
 
 static Stream *lista;
 static NvP3Reload p3Reload;
+static int p3Replacing;
 static void p3ReloadAbort(void);
 static int n = 0;
 // Workers publish source mutations; UI caches consume this revision.
@@ -719,7 +720,7 @@ static void textoAddonLimpar(void);
 void stream_definir_lista_idade(const Stream *l, int qtd, Uint32 idade) {
   // A different target/account may replace the list while a reload is staged.
   // The first *fresh* batch moves phase to FRESH before clearing the old cards.
-  if (p3Reload.phase == NV_P3_RELOAD_RETAINED) p3ReloadAbort();
+  if (p3Reload.phase == NV_P3_RELOAD_RETAINED && !p3Replacing) p3ReloadAbort();
   int i, k = 0;
   Stream *nova = l && qtd > 0 ? malloc(sizeof(Stream) * (size_t)qtd) : NULL;
   if (l && qtd > 0 && !nova) return;
@@ -828,20 +829,30 @@ static int p3FocusSaved, p3RestorePending;
 static char p3AddonKey[FONTEFALHA_CHAVE], p3AddonName[96];
 static float p3ScrollSaved;
 static void p3ReloadAbort(void) {
+  pthread_mutex_lock(&verTrava);
   nv_p3_reload_finish(&p3Reload);
+  pthread_mutex_unlock(&verTrava);
   p3FocusSaved = p3RestorePending = 0;
   p3AddonKey[0] = p3AddonName[0] = 0;
 }
 void stream_recarregar_primeira(void) {
-  if (!nv_p3_reload_first(&p3Reload)) return;
-  // Keep the saved focus/provider/search snapshot, replace *only* stale cards.
+  if (p3Reload.phase != NV_P3_RELOAD_RETAINED) return;
+  // Keep RETAINED throughout list clearing. External Android selection holds
+  // verTrava; it must never observe FRESH while an old card still exists.
+  p3Replacing = 1;
   stream_definir_lista(NULL, 0);
+  p3Replacing = 0;
+  pthread_mutex_lock(&verTrava);
+  nv_p3_reload_first(&p3Reload);
+  pthread_mutex_unlock(&verTrava);
 }
 void stream_recarregar_concluir(void) {
   if (p3Reload.phase == NV_P3_RELOAD_RETAINED)
     stream_recarregar_primeira(); // real empty/failure, never leave stale cards playable
+  pthread_mutex_lock(&verTrava);
   nv_p3_reload_finish(&p3Reload);
   atomic_fetch_add(&folhaRevisao, 1);
+  pthread_mutex_unlock(&verTrava);
 }
 int stream_recarregar_retendo(void) {
   return p3Reload.phase == NV_P3_RELOAD_RETAINED;
@@ -3918,11 +3929,11 @@ int stream_recarregar_iniciar(const char *id) {
     p3ScrollSaved = rolagem;
     p3RestorePending = 1;
   }
-  nv_p3_reload_begin(&p3Reload);
   // Revoke any pending OK from native/touch/Android *before* starting network.
   escolha = -1; escolhaGeracao = 0;
   atomic_store(&escolhaAndroid, -1);
   pthread_mutex_lock(&verTrava);
+  nv_p3_reload_begin(&p3Reload);
   listaGeracao++;
   atomic_fetch_add(&folhaRevisao, 1);
   pthread_mutex_unlock(&verTrava);
