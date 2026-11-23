@@ -87,6 +87,31 @@ int main(void) {
        "remembered without bingeGroup, source without one: no exact track, the first Japanese");
   }
 
+  // Q36: only source codec/MIME may prove an audio fidelity class. A
+  // human label cannot turn lossy AAC or AC-3 into lossless TrueHD.
+  ok(audioesc_qualidade("audio/mp4a-latm", 2, "English TrueHD") <
+     audioesc_qualidade("audio/flac", 2, "Original FLAC"),
+     "misleading AAC label cannot outrank real FLAC");
+  ok(audioesc_qualidade("audio/ac3", 6, "TrueHD 7.1") <
+     audioesc_qualidade("audio/flac", 2, "Original FLAC"),
+     "misleading AC-3 label does not become TrueHD");
+  ok(audioesc_qualidade("A_DTS", 8, "DTS-HD MA 7.1") >
+     audioesc_qualidade("A_AC3", 6, "AC-3 5.1"),
+     "genuine DTS track retains DTS-HD MA subtype hint");
+  ok(audioesc_qualidade("audio/vnd.dts.hd", 8, "") >
+     audioesc_qualidade("audio/ac3", 6, ""),
+     "DTS-HD MIME remains higher-quality than AC-3");
+
+  { AudioCand q[] = {
+      A("ja", "audio/mp4a-latm", "Japanese TrueHD 7.1 (untrusted label)", 2, 0, 1),
+      A("ja", "audio/flac", "Japanese FLAC 2.0", 2, 0, 1),
+      A("en", "audio/ac3", "English AC-3 5.1", 6, 0, 1),
+    };
+    ok(audioesc_escolher_com(q, 3, NULL, "en", "", "ja", &o) == 1 &&
+       o == AUDIOESC_ORIGINAL,
+       "automatic original-language choice uses actual FLAC over spoofed AAC label");
+  }
+
   // Detector.
   ok(audioesc_dts_truehd("A_DTS/LOSSLESS", "") && audioesc_dts_truehd("truehd", "") &&
      audioesc_dts_truehd("A_MLP", "") && audioesc_dts_truehd("", "Inglês · DTS 5.1") &&
