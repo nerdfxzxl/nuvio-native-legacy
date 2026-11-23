@@ -60,5 +60,8 @@ fun main() {
     check(CacheProvaP4C.observada206(a,
         mapOf("ETag" to listOf("\"abc\""), "Content-Range" to listOf("bytes 0-511/5000"),
               "Content-Length" to listOf("513")), 0) == null)
-    println("P4-C provenance and HTTP validator policy: 35 checks PASS")
+    check(CacheProvaP4C.observada206(a,
+        mapOf("ETag" to listOf("\"abc\""), "Content-Range" to listOf("bytes 0-511/5000"),
+              "Content-Length" to listOf("bad")), 0) == null)
+    println("P4-C provenance and HTTP validator policy: 36 checks PASS")
 }
