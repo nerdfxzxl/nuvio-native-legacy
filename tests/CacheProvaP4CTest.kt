@@ -51,5 +51,14 @@ fun main() {
     check(CacheProvaP4C.resposta206(b, meta(), -1, 1, 1) == null)
     check(CacheProvaP4C.resposta206(b, meta(), 0, 0, 1) == null)
     check(CacheProvaP4C.resposta206(b, meta(), 0, 1, 2) == null)
-    println("P4-C provenance and HTTP validator policy: 32 checks PASS")
+    val chunk = CacheProvaP4C.observada206(a,
+        mapOf("ETag" to listOf("\"abc\""), "Content-Range" to listOf("bytes 0-511/5000"),
+              "Content-Length" to listOf("512")), 0)
+    check(chunk != null && chunk.mesma(one))
+    check(CacheProvaP4C.observada206(a,
+        mapOf("ETag" to listOf("\"abc\""), "Content-Range" to listOf("bytes 1-511/5000")), 0) == null)
+    check(CacheProvaP4C.observada206(a,
+        mapOf("ETag" to listOf("\"abc\""), "Content-Range" to listOf("bytes 0-511/5000"),
+              "Content-Length" to listOf("513")), 0) == null)
+    println("P4-C provenance and HTTP validator policy: 35 checks PASS")
 }
