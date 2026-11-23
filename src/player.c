@@ -29,6 +29,7 @@
 #include "player.h"
 #include "legfontes.h"
 #include "memlog.h"
+#include "buffer_profile.h"
 #include "dvtela.h"
 #include "abrecine.h"
 #include "loading_handoff_p2d.h"
@@ -412,7 +413,7 @@ static int   esperandoFonte = 0;   // aberto sem URL, esperando o addon responde
 #ifdef NV_ANDROID
 static struct {
   unsigned token;
-  int legenda, nativo, adotado, buffer, cacheMb, proximo, kbps;
+  int legenda, nativo, adotado, buffer, cacheMb, proximo, kbps, averageBps;
   MkvassPreparo *mkv;
   Uint32 desde;
   double segundos, pct;
@@ -2110,6 +2111,13 @@ void player_precarregar_cancelar(unsigned token) {
   video_precarregar_cancelar(token);
   memset(&preTitulo, 0, sizeof preTitulo);
 }
+int player_buffer_average(const char *url, const char *headers, int preparing) {
+  if (preparing && preTitulo.token && !strcmp(preTitulo.url, url) &&
+      !strcmp(preTitulo.cab, headers)) return preTitulo.averageBps;
+  const Stream *s = stream_item(stream_atual());
+  return s && !strcmp(s->url, url) && !strcmp(s->cabecalhos, headers)
+       ? nv_overall_bps(s->descricao) : 0;
+}
 static int preTituloComecarVideo(void) {
   preTitulo.nativo = (preTitulo.proximo ? video_precarregar_proximo : video_precarregar)(
       preTitulo.url, preTitulo.cab, preTitulo.segundos, preTitulo.pct,
@@ -2134,6 +2142,7 @@ static int preTituloCriar(int indiceCatalogo, int t, int e, const Stream *s, uns
   if (!proximo) ling_definir_original(extras_idioma_original());
   pref = ling_legenda();
   player_precarregar_cancelar(0);
+  preTitulo.averageBps = nv_overall_bps(s->descricao);
   preTitulo.token = token; preTitulo.proximo = proximo; preTitulo.kbps = stream_kbps(s);
   snprintf(preTitulo.url, sizeof preTitulo.url, "%s", s->url);
   snprintf(preTitulo.cab, sizeof preTitulo.cab, "%s", s->cabecalhos);

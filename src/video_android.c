@@ -27,6 +27,7 @@
 #ifdef NV_ANDROID
 #include "marco.h"
 #include "streams.h"
+#include "player.h"
 #include "video.h"
 #include "mediaurl.h"
 #include "ajustes.h"
@@ -71,6 +72,7 @@ static jmethodID mPararMantendoPreparo;
 static unsigned preparoAdotar;
 // F07 (optional, like abrirPosicao): cache(mb) and ganho(pct). A shell without
 // them simply has no seek cache and no boost.
+static jmethodID mBufferProfile;
 static jmethodID mCache, mGanho, mBuffer, mKbps, mAudioAjustes;
 // Warm resume (#492, optional too): titulo(id) and descartarGuardado().
 static jmethodID mTitulo, mDescartar, mMorno, mQuadro;
@@ -88,6 +90,8 @@ static int resolverMetodos(JNIEnv *env) {
   mJanelaPronta = (*env)->GetStaticMethodID(env, gCls, "janelaPronta", "()Z");
   mEscolher = (*env)->GetStaticMethodID(env, gCls, "escolher", "(II)V");
   if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); return 0; }
+  mBufferProfile = (*env)->GetStaticMethodID(env, gCls, "bufferProfile", "(IIIIIIII)V");
+  if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); mBufferProfile = NULL; }
   mLimitedConnections = (*env)->GetStaticMethodID(env, gCls, "limitedConnections", "(I)V");
   if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); mLimitedConnections = NULL; }
   // Opcional: uma casca anterior ainda abre normalmente e recebe o seek
@@ -274,6 +278,16 @@ static void kInt(jmethodID m, int v) {
   fimChamada(env);
 }
 
+static void enviarPerfil(JNIEnv *env, int averageBps) {
+  if (!mBufferProfile) return;
+  int values[8];
+  ajustes_buffer_profile(averageBps, values);
+  (*env)->CallStaticVoidMethod(env, gCls, mBufferProfile,
+      (jint)values[0], (jint)values[1], (jint)values[2], (jint)values[3],
+      (jint)values[4], (jint)values[5], (jint)values[6], (jint)values[7]);
+  fimChamada(env);
+}
+
 static int precarregarVideo(const char *url, const char *cab, double segundos,
                             double pct, int buffer, int cacheMb, unsigned token,
                             const char *idiomaAudio, int kbps, int proximo) {
@@ -298,6 +312,7 @@ static int precarregarVideo(const char *url, const char *cab, double segundos,
     if (a) (*env)->DeleteLocalRef(env, a);
     fimChamada(env); return 0;
   }
+  enviarPerfil(env, player_buffer_average(url, cab ? cab : "", 1));
   (*env)->CallStaticVoidMethod(env, gCls, metodo, u, c, (jint)inicioMs,
       (jint)fracao, (jint)token, (jint)buffer, (jint)cacheMb, a, (jint)kbps);
   ok = !(*env)->ExceptionCheck(env);
@@ -900,6 +915,7 @@ static int abrirSessao(int inicioMs, int fracao, int mesmaFonte) {
   memset(&reconBufferAvanco, 0, sizeof reconBufferAvanco);
   env = ambiente();
   if (!env) { falhou = 1; printf("[video] android: NvPlayer indisponivel\n"); fflush(stdout); return 0; }
+  enviarPerfil(env, playerSessao ? player_buffer_average(urlAtual, cabecalhos, 0) : 0);
   // F07: the cache limit is sticky in Kotlin (read at each open), so it only
   // crosses JNI when it changes. Posted before the open on the same main
   // thread queue, it is in place when the open runs.

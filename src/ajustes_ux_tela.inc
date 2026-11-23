@@ -64,10 +64,30 @@ static const Item TELA[] = {
 #endif
 #endif
       OPC(AJ_CACHE_SEEK), OPC(AJ_MANTER_VIDEO), OPC(AJ_RETOMADA_MORNA), OPC(AJ_MANTER_PRAZO), OPC(AJ_SEEKR_AJUSTE),
-#if defined(NV_ANDROID) || (!defined(NV_TPK) && !defined(__EMSCRIPTEN__))
+#ifdef NV_ANDROID
+    ROT("RAM buffer · All Streams"),
+      OPC(AJ_BUFFER),
+      OPC(AJ_BUF_ALL_MIN),
+      OPC(AJ_BUF_ALL_MAX),
+      OPC(AJ_BUF_ALL_START),
+      OPC(AJ_BUF_ALL_REBUFFER),
+      OPC(AJ_BUF_ALL_BACK),
+      OPC(AJ_BUF_ALL_KEY),
+      OPC(AJ_BUF_ALL_TIME),
+    ROT("RAM buffer · Below threshold"),
+      OPC(AJ_BUF_THRESHOLD), OPC(AJ_BUF_LOW_RAM),
+      OPC(AJ_BUF_LOW_MIN),
+      OPC(AJ_BUF_LOW_MAX),
+      OPC(AJ_BUF_LOW_START),
+      OPC(AJ_BUF_LOW_REBUFFER),
+      OPC(AJ_BUF_LOW_BACK),
+      OPC(AJ_BUF_LOW_KEY),
+      OPC(AJ_BUF_LOW_TIME),
+#elif !defined(NV_TPK) && !defined(__EMSCRIPTEN__)
       OPC(AJ_BUFFER),   // webOS: DTS/Dolby Vision conversion read-ahead
 #endif
 #ifdef NV_ANDROID
+    ROT("External player"),
       OPC(AJ_PLAYER_EXTERNO),
       OPC(AJ_PLAYER_ANIME),
 #endif

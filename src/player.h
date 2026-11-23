@@ -42,6 +42,7 @@ double player_regra_retomada_inicial(double posSalva, double durSalva,
 int player_precarregar_fonte(int indiceCatalogo, int temporada, int episodio,
                             int indiceFonte, unsigned token);
 unsigned player_precarregar_novo_token(void);
+int player_buffer_average(const char *url, const char *headers, int preparing);
 int player_precarregar_proxima_fonte(int indiceCatalogo, int temporada, int episodio,
                                     const Stream *fonte, unsigned token);
 int player_precarregar_estado(unsigned token);

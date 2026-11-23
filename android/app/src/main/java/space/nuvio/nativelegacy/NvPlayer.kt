@@ -499,9 +499,10 @@ object NvPlayer {
     private const val PREPARO_MAX_US = 5_000_000L
     private const val PREPARO_ESPERA_MS = 30_000L
 
-    private class CargaPlayer(val minMs: Int, maxMs: Int, val bytes: Int, preparando: Boolean) :
+    private class CargaPlayer(val minMs: Int, maxMs: Int, val bytes: Int, preparando: Boolean, val profile: RamBufferProfile) :
         DefaultLoadControl(DefaultAllocator(true, C.DEFAULT_BUFFER_SEGMENT_SIZE),
-            minMs, maxMs, 2_500, 5_000, bytes, false, 0, false) {
+            minMs, maxMs, profile.startMs, profile.rebufferMs, bytes, profile.preferTime,
+            profile.backMs, profile.keepKeyframe) {
         @Volatile var adotada = !preparando
         @Volatile var cancelada = false
         // At most 1/16 of the heap (1/32 on low-RAM, where the active player
@@ -525,10 +526,11 @@ object NvPlayer {
         }
         fun cheio() = allocator.totalBytesAllocated >= tetoPreparo
         override fun shouldContinueLoading(parameters: LoadControl.Parameters): Boolean =
-            if (adotada) super.shouldContinueLoading(parameters)
+            if (adotada) allocator.totalBytesAllocated < bytes && super.shouldContinueLoading(parameters)
             else parameters.bufferedDurationUs < PREPARO_MAX_US && allocator.totalBytesAllocated < tetoPreparo
         override fun shouldStartPlayback(parameters: LoadControl.Parameters): Boolean =
-            if (adotada) super.shouldStartPlayback(parameters)
+            if (adotada) super.shouldStartPlayback(parameters) ||
+                (parameters.bufferedDurationUs > 0 && allocator.totalBytesAllocated >= bytes)
             else parameters.bufferedDurationUs >= 2_500_000L || allocator.totalBytesAllocated >= tetoPreparo
     }
 
@@ -806,7 +808,7 @@ object NvPlayer {
 
     private class Preparo(val token: Int, val pedido: Int, val url: String, val cab: String,
                           val inicioMs: Int, val fracao: Int, val buffer: Int, val cacheMb: Int, val proximo: Boolean = false,
-                          val idiomaAudio: String = "", val kbps: Int = 0) {
+                          val idiomaAudio: String = "", val kbps: Int = 0, val profile: RamBufferProfile) {
         var recursos: RecursosPlayer? = null
         var ouvinte: Player.Listener? = null
         var analitico: AnalyticsListener? = null
@@ -871,6 +873,7 @@ object NvPlayer {
 
     private fun enfileirarPreparo(url: String, cabecalhos: String, inicioMs: Int, fracao: Int,
                                  token: Int, buffer: Int, cacheMb: Int, proximo: Boolean, idiomaAudio: String, kbps: Int) {
+        val profile = profileForCall()
         if (token <= 0 || url.isEmpty() || limitedNext) return
         val pedido = synchronized(travaPreparo) {
             val n = pedidosPreparo.incrementAndGet()
@@ -881,7 +884,7 @@ object NvPlayer {
             if (pedido != pedidosPreparo.get()) return@post
             soltarPreparo()
             val s = Preparo(token, pedido, url, cabecalhos, inicioMs.coerceAtLeast(0),
-                if (inicioMs > 0) 0 else fracao.coerceIn(0, 9999), buffer.coerceIn(0, 256), cacheMb.coerceIn(0, 1024), proximo, idiomaAudio, kbps.coerceIn(0, 400_000))
+                if (inicioMs > 0) 0 else fracao.coerceIn(0, 9999), buffer.coerceIn(0, 256), cacheMb.coerceIn(0, 1024), proximo, idiomaAudio, kbps.coerceIn(0, 400_000), profile)
             preparo = s
             prepararMain(s, SystemClock.elapsedRealtime())
         }
@@ -899,7 +902,7 @@ object NvPlayer {
             return
         }
         try {
-            val r = criarPlayer(act, s.url, s.cab, s.buffer, s.cacheMb, true, 0, !s.proximo, s.idiomaAudio, kbps = s.kbps)
+            val r = criarPlayer(act, s.url, s.cab, s.buffer, s.cacheMb, true, 0, !s.proximo, s.idiomaAudio, kbps = s.kbps, profile = s.profile)
             s.recursos = r
             if (s.proximo) {
                 prepararFonteProxima(act, s, r)
@@ -1089,15 +1092,17 @@ object NvPlayer {
             consultaPreparo = ConsultaPreparo(0, 0) // a token can be consumed once
             n
         }
+        val profile = profileForCall()
         principal.post {
             if (pedido != pedidos.get()) return@post
+            activeBufferProfile = profile
             val s = preparo
             val inicio = inicioMs.coerceAtLeast(0)
             val f = if (inicio > 0) 0 else fracao.coerceIn(0, 9999)
             val r = s?.recursos
             if (preparoPedido == pedidosPreparo.get() && s != null && r != null && s.token == token &&
                 s.url == url && s.cab == cabecalhos && s.inicioMs == inicio && s.fracao == f &&
-                s.idiomaAudio == idiomaAudio &&
+                s.idiomaAudio == idiomaAudio && s.profile == profile &&
                 s.buffer == bufferPreset && s.cacheMb == cacheMbPedido && (!r.construido() || r.p.playerError == null) &&
                 (f == 0 || s.inicioAceito || s.fracaoPendente > 0)) {
                 preparo = null
@@ -1220,8 +1225,11 @@ object NvPlayer {
     @JvmStatic fun abrirPosicao(url: String, cabecalhos: String, inicioMs: Int, geracao: Int) {
         cancelarPreparo(0)
         val pedido = pedidos.incrementAndGet()
+        val profile = profileForCall()
         principal.post {
-            if (pedido == pedidos.get()) abrirMain(url, cabecalhos, false, inicioMs.coerceAtLeast(0), geracao, pedido)
+            if (pedido != pedidos.get()) return@post
+            activeBufferProfile = profile
+            abrirMain(url, cabecalhos, false, inicioMs.coerceAtLeast(0), geracao, pedido)
         }
     }
     // Only called by Android native's bounded SAME-source rebuffer/network
@@ -1229,18 +1237,22 @@ object NvPlayer {
     @JvmStatic fun abrirRecuperacao(url: String, cabecalhos: String, inicioMs: Int, geracao: Int) {
         cancelarPreparo(0)
         val pedido = pedidos.incrementAndGet()
+        val profile = profileForCall()
         principal.post {
-            if (pedido == pedidos.get())
-                abrirMain(url, cabecalhos, false, inicioMs.coerceAtLeast(0), geracao,
+            if (pedido != pedidos.get()) return@post
+            activeBufferProfile = profile
+            abrirMain(url, cabecalhos, false, inicioMs.coerceAtLeast(0), geracao,
                     pedido, mesmaFonte = true)
         }
     }
     @JvmStatic fun abrirRetomada(url: String, cabecalhos: String, inicioMs: Int, fracao: Int, geracao: Int) {
         cancelarPreparo(0)
         val pedido = pedidos.incrementAndGet()
+        val profile = profileForCall()
         principal.post {
-            if (pedido == pedidos.get())
-                abrirMain(url, cabecalhos, false, inicioMs.coerceAtLeast(0), geracao, pedido, fracao.coerceIn(0, 9999))
+            if (pedido != pedidos.get()) return@post
+            activeBufferProfile = profile
+            abrirMain(url, cabecalhos, false, inicioMs.coerceAtLeast(0), geracao, pedido, fracao.coerceIn(0, 9999))
         }
     }
     @JvmStatic fun parar() {
@@ -1311,6 +1323,17 @@ object NvPlayer {
     // F07: cache limit for the NEXT opens (MB, 0 = off) and the session volume
     // 0..200 (above 100 only while the audio is PCM).
     // #338: buffer size in MiB (0 Auto; C already clamped it to free RAM), sticky, read at open.
+    private val nextProfile = ThreadLocal<RamBufferProfile>()
+    private var activeBufferProfile = RamBufferProfile()
+    private fun profileForCall(): RamBufferProfile {
+        val snapshot = nextProfile.get() ?: RamBufferProfile()
+        nextProfile.remove()
+        return snapshot
+    }
+    @JvmStatic fun bufferProfile(min: Int, max: Int, start: Int, rebuffer: Int, back: Int,
+                                 keyframe: Int, time: Int, mb: Int) {
+        nextProfile.set(RamBufferProfile(min, max, start, rebuffer, back, keyframe != 0, time != 0, mb))
+    }
     @Volatile private var bufferPreset = 0
     @JvmStatic fun buffer(mb: Int) { bufferPreset = mb.coerceIn(0, 256) }
     // Declared kbps of the next open (0 = unknown/trailer), sticky like buffer().
@@ -1456,7 +1479,8 @@ object NvPlayer {
     // factory stay dormant until this same player becomes the active session.
     private fun criarPlayer(act: Activity, url: String, cabecalhos: String, preset: Int,
                             pedidoCache: Int, preparando: Boolean, geracao: Int, construir: Boolean = true,
-                            idiomaAudio: String = "", titulo: String = "", kbps: Int = kbpsDeclarado): RecursosPlayer {
+                            idiomaAudio: String = "", titulo: String = "", kbps: Int = kbpsDeclarado,
+                            profile: RamBufferProfile = activeBufferProfile): RecursosPlayer {
         // Em aparelho de pouca RAM (ActivityManager: isLowRamDevice,
         // memoryClass <= 128 MB ou totalMem <= 3 GiB; a TCL de 2,4 GB tem
         // memoryClass 192 e so cai pelo totalMem)
@@ -1477,10 +1501,12 @@ object NvPlayer {
         val porBitrate = kbps.toLong() * 1000 / 8 * 30
         val tetoAlto = if (poucaRam) minOf(heap / 5, 80L shl 20) else minOf(heap / 3, 192L shl 20)
         val autoBytes = porBitrate.coerceAtMost(tetoAlto).coerceAtLeast(tetoBuffer.toLong()).toInt()
-        val (minMs, maxMs, bytes) = if (preset > 0)
-            Triple(50_000, 150_000, minOf(preset.toLong() shl 20, heap / 3).toInt())
-        else Triple(50_000, 50_000, autoBytes)
-        val r = RecursosPlayer(CargaPlayer(minMs, maxMs, bytes, preparando), maxMs, if (preparando) idiomaAudio else "")
+        val targetMb = if (profile.targetMb >= 0) profile.targetMb else preset
+        val (minMs, maxMs) = profile.durations(targetMb > 0)
+        val bytes = if (targetMb > 0) minOf(targetMb.toLong() shl 20, tetoAlto).toInt()
+                    else minOf(autoBytes.toLong(), tetoAlto).toInt()
+        val r = RecursosPlayer(CargaPlayer(minMs, maxMs, bytes, preparando, profile), maxMs,
+            if (preparando) idiomaAudio else "")
         try {
             val http = DefaultHttpDataSource.Factory().setAllowCrossProtocolRedirects(true)
                 .setConnectTimeoutMs(15000).setReadTimeoutMs(20000)

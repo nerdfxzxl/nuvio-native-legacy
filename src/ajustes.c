@@ -34,6 +34,8 @@
 #include "xtepg.h"
 #include "teclado.h"
 #include "memlog.h"
+#include "buffer_profile.h"
+#include "cacheboost.h"
 #include "descoberta.h"
 #include "extras.h"
 #include "notasfontes.h"
@@ -739,6 +741,22 @@ typedef enum {
   // Append only: independent Home poster genre visibility. The existing
   // AJ_NOTAS_HOME option owns poster IMDb visibility and keeps its saved key.
   AJ_POSTER_GENERO,
+  AJ_BUF_THRESHOLD,
+  AJ_BUF_ALL_MIN,
+  AJ_BUF_ALL_MAX,
+  AJ_BUF_ALL_START,
+  AJ_BUF_ALL_REBUFFER,
+  AJ_BUF_ALL_BACK,
+  AJ_BUF_ALL_KEY,
+  AJ_BUF_ALL_TIME,
+  AJ_BUF_LOW_MIN,
+  AJ_BUF_LOW_MAX,
+  AJ_BUF_LOW_START,
+  AJ_BUF_LOW_REBUFFER,
+  AJ_BUF_LOW_BACK,
+  AJ_BUF_LOW_KEY,
+  AJ_BUF_LOW_TIME,
+  AJ_BUF_LOW_RAM,
   AJ_N
 } OpcaoId;
 _Static_assert(DEBRID_RD == 0 && DEBRID_TB == 1 && DEBRID_PM == 2 && DEBRID_AD == 3,
@@ -1890,6 +1908,22 @@ static const Opcao OPCOES[AJ_N] = {
   NUM("Landscape poster size",        72, 200, 2, " dp"),
   ESC("Poster focus", V_FOCO_POSTER, 2),
   ESC("Genre on posters", V_LIGA, 2),
+  NUM("Below-profile threshold", 1, 200, 1, " Mbps"),
+  NUM("Minimum ahead", 5, 120, 5, " s"),
+  NUM("Maximum ahead (0 = automatic)", 0, 300, 5, " s"),
+  NUM("Start playback", 500, 15000, 500, " ms"),
+  NUM("Resume after buffering", 500, 30000, 500, " ms"),
+  NUM("Back buffer", 0, 120, 5, " s"),
+  ESC("Keep back to keyframe", V_LIGA, 2),
+  ESC("Prefer time threshold", V_LIGA, 2),
+  NUM("Minimum ahead", 5, 120, 5, " s"),
+  NUM("Maximum ahead (0 = automatic)", 0, 300, 5, " s"),
+  NUM("Start playback", 500, 15000, 500, " ms"),
+  NUM("Resume after buffering", 500, 30000, 500, " ms"),
+  NUM("Back buffer", 0, 120, 5, " s"),
+  ESC("Keep back to keyframe", V_LIGA, 2),
+  ESC("Prefer time threshold", V_LIGA, 2),
+  ESC("RAM target", V_BUFFER, 4),
   };
 
 // Nome de cada opcao no arquivo. O formato era POSICIONAL — uma linha por
@@ -2233,6 +2267,22 @@ static const char *CHAVE[] = {
   "posterLargeSizeLocal", "posterLandscapeSizeLocal",
   "posterFocusInstantLocal",
   "posterGenreLocal",
+  "bufferThresholdMbpsLocal",
+  "bufferAllMinLocal",
+  "bufferAllMaxLocal",
+  "bufferAllStartLocal",
+  "bufferAllRebufferLocal",
+  "bufferAllBackLocal",
+  "bufferAllKeyLocal",
+  "bufferAllTimeLocal",
+  "bufferLowMinLocal",
+  "bufferLowMaxLocal",
+  "bufferLowStartLocal",
+  "bufferLowRebufferLocal",
+  "bufferLowBackLocal",
+  "bufferLowKeyLocal",
+  "bufferLowTimeLocal",
+  "bufferLowTargetLocal",
 };
 // QUATRO VETORES PARALELOS indexados pelo mesmo enum AJ_*: OPCOES, CHAVE,
 // valor e as secoes. OPCOES ja e declarado [AJ_N], e `valor` aceita inicializacao
@@ -3322,6 +3372,20 @@ int ajustes_player_externo(int anime) {
 #endif
 }
 const char *ajustes_player_pacote(int anime) { return ppPkg[anime ? 1 : 0]; }
+/* Snapshot on the SDL thread before dispatching the open to Media3. */
+void ajustes_buffer_profile(int averageBps, int out[8]) {
+  int low = nv_buffer_low(averageBps, valor[AJ_BUF_THRESHOLD]);
+  int first = low ? AJ_BUF_LOW_MIN : AJ_BUF_ALL_MIN;
+  out[0] = valor[first] * 1000;
+  out[1] = valor[first + 1] * 1000;
+  out[2] = valor[first + 2];
+  out[3] = valor[first + 3];
+  out[4] = valor[first + 4] * 1000;
+  out[5] = valor[first + 5] == 0;
+  out[6] = valor[first + 6] == 0;
+  // -1 inherits the existing free-RAM-checked All Streams target.
+  out[7] = low ? cacheboost_buffer_mb(valor[AJ_BUF_LOW_RAM], memlog_livre_mb()) : -1;
+}
 int ajustes_buffer_preset(void) {
   int v = valor[AJ_BUFFER];
   return v >= 0 && v < 4 ? v : 0;
@@ -6305,6 +6369,7 @@ static int somenteDesteAparelho(int op) {
 // linhas do titulo e legenda 2 saem daqui e passam a ser por perfil; 4K,
 // memoria, rede e idioma da interface ficam. Segredos nunca estao em valor[].
 static int soNaTv(int op) {
+  if (op >= AJ_BUF_THRESHOLD && op <= AJ_BUF_LOW_RAM) return 1;
   switch (op) {
     case AJ_ICONE_APP: case AJ_LOGO_APP: case AJ_ABERTURA:
     case AJ_IDIOMA: case AJ_FONTE_UI: case AJ_ANIM:

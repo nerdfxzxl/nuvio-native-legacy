@@ -364,3 +364,20 @@
   126, /* Landscape poster size: 126dp keeps measured Legacy dimensions */
   0, /* Smooth poster focus */
   0, /* Genre on Home posters: On by default (V_LIGA) */
+
+  30, /* AJ_BUF_THRESHOLD */
+  50, /* AJ_BUF_ALL_MIN */
+  0, /* AJ_BUF_ALL_MAX */
+  2500, /* AJ_BUF_ALL_START */
+  5000, /* AJ_BUF_ALL_REBUFFER */
+  0, /* AJ_BUF_ALL_BACK */
+  1, /* AJ_BUF_ALL_KEY */
+  1, /* AJ_BUF_ALL_TIME */
+  50, /* AJ_BUF_LOW_MIN */
+  0, /* AJ_BUF_LOW_MAX */
+  2500, /* AJ_BUF_LOW_START */
+  5000, /* AJ_BUF_LOW_REBUFFER */
+  0, /* AJ_BUF_LOW_BACK */
+  1, /* AJ_BUF_LOW_KEY */
+  1, /* AJ_BUF_LOW_TIME */
+  0, /* AJ_BUF_LOW_RAM */
