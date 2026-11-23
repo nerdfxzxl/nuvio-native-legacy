@@ -26,7 +26,7 @@ int cacheboost_suportado(void) {
 void cacheboost_simular_suporte(int s) { simulado = s < 0 ? -1 : s ? 1 : 0; }
 
 int cacheboost_cache_mb(int opcao) {
-  static const int MB[CB_CACHE_OPCOES] = { 0, 256, 512, 1024 };
+  static const int MB[CB_CACHE_OPCOES] = { 0, 256, 512, 1024, 2048 };
   return opcao >= 0 && opcao < CB_CACHE_OPCOES ? MB[opcao] : 0;
 }
 
