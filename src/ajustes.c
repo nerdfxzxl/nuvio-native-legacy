@@ -903,7 +903,7 @@ static const char *V_BUFFER[] = { "Automático", "64 MB", "128 MB", "256 MB" };
 static const char *V_ESTAT_TAMANHO[] = { "Lembrar o último", "Completo", "Compacto", "Mínimo" };
 // 0 = Direita (como as outras laterais do player), 1 = Esquerda.
 static const char *V_ESTAT_LADO[] = { "Direita", "Esquerda" };
-static const char *V_CACHE_SEEK[] = { "Desligado", "256 MB", "512 MB", "1 GB" };
+static const char *V_CACHE_SEEK[] = { "Desligado", "256 MB", "512 MB", "1 GB", "Automático" };
 // #334: indice gravado em p2pLimiteLocal; ajustes_p2p_limite_mb devolve os MB.
 static const char *V_P2P_LIMITE[] = { "Automático", "2 GB", "4 GB", "8 GB", "16 GB" };
 static const unsigned P2P_LIMITE_MB[] = { 0, 2048, 4096, 8192, 16384 };
@@ -1685,7 +1685,7 @@ static const Opcao OPCOES[AJ_N] = {
   ESC("Esconder logo durante o trailer", V_LIGA, 2),
   ESC("Idioma da legenda secundária",    V_LINGUA, 2),
   ESC("Sincronia por áudio",             V_LIGA, 2),
-  ESC("Cache de seek em disco",          V_CACHE_SEEK, 4),
+  ESC("Cache de seek em disco",          V_CACHE_SEEK, 5),
   ESC("Zoom no trailer e no player (experimental)", V_LIGA, 2),   // local: trailerZoomTpkLocal (.tpk)
   ACAO("Plugins"),
   ESC("Servidores pessoais (experimental)", V_LIGA, 2),   // local: jellyfinLocal
@@ -3403,9 +3403,10 @@ int ajustes_buffer_preset(void) {
 }
 int ajustes_fonte_idioma_audio(void) { return valor[AJ_FONTE_IDIOMA_AUDIO] == 0; }
 int ajustes_cache_seek_mb(void) {
-  static const int MB[] = { 0, 256, 512, 1024 };
+  /* Preserve existing saved values 0..3. 2048 is a request marker for Auto. */
+  static const int MB[] = { 0, 256, 512, 1024, 2048 };
   int v = valor[AJ_CACHE_SEEK];
-  return cacheSeekExiste() && v >= 0 && v < 4 ? MB[v] : 0;
+  return cacheSeekExiste() && v >= 0 && v < 5 ? MB[v] : 0;
 }
 int ajustes_icone_app(void) { return valor[AJ_ICONE_APP]; }
 int ajustes_logo_app(void) { int v = valor[AJ_LOGO_APP]; return v < 0 || v > 1 ? 0 : v; }
@@ -8360,7 +8361,7 @@ static const char *ajudaOpcaoBase(int op) {
     case AJ_PLAYER_ANIME: return "Player só para anime (kitsu, MAL, AniList, ou animação japonesa). Igual ao Player usa a escolha acima. O player externo não sincroniza o progresso.";
     case AJ_BUFFER: return "Quanto vídeo o app guarda à frente. Automático é o de sempre; 64, 128 ou 256 MB ajudam arquivos 4K pesados e caem sozinhos se faltar memória na TV. No webOS vale para a conversão de DTS e Dolby Vision. Vale a partir do próximo vídeo.";
     case AJ_FONTE_IDIOMA_AUDIO: return "Na escolha automática, fontes com o seu Idioma do áudio ou áudio duplo passam na frente na mesma resolução. Não é filtro: sem elas, a melhor das outras toca.";
-    case AJ_CACHE_SEEK: return "Com retomada rápida, guarda só o último título por até 3 horas. Trocar de perfil ou pouco espaço apagam o trecho.";
+    case AJ_CACHE_SEEK: return "Guarda trechos do vídeo atual. Automático reserva espaço livre, até 1 GB. Reutilizar trechos em outra reprodução exige identidade e integridade verificadas.";
     case AJ_ANIM: return "Use Reduzidas para movimentos mais discretos ao navegar pela interface.";
     case AJ_RESOLUCAO: return "Resolução controla a nitidez; efeitos controlam a velocidade. Automática nunca baixa para 720p. Reinicie após mudar a resolução; o vídeo não muda.";
     case AJ_PERFIL_ATIVO: return "Perfil em uso nesta TV. Trocar de perfil é feito na tela de perfis, ao abrir o app.";
