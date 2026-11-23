@@ -14,6 +14,11 @@ fun main() {
     check(key == CacheSessao.chave("s1", first + "#fragment"))
     check(key != CacheSessao.chave("s1", rotated)) // no unproven signed URL alias
     check(key != CacheSessao.chave("s2", first)) // distinct sessions
+    check(key != CacheSessao.chave("s1", first, "releaseA:headersA"))
+    check(CacheSessao.chave("s1", first, "releaseA:headersA") !=
+          CacheSessao.chave("s1", first, "releaseB:headersA"))
+    check(CacheSessao.chave("s1", first, "releaseA:headersA") !=
+          CacheSessao.chave("s1", first, "releaseA:headersB"))
     check(!key.contains("token") && !key.contains("cdn") && !key.contains("one"))
     check(key.startsWith("v2:s1:") && key.length == 70)
     try { CacheSessao.chave("../s", first); error("invalid session") }
