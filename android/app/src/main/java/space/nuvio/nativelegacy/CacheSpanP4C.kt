@@ -26,7 +26,7 @@ internal class CacheSpanP4C(private val raiz: File) {
             t.arquivo.length() != t.tamanho) return null
         val base = try { raiz.canonicalPath + File.separator } catch (_: Exception) { return null }
         val dest = try { t.arquivo.canonicalPath } catch (_: Exception) { return null }
-        if (!dest.startsWith(base) || dest != t.arquivo.absolutePath) return null
+        if (!dest.startsWith(base)) return null
         return try {
             val hash = MessageDigest.getInstance("SHA-256")
             val buf = ByteArray(64 * 1024)
@@ -52,6 +52,8 @@ internal class CacheSpanP4C(private val raiz: File) {
         digests[registro(t)] = h
         return true
     }
+
+    @Synchronized fun conhecido(t: Trecho): Boolean = digests.containsKey(registro(t))
 
     @Synchronized fun valido(t: Trecho): Boolean {
         val anterior = digests[registro(t)] ?: return false
