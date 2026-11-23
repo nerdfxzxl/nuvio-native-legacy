@@ -159,6 +159,12 @@ void cacheboost_backend_audioajuste(int a, int b, int c, int n) {
 void cacheboost_backend_ganho(int pct) { (void)pct; }
 void cacheboost_backend_cache(int mb) { (void)mb; }
 void cacheboost_backend_titulo(const char *id) { (void)id; }
+void cacheboost_backend_identidade(const char *conta, int perfil, const char *catalogo,
+                                   const char *addon, const char *torrent,
+                                   int arquivo, unsigned long long bytes) {
+  (void)conta; (void)perfil; (void)catalogo; (void)addon;
+  (void)torrent; (void)arquivo; (void)bytes;
+}
 void cacheboost_backend_descartar(void) { }
 static volatile int bufferMb;
 void cacheboost_backend_buffer(int mb) { bufferMb = mb; }
