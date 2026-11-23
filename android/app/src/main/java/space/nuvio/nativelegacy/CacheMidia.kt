@@ -294,7 +294,7 @@ class CacheMidia private constructor(
         }
     }
 
-    private class SinkProtegido(cache: SimpleCache, estado: CacheSessao.Estado, private val pasta: File,
+    private class SinkProtegido(cache: SimpleCache, private val estado: CacheSessao.Estado, private val pasta: File,
                                 private val registrar: (DataSpec?) -> Unit) : DataSink {
         // bufferSize 0: Escrita buffers (see CacheSessao.Escrita).
         private val interno = CacheDataSink(cache, CacheDataSink.DEFAULT_FRAGMENT_SIZE, 0)
