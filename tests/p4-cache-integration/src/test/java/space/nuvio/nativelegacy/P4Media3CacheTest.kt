@@ -17,8 +17,9 @@ import java.io.File
 import java.io.IOException
 import java.io.InterruptedIOException
 import java.nio.file.Files
-import com.sun.net.httpserver.HttpServer
-import java.net.InetSocketAddress
+import java.net.ServerSocket
+import java.net.InetAddress
+import java.net.SocketException
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
@@ -217,35 +218,48 @@ class P4Media3CacheTest {
     }
 
     @Test fun localHttpRangeServerFeedsActualMedia3DataSource() {
-        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        // java.net.ServerSocket is available on the Android/JVM test classpath;
+        // com.sun.net.httpserver.HttpServer is not exposed by AGP's bootclasspath.
+        val server = ServerSocket(0, 4, InetAddress.getByName("127.0.0.1"))
+        server.soTimeout = 10_000
         val served = AtomicInteger()
-        server.createContext("/vod") { exchange ->
-            val raw = exchange.requestHeaders.getFirst("Range") ?: "bytes=0-"
-            val match = Regex("^bytes=([0-9]+)-([0-9]*)$").matchEntire(raw)
-            if (match == null) {
-                exchange.sendResponseHeaders(416, -1)
-                exchange.close()
-            } else {
-                val start = match.groupValues[1].toInt()
-                val last = match.groupValues[2].toIntOrNull() ?: (bodies.size - 1)
-                val end = minOf(last, bodies.size - 1)
-                if (start !in bodies.indices || end < start) {
-                    exchange.sendResponseHeaders(416, -1)
-                    exchange.close()
-                } else {
+        val worker = Executors.newSingleThreadExecutor()
+        val task = worker.submit {
+            try {
+                server.accept().use { client ->
+                    client.soTimeout = 10_000
+                    val input = client.getInputStream().bufferedReader()
+                    var line = input.readLine()
+                    var range: String? = null
+                    while (line != null && line.isNotEmpty()) {
+                        if (line.startsWith("Range:", ignoreCase = true))
+                            range = line.substringAfter(':').trim()
+                        line = input.readLine()
+                    }
+                    val match = Regex("^bytes=([0-9]+)-([0-9]*)$").matchEntire(range.orEmpty())
+                    val start = match?.groupValues?.get(1)?.toIntOrNull() ?: 0
+                    val last = match?.groupValues?.get(2)?.toIntOrNull() ?: (bodies.size - 1)
+                    val end = minOf(last, bodies.size - 1)
                     val count = end - start + 1
-                    exchange.responseHeaders.add("Content-Range", "bytes " + start + "-" + end + "/" + bodies.size)
-                    exchange.responseHeaders.add("ETag", "\"loopback\"")
-                    exchange.responseHeaders.add("Accept-Ranges", "bytes")
-                    exchange.sendResponseHeaders(206, count.toLong())
-                    exchange.responseBody.use { it.write(bodies, start, count) }
+                    require(start in bodies.indices && count > 0 && match != null)
+                    val header = "HTTP/1.1 206 Partial Content\r\n" +
+                        "ETag: \"loopback\"\r\nAccept-Ranges: bytes\r\n" +
+                        "Content-Type: application/octet-stream\r\n" +
+                        "Content-Range: bytes " + start + "-" + end + "/" + bodies.size + "\r\n" +
+                        "Content-Length: " + count + "\r\nConnection: close\r\n\r\n"
+                    client.getOutputStream().use {
+                        it.write(header.toByteArray(Charsets.US_ASCII))
+                        it.write(bodies, start, count)
+                        it.flush()
+                    }
                     served.addAndGet(count)
                 }
+            } catch (_: SocketException) {
+                // Server closed by @Test finally after the bounded request.
             }
         }
-        server.start()
         try {
-            val uri = "http://127.0.0.1:" + server.address.port + "/vod"
+            val uri = "http://127.0.0.1:" + server.localPort + "/vod"
             val cache = create(uri, bodies.size)
             val d = cache.fabrica(DefaultHttpDataSource.Factory()).createDataSource()
             val start = 8192
@@ -261,10 +275,14 @@ class P4Media3CacheTest {
                     out.write(buf, 0, n)
                 }
             } finally { d.close() }
+            task.get(10, TimeUnit.SECONDS)
             assertArrayEquals(bodies.copyOfRange(start, start + length), out.toByteArray())
-            assertEquals("HTTP range source should send only requested bytes", length, served.get())
+            assertEquals("real HTTP range must transmit only requested bytes", length, served.get())
             cache.liberar()
-        } finally { server.stop(0) }
+        } finally {
+            server.close()
+            worker.shutdownNow()
+        }
     }
 
     @Test fun evictionWhileReaderIsOpenCannotReturnWrongByteSequence() {
