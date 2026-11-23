@@ -1,4 +1,4 @@
-// A ordem do audio automatico: faixa manual > original > English > Malayalam.
+// P5 Q36: manual track > playable original; never automatically select a dub.
 // Dentro do idioma, a de maior qualidade que o player suporta. Original
 // desconhecido = preservar a escolha do arquivo, nao adivinhar.
 //
@@ -31,8 +31,8 @@ int main(void) {
   ok(audioesc_escolher_com(f, n, NULL, "sv", "en", "sv", &o) == 2 && o == AUDIOESC_ORIGINAL,
      "original Swedish: lossless TrueHD");
   f[2].pode = 0;
-  ok(audioesc_escolher_com(f, n, NULL, "sv", "en", "sv", &o) == 0 && o == AUDIOESC_PREF1,
-     "original unavailable: highest-quality English fallback");
+  ok(audioesc_escolher_com(f, n, NULL, "sv", "en", "sv", &o) == -1 && o == AUDIOESC_NADA,
+     "original unavailable: never silently switch to English");
   f[2].pode = 1;
   ok(audioesc_escolher_com(f, n, NULL, "de", "fr", "ja", &o) == 3 && o == AUDIOESC_ORIGINAL,
      "Japanese original beats unrelated account preferences");
