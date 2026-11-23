@@ -134,6 +134,7 @@ static Stream *lista;
 static NvP3Reload p3Reload;
 static int p3Replacing;
 static void p3ReloadAbort(void);
+static void p3CapturarFocoAtual(void);
 static int n = 0;
 // Workers publish source mutations; UI caches consume this revision.
 static _Atomic unsigned folhaRevisao;
@@ -719,7 +720,7 @@ static void selosAgendar(int ini, int qtd);
 static void textoAddonLimpar(void);
 void stream_definir_lista_idade(const Stream *l, int qtd, Uint32 idade) {
   // A different target/account may replace the list while a reload is staged.
-  // The first *fresh* batch moves phase to FRESH before clearing the old cards.
+  // The first *fresh* batch clears retained cards before entering FRESH.
   if (p3Reload.phase == NV_P3_RELOAD_RETAINED && !p3Replacing) p3ReloadAbort();
   int i, k = 0;
   Stream *nova = l && qtd > 0 ? malloc(sizeof(Stream) * (size_t)qtd) : NULL;
@@ -839,6 +840,9 @@ void stream_recarregar_primeira(void) {
   if (p3Reload.phase != NV_P3_RELOAD_RETAINED) return;
   // Keep RETAINED throughout list clearing. External Android selection holds
   // verTrava; it must never observe FRESH while an old card still exists.
+  // D-pad navigation during reload may have moved to a different old release
+  // or addon; capture that last intentional focus before retiring the cards.
+  p3CapturarFocoAtual();
   p3Replacing = 1;
   stream_definir_lista(NULL, 0);
   p3Replacing = 0;
@@ -3939,6 +3943,21 @@ int stream_recarregar_iniciar(const char *id) {
   pthread_mutex_unlock(&verTrava);
   return 1;
 }
+static void p3CapturarFocoAtual(void) {
+  if (!p3RestorePending || !aberta) return;
+  if (grupo == 1) {
+    int i = filtrado(foco);
+    if (i >= 0 && i < n) {
+      p3FocusSource = lista[i];
+      p3FocusSaved = 1;
+      p3ScrollSaved = rolagem;
+    }
+  }
+  snprintf(p3AddonKey,sizeof p3AddonKey,"%s",
+           filtro > 0 && filtro < nProvedores ? provChaves[filtro] : "");
+  snprintf(p3AddonName,sizeof p3AddonName,"%s",
+           filtro > 0 && filtro < nProvedores ? provedores[filtro] : "");
+}
 static int nFiltrados(void) {
   folhaDados();
   if (filtro == -1) return ondever_n(alvoPedido);
@@ -5693,8 +5712,9 @@ void stream_folha_evento(const SDL_Event *e) {
   if(k==SDLK_ESCAPE || k==SDLK_AC_BACK || k==SDLK_BACKSPACE || k==SDLK_DELETE) {aberta=0;return;}
   if(k==SDLK_r) {recarregar=1;return;}
   // An intentional navigation during the refresh overrides saved-focus replay.
-  if (p3RestorePending && (k==SDLK_UP || k==SDLK_DOWN || k==SDLK_LEFT ||
-                           k==SDLK_RIGHT)) p3RestorePending = 0;
+  if (p3RestorePending && p3Reload.phase != NV_P3_RELOAD_RETAINED &&
+      (k==SDLK_UP || k==SDLK_DOWN || k==SDLK_LEFT ||
+       k==SDLK_RIGHT)) p3RestorePending = 0;
   montar(automaticaDaFolha());
   int nf=nOrdem;
   if(grupo==1 && stream_detalhe_tecla_abre(e)) {
@@ -7502,7 +7522,7 @@ static void corpoFolha(float x, float w, float anim, Uint32 agora, int ilha) {
     }
     // Explicit empty state: never start the cinematic without a selected card.
     // Preserve the provider/network/debrid reason as a secondary explanation.
-    if (n == 0 && addons_estado() != ADD_BUSCANDO) {
+    if (addons_estado() != ADD_BUSCANDO) {
       txt_desenhar_alpha(txt_linha_corta(TXT_PAINEL_ITEM,i18n("No Streams Found"),
                            235,235,235,255,rw-52),tx,FOLHA_TOPO+14.0f,anim);
       txt_bloco(TXT_PG_FIM,s,196,199,204,tx,FOLHA_TOPO+57.0f,rw-52,28,anim,3);
