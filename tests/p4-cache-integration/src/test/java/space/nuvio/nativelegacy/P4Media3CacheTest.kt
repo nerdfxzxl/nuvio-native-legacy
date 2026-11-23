@@ -172,6 +172,45 @@ class P4Media3CacheTest {
         cache.liberar()
     }
 
+    @Test fun partialDiskSpanAndUncachedHoleKeepExactByteRange() {
+        val origin = Origin(bodies)
+        val cache = create(primary, bodies.size)
+        val half = bodies.size / 2
+        assertArrayEquals(bodies.copyOf(half), read(cache, origin, primary, 0, half))
+        val networkBefore = origin.transferred.get()
+        assertArrayEquals(bodies, read(cache, origin, primary))
+        val extra = origin.transferred.get() - networkBefore
+        assertTrue("only missing HTTP range + one-byte validator should be downloaded",
+            extra >= half && extra < bodies.size)
+        cache.liberar()
+    }
+
+    @Test fun changedRemoteRepresentationAfterPartialCacheNeverMixesBytes() {
+        val origin = Origin(bodies)
+        val cache = create(primary, bodies.size)
+        val half = bodies.size / 2
+        assertArrayEquals(bodies.copyOf(half), read(cache, origin, primary, 0, half))
+        val changed = bodies.clone()
+        changed[42] = (changed[42] + 1).toByte()
+        changed[half + 42] = (changed[half + 42] + 1).toByte()
+        origin.etag = "\"changed\""
+        origin.body = changed
+        assertArrayEquals("no old cached prefix may be mixed with changed HTTP hole",
+            changed, read(cache, origin, primary))
+        cache.liberar()
+    }
+
+    @Test fun accountSwitchRevokesProvenRetainedCache() {
+        val origin = Origin(bodies)
+        val cache = create(primary, bodies.size)
+        assertArrayEquals(bodies, read(cache, origin, primary))
+        CacheMidia.guardar(cache)
+        CacheMidia.descartar("account switch")
+        val next = create(primary, bodies.size)
+        assertNotSame("old account cache must not carry over", cache, next)
+        next.liberar()
+    }
+
     @Test fun cancellationBeforeAndDuringReadFailsClosed() {
         val origin = Origin(bodies)
         val cache = create(primary, bodies.size)
