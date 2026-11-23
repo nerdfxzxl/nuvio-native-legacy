@@ -55,7 +55,7 @@ with tempfile.TemporaryDirectory(prefix="nuvio-cacheboost-android-", dir=os.envi
     tmp = Path(tmp)
     deps = [sdk, stdlib]
     media3 = {}
-    for name in ("media3-common", "media3-datasource", "media3-exoplayer", "media3-decoder",
+    for name in ("media3-common", "media3-datasource", "media3-exoplayer", "media3-exoplayer-hls", "media3-decoder",
                  "media3-extractor", "media3-container", "media3-database"):
         media3[name] = aar_jar("androidx.media3", name, "1.8.0", tmp)
         deps.append(media3[name])
@@ -65,6 +65,8 @@ with tempfile.TemporaryDirectory(prefix="nuvio-cacheboost-android-", dir=os.envi
     guava = jar("com.google.guava", "guava", "33.3.1-android")
     deps.append(guava)
     sources = [kt / n for n in ("NvPlayer.kt", "ParaleloDataSource.kt", "PassivoMedidor.kt", "NuvioActivity.kt",
+                                "LiveWindowRecovery.kt", "FrameHoldP2B.kt", "RamBufferProfile.kt",
+                                "LimitedDataSource.kt", "LivePlaylistDataSource.kt",
                                 "CacheSessao.kt", "CacheProvaP4C.kt", "CacheSpanP4C.kt", "CacheMidia.kt",
                                 "GanhoMath.kt", "GanhoAudioProcessor.kt",
                                 "AudioSyncTap.kt", "AudioSyncSink.kt", "RecriaHdr.kt", "ArranqueVigia.kt",
