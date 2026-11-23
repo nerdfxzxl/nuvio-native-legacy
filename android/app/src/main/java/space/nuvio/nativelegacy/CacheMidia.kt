@@ -19,6 +19,7 @@ import java.io.InterruptedIOException
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicLong
 
 // F07 (1.8): SEEK CACHE ON DISK FOR ONE PLAYER SESSION (Media3 side).
 //
@@ -48,6 +49,7 @@ class CacheMidia private constructor(
     private val tituloProva: String,
     private val urlBase: String,
     private val totalDeclarado: Long,
+    private val epochConfig: Long,
     val pedidoMb: Int,
     val limiteMb: Int,
     val estado: CacheSessao.Estado,
@@ -59,6 +61,9 @@ class CacheMidia private constructor(
         private const val ESPERA_LIBERAR_MS = 1500L
         private val boot = "b" + java.lang.Long.toString(System.currentTimeMillis(), 36)
         private var contador = 0
+        // Profile/account change or setting OFF revokes both retained and
+        // *pending* releases from the previous ownership generation.
+        private val invalidacoes = AtomicLong()
         private val fio: ScheduledExecutorService by lazy {
             Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "nv-cache").apply { isDaemon = true } }
         }
@@ -76,7 +81,8 @@ class CacheMidia private constructor(
         // a fresh, one-byte verified 206 against the new signed URL.
         @Synchronized fun guardar(c: CacheMidia) {
             val chave = c.chaveGuarda()
-            if (chave == null || c.liberacaoAgendada || c.estado.desligado ||
+            if (chave == null || c.epochConfig != invalidacoes.get() ||
+                c.liberacaoAgendada || c.estado.desligado ||
                 c.representacao?.confiavel() != true ||
                 c.integridade.quantidade() == 0 ||
                 !c.spansExistem(c.chaveBase())) {
@@ -102,7 +108,7 @@ class CacheMidia private constructor(
             if (livre < CacheSessao.RESERVA_BYTES ||
                 CacheSessao.limiteMb(pedidoMb, livre) < c.limiteMb ||
                 c.liberacaoAgendada || c.estado.desligado ||
-                origem == null) {
+                c.epochConfig != invalidacoes.get() || origem == null) {
                 // Remote redirect target is not known yet. Do NOT compare
                 // input URL with the old CDN response: the loader probes the
                 // actual redirected target before allowing any cache hit.
@@ -117,7 +123,10 @@ class CacheMidia private constructor(
         }
 
         // Another title, setting off, profile switch.
-        fun descartar(motivo: String) { if (vaga.largar()) Log.i(TAG, "kept cache dropped: $motivo") }
+        fun descartar(motivo: String) {
+            invalidacoes.incrementAndGet()
+            if (vaga.largar()) Log.i(TAG, "kept cache dropped: $motivo")
+        }
 
         private fun vigiar() {
             fio.schedule({
@@ -171,7 +180,8 @@ class CacheMidia private constructor(
                 val c = SimpleCache(pasta, LeastRecentlyUsedCacheEvictor(limite.toLong() shl 20))
                 Log.i(TAG, "on: $limite MB (asked $pedidoMb, ${livre shr 20} MB free)")
                 CacheMidia(pasta, c, sessao, escopo, prova, titulo, url,
-                    totalDeclarado, pedidoMb, limite, CacheSessao.Estado(aoFalhar)) to CacheSessao.ATIVO
+                    totalDeclarado, invalidacoes.get(),
+                    pedidoMb, limite, CacheSessao.Estado(aoFalhar)) to CacheSessao.ATIVO
             } catch (e: Exception) {
                 Log.w(TAG, "cache init failed: $e")
                 fio.execute { CacheSessao.apagar(pasta) }
