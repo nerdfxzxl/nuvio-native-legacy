@@ -1096,6 +1096,7 @@ object NvPlayer {
             n
         }
         val profile = profileForCall()
+        val identidade = cacheIdentidadeArmada
         principal.post {
             if (pedido != pedidos.get()) return@post
             activeBufferProfile = profile
@@ -1113,10 +1114,11 @@ object NvPlayer {
                     s.ouvinte?.let { r.p.removeListener(it) }
                     s.analitico?.let { r.p.removeAnalyticsListener(it) }
                 }
-                abrirMain(url, cabecalhos, false, inicio, geracao, pedido, f, preparada = s)
+                abrirMain(url, cabecalhos, false, inicio, geracao, pedido, f, preparada = s,
+                    identidadeCache = identidade)
             } else {
                 soltarPreparo()
-                abrirMain(url, cabecalhos, false, inicio, geracao, pedido, f)
+                abrirMain(url, cabecalhos, false, inicio, geracao, pedido, f, identidadeCache = identidade)
             }
         }
     }
@@ -1229,10 +1231,12 @@ object NvPlayer {
         cancelarPreparo(0)
         val pedido = pedidos.incrementAndGet()
         val profile = profileForCall()
+        val identidade = cacheIdentidadeArmada
         principal.post {
             if (pedido != pedidos.get()) return@post
             activeBufferProfile = profile
-            abrirMain(url, cabecalhos, false, inicioMs.coerceAtLeast(0), geracao, pedido)
+            abrirMain(url, cabecalhos, false, inicioMs.coerceAtLeast(0), geracao, pedido,
+                identidadeCache = identidade)
         }
     }
     // Only called by Android native's bounded SAME-source rebuffer/network
@@ -1241,21 +1245,24 @@ object NvPlayer {
         cancelarPreparo(0)
         val pedido = pedidos.incrementAndGet()
         val profile = profileForCall()
+        val identidade = cacheIdentidadeArmada
         principal.post {
             if (pedido != pedidos.get()) return@post
             activeBufferProfile = profile
             abrirMain(url, cabecalhos, false, inicioMs.coerceAtLeast(0), geracao,
-                    pedido, mesmaFonte = true)
+                    pedido, mesmaFonte = true, identidadeCache = identidade)
         }
     }
     @JvmStatic fun abrirRetomada(url: String, cabecalhos: String, inicioMs: Int, fracao: Int, geracao: Int) {
         cancelarPreparo(0)
         val pedido = pedidos.incrementAndGet()
         val profile = profileForCall()
+        val identidade = cacheIdentidadeArmada
         principal.post {
             if (pedido != pedidos.get()) return@post
             activeBufferProfile = profile
-            abrirMain(url, cabecalhos, false, inicioMs.coerceAtLeast(0), geracao, pedido, fracao.coerceIn(0, 9999))
+            abrirMain(url, cabecalhos, false, inicioMs.coerceAtLeast(0), geracao, pedido, fracao.coerceIn(0, 9999),
+                identidadeCache = identidade)
         }
     }
     @JvmStatic fun parar() {
@@ -1665,7 +1672,7 @@ object NvPlayer {
                 capturarRetido(antigo, sv, pedido) {
                     if (pedido == pedidos.get())
                         abrirMain(url, cabecalhos, reabrindo, inicioMs, geracao, pedido,
-                            fracao, esperaInicio, preparada, mesmaFonte, true)
+                            fracao, esperaInicio, preparada, mesmaFonte, true, identidadeCache)
                 }
                 return
             }
@@ -1684,7 +1691,7 @@ object NvPlayer {
             if (liberacoesEmCurso.get() > 0 && (limitedNext || limitedSession || ms < 3000)) {
                 principal.postDelayed({
                     abrirMain(url, cabecalhos, reabrindo, inicioMs, geracao, pedido, fracao, espera,
-                        preparada, mesmaFonte, true)
+                        preparada, mesmaFonte, true, identidadeCache)
                 }, 25)
                 return
             }
