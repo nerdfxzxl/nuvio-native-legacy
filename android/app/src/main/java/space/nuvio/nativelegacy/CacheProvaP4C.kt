@@ -109,7 +109,8 @@ internal object CacheProvaP4C {
         val b = m.groupValues[2].toLongOrNull() ?: return null
         if (a != inicio || b < a || b == Long.MAX_VALUE) return null
         val len = b - a + 1
-        val declared = h("Content-Length").takeIf { it.isNotEmpty() }?.toLongOrNull()
+        val rawLength = h("Content-Length")
+        val declared = if (rawLength.isEmpty()) null else rawLength.toLongOrNull() ?: return null
         if (declared != null && declared != len) return null
         return resposta206(url, headers, inicio, len, len)
     }
