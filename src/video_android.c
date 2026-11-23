@@ -578,8 +578,8 @@ static void validarAudioSelecionadoP5A(void) {
   int manualErrado = m && m->idioma[0] &&
       (!a || !a->idioma[0] || !ling_casa(a->idioma, m->idioma));
   int idiomaErrado = !m && original && original[0] &&
-      strcmp(original, "none") && a && a->idioma[0] &&
-      !ling_casa(a->idioma, original);
+      strcmp(original, "none") && a &&
+      (!a->idioma[0] || !ling_casa(a->idioma, original));
   if (!a || !a->decodifica || !a->saidaFiel || manualErrado || idiomaErrado) {
     semDecoderAudio = 1;
     printf("[audio] Q36 selected output incompatible: track=%d decoder=%d pcm=%d pass=%d faithful=%d unknown=%d manualMismatch=%d originalMismatch=%d\n",
@@ -1214,6 +1214,13 @@ int  video_reconectando(void) {
 }
 
 void video_bombear(void) {
+  // Once Q36's terminal audio error takes over, no watchdog may silently
+  // launch another player generation. Only the user-owned Retry may reopen it.
+  if (semDecoderAudio) {
+    reconErroPend = 0; recarregarPausa = -1;
+    nv_recon_zerar(&recon);
+    return;
+  }
   double pos = video_pos();
   int eraRecarga = recarregarPausa >= 0;
   if (recarregarPausa >= 0) {
