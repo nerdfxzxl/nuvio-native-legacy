@@ -1582,7 +1582,8 @@ object NvPlayer {
                 val prova = identidadeCache?.takeIf { it.forte() && it.catalogo == titulo }?.assinatura()
                 val (c, estado) = CacheMidia.criar(act.cacheDir, pedidoCache, aoFalhar,
                     listOf(prova ?: "unverified", escopo).joinToString(":"),
-                    prova = prova, titulo = titulo, url = url)
+                    prova = prova, titulo = titulo, url = url,
+                    totalDeclarado = identidadeCache?.bytes ?: 0L)
                 r.cache = c; r.cacheEstado = estado
             }
             r.rede = { token ->
