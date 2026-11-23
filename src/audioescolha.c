@@ -122,12 +122,20 @@ int audioesc_qualidade(const char *codec, int canais, const char *rotulo) {
   char b[256];
   size_t i;
   int score = 100;
-  snprintf(b, sizeof b, "%s %s", codec ? codec : "", rotulo ? rotulo : "");
+  // Source Format codec/MIME is stronger evidence than a human-authored
+  // label. A label reading "TrueHD" on an AAC/AC-3 track must not promote
+  // that lossy track above an actual lossless original-language track.
+  // Labels can still qualify a genuinely DTS codec as DTS-HD MA.
+  const char *tipo = codec && codec[0] ? codec : (rotulo ? rotulo : "");
+  snprintf(b, sizeof b, "%s", tipo);
   for (i = 0; b[i]; i++) b[i] = (char)tolower((unsigned char)b[i]);
   if (strstr(b, "truehd") || strstr(b, "true-hd") || strstr(b, "a_mlp")) score = 930;
   else if (strstr(b, "dts-hd ma") || strstr(b, "dts/hd") || strstr(b, "dts.hd") || strstr(b, "dts-ma")) score = 905;
   else if (strstr(b, "flac") || strstr(b, "alac") || strstr(b, "pcm_") || strstr(b, "a_pcm")) score = 890;
   else if (strstr(b, "dts") || strstr(b, " dca")) score = 790;
+  if (score == 790 && rotulo &&
+      (strstr(rotulo, "DTS-HD MA") || strstr(rotulo, "DTS HD MA") ||
+       strstr(rotulo, "dts-hd ma"))) score = 905;
   else if (strstr(b, "eac3") || strstr(b, "e-ac3") || strstr(b, "e-ac-3")) score = 750;
   else if (strstr(b, "ac3") || strstr(b, "ac-3")) score = 710;
   else if (strstr(b, "opus")) score = 670;
