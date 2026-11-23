@@ -225,16 +225,96 @@ class CacheMidia private constructor(
         }
     }
 
-    fun fabrica(upstream: DataSource.Factory): DataSource.Factory =
-        CacheDataSource.Factory()
+    fun fabrica(upstream: DataSource.Factory): DataSource.Factory {
+        val media3 = CacheDataSource.Factory()
             .setCache(cache)
             .setUpstreamDataSourceFactory(upstream)
-            .setCacheWriteDataSinkFactory { SinkProtegido(cache, estado, pasta) }
-            // A custom Media3 key must never alias different signed URL bytes.
-            .setCacheKeyFactory(CacheKeyFactory { spec -> CacheSessao.chave(sessao, spec.uri.toString(), escopo) })
-            // A cache read error bypasses the cache for that load instead of
-            // failing playback.
+            .setCacheWriteDataSinkFactory {
+                SinkProtegido(cache, estado, pasta) { registrar(it) }
+            }
+            .setCacheKeyFactory(CacheKeyFactory { spec ->
+                CacheSessao.chave(sessao, spec.uri.toString(), escopo)
+            })
             .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+
+        // Validate full completed spans before Media3 can select any cached
+        // bytes. A failed cache read resumes the original HTTP DataSpec at
+        // the precise delivered offset, never doubling network-byte telemetry.
+        return DataSource.Factory {
+            object : DataSource {
+                private val listeners = ArrayList<TransferListener>()
+                private var atual: DataSource? = null
+                private var original: DataSpec? = null
+                private var chave = ""
+                private var consumidos = 0L
+                private var noCache = false
+
+                private fun criar(factory: DataSource.Factory): DataSource =
+                    factory.createDataSource().also { d ->
+                        for (listener in listeners) d.addTransferListener(listener)
+                    }
+
+                private fun usarRede(): Long {
+                    val spec = original ?: throw IOException("DataSpec not opened")
+                    try { atual?.close() } catch (_: Exception) {}
+                    descartarChave(chave)
+                    noCache = true
+                    val d = criar(upstream)
+                    return try {
+                        val restante = d.open(spec.subrange(consumidos))
+                        atual = d
+                        restante
+                    } catch (e: Exception) {
+                        try { d.close() } catch (_: Exception) {}
+                        throw e
+                    }
+                }
+
+                override fun open(dataSpec: DataSpec): Long {
+                    original = dataSpec
+                    consumidos = 0L
+                    chave = CacheSessao.chave(sessao, dataSpec.uri.toString(), escopo)
+                    noCache = !validar(chave)
+                    val d = criar(if (noCache) upstream else media3)
+                    atual = d
+                    return try { d.open(dataSpec) }
+                    catch (e: IOException) {
+                        if (noCache) throw e
+                        usarRede()
+                    }
+                }
+
+                override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+                    val d = atual ?: throw IOException("DataSource closed")
+                    return try {
+                        val n = d.read(buffer, offset, length)
+                        if (n > 0) consumidos += n
+                        n
+                    } catch (e: IOException) {
+                        if (noCache) throw e
+                        usarRede()
+                        val n = atual!!.read(buffer, offset, length)
+                        if (n > 0) consumidos += n
+                        n
+                    }
+                }
+
+                override fun getUri(): Uri? = atual?.uri
+                override fun getResponseHeaders(): Map<String, List<String>> =
+                    atual?.responseHeaders ?: emptyMap()
+                override fun addTransferListener(transferListener: TransferListener) {
+                    listeners.add(transferListener)
+                    atual?.addTransferListener(transferListener)
+                }
+                override fun close() {
+                    val d = atual
+                    atual = null
+                    original = null
+                    d?.close()
+                }
+            }
+        }
+    }
 
     fun usadoMb(): Int = try { (cache.cacheSpace shr 20).toInt() } catch (e: Exception) { 0 }
 
