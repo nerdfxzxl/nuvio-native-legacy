@@ -1,7 +1,7 @@
 # Nuvio Legacy — Q01–Q50 Implementation Progress
 
 **Last updated:** 2026-11-23
-**Status:** P0/P1 checkpointed. P2 and P3 source accepted. **P4 PARTIAL — P4-C cache safety checkpoint committed; Q42 has non-deferred source gaps and P4 final source acceptance FAILED.** Q18 remains owner-deferred. **P5 NOT AUTHORIZED.**
+**Status:** P0/P1 checkpointed. P2, P3 and **P4 SOURCE ACCEPTED after verified Media3/Q42 test-only CI**. Q18 remains owner-deferred. **P5 SOURCE WORK AUTHORIZED, NOT STARTED**. Full Android/NDK/Media3 app + real device verification pending P7/P8; no APK built for these checkpoints.
 **Branch:** `feature/official-stream-selector` (not `master`).
 **Prior feature baseline:** `6171645e05d2137d2a1e9ed1b113687246acd7ca` — docs: lock subtitle filename Format A and unbuilt wrapping/parser test handoff.
 **Latest planning commits:** master specification `7d3c81d81aee309843dd2f0b767c6ef3c2d59723`; work packages `b059a7a9a42ae2b91d87bff0a03bfeb314d0f647`; this progress tracker is an additional documentation-only commit. **Recheck actual HEAD at the beginning of every session.**
@@ -26,8 +26,8 @@
 | P1 | State/source identity/cancellation | **SOURCE IMPLEMENTATION COMPLETE; Android APK/TV unverified** | `abe5479` through `0df37f5` (all 13 exact SHAs in P1 checkpoint below) | Native GCC/Clang identity PASS; 32/32 source assertions PASS; all 7 modified C/header preprocessor balances PASS; full Android compilation unavailable |
 | P2 | Cinematic/arc/status/speed | **SOURCE ACCEPTED (P2-D final review); Q18 explicitly deferred, runtime gates pending** | Original P2, P2-A/B/C plus 15 P2-D source/test commits; full register below | P2-D 41/41 host C11 GCC + Clang ASan/UBSan; P2-C 15/15; P2-B Kotlin 17/17; live source checks; **no NDK/Media3 build or TV tests** |
 | P3 | Selector/reload/recovery | SOURCE ACCEPTED | 17 source/test commits through `03acb8861d583ef7fec6c10d65673399bd3e7343` | Final review below, hardware pending |
-| P4 | Buffer/network/cache/seek | PARTIAL | See P4 checkpoints below | Android integration and TV pending |
-| P5 | Fidelity/HDR/surface/audio route | NOT STARTED | — | — |
+| P4 | Buffer/network/cache/seek | **SOURCE ACCEPTED — Q18 explicitly deferred; P7/P8 full integration/device gates** | P4-D/A/B, P4-C and test-only CI commits; exact SHAs below | Actual API35/Media3 Kotlin compile PASS; 18/18 P4-C contracts; 36 proof checks; disk integrity/session JVM PASS; **10/10 Robolectric real Media3 cache adapter regressions**; native VOD host PASS; no APK or TV verification |
+| P5 | Fidelity/HDR/surface/audio route | **AUTHORIZED FOR SOURCE WORK; NOT STARTED** | — | P4 acceptance permits P5 source phase only, not an APK build |
 | P6 | Background/credits/post-play | NOT STARTED | — | — |
 | P7 | Integration/regression, post-#134 | NOT STARTED | — | — |
 | P8 | One cached APK + device tests | BLOCKED — NEEDS BUILD AUTHORIZATION | — | — |
@@ -658,3 +658,60 @@ Ran the actual downloader and its 24 JUnit tests on a host JVM against Media3 1.
 **Still unverified / blocking full Q42 source acceptance:** End-to-end actual production Media3 CacheDataSource + controlled HTTP range server tests for signed URL renewal, changed response across cached holes, concurrent readers/LRU eviction, canceled loaders and stale callbacks, warm reopen/expiry, next-episode preload and disjoint network byte counts. These were NOT executed by the green workflow. Also no full Android NDK/JNI link, actual TorBox/device/HDR/DV/ARC or APK execution; the hardware/integrated APK gates stay P7/P8.
 
 **P4 final verdict remains PARTIAL / NOT SOURCE ACCEPTED for Q42 adapter-level integration. P5 NOT AUTHORIZED.** P4-A/B/D previously checkpointed. Q18 remains explicitly owner-deferred. Do not infer completion of remaining adapter tests from successful targeted Kotlin compilation.
+
+
+## P4 FINAL SOURCE ACCEPTANCE — 2026-11-23 (SOURCE PASS; P5 AUTHORIZED)
+
+**Baseline for this final CI work:** f06e12914ea77c57a527c4184648b1947dc17a41, feature/official-stream-selector. Owner authorized **test-only** GitHub Actions; no APK, release, master merge, existing debug-workflow trigger change, P5 implementation or hardware test was authorized or performed.
+
+### Q42 production adapter implementation and verified regressions
+
+The first actual production API35/Media3 compilation was already passing at successful test-only Actions run 45148742410; the last unresolved P4 source acceptance gate was integrated Media3 CacheDataSource/HTTP-range/cancellation behavior.
+
+New isolated source-level integration harness: tests/p4-cache-integration/ (standalone Android library + Robolectric), compiling the **exact committed production CacheMidia.kt, CacheSessao.kt, CacheProvaP4C.kt and CacheSpanP4C.kt** copied by the test-only workflow. This exercises real Media3 SimpleCache, CacheDataSink and CacheDataSource adapters rather than fake policy classes. Tests use a deterministic in-memory HTTPS 206 origin to model TorBox-style signed URL rotation, and a real loopback TCP HTTP/1.1 206 range server for DefaultHttpDataSource. They never access external TorBox credentials.
+
+**Confirmed new non-deferred P4-C source defect:** CI 45154230136 (four tests; three pass) demonstrated that CacheMidia.kt's Media3 DataSource wrapper did not recheck source cancellation in read(). A cancelled loader could return disk or upstream bytes. **Fixed** in commit 90be1327131155b575dfb7cfdb88a39b636a0f1b by checking cancellation before/after reads and after precise-offset fallback. Integration regression confirmed the fix.
+
+**FINAL green run:** [P4 cache verification (tests only - no APK), GitHub Actions #45155757955](https://github.com/nerdfxzxl/nuvio-native-legacy/actions/runs/45155757955), exact tested source HEAD **f1c16dbb4eef783dfbe73225f34b5eaf7c39102a**; job 137628130155 **SUCCESS**.
+
+Direct log evidence from actual checkout and CI runner:
+- **PASS** 18/18 committed P4-C source ownership/provenance/validator assertions in tests/playback_p4c_source_contract.py.
+- **PASS** native P4-D Android VOD/Live buffered endpoint, seek revision and session replacement test in tests/playback_p4_vod.py.
+- **PASS** actual checked-out production Kotlin cache/player compilation against Android API 35, Media3 **1.8.0**, Kotlin **2.0.21**, JDK 17 via tests/cacheboost_android.py with NUVIO_CACHE_COMPILE_ONLY=1. This targeted compile includes real cache/network/player support files; SDL activity is minimally stubbed where its generated Java sources are absent. This is **not** a full Android Gradle app build or native JNI linking.
+- **PASS** committed real-production-source policy JVM checks: 36 strong provenance/HTTP validator assertions; SHA-256 span corruption/truncation/symlink/eviction and failed re-registration regression; signed URL/header/session disjointness, storage reserve and Automatic sizing.
+- **PASS: 10/10 tests** from actual production Media3 cache adapter in P4Media3CacheTest under Robolectric. The ten executed scenarios are:
+  1. Fresh HTTP read / persisted Media3 disk-cache read without full redownload.
+  2. Signed-URL renewal with strong matching representation; changed ETag safely rejects stale content.
+  3. Silent cache-span byte corruption is rejected before decoder delivery.
+  4. Cancel before DataSource.open and after open before read rejects loader bytes.
+  5. Cached first half plus uncached second-half HTTP hole keeps exact ranges.
+  6. Changed remote representation after a partially cached file never mixes old/new bytes.
+  7. Profile/account switch revokes retained session bytes.
+  8. Real loopback HTTP 206 Content-Range through Media3 DefaultHttpDataSource returns precisely requested bytes.
+  9. Concurrent SimpleCache eviction while a reader is open produces correct content without mixed bytes.
+  10. Next-episode identity cannot adopt the previous title's retained cache.
+
+**Additional committed test infrastructure/source work:** 6c694a5e6090839418d7bdb95d1e145b16baed63, b6d147b794e573617cd04a75a68d275b9b5b6f5e, 473e020962dfa21fec135fbe5a8f179b5ca408ac, df3362907beec284b035aaebe0956ecbd66bcc00, d31e5369b439ea17356b4ea2208484e496ffa036, 111a659a250094b9fe4ed74d00a8f4fcbb59f814, 347d250a6cc657abf2adaed9939c533cb036215f, 7b9dbbd6f494f32198e7532968daf3cb6869c091, f1c16dbb4eef783dfbe73225f34b5eaf7c39102a; exact chronological change register in git. Earlier failed CI attempts were test harness dependency 429/Java module scope issues or the confirmed cancelled-read bug; none is presented as a current PASS until the final green run.
+
+### FINAL Q24/Q25/Q28/Q40–Q43 source acceptance table
+
+| Requirement | Final source verdict and evidence |
+| --- | --- |
+| Q24–Q25: genuine throughput, smoothing, correct units | **SOURCE ACCEPTED:** historical P2/P4-B real physical network-byte transport source and host tests preserved; verified real Media3 cache hits avoid full redownload and cache wrapper preserves existing upstream transfer listeners. Live TorBox measurement remains P7/P8. |
+| Q28: seek visuals and buffered VOD rail | **SOURCE ACCEPTED:** P4-D native callback/seek source checkpoint preserved and actual host VOD/Live/seek replacement test passed in final CI; P2-B last-frame ownership code preserved. Hardware first-frame, HDR/DV and D-pad tests remain P7/P8. |
+| Q40: independent RAM profiles, reliable below 30 Mbps | **SOURCE ACCEPTED:** P4-A source/host checkpoint preserved, target Kotlin compiled; unknown bitrate stays All Streams and no classification thrash was introduced. |
+| Q41: parallel HTTP validated range and fallback | **SOURCE ACCEPTED:** P4-B 24 recorded JUnit tests and targeted compile remain historical (not all rerun), P4-C uses original upstream chain and new loopback HTTP range test verified exact bytes. Real TorBox CDN behavior pending P7/P8. |
+| Q42: disk VOD cache | **SOURCE ACCEPTED:** proven source identity, strict same-origin/path/strong ETag and exact length, SHA-256 completed disk-span checks, conservative signed-URL reuse, storage reserve/LRU, safe session lifecycles, exact range/changed-hole detection, tested cancel-after-open path, 10 real Media3 adapter regressions and production compile as above. Missing/weak proof fails closed rather than aliasing bytes. |
+| Q43: fast seek, cached range and source continuity | **SOURCE ACCEPTED:** existing P4-D/P1/P3 seek coalescing/identity snapshots preserved, actual VOD seek-generation host test and P4-C real partial-cache range/cancellation regression passed. Remote-held D-pad/output A/V sync remain device gate. |
+| Q18 | **Explicit owner deferral:** genuine embedded P2P current-playhead playable percentage. No fabricated readiness, not a P4 blocker. |
+
+### Explicit remaining P7/P8 and adjacent work (NOT claims of P4 source incompleteness)
+
+- No whole-app Gradle assemble, full NDK/C/JNI link, Android TV device, actual TorBox CDN/signed-link behavior, HDR/Dolby Vision/hardware decoder, HDMI ARC, physical remote long-held D-pad or post-#134 integrated device regressions executed here. **P7/P8 retain these independent release gates**, including broader concurrency, background/preload and network telemetry performance under real Android scheduling.
+- The older unmodified cacheboost_android.py standalone **GanhoAudioProcessor** PCM replay had failed at Replay.kt line 165 in an earlier run; the successful P4 cache compilation used the explicit cache-only mode and did not claim that independent audio test passed. Investigate in P5 audio validation or P7 regression before release; no source defect asserted without analysis.
+- P4-A/B/D historical host tests were not fully rerun in this final CI session. Their documented accepted source checkpoints remain; untouched source paths and targeted API35 compile were checked.
+- This acceptance is **source implementation acceptance**, not end-to-end TV playback proof. Conservative cache misses when strong HTTPS representation/immutable identity proof is missing are intentional safety behavior.
+
+**FINAL VERDICT: P4 SOURCE IMPLEMENTATION ACCEPTED — Q18 explicitly deferred; full Android integration and device verification pending P7/P8. P5 SOURCE WORK AUTHORIZED.**
+
+Older P4-C and P4 final reviews marked FAILED or PARTIAL above are historical checkpoints **superseded by this final successful source-review checkpoint**. Continue with P5 only as separately authorized source work; do not trigger an APK build without separate owner consent.
