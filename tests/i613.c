@@ -136,7 +136,7 @@ static void start(const char *path) {
   video_parar(); video_definir_reconexao(1); assert(video_tocar(url));
   assert(dropped && bodyBytes == 900);
   Java_space_nuvio_nativelegacy_NvPlayer_nativeEvento(NULL, NULL, EV_PRONTO, 4096000, 0);
-  Java_space_nuvio_nativelegacy_NvPlayer_nativePos(NULL, NULL, 900000, -1, JNI_FALSE, -1, video_android_sessao());
+  Java_space_nuvio_nativelegacy_NvPlayer_nativePos(NULL, NULL, 900000, -1, JNI_FALSE, -1, video_android_sessao(),seekRevision);
   video_bombear();
   Java_space_nuvio_nativelegacy_NvPlayer_nativeEvento(NULL, NULL, EV_ERRO, 2001, -1);
   video_bombear(); assert(video_reconectando());

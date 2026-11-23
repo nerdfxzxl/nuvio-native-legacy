@@ -200,7 +200,7 @@ int main(int argc, char **argv) {
   assert(video_tocar("https://example.invalid/pausado.mkv"));
   Java_space_nuvio_nativelegacy_NvPlayer_nativeEvento(NULL, NULL, EV_PRONTO, 7200000, 0);
   Java_space_nuvio_nativelegacy_NvPlayer_nativeEvento(NULL, NULL, EV_PRIMEIRO_QUADRO, 0, 0);
-  Java_space_nuvio_nativelegacy_NvPlayer_nativePos(NULL, NULL, 2451000, -1, JNI_FALSE, -1, (jint)video_android_sessao());
+  Java_space_nuvio_nativelegacy_NvPlayer_nativePos(NULL, NULL, 2451000, -1, JNI_FALSE, -1, (jint)video_android_sessao(),seekRevision);
   video_bombear();
   video_pausar(1);
   int pausas = chamadasPausa, buscas = chamadasBusca;
@@ -225,7 +225,7 @@ int main(int argc, char **argv) {
   puts("ok reconexao de seek pausado conserva pausa e posicao");
 
   // A completed paused reconnect must not override a later playing reload.
-  Java_space_nuvio_nativelegacy_NvPlayer_nativePos(NULL, NULL, 2461000, -1, JNI_FALSE, -1, (jint)video_android_sessao());
+  Java_space_nuvio_nativelegacy_NvPlayer_nativePos(NULL, NULL, 2461000, -1, JNI_FALSE, -1, (jint)video_android_sessao(),seekRevision);
   video_bombear();
   assert(!nv_recon_ativa(&recon));
   video_pausar(0);
@@ -245,7 +245,7 @@ int main(int argc, char **argv) {
   video_parar(); video_definir_reconexao(1);
   assert(video_tocar("https://example.invalid/pausa-sem-ack.mkv"));
   Java_space_nuvio_nativelegacy_NvPlayer_nativeEvento(NULL, NULL, EV_PRONTO, 7200000, 0);
-  Java_space_nuvio_nativelegacy_NvPlayer_nativePos(NULL, NULL, 2451000, -1, JNI_FALSE, -1, (jint)video_android_sessao());
+  Java_space_nuvio_nativelegacy_NvPlayer_nativePos(NULL, NULL, 2451000, -1, JNI_FALSE, -1, (jint)video_android_sessao(),seekRevision);
   video_bombear(); video_pausar(1);
   pausas = chamadasPausa;
   Java_space_nuvio_nativelegacy_NvPlayer_nativeEvento(NULL, NULL, EV_ERRO, 2000, -1);
@@ -305,7 +305,7 @@ int main(int argc, char **argv) {
   for (unsigned elapsed=0; elapsed<=12000; elapsed+=250) {
     jlong position=-20000+(jlong)elapsed;
     Java_space_nuvio_nativelegacy_NvPlayer_nativePos(NULL,NULL,position,position+30000,
-      JNI_TRUE, (jint)(64*1024*1024-elapsed), (jint)progressSession);
+      JNI_TRUE, (jint)(64*1024*1024-elapsed), (jint)progressSession,seekRevision);
     assert(video_pos()==0); // keep the UI/resume clock non-negative
     assert(video_live_progresso(&raw,&edge));
     assert(raw==position/1000.0 && edge-raw==30.0);
@@ -316,26 +316,26 @@ int main(int argc, char **argv) {
   // A true freeze at a negative position still retries after eight seconds.
   assert(nv_ls_passo_buf_prazo(&moving,21000,raw,1,0,0,0,edge,36000)==NV_LS_AGENDOU);
   Java_space_nuvio_nativelegacy_NvPlayer_nativePos(NULL,NULL,999000,1000000,JNI_TRUE,
-    INT_MAX,(jint)progressSession-1);
+    INT_MAX,(jint)progressSession-1,seekRevision);
   assert(video_pos()==0 && samplePeakBytes==64*1024*1024);
   assert(video_live_progresso(&raw,&edge) && raw==-8.0 && edge==22.0);
   // A sliding window moves both coordinates together, preserving the reserve.
-  Java_space_nuvio_nativelegacy_NvPlayer_nativePos(NULL,NULL,-18000,12000,JNI_TRUE,1024,(jint)progressSession);
+  Java_space_nuvio_nativelegacy_NvPlayer_nativePos(NULL,NULL,-18000,12000,JNI_TRUE,1024,(jint)progressSession,seekRevision);
   assert(video_live_progresso(&raw,&edge) && raw==-18.0 && edge==12.0);
   assert(edge-raw==30.0 && video_buffer_fim()==12.0);
-  Java_space_nuvio_nativelegacy_NvPlayer_nativePos(NULL,NULL,1000,500,JNI_TRUE,0,(jint)progressSession);
+  Java_space_nuvio_nativelegacy_NvPlayer_nativePos(NULL,NULL,1000,500,JNI_TRUE,0,(jint)progressSession,seekRevision);
   assert(video_live_progresso(&raw,&edge) && edge==0.0 && sampleBytes==0);
-  Java_space_nuvio_nativelegacy_NvPlayer_nativePos(NULL,NULL,1000,INT64_MIN+1,JNI_TRUE,-1,(jint)progressSession);
+  Java_space_nuvio_nativelegacy_NvPlayer_nativePos(NULL,NULL,1000,INT64_MIN+1,JNI_TRUE,-1,(jint)progressSession,seekRevision);
   assert(video_buffer_fim()==0 && sampleBytes==-1);
-  Java_space_nuvio_nativelegacy_NvPlayer_nativePos(NULL,NULL,INT64_MIN+1,30000,JNI_TRUE,-1,(jint)progressSession);
+  Java_space_nuvio_nativelegacy_NvPlayer_nativePos(NULL,NULL,INT64_MIN+1,30000,JNI_TRUE,-1,(jint)progressSession,seekRevision);
   assert(!video_live_progresso(&raw,&edge) && video_pos()==0);
   // VOD keeps its existing UI/seek position and buffer reporting policy.
-  Java_space_nuvio_nativelegacy_NvPlayer_nativePos(NULL,NULL,2451000,2461000,JNI_FALSE,2048,(jint)progressSession);
-  assert(video_pos()==2451 && video_buffer_fim()==0);
+  Java_space_nuvio_nativelegacy_NvPlayer_nativePos(NULL,NULL,2451000,2461000,JNI_FALSE,2048,(jint)progressSession,seekRevision);
+  assert(video_pos()==2451 && video_buffer_fim()==2461);
   assert(!video_live_progresso(&raw,&edge));
   video_parar();
   assert(sampleBytes==-1 && samplePeakBytes==-1 && video_buffer_fim()==0);
-  Java_space_nuvio_nativelegacy_NvPlayer_nativePos(NULL,NULL,1000,31000,JNI_TRUE,4096,(jint)progressSession);
+  Java_space_nuvio_nativelegacy_NvPlayer_nativePos(NULL,NULL,1000,31000,JNI_TRUE,4096,(jint)progressSession,seekRevision);
   assert(!video_live_progresso(&raw,&edge) && sampleBytes==-1);
   assert(video_tocar("https://example.invalid/next-progress.m3u8"));
   assert(!video_live_progresso(&raw,&edge) && samplePeakBytes==-1);
@@ -345,7 +345,7 @@ int main(int argc, char **argv) {
   for (unsigned elapsed=0;elapsed<=29000;elapsed+=250) {
     jlong position=28591+(jlong)elapsed;
     Java_space_nuvio_nativelegacy_NvPlayer_nativePos(NULL,NULL,position,58591,
-      JNI_TRUE,1024,(jint)progressSession);
+      JNI_TRUE,1024,(jint)progressSession,seekRevision);
     assert(video_live_progresso(&raw,&edge) && edge==58.591);
     assert(video_buffer_fim()==edge);
     assert(nv_ls_passo_buf_prazo(&draining,1000+elapsed,raw,1,0,0,0,edge,36000)==NV_LS_NADA);

@@ -45,6 +45,7 @@
 #include "velocidade.h"
 #include "loading_telemetry_p2.h"
 #include "loading_handoff_p2d.h"
+#include "vod_buffer.h"
 #include "redefit.h"
 #include <SDL2/SDL.h>
 #include <jni.h>
@@ -81,7 +82,7 @@ static int resolverMetodos(JNIEnv *env) {
   mAbrir    = (*env)->GetStaticMethodID(env, gCls, "abrir", "(Ljava/lang/String;Ljava/lang/String;)V");
   mParar    = (*env)->GetStaticMethodID(env, gCls, "parar", "()V");
   mPausar   = (*env)->GetStaticMethodID(env, gCls, "pausar", "(I)V");
-  mBuscar   = (*env)->GetStaticMethodID(env, gCls, "buscar", "(I)V");
+  mBuscar   = (*env)->GetStaticMethodID(env, gCls, "buscar", "(II)V");
   mVolume   = (*env)->GetStaticMethodID(env, gCls, "volume", "(I)V");
   mJanela   = (*env)->GetStaticMethodID(env, gCls, "janela", "(IIIII)V");
   mJanelaPronta = (*env)->GetStaticMethodID(env, gCls, "janelaPronta", "()Z");
@@ -380,7 +381,8 @@ static volatile int dvAtual, atmosAtual;
 static unsigned sessao;
 // Signed position and buffer edge are sampled together in the same live window.
 // Protected by travaRetomada and scoped to the current open generation.
-static jlong livePosMs, liveBufferFimMs;
+static jlong livePosMs, liveBufferFimMs, vodBufferFimMs;
+static int seekRevision;
 static int liveProgressoValido, liveBufferValido;
 static int sampleBytes = -1, samplePeakBytes = -1;
 static unsigned liveSegmentoMs; // protected by travaRetomada; reset on each open
@@ -570,10 +572,10 @@ JNIEXPORT void JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativeLegenda(JNIE
 }
 
 JNIEXPORT void JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativePos(JNIEnv *env, jclass cls,
-    jlong ms, jlong fimMs, jboolean live, jint memoria, jint geracao) {
+    jlong ms, jlong fimMs, jboolean live, jint memoria, jint geracao, jint revision) {
   (void)env; (void)cls;
   pthread_mutex_lock(&travaRetomada);
-  if (ativo && (unsigned)geracao == sessao) {
+  if (ativo && geracao > 0 && (unsigned)geracao == sessao && revision == seekRevision) {
     /* Media3 TIME_UNSET is not a playback position. */
     int conhecida = ms > (jlong)(INT64_MIN + 1);
     posMs = posNativoMs = !conhecida || ms < 0 ? 0 : ms > INT_MAX ? INT_MAX : (int)ms;
@@ -581,6 +583,7 @@ JNIEXPORT void JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativePos(JNIEnv *
     livePosMs = conhecida ? ms : 0;
     liveBufferValido = liveProgressoValido && fimMs > (jlong)(INT64_MIN + 1) && fimMs >= ms;
     liveBufferFimMs = liveBufferValido ? fimMs : 0;
+    vodBufferFimMs = live ? 0 : nv_vod_buffer_end(ms, fimMs, durMs);
     /* Sample allocator only: excludes decoder, textures and retained free blocks. */
     sampleBytes = memoria >= 0 ? memoria : -1;
     if (sampleBytes > samplePeakBytes) samplePeakBytes = sampleBytes;
@@ -682,11 +685,22 @@ static unsigned novaRetomada(int estado) {
   pthread_mutex_lock(&travaRetomada);
   if (++sessao == 0) sessao++;
   geracao = sessao; retomadaInicialEstado = estado; liveRecuperandoAte = 0; liveSegmentoMs = 0;
-  posMs = posNativoMs = 0;
+  posMs = posNativoMs = seekRevision = 0;
+  vodBufferFimMs = 0;
   livePosMs = liveBufferFimMs = 0; liveProgressoValido = liveBufferValido = 0;
   sampleBytes = samplePeakBytes = -1;
   pthread_mutex_unlock(&travaRetomada);
   return geracao;
+}
+static void enviarBusca(int ms) {
+  JNIEnv *env = ambiente();
+  if (!env || !mBuscar) return;
+  pthread_mutex_lock(&travaRetomada);
+  int revision = seekRevision = seekRevision == INT_MAX ? 1 : seekRevision + 1;
+  vodBufferFimMs = 0;
+  pthread_mutex_unlock(&travaRetomada);
+  (*env)->CallStaticVoidMethod(env, gCls, mBuscar, (jint)ms, (jint)revision);
+  fimChamada(env);
 }
 // StreamFit (F03): the session the Kotlin player received with its open; the
 // passive telemetry gate (streamfitpassiva.c) only accepts this generation.
@@ -1071,7 +1085,7 @@ void video_bombear(void) {
       // Cascas antigas podem recusar a posicao de abertura. Nesse caso a
       // mesma sessao recebe o seek, inclusive se a pessoa estava pausada.
       if (recarregarPosMs > 0 && video_retomada_inicial_estado() < 0)
-        kInt(mBuscar, recarregarPosMs);
+        enviarBusca(recarregarPosMs);
       if (recarregarPausa) video_pausar(1);
       recarregarPausa = -1;
     }
@@ -1088,7 +1102,7 @@ void video_bombear(void) {
   // O seek do recarregar sai com o player ja tocando.
   if (reconBuscarMs >= 0 && prontoLoad &&
       (video_retomada_inicial_estado() != 0 || tocando || reconPausado)) {
-    if (video_retomada_inicial_estado() != 1) kInt(mBuscar, reconBuscarMs);
+    if (video_retomada_inicial_estado() != 1) enviarBusca(reconBuscarMs);
     printf("[video] reconexao: retomado em %ds\n", reconBuscarMs / 1000);
     fflush(stdout);
     reconBuscarMs = -1;
@@ -1204,7 +1218,7 @@ void video_volume(int pct) { kInt(mVolume, pct); }
 void video_buscar(double s) {
   posMs = (int)(s * 1000.0);   // a barra nao pode voltar enquanto o seek corre
   acaoMs = SDL_GetTicks();
-  kInt(mBuscar, posMs);
+  enviarBusca(posMs);
   terminou = 0;
 }
 // `encaixa` = 1: o quadro ENCAIXA no retangulo mantendo a proporcao (tarja),
@@ -1298,9 +1312,11 @@ int video_live_progresso(double *pos, double *fim) {
   return valido;
 }
 double video_buffer_fim(void) {
-  double pos, fim;
-  /* Live only: preserve the existing VOD/subtitle preparation policy. */
-  return video_live_progresso(&pos, &fim) && fim > 0.0 ? fim : 0.0;
+  pthread_mutex_lock(&travaRetomada);
+  jlong end = liveProgressoValido ? liveBufferFimMs : vodBufferFimMs;
+  double seconds = ativo && !falhou && end > 0 ? end / 1000.0 : 0.0;
+  pthread_mutex_unlock(&travaRetomada);
+  return seconds;
 }
 unsigned video_live_segmento_ms(void) {
   unsigned ms;

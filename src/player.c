@@ -7569,10 +7569,14 @@ static void desenharOsdCorpo(Uint32 agora, float a, float ac, const CatItem *c) 
     // No posSeg+buffer estimate: a 40s seek must be allowed to pass the old
     // 30s buffer end. Keep the last measured endpoint for idle/seek-only OSD
     // so the downloaded rail never disappears merely because controls fade.
+#ifndef NV_ANDROID
+    // Android samples its current contiguous window independently of the OSD.
+    // An older, larger endpoint may refer to a range since discarded by Media3.
     if(!ehCanal() && duracaoSeg > 0.0f) {
       if(bufFrac>barraBufferMem)barraBufferMem=bufFrac;
       if(bufFrac<barraBufferMem)bufFrac=barraBufferMem;
     }
+#endif
     plrui_barra(bx,yBarra,bw,frac,bufFrac,barraFoco,NULL,0,a);
   }
 

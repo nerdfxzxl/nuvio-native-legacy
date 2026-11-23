@@ -177,7 +177,7 @@ object NvPlayer {
     @JvmStatic external fun nativeFaixasFim(selAudio: Int, selLeg: Int)
     @JvmStatic external fun nativeLegenda(texto: String, durMs: Int)
     @JvmStatic external fun nativePos(ms: Long, bufferFimMs: Long, live: Boolean,
-                                      sampleBytes: Int, geracao: Int)
+                                      sampleBytes: Int, geracao: Int, seekRevision: Int)
     @JvmStatic external fun nativeDecoder4k(hevc: Int, avc: Int, vp9: Int, av1: Int)
     @JvmStatic external fun nativeTela(hdr: Int, dv: Int)
     @JvmStatic external fun nativeHdr(hdr: String, dv: Int, atmos: Int)
@@ -289,6 +289,7 @@ object NvPlayer {
     @Volatile private var retidoVisivel = false
     private var retidoPedido = 0
     // A PixelCopy callback cannot apply an older seek after a newer D-pad seek.
+    private var appliedSeekRevision = 0
     private var buscaSerial = 0
     private fun limparRetido() {
         retidoPedido++
@@ -1274,10 +1275,10 @@ object NvPlayer {
             liberar()
         }
     }
-    @JvmStatic fun buscar(ms: Int) {
+    @JvmStatic fun buscar(ms: Int, revision: Int) {
         val pedido = pedidos.get()
         principal.post {
-            if (pedido != pedidos.get()) return@post
+            if (pedido != pedidos.get() || pedidoAtivo != pedido) return@post
             val p = player ?: return@post
             val busca = ++buscaSerial
             val alvo = ms.coerceAtLeast(0).toLong()
@@ -1285,14 +1286,22 @@ object NvPlayer {
             // In-buffer seeks and ordinary buffering keep the SAME hardware
             // SurfaceView. For a provably forward out-of-buffer seek, make a
             // best-effort SDR hold before the decoder may flush its output.
-            val sv = superficie
-            if (sv != null && FrameHoldP2B.beyondKnownBuffer(
-                    alvo, p.currentPosition, p.bufferedPosition, p.isCurrentMediaItemLive)) {
-                capturarRetido(p, sv, pedido) {
-                    if (pedido == pedidos.get() && player === p && busca == buscaSerial)
+            // Native D-pad scrubbing already commits on release. Collapse any
+            // other queued commits before starting a PixelCopy or a range load.
+            principal.post applySeek@{
+                if (pedido != pedidos.get() || player !== p || busca != buscaSerial) return@applySeek
+                val commit = {
+                    if (pedido == pedidos.get() && player === p && busca == buscaSerial) {
                         p.seekTo(alvo)
+                        appliedSeekRevision = revision
+                    }
                 }
-            } else p.seekTo(alvo)
+                val sv = superficie
+                if (sv != null && FrameHoldP2B.beyondKnownBuffer(
+                        alvo, p.currentPosition, p.bufferedPosition, p.isCurrentMediaItemLive)) {
+                    capturarRetido(p, sv, pedido, commit)
+                } else commit()
+            }
         }
     }
     @JvmStatic fun volume(pct: Int) { principal.post {
@@ -1650,6 +1659,7 @@ object NvPlayer {
         cabAtual = cabecalhos
         inicioAtualMs = inicioMs
         geracaoNative = geracao
+        appliedSeekRevision = 0
         ev(EV_CARGA_FASE, 1, geracao = geracao) // building Media3 player
         fracaoAtual = if (inicioMs > 0) 0 else fracao
         fracaoPendente = 0
@@ -1883,8 +1893,12 @@ object NvPlayer {
             val p = player ?: return
             // Keep the signed live-window clock for stall detection. Only the
             // native UI position is clamped; a moving negative position is valid.
-            try { nativePos(p.currentPosition, p.bufferedPosition, p.isCurrentMediaItemLive,
-                recursosAtuais?.carga?.allocator?.totalBytesAllocated ?: -1, geracaoNative)
+            val live = p.isCurrentMediaItemLive
+            val validWindow = !p.currentTimeline.isEmpty && !p.isPlayingAd &&
+                (p.playbackState == Player.STATE_READY || p.playbackState == Player.STATE_BUFFERING)
+            val end = if (live || validWindow) p.bufferedPosition else C.TIME_UNSET
+            try { nativePos(p.currentPosition, end, live,
+                recursosAtuais?.carga?.allocator?.totalBytesAllocated ?: -1, geracaoNative, appliedSeekRevision)
             } catch (e: UnsatisfiedLinkError) { }
             if (++statsTiques >= 4) { statsTiques = 0; relatarStats(p) }
             if (cacheMidia != null && cacheEstado == CacheSessao.ATIVO && ++cacheTiques >= CACHE_RELATO_TIQUES) {
