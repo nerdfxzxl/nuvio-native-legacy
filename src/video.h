@@ -412,6 +412,9 @@ enum {
 int  video_dts_estado(void);
 int  video_legenda_atual(void);   // -1 = desligada
 #ifdef NV_ANDROID
+// Q36: one explicit same-source audio retry, preserving track indices and generation.
+// Caller bounds the retry count; no addon/source substitution or auto loop.
+int video_audio_retry(void);
 // Capture only compatible native tracks when explicitly switching source.
 void video_p1_guardar_faixas_manual(void);
 #endif
