@@ -459,10 +459,11 @@ static void escolherAudioPreferido(void) {
   for (i = 0; i < nAudio; i++) {
     c[i].idioma = faixaAudio[i].idioma; c[i].codec = faixaAudio[i].codec; c[i].rotulo = faixaAudio[i].rotulo;
     c[i].canais = faixaAudio[i].canais;
-    // O FFmpeg do player decodifica DTS/TrueHD: aqui nao ha o limite da LG e
-    // da Samsung, entao DTS/TrueHD concorre igual (dts = 0): no idioma vale a
-    // primeira faixa do arquivo, seja qual for o codec (dono, 15/10).
-    c[i].dts = 0; c[i].pode = 1; c[i].numero = faixaAudio[i].numero;
+    // Decoder support alone cannot prove that PCM or encoded audio reaches
+    // the current HDMI/speaker route. Kotlin publishes independent findings.
+    c[i].dts = audioesc_dts_truehd(c[i].codec, c[i].rotulo);
+    c[i].pode = faixaAudio[i].decodifica && faixaAudio[i].saidaFiel;
+    c[i].numero = faixaAudio[i].numero;
   }
   k = audioesc_escolher(c, nAudio, &o);
   if (k < 0 || k == audioAtual) return;
@@ -513,12 +514,31 @@ JNIEXPORT void JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativeFaixa(JNIEnv
     // vira "E-AC-3 5.1 Atmos". Mime desconhecido: rotulo como estava.
     deJString(env, mime, mm, sizeof mm);
     snprintf(f->codec, sizeof f->codec, "%s", mm);
+    deJString(env, nome, f->nome, sizeof f->nome);
     f->canais = canais;
     if (audioinfo_texto(mm, canais, 0, ai, sizeof ai))
     { char base[sizeof f->rotulo];
       snprintf(base, sizeof base, "%s", f->rotulo);
       snprintf(f->rotulo, sizeof f->rotulo, "%s  \xc2\xb7  %s", base, ai); }
   }
+}
+
+// Q36 current-route capability is separate from renderer support. Arrives
+// immediately after nativeFaixa in the SAME Kotlin track enumeration callback.
+JNIEXPORT void JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativeAudioCapacidade(JNIEnv *env, jclass cls,
+    jint idx, jint hz, jint bits, jint bitrate, jint dec, jint pcm, jint pas, jint fiel, jint incerto) {
+  VideoFaixa *f;
+  (void)env; (void)cls;
+  if (idx < 0 || idx >= nNovasA) return;
+  f = &novasA[idx];
+  f->amostraHz = hz > 0 ? hz : 0;
+  f->bits = bits > 0 ? bits : 0;
+  f->bitrate = bitrate > 0 ? bitrate : 0;
+  f->decodifica = dec == 1;
+  f->pcmSaida = pcm == 1;
+  f->passthroughSaida = pas == 1;
+  f->saidaFiel = fiel == 1;
+  f->saidaIncerta = incerto == 1;
 }
 
 JNIEXPORT void JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativeFaixasFim(JNIEnv *env, jclass cls, jint selAudio, jint selLeg) {
@@ -582,6 +602,22 @@ JNIEXPORT void JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativeFaixasFim(JN
     p1AudioValido = p1LegValida = 0;
   }
   if (!restaurouAudio) escolherAudioPreferido();
+  // The track eventually selected is the only one that matters: no
+  // automatic dub, silent output downgrade or imaginary ARC passthrough.
+  if (nAudio > 0) {
+    const VideoFaixa *a = video_audio(audioAtual);
+    const char *original = ling_original();
+    int idiomaMudou = original && original[0] && strcmp(original, "none") &&
+        a && a->idioma[0] && !ling_casa(a->idioma, original);
+    if (!a || !a->decodifica || !a->saidaFiel || idiomaMudou) {
+      semDecoderAudio = 1; /* Q36 Audio Playback Error (not network recovery) */
+      printf("[audio] saida incompatível/idioma não autorizado: faixa=%d, decoder=%d pcm=%d pass=%d fiel=%d incerto=%d\n",
+             audioAtual, a ? a->decodifica : 0, a ? a->pcmSaida : 0,
+             a ? a->passthroughSaida : 0, a ? a->saidaFiel : 0,
+             a ? a->saidaIncerta : 1);
+      fflush(stdout);
+    }
+  }
 }
 
 // Texto da legenda embutida em vigor, valido por `durMs` (estimada no Kotlin:
@@ -1450,6 +1486,10 @@ void video_p1_guardar_faixas_manual(void) {
 
 void video_escolher_audio(int i) {
   if (i < 0 || i >= nAudio) return;
+  if (!faixaAudio[i].decodifica || !faixaAudio[i].saidaFiel) {
+    semDecoderAudio = 1; // Manual choice is not permission for silent output.
+    return;
+  }
   audioAtual = i;
   acaoMs = SDL_GetTicks();   // the switch rebuffers: not a network stall
   {
