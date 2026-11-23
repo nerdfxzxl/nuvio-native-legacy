@@ -130,6 +130,17 @@ jobs:
           set -euo pipefail
           python3 tests/p4_cache_ci_policy.py
 
+      - name: Run actual Media3 CacheDataSource integration under Robolectric
+        shell: bash
+        run: |
+          set -euo pipefail
+          target="tests/p4-cache-integration/src/production/kotlin"
+          mkdir -p "$target"
+          for file in CacheMidia.kt CacheSessao.kt CacheProvaP4C.kt CacheSpanP4C.kt; do
+            cp "android/app/src/main/java/space/nuvio/nativelegacy/$file" "$target/$file"
+          done
+          bash android/gradlew -p tests/p4-cache-integration testDebugUnitTest --no-daemon --console=plain
+
       - name: Test-only scope summary
         if: always()
         shell: bash
