@@ -2708,9 +2708,14 @@ object NvPlayer {
                 val f = g.getTrackFormat(i)
                 if (g.type == C.TRACK_TYPE_VIDEO) {
                     val t = f.colorInfo?.colorTransfer
-                    if (f.sampleMimeType == MimeTypes.VIDEO_DOLBY_VISION && decoderDv) { hdr = "DolbyVision"; dv = 1 }
-                    else if (t == C.COLOR_TRANSFER_ST2084) hdr = "HDR10"
-                    else if (t == C.COLOR_TRANSFER_HLG) hdr = "HLG"
+                    // ST2084 is a transfer function, not proof of an HDR10 base
+                    // layer in a Dolby Vision sample. Never silently rename DV as HDR10.
+                    val decisao = HdrPolicyP5.decide(
+                        dolbyVisionMime = f.sampleMimeType == MimeTypes.VIDEO_DOLBY_VISION,
+                        dolbyVisionDecoder = decoderDv,
+                        st2084 = t == C.COLOR_TRANSFER_ST2084,
+                        hlg = t == C.COLOR_TRANSFER_HLG)
+                    hdr = decisao.mode; dv = decisao.dolbyVision
                 } else if (g.type == C.TRACK_TYPE_AUDIO && f.sampleMimeType == MimeTypes.AUDIO_E_AC3_JOC) {
                     atmos = 1
                 }
