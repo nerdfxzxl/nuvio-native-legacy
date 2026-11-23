@@ -450,6 +450,17 @@ static int erroDeRede(int cod) { return (cod >= 2000 && cod <= 2002) ||
 
 void video_escolher_audio(int i);
 
+// Source-quality ranking uses genuine Android Format metadata where present.
+// Format.codec alone does not determine fidelity, and output compatibility
+// was already independently established by the current-route probe.
+static long notaFonteAudio(const VideoFaixa *f) {
+  long score = (long)audioesc_qualidade(f->codec, f->canais, f->rotulo) * 100000L;
+  score += (long)(f->amostraHz > 0 && f->amostraHz <= 384000 ? f->amostraHz : 0) * 2L;
+  score += (long)(f->bits > 0 && f->bits <= 64 ? f->bits : 0) * 3000L;
+  score += (long)(f->bitrate > 0 ? f->bitrate / 100 : 0);
+  return score;
+}
+
 // A ORDEM DO AUDIO (audioescolha.h), como no video_tpk.c; sem regra que
 // decida, fica a do arquivo.
 static void escolherAudioPreferido(void) {
@@ -466,6 +477,22 @@ static void escolherAudioPreferido(void) {
     c[i].numero = faixaAudio[i].numero;
   }
   k = audioesc_escolher(c, nAudio, &o);
+  if (audioesc_tem_lembrada() && o != AUDIOESC_LEMBRADA) {
+    // A remembered manual language must not be silently replaced by the
+    // original or a dub just because this release lacks that manual track.
+    semDecoderAudio = 1;
+    return;
+  }
+  if (k >= 0 && o == AUDIOESC_ORIGINAL) {
+    long melhor = notaFonteAudio(&faixaAudio[k]);
+    for (i = 0; i < nAudio; i++) {
+      if (c[i].pode && c[i].idioma && c[i].idioma[0] &&
+          ling_casa(c[i].idioma, c[k].idioma)) {
+        long nota = notaFonteAudio(&faixaAudio[i]);
+        if (nota > melhor) { k = i; melhor = nota; }
+      }
+    }
+  }
   if (k < 0 || k == audioAtual) return;
   printf("[video] audio pela ordem (%s): %s (faixa %d de %d)\n", audioesc_origem_nome(o), faixaAudio[k].rotulo, k + 1, nAudio);
   video_escolher_audio(k);
@@ -541,6 +568,28 @@ JNIEXPORT void JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativeAudioCapacid
   f->saidaIncerta = incerto == 1;
 }
 
+static void validarAudioSelecionadoP5A(void) {
+  if (nAudio <= 0) return; // Kotlin reports no compatible decoder itself.
+  const VideoFaixa *a = video_audio(audioAtual);
+  const AudioLembrada *m = audioesc_lembrada();
+  const char *original = ling_original();
+  // An explicit manual track can intentionally differ from the original.
+  // It MUST NOT silently fall back to a different language if unavailable.
+  int manualErrado = m && m->idioma[0] &&
+      (!a || !a->idioma[0] || !ling_casa(a->idioma, m->idioma));
+  int idiomaErrado = !m && original && original[0] &&
+      strcmp(original, "none") && a && a->idioma[0] &&
+      !ling_casa(a->idioma, original);
+  if (!a || !a->decodifica || !a->saidaFiel || manualErrado || idiomaErrado) {
+    semDecoderAudio = 1;
+    printf("[audio] Q36 selected output incompatible: track=%d decoder=%d pcm=%d pass=%d faithful=%d unknown=%d manualMismatch=%d originalMismatch=%d\n",
+           audioAtual, a ? a->decodifica : 0, a ? a->pcmSaida : 0,
+           a ? a->passthroughSaida : 0, a ? a->saidaFiel : 0,
+           a ? a->saidaIncerta : 1, manualErrado, idiomaErrado);
+    fflush(stdout);
+  }
+}
+
 JNIEXPORT void JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativeFaixasFim(JNIEnv *env, jclass cls, jint selAudio, jint selLeg) {
   // Lista de legendas VAZIA mandada com a de audio ja existente = releitura so
   // do audio (HLS que publica as faixas depois de tocar): a legenda que o app
@@ -567,6 +616,7 @@ JNIEXPORT void JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativeFaixasFim(JN
     }
     printf("[video] reconexao: faixas devolvidas (audio %d, legenda %d)\n", reconAudio, reconLeg);
     fflush(stdout);
+    validarAudioSelecionadoP5A();
     return;
   }
   // Explicit same-episode source replacement: restore only tracks with a
@@ -602,22 +652,7 @@ JNIEXPORT void JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativeFaixasFim(JN
     p1AudioValido = p1LegValida = 0;
   }
   if (!restaurouAudio) escolherAudioPreferido();
-  // The track eventually selected is the only one that matters: no
-  // automatic dub, silent output downgrade or imaginary ARC passthrough.
-  if (nAudio > 0) {
-    const VideoFaixa *a = video_audio(audioAtual);
-    const char *original = ling_original();
-    int idiomaMudou = original && original[0] && strcmp(original, "none") &&
-        a && a->idioma[0] && !ling_casa(a->idioma, original);
-    if (!a || !a->decodifica || !a->saidaFiel || idiomaMudou) {
-      semDecoderAudio = 1; /* Q36 Audio Playback Error (not network recovery) */
-      printf("[audio] saida incompatível/idioma não autorizado: faixa=%d, decoder=%d pcm=%d pass=%d fiel=%d incerto=%d\n",
-             audioAtual, a ? a->decodifica : 0, a ? a->pcmSaida : 0,
-             a ? a->passthroughSaida : 0, a ? a->saidaFiel : 0,
-             a ? a->saidaIncerta : 1);
-      fflush(stdout);
-    }
-  }
+  validarAudioSelecionadoP5A();
 }
 
 // Texto da legenda embutida em vigor, valido por `durMs` (estimada no Kotlin:
