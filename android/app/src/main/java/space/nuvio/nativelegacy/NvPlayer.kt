@@ -1575,8 +1575,9 @@ object NvPlayer {
                         }
                     }
                 }
-                // Session-only disk cache until content provenance and cached
-                // byte representation can be proved independently of URL.
+                // Only exact native provenance and a fresh strong HTTP 206
+                // may authorize last-title reuse. Unknown releases remain
+                // isolated to the current player session.
                 val escopo = CacheProvaP4C.escopoCabecalhos(
                     if (ua != null) props + ("User-Agent" to ua) else props)
                 val prova = identidadeCache?.takeIf { it.forte() && it.catalogo == titulo }?.assinatura()
@@ -1593,9 +1594,9 @@ object NvPlayer {
                 val rede: DataSource.Factory = if (limited) serialHttp
                     else ParaleloDataSource.Factory(ua, props, http, medidor, token, r.parallelStats,
                         if (config.enabled) config.count else 1, chunk)
-                r.cache?.fabrica(rede) ?: rede
+                r.cache?.fabrica(rede) { r.carga.cancelada } ?: rede
             }
-            val origemPreparo = r.cache?.fabrica(serialHttp) ?: serialHttp
+            val origemPreparo = r.cache?.fabrica(serialHttp) { r.carga.cancelada } ?: serialHttp
             val token = if (preparando) 0L else medidor.sessao(geracao).also { medidorToken = it }
             r.origem = OrigemPlayer(if (preparando) origemPreparo else r.rede(token), r.carga, r.contadorHttp)
             // ON: platform decoder/passthrough first, FFmpeg only as fallback.
