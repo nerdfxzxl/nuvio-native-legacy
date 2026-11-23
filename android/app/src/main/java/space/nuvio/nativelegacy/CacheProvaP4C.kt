@@ -67,7 +67,7 @@ internal object CacheProvaP4C {
             u.rawUserInfo != null || u.fragment != null) null
         else {
             val porta = if (u.port > 0 && u.port != 443) ":${u.port}" else ""
-            "https://${u.host.lowercase(Locale.ROOT)}$porta${u.rawPath.ifEmpty { "/" }}"
+            "https://${u.host.lowercase(Locale.ROOT)}$porta${(u.rawPath ?: "/").ifEmpty { "/" }}"
         }
     } catch (_: Exception) { null }
 
