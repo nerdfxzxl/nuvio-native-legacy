@@ -1007,6 +1007,7 @@ static int cinemaEscapeDisponivel(Uint32 agora) {
 // Audio and video share the existing native glass/error card. Video retains
 // its historic two-button behavior; Q36 audio has three distinct actions.
 static int erroBotao, erroAudioP5A, erroAudioRetentou;
+static int avisouAudio; // also rearmed by the Audio Playback Error Retry path
 static void erroEscolher(int i) {
 #ifdef NV_ANDROID
   if (erroAudioP5A) {
@@ -1359,7 +1360,7 @@ static char   toastTexto[320];
 // O icone do aviso (art/icones) e a cor dele: 0 branco, 1 ambar (aviso).
 static char   toastIcone[32];
 static int    toastCor;
-static int    avisouAudio;
+// avisouAudio is declared above with the audio error-card state.
 static char   dirPrefs[512];
 static int    prefsLidas;
 
