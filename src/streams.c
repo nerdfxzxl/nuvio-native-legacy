@@ -826,7 +826,9 @@ static uint64_t memoriaFolhaId(const Stream *s);
 // never let a retained card open playback. Source ownership is a generation,
 // not an array index; focus is restored from exact release provenance.
 static Stream p3FocusSource;
+static Stream p3PreferredSource, p3PlayingSource;
 static int p3FocusSaved, p3RestorePending;
+static int p3PreferredSaved, p3PlayingSaved;
 static char p3AddonKey[FONTEFALHA_CHAVE], p3AddonName[96];
 static float p3ScrollSaved;
 static void p3ReloadAbort(void) {
@@ -834,6 +836,7 @@ static void p3ReloadAbort(void) {
   nv_p3_reload_finish(&p3Reload);
   pthread_mutex_unlock(&verTrava);
   p3FocusSaved = p3RestorePending = 0;
+  p3PreferredSaved = p3PlayingSaved = 0;
   p3AddonKey[0] = p3AddonName[0] = 0;
 }
 void stream_recarregar_primeira(void) {
@@ -3913,6 +3916,10 @@ static void atualizarProvedores(void) {
 int stream_recarregar_iniciar(const char *id) {
   if (!aberta || canalFolha || !id || !stream_lista_do_alvo(id)) return 0;
   if (p3Reload.phase == NV_P3_RELOAD_IDLE) {
+    p3PreferredSaved = preferida >= 0 && preferida < n;
+    p3PlayingSaved = atual >= 0 && atual < n;
+    if (p3PreferredSaved) p3PreferredSource = lista[preferida];
+    if (p3PlayingSaved) p3PlayingSource = lista[atual];
     p3FocusSaved = 0;
     int i = grupo == 1 && foco >= 0 ? filtrado(foco) : -1;
     // Refresh chip lives above the cards; its focus must not erase the last
@@ -5057,8 +5064,24 @@ static int p3MesmoLancamento(const Stream *a, const Stream *b) {
          a->fileIdx == b->fileIdx && !strcmp(a->rotulo,b->rotulo);
 }
 static void p3RestaurarAposResposta(void) {
-  if (!p3RestorePending || p3Reload.phase == NV_P3_RELOAD_RETAINED ||
-      !aberta || canalFolha) return;
+  if (p3Reload.phase == NV_P3_RELOAD_RETAINED || !aberta || canalFolha) return;
+  // Reload also invalidates the previous preferred/current ARRAY positions.
+  // Rebind only when the exact release returns; never imply that a different
+  // release now plays merely because it happens to occupy the same row.
+  if (p3PreferredSaved || p3PlayingSaved) {
+    for (int i = 0; i < n; i++) {
+      if (p3PreferredSaved && p3MesmoLancamento(&p3PreferredSource,&lista[i])) {
+        preferida = i; p3PreferredSaved = 0;
+      }
+      if (p3PlayingSaved && p3MesmoLancamento(&p3PlayingSource,&lista[i])) {
+        atual = i; p3PlayingSaved = 0;
+      }
+      if (!p3PreferredSaved && !p3PlayingSaved) break;
+    }
+    if (p3Reload.phase == NV_P3_RELOAD_IDLE)
+      p3PreferredSaved = p3PlayingSaved = 0;
+  }
+  if (!p3RestorePending) return;
   int prov = 0;
   if (p3AddonKey[0] || p3AddonName[0]) {
     for (int k = 1; k < nProvedores; k++) {
@@ -6040,6 +6063,9 @@ int stream_folha_escolheu(int *out) {
     return 0;
   }
   if(out) *out=escolha;
+  // An explicit new pick supersedes any old preferred/current release that
+  // was still awaiting an addon callback from this reload.
+  p3PreferredSaved = p3PlayingSaved = p3RestorePending = 0;
   escolha=-1; atomic_store(&androidSelectorAtivo, 0); return 1;
 }
 // PONTEIRO (#99): as mesmas variaveis das setas (grupo, foco, filtro). O
