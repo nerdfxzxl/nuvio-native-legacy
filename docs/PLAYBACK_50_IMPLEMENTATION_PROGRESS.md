@@ -750,3 +750,28 @@ Older P4-C and P4 final reviews marked FAILED or PARTIAL above are historical ch
 | Android full Gradle/NDK/TV verification | **P7/P8 hardware/integration gate; NOT RUN.** |
 
 **P5 SOURCE ACCEPTANCE FAILED — P5 remains PARTIAL; P6 NOT AUTHORIZED.** Continue P5-A with real Media3 JVM replay/compile, genuine track and route capability policies, and the explicit audio error actions. Then implement/test P5-B (DV/base-layer/fallback), P5-C (AFR and surfaces/first frame), P5-D (debounced route renegotiation), and rerun final P5 source acceptance **before** authorizing P6. No P5 GitHub Actions run, APK build, workflow trigger modification, or master merge occurred.
+
+
+## P5 continuation — Q37 Dolby Vision transfer-function provenance (2026-11-23; P5 PARTIAL)
+
+**Starting HEAD:** `ae3e9e6880717a7919ef1da7cc66a04c4109eb01` (unchanged from first P5-A source checkpoint). The canonical five repository documents and owner-approved 441-line File Library specification `NUVIO_LEGACY_MASTER_PLAYBACK_SPEC_Q01-Q50_2026-11-22.md` were inspected, including §2.6, the prior P5-A partial checkpoint and its source acceptance blockers. The branch was verified before writing.
+
+**Bounded production fix:** `1a1f88dcdf3957cc509793066960824b52a31bb9` — Q37 HDR metadata provenance. New `HdrPolicyP5.kt` now classifies a selected Dolby Vision MIME as Dolby Vision only with a recognized DV decoder; ST2084/PQ metadata alone is not accepted as proof of an HDR10-compatible base layer. For DV MIME without verified decoder and without independent same-file HDR10 base-layer proof, the classifier conservatively reports no confirmed output mode, not fabricated HDR10. The additional verified-base argument defaults **false** and is **not** currently supplied by a production container inspector. Normal non-DV HDR10/HLG classification remains. `NvPlayer.kt`'s `publicarHdr()` uses the new classifier, preserving selected release/source identity. No transport/cache/selector changes.
+
+**Changed production files:** `android/app/src/main/java/space/nuvio/nativelegacy/NvPlayer.kt`, new `HdrPolicyP5.kt`. **New regression source:** `tests/p5/HdrPolicyP5Test.kt`, `tests/p5_hdr_policy.sh` (run explicitly via `bash`). Existing `GanhoAudioProcessor.kt` and `tests/cacheboost_android.py` P5-A changes are preserved unmodified.
+
+**Executed test:** Locally compiled the exact Q37 pure-Kotlin decision cases with `kotlinc-jvm 1.9.0` and JRE 21; executed `HdrPolicyP5TestKt`, **10/10 assertion cases passed** (DV decoder recognized; no fictitious PQ/HLG fallback; explicit verified base; ordinary HDR10, HLG and unknown). This is a genuine Kotlin/JVM policy compilation and execution, **not** a production Android API35/Media3 `NvPlayer.kt` compile, decoder test or physical TV HDR handshake. The checked-in shell test runner was authored but not executed in a full repository checkout.
+
+**Explicit tests not executed:** the earlier committed production `GanhoAudioProcessor` Media3 Kotlin PCM replay (still unverified), actual Android API35/Media3 compile/JNI link, source-level native C compile, full Gradle/APK, GitHub Actions, real Dolby Vision/MEMC/ARC hardware tests, or P1–P4 integrated runtime regressions. Media3/Android SDK classpath unavailable to the local compiler. Do not imply the earlier 14 independent numeric/source checks constitute an actual PCM replay.
+
+**P5-A (Q36):** remains PARTIAL — original-language high-fidelity route/decoder/track-output capability, genuine track metadata, no silent unsupported-audio playback and three-action Audio Playback Error still need production implementation and tests. Existing audio PCM rounding/soft-limiter source fix is preserved, but the Media3 replay remains essential.
+
+**P5-B (Q37/Q39):** remains PARTIAL — the one confirmed HDR10 misclassification was corrected. Independent DV profile/base-layer inspection, actual display and decoder/output capability validation, compatible quality-preserving fallback, DRM/output/surface failure classification, and Video Playback Error (Retry / Change Stream / Back) need implementation and integration tests. A conservative metadata label by itself does not reject an incompatible DV stream.
+
+**P5-C (Q29/Q38/Q47):** NOT COMPLETE — retain genuine first-frame/surface generation protections, implement setting-backed opt-in AFR with default OFF and safe restore, avoid unnecessary device-specific surface recreation, and test transition races/first-frame sync.
+
+**P5-D (Q49):** NOT COMPLETE — implement debounced HDMI ARC/Bluetooth/internal-speaker route observations, actual sink re-probe, in-place renegotiation where supported, track/position/effect preservation, and fail-closed output errors. Preserve `setAudioAttributes(..., false)`.
+
+**Highest-priority next task:** run the real committed PCM processor replay with proper Media3 jars; implement P5-A native/Media3 route fidelity and distinct Audio Playback Error actions. Then complete and test P5-B, P5-C, P5-D, and perform final source acceptance before changing P6 authorization. A test-only CI workflow would require **new explicit owner authorization**; it has **not** been dispatched. Keep `docs/ci/trigger-netflix-detail-once.txt`, workflows, and master unchanged. No APK was built. Hardware/runtime integration stays reserved for P7/P8; Q18 remains explicitly owner-deferred.
+
+**FINAL P5 SOURCE VERDICT AT THIS CHECKPOINT: P5 SOURCE ACCEPTANCE FAILED — P5 remains PARTIAL; P6 NOT AUTHORIZED.** This supersedes no successful P5 acceptance because none exists.
