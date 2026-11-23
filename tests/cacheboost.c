@@ -35,6 +35,7 @@ int main(void) {
   // Settings option -> MB.
   assert(cacheboost_cache_mb(0) == 0 && cacheboost_cache_mb(1) == 256);
   assert(cacheboost_cache_mb(2) == 512 && cacheboost_cache_mb(3) == 1024);
+  assert(cacheboost_cache_mb(4) == 2048); // auto marker, not 2 GiB allocation
   assert(cacheboost_cache_mb(-1) == 0 && cacheboost_cache_mb(CB_CACHE_OPCOES) == 0);
 
   // Reports: limits only mean something while active; usage never exceeds
