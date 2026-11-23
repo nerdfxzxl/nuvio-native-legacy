@@ -37,6 +37,7 @@ class CacheMidia private constructor(
     private val pasta: File,
     private val cache: SimpleCache,
     private val sessao: String,
+    private val escopo: String,
     val pedidoMb: Int,
     val limiteMb: Int,
     val estado: CacheSessao.Estado,
@@ -84,8 +85,9 @@ class CacheMidia private constructor(
 
         // App start: crash leftovers of earlier processes, off the main thread.
         fun limparTudo(dirCache: File) {
-            fio.schedule({ raiz(dirCache).deleteRecursively() },
-                ESPERA_LIBERAR_MS + 100, TimeUnit.MILLISECONDS)
+            // Never recursively delete a live SimpleCache owned by a player.
+            descartar("clear requested")
+            limparSobras(dirCache)
         }
 
         fun limparSobras(dirCache: File) {
@@ -96,7 +98,8 @@ class CacheMidia private constructor(
         }
 
         // Session cache or the reason there is none: (cache, state).
-        fun criar(dirCache: File, pedidoMb: Int, aoFalhar: (Boolean) -> Unit): Pair<CacheMidia?, Int> {
+        fun criar(dirCache: File, pedidoMb: Int, aoFalhar: (Boolean) -> Unit,
+                  escopo: String = ""): Pair<CacheMidia?, Int> {
             if (pedidoMb <= 0) return null to CacheSessao.DESLIGADO
             val r = raiz(dirCache)
             r.mkdirs()
@@ -114,7 +117,7 @@ class CacheMidia private constructor(
                 @Suppress("DEPRECATION")
                 val c = SimpleCache(pasta, LeastRecentlyUsedCacheEvictor(limite.toLong() shl 20))
                 Log.i(TAG, "on: $limite MB (asked $pedidoMb, ${livre shr 20} MB free)")
-                CacheMidia(pasta, c, sessao, pedidoMb, limite, CacheSessao.Estado(aoFalhar)) to CacheSessao.ATIVO
+                CacheMidia(pasta, c, sessao, escopo, pedidoMb, limite, CacheSessao.Estado(aoFalhar)) to CacheSessao.ATIVO
             } catch (e: Exception) {
                 Log.w(TAG, "cache init failed: $e")
                 fio.execute { CacheSessao.apagar(pasta) }
@@ -149,7 +152,7 @@ class CacheMidia private constructor(
             .setUpstreamDataSourceFactory(upstream)
             .setCacheWriteDataSinkFactory { SinkProtegido(cache, estado, pasta) }
             // A custom Media3 key must never alias different signed URL bytes.
-            .setCacheKeyFactory(CacheKeyFactory { spec -> CacheSessao.chave(sessao, spec.uri.toString()) })
+            .setCacheKeyFactory(CacheKeyFactory { spec -> CacheSessao.chave(sessao, spec.uri.toString(), escopo) })
             // A cache read error bypasses the cache for that load instead of
             // failing playback.
             .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
@@ -158,7 +161,11 @@ class CacheMidia private constructor(
 
     // Player closed / source changed: release and delete the folder, later and
     // off the main thread.
-    fun liberar() {
+    @Volatile private var liberacaoAgendada = false
+
+    @Synchronized fun liberar() {
+        if (liberacaoAgendada) return
+        liberacaoAgendada = true
         fio.schedule({
             try { cache.release() } catch (e: Exception) { Log.w(TAG, "release: $e") }
             CacheSessao.apagar(pasta)
