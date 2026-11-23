@@ -9,6 +9,7 @@ import java.nio.ByteOrder
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.pow
+import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.math.sqrt
 
@@ -123,7 +124,10 @@ class GanhoAudioProcessor : BaseAudioProcessor() {
                 y = v
             }
             if (processCenter && channel == 2) y *= centerGain
-            y *= volume
+            // Use the same soft limiter as GanhoMath.pcm16 for boosted PCM.
+            // Plain multiply + hard-clamp introduced audible clipping and
+            // mismatched the production gain contract (Replay.kt:165).
+            y = if (volume > 1f) GanhoMath.amostra(y, volume) else y * volume
             if (night > 0) {
                 y *= nightGain
                 val magnitude = abs(y)
@@ -135,7 +139,7 @@ class GanhoAudioProcessor : BaseAudioProcessor() {
             // Protect 16-bit output from integer wrap and gross clipping.
             y = y.coerceIn(-1f, 1f)
             if (floatPcm) out.putFloat(y)
-            else out.putShort((y * 32767f).toInt().coerceIn(-32768, 32767).toShort())
+            else out.putShort((y * 32768f).roundToInt().coerceIn(-32768, 32767).toShort())
             channel++
             if (channel >= channels) channel = 0
         }
