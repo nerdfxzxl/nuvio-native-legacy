@@ -830,34 +830,6 @@ static void p3ReloadAbort(void) {
   p3FocusSaved = p3RestorePending = 0;
   p3AddonKey[0] = p3AddonName[0] = 0;
 }
-int stream_recarregar_iniciar(const char *id) {
-  if (!aberta || canalFolha || !id || !stream_lista_do_alvo(id)) return 0;
-  if (p3Reload.phase == NV_P3_RELOAD_IDLE) {
-    p3FocusSaved = 0;
-    if (grupo == 1 && foco >= 0) {
-      int i = filtrado(foco);
-      if (i >= 0 && i < n) {
-        p3FocusSource = lista[i];
-        p3FocusSaved = 1;
-      }
-    }
-    snprintf(p3AddonKey, sizeof p3AddonKey, "%s",
-             filtro > 0 && filtro < nProvedores ? provChaves[filtro] : "");
-    snprintf(p3AddonName, sizeof p3AddonName, "%s",
-             filtro > 0 && filtro < nProvedores ? provedores[filtro] : "");
-    p3ScrollSaved = rolagem;
-    p3RestorePending = 1;
-  }
-  nv_p3_reload_begin(&p3Reload);
-  // Revoke any pending OK from native/touch/Android *before* starting network.
-  escolha = -1; escolhaGeracao = 0;
-  atomic_store(&escolhaAndroid, -1);
-  pthread_mutex_lock(&verTrava);
-  listaGeracao++;
-  atomic_fetch_add(&folhaRevisao, 1);
-  pthread_mutex_unlock(&verTrava);
-  return 1;
-}
 void stream_recarregar_primeira(void) {
   if (!nv_p3_reload_first(&p3Reload)) return;
   // Keep the saved focus/provider/search snapshot, replace *only* stale cards.
@@ -3920,6 +3892,34 @@ static void atualizarProvedores(void) {
   } else abaFoco = 0;
   pthread_mutex_unlock(&provTrava);
   if (mudouProvedores) atomic_fetch_add(&folhaRevisao, 1);
+}
+int stream_recarregar_iniciar(const char *id) {
+  if (!aberta || canalFolha || !id || !stream_lista_do_alvo(id)) return 0;
+  if (p3Reload.phase == NV_P3_RELOAD_IDLE) {
+    p3FocusSaved = 0;
+    if (grupo == 1 && foco >= 0) {
+      int i = filtrado(foco);
+      if (i >= 0 && i < n) {
+        p3FocusSource = lista[i];
+        p3FocusSaved = 1;
+      }
+    }
+    snprintf(p3AddonKey, sizeof p3AddonKey, "%s",
+             filtro > 0 && filtro < nProvedores ? provChaves[filtro] : "");
+    snprintf(p3AddonName, sizeof p3AddonName, "%s",
+             filtro > 0 && filtro < nProvedores ? provedores[filtro] : "");
+    p3ScrollSaved = rolagem;
+    p3RestorePending = 1;
+  }
+  nv_p3_reload_begin(&p3Reload);
+  // Revoke any pending OK from native/touch/Android *before* starting network.
+  escolha = -1; escolhaGeracao = 0;
+  atomic_store(&escolhaAndroid, -1);
+  pthread_mutex_lock(&verTrava);
+  listaGeracao++;
+  atomic_fetch_add(&folhaRevisao, 1);
+  pthread_mutex_unlock(&verTrava);
+  return 1;
 }
 static int nFiltrados(void) {
   folhaDados();
