@@ -946,6 +946,8 @@ JNIEXPORT void JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativeEvento(JNIEn
     case EV_SUPERFICIE_ESTAVEL: superficieEstavel = 1; break;
     case EV_SUPERFICIE_INVALIDADA: superficieEstavel = 0; quadroSuperficie = 0; break; // old surface frame cannot authorize new handoff
     case EV_AUDIO_SEM_DECODER: semDecoderAudio = 1; break;
+    case 16: /* EV_AUDIO_SAIDA_INCOMPATIVEL: current route or actual sink rejected. */
+      semDecoderAudio = 1; tocando = 0; break;
     case EV_CARGA_FASE: if (a >= 0 && a <= 3) cargaFase = a; break;
     case EV_SO_AUDIO: if (a == 1) somenteAudio = 1; break;
     case EV_LIVE_SEGMENT:
