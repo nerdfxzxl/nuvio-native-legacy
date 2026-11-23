@@ -33,15 +33,19 @@ import java.util.concurrent.TimeUnit
 // (the index lives in the folder and dies with it), LRU-bounded to the
 // effective limit. Writes go through CacheSessao.Escrita: ENOSPC or any other
 // write error turns the cache off for the session, playback continues.
-// P4-C: warm cross-open reuse is disabled until source and representation
-// identity, cached-byte integrity and account/profile scope can be proven.
-// In-session seeks still benefit from the Media3 disk cache.
+// P4-C: cross-open reuse requires independent exact-release proof AND a new
+// one-byte strong-ETag/length/range check against the remote representation.
+// Unknown or changed objects fail closed to a fresh network cache. All cached
+// spans have SHA-256 verification before they are read.
 @androidx.annotation.OptIn(UnstableApi::class)
 class CacheMidia private constructor(
     private val pasta: File,
     private val cache: SimpleCache,
     private val sessao: String,
     private val escopo: String,
+    private val prova: String?,
+    private val tituloProva: String,
+    private val urlBase: String,
     val pedidoMb: Int,
     val limiteMb: Int,
     val estado: CacheSessao.Estado,
@@ -64,16 +68,45 @@ class CacheMidia private constructor(
         private var raizVaga: File? = null
         private val vaga = CacheSessao.Vaga<CacheMidia> { it.liberar() }
 
-        // Fail closed: neither title nor signed URL proves immutable
-        // addon/release/file/account identity or validates persisted bytes.
-        fun guardar(c: CacheMidia, titulo: String, chave: String) {
-            c.liberar()
-            descartar("unverified warm cache")
+        // Only a completed old Media3 player may enter this one-slot pool.
+        // Keep the SimpleCache OPEN: a closed SimpleCache is never reattached.
+        // A reused cache remains quarantined until its next loader performs
+        // a fresh, one-byte verified 206 against the new signed URL.
+        @Synchronized fun guardar(c: CacheMidia) {
+            val chave = c.chaveGuarda()
+            if (chave == null || c.liberacaoAgendada || c.estado.desligado ||
+                c.representacao?.confiavel() != true ||
+                !c.spansExistem(c.chaveBase())) {
+                c.liberar()
+                return
+            }
+            raizVaga = c.pasta.parentFile?.parentFile
+            val livre = try { raizVaga?.usableSpace ?: 0L }
+                        catch (_: SecurityException) { 0L }
+            if (vaga.guardar(c, c.tituloProva, chave, c.pedidoMb,
+                    android.os.SystemClock.elapsedRealtime(), livre)) {
+                Log.i(TAG, "verified VOD cache kept in process (no URL or token logged)")
+                vigiar()
+            }
         }
-        fun pegar(titulo: String, chave: String, pedidoMb: Int,
-                  aoFalhar: (Boolean) -> Unit): CacheMidia? {
-            descartar("unverified warm cache")
-            return null
+
+        @Synchronized private fun pegar(titulo: String, chave: String, pedidoMb: Int,
+                                        aoFalhar: (Boolean) -> Unit,
+                                        url: String, livre: Long): CacheMidia? {
+            val c = vaga.pegar(titulo, chave, pedidoMb,
+                android.os.SystemClock.elapsedRealtime()) ?: return null
+            val origem = CacheProvaP4C.origem(url)
+            if (livre < CacheSessao.RESERVA_BYTES ||
+                c.liberacaoAgendada || c.estado.desligado ||
+                origem == null || origem != c.representacao?.origem) {
+                c.liberar()
+                return null
+            }
+            c.estado.aoFalhar = aoFalhar
+            c.urlPendente = url // new signed URL is NOT trusted yet
+            c.aliasAtiva = null
+            Log.i(TAG, "warm seek cache candidate; awaiting remote 206 proof")
+            return c
         }
 
         // Another title, setting off, profile switch.
@@ -103,7 +136,8 @@ class CacheMidia private constructor(
 
         // Session cache or the reason there is none: (cache, state).
         fun criar(dirCache: File, pedidoMb: Int, aoFalhar: (Boolean) -> Unit,
-                  escopo: String = ""): Pair<CacheMidia?, Int> {
+                  escopo: String = "", prova: String? = null,
+                  titulo: String = "", url: String = ""): Pair<CacheMidia?, Int> {
             if (pedidoMb <= 0) return null to CacheSessao.DESLIGADO
             val r = raiz(dirCache)
             r.mkdirs()
@@ -113,6 +147,13 @@ class CacheMidia private constructor(
                 Log.i(TAG, "off: ${livre shr 20} MB free for $pedidoMb MB + reserve")
                 return null to CacheSessao.POUCO_ESPACO
             }
+            // A fresh identity includes account/profile/catalog/addon/torrent
+            // file and the entire relevant request-header fingerprint.
+            if (prova != null && titulo.isNotEmpty() && url.isNotEmpty()) {
+                val retida = pegar(titulo, prova + ":" + escopo, pedidoMb,
+                    aoFalhar, url, livre)
+                if (retida != null) return retida to CacheSessao.ATIVO
+            }
             val sessao = "s" + (++contador)
             val pasta = CacheSessao.pastaSessao(r, boot, sessao)
             return try {
@@ -121,7 +162,8 @@ class CacheMidia private constructor(
                 @Suppress("DEPRECATION")
                 val c = SimpleCache(pasta, LeastRecentlyUsedCacheEvictor(limite.toLong() shl 20))
                 Log.i(TAG, "on: $limite MB (asked $pedidoMb, ${livre shr 20} MB free)")
-                CacheMidia(pasta, c, sessao, escopo, pedidoMb, limite, CacheSessao.Estado(aoFalhar)) to CacheSessao.ATIVO
+                CacheMidia(pasta, c, sessao, escopo, prova, titulo, url,
+                    pedidoMb, limite, CacheSessao.Estado(aoFalhar)) to CacheSessao.ATIVO
             } catch (e: Exception) {
                 Log.w(TAG, "cache init failed: $e")
                 fio.execute { CacheSessao.apagar(pasta) }
