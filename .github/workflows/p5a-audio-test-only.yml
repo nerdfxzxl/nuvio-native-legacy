@@ -1,6 +1,7 @@
 name: P5-A audio fidelity verification (tests only - no APK)
 
 # Dedicated P5-A test-only workflow; does not build an APK or change any existing workflow.
+# Rerun: compile harness now includes the existing P5 HDR policy.
 on:
   workflow_dispatch:
   push:
