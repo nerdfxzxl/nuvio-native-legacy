@@ -440,3 +440,50 @@ The historical source failure was genuine: Android's `video_pronto()` returned R
 
 **P3 source work authorized by this SOURCE checkpoint only; P3 NOT STARTED in this session.** **No GitHub Actions, APK, workflow trigger modification or master-branch change.**
 
+## P3 — Dynamic Clock and Stream-Selection Robustness — 2026-11-23 (FINAL SOURCE ACCEPTANCE)
+
+**Authorized starting HEAD:** `ce474e13eddd24c4aca62ab2f74b11f5280cedef` on `feature/official-stream-selector`. **Final reviewed source/test HEAD before this tracker update:** `03acb8861d583ef7fec6c10d65673399bd3e7343`. Read all five authoritative playback documents and P2-D's final source acceptance/P3 authorization before modification. Scope was exclusively **P3**, respecting Q18's owner-approved genuine embedded-P2P readiness-% deferral. No P4 source, full APK build, workflow dispatch, workflow trigger change or merge to master.
+
+**FINAL VERDICT: P3 SOURCE IMPLEMENTATION ACCEPTED — Android compilation and device validation pending P7/P8. P4 source work may begin.**
+
+### Source implementation and final requirement review
+
+| P3 requirement | Final source verdict | Specific behavior and evidence |
+|---|---|---|
+| **Q08/Q09** selector progression and ownership | **SOURCE ACCEPTED** | Existing per-addon `src/addons.c::progDrenar` UI-thread arrival queue and `src/streams.c::stream_lista_acrescentar` incremental ordered merge remain intact. `pendId`, profile-session scope and addon-version cancellation continue to reject obsolete arrivals. Distinct cards maintain stable underlying identity independent of display sort order. |
+| **Q11/Q31/Q32/Q33** reload, empty, navigation, focus | **SOURCE ACCEPTED** | New `src/stream_reload_p3.h` represents retained-display-only versus first-fresh versus finished results. Forced **same-target** reload retains old cards but revokes native, file-pick and Android-bridge OK actions by generation/phase; fresh responses clear old cards **before** becoming selectable. Failure/empty/worker-start failure and profile-addon cancellation retire stale cards. `No Streams Found` and Reload remain keyboard/remote accessible. Preserve active addon by key, search query by its original buffer, scroll/focus from previous choice, and independently restore preferred/playing items only on matched immutable release. Search and subsequent user navigation override automatic restoration. |
+| **Q19/Q20/Q30** explicit source, exact Resume and next episode | **SOURCE ACCEPTED** | Existing P1 Android manual-choice generation, stop-old-source sequencing, audio/subtitle/zoom/time carryover and no automatic alternative VOD selection preserved. Existing saved exact-source `fontevolta` account/profile/episode TTL path, optional persistence, next-episode `proximopreparo` and explicit `player_pediu_proximo` user authorization unchanged. Reload adds no autoplay, and old retained source rows cannot feed the pending automatic decision. |
+| **Q34/Q35** URL identity and TorBox HTTP | **SOURCE ACCEPTED** | P1 `nv_fonte_mesma_liberacao` compares addon provenance + hash/file or supported immutable fallback, **not** expiring signed URL text. Reload focus/active/preference use the same comparator, with guarded exact-URL fallback only for otherwise unprovable rows. TorBox selected HTTP URL and per-source headers continue through existing `abrirFonteManualDireta`; same-release renewal, link age, and failure return to manual selector were not rewritten. No extra freshness network probe introduced. |
+| **Q26/Q27** cinematic handoff and loading navigation | **SOURCE ACCEPTED** | Existing separate **~200ms selector-to-cinema entry** `player.c::desenharCinema` and **first-frame-and-stable-surface gated ~200ms visual exit** `abrecine.c` preserved. P2-D loading-owner stays active until the veil disappears, with 15s Change Stream, Down-then-OK, direct OK diagnostics, Back cancellation, source-job invalidation and focus restoration; no timer-based fake readiness. |
+| **Q18** genuine embedded-P2P playable-ready percentage | **OWNER-APPROVED EXPLICIT DEFERRAL** | Not implemented in P3. Verified piece-byte counters remain intact; no fabricated current-playhead percentage or TorBox readiness %. Owner's main path is TorBox HTTP. Deferred and not a source acceptance blocker. |
+
+**Defects found and corrected in this P3 session:** (1) old stream cards could be cleared before every addon responded, losing focus; (2) visual retention needed an explicit unselectable phase, generation and Android bridge guard; (3) the phase could prematurely become selectable *before* old-card teardown; (4) cancelled searches with zero partial responses could strand retained cards forever; (5) restored focus or active selection by old array index could point at a different release after reordering. All five have bounded source fixes. The established Dynamic Clock layout, provider chips, search field, existing animations and native C/SDL plus Android Media3 stack were retained. No P0/P1/P2-A/B/C/D source was removed or bypassed.
+
+### Chronological P3 source/test commits (17 exact SHAs before the tracker update)
+
+- `1e2e5e18e1f0f87faae5c0d2a44af1517bb56c30` — pure C11 retained/fresh reload-phase policy.
+- `96baab11398d5e680204737289baa59858c5683a` — host C11 stale generation/exact-source regression.
+- `dda0e954bfc7bcd795fcde82005da70a8ae8804f` — staged native and Android selector generation guards.
+- `a95e89a8753dd5c628ffbfb2cbedbc02d945d538` — provider-state declaration order.
+- `faa0da2b8621844f3927be99febdd16411420e2e` — progressive fresh-batch publication and forced refresh.
+- `26461ce762dbd94c0b6c97d600b2ae746d51bf89` — scoped reload lifecycle declarations.
+- `d9e1eca6ea532aa8b24a845e02120b48093ba5ac` — immutable release focus, filters, empty state.
+- `41aee5d73c9d7b6c21ae355fabd42f6774c8a092` — atomic teardown/selection lock ordering.
+- `96ae43bf8a6f1be19ddc097bdc195b4d67908cd4` — prevent auto decisions from retained stale cards.
+- `21798101eaebe6da0f04b990ee4dfca814c05161` — standalone host C11 test runner.
+- `62cfabd000e85f4f1ab64bd9773ae5a562182820` — cross-module P3 source contract test.
+- `4d243e2132eed6a01b69082604be3859d02da936` — correct next-episode test symbol.
+- `32d56df0c2ad7ccd097565e3da968b81f2ce6329` — readable stale-card warning overlay.
+- `51558fab2b1e871e06582915be4ebd8a4937adaf` — cancelled zero-result worker cleanup.
+- `f6b1bfe02e7608205633f6aed46c3c8d4ab77fba` — preserve latest intentional D-pad/provider focus during reload.
+- `d216acf2ba97d4a57ff120a778bd76110351cc5e` — restore preferred/current actual release by immutable provenance.
+- `03acb8861d583ef7fec6c10d65673399bd3e7343` — expand cancellation, focus, active-release and independent fade assertions.
+
+### Final verification evidence and non-claims
+
+- **PASS: 17/17 host C11 assertions** in the committed `tests/playback_p3_reload.c` when compiled under **GCC** (`-std=c11 -O1 -g -Wall -Wextra -Werror`) and **Clang ASan+UBSan** (`-fsanitize=undefined,address -fno-omit-frame-pointer`). Actual GitHub blob IDs were **matched with `git hash-object` before running**: `src/stream_reload_p3.h` = `5cc0dc79f84971dad6e3fcf9f2ecebddb5c090dd`, `src/fonteid_p1.h` = `1d6a8dda8541a12f80274f5be890cb69d018ff62`, `tests/playback_p3_reload.c` = `3294521fc31317f703ef3c4e705030e18b92c30e`. Both binaries exited successfully, no sanitizer error. Covers retained/disallowed card picks, first-fresh generation, late/repeated/out-of-order first flags, rapid reload, terminal failure/empty state, exact addon/hash/file/size distinctions, renewal-tolerant source identity and different episode rejection.
+- **PASS: 35/35 P3 source predicates** inspected/evaluated against the actual latest GitHub source through the connector (out-of-order append, pending-worker scope, reload/cache bypass, error/cancel, native/Android generation, provider/scroll/focus restoration, preserved Resume/next episode/TorBox/track/zoom, two cinematic fades and loading navigation). The corresponding `tests/playback_p3_source_contract.py` **is committed but was not executed as a Python command in a full checkout**. Source predicates are evidence of relevant control paths, **not equivalent to observing TV behavior**.
+- **PASS: repository comparison** from authorized start to reviewed pre-tracker HEAD was **17 commits ahead / zero behind**, with precisely `src/addons.c`, `src/app.c`, `src/stream_reload_p3.h`, `src/streams.c`, `src/streams.h` and three new P3 test files changed. **No `.github/workflows/*` file modified**, no merge, no explicit Actions dispatch, no APK.
+- **NOT RUN:** existing full `tests/fonte_ordem_addon.sh` or other SDL/integration suites; complete checked-out P3 Python test; Android NDK/SDL source compilation; Gradle/Kotlin/Media3 build; Android TV or hardware remote navigation; actual TorBox HTTP, addon timeout/order, HLS/DASH, HDR/DV, subtitle and ARC behavior. A GitHub-authenticated full checkout/Android SDK/device was unavailable in this execution environment. Native/Android compilation remains **P7**, integration and actual-device evidence **P7/P8**. Previously reported P0/P1/P2 checkpoints are preserved source baselines, not freshly rerun full suites.
+
+**Final source-acceptance ruling:** **No outstanding non-deferred P3 source blocker identified in the reviewed committed changes.** P3 is accepted **at the source implementation checkpoint only**, not asserted to be an Android APK/TV runtime PASS. Q18 remains explicitly deferred; pre-existing P0 Android VOD buffered-range rail is still assigned to P4/P7 rather than silently claimed fixed. **P4 SOURCE WORK MAY BEGIN** only as a separate authorized package. No P4 work performed in this session.
