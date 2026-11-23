@@ -90,6 +90,7 @@ jobs:
             p4TestOnly 'androidx.media3:media3-common:1.8.0'
             p4TestOnly 'androidx.media3:media3-datasource:1.8.0'
             p4TestOnly 'androidx.media3:media3-exoplayer:1.8.0'
+            p4TestOnly 'androidx.media3:media3-exoplayer-hls:1.8.0'
             p4TestOnly 'androidx.media3:media3-decoder:1.8.0'
             p4TestOnly 'androidx.media3:media3-extractor:1.8.0'
             p4TestOnly 'androidx.media3:media3-container:1.8.0'
