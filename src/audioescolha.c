@@ -174,13 +174,12 @@ int audioesc_escolher_com(const AudioCand *c, int n, const AudioLembrada *m,
 
 int audioesc_escolher_binge(const AudioCand *c, int n, const AudioLembrada *m, const char *binge,
                             const char *pref1, const char *pref2, const char *original, int *origem) {
-  // Explicit owner rule: original language first, then English then Malayalam.
-  // If the original language is unknown, keep the source default instead of
-  // guessing from unrelated title metadata or the user's subtitle language.
-  const char *prefs[3] = { original, "en", "ml" };
-  static const int ORIG[3] = { AUDIOESC_ORIGINAL, AUDIOESC_PREF1, AUDIOESC_PREF2 };
+  // P5 Q36: never auto-switch language when the actual original track is
+  // unavailable. English/Malayalam alternatives require an explicit user pick.
+  // Unknown original leaves Media3's selected track unchanged; output-route
+  // feasibility is separately checked by the Android sink policy.
   (void)pref1; (void)pref2;
-  int i, k, j;
+  int i;
   if (origem) *origem = AUDIOESC_NADA;
   if (!c || n < 1) return -1;
   if ((i = faixaExata(c, n, m, binge)) >= 0) {
@@ -196,13 +195,11 @@ int audioesc_escolher_binge(const AudioCand *c, int n, const AudioLembrada *m, c
     if (melhor >= 0) { if (origem) *origem = AUDIOESC_LEMBRADA; return melhor; }
   }
   if (!original || !original[0] || !strcmp(original, "none")) return -1;
-  for (k = 0; k < 3; k++) {
-    const char *p = prefs[k];
-    int repetida = 0;
-    if (!p || !p[0] || !strcmp(p, "none")) continue;
-    for (j = 0; j < k; j++) if (prefs[j] && prefs[j][0] && ling_casa(p, prefs[j]) && ling_casa(prefs[j], p)) repetida = 1;
-    if (repetida) continue;
-    if ((i = noIdioma(c, n, p)) >= 0) { if (origem) *origem = ORIG[k]; return i; }
+  // A missing/unplayable original must not silently select a dub.
+  i = noIdioma(c, n, original);
+  if (i >= 0) {
+    if (origem) *origem = AUDIOESC_ORIGINAL;
+    return i;
   }
   return -1;
 }
