@@ -1,5 +1,6 @@
 #include "streams.h"
 #include "fonteid_p1.h"
+#include "stream_reload_p3.h"
 #include "episodeicon.h"
 #include "mediaurl.h"
 #include "plrui.h"
@@ -130,6 +131,8 @@ static void medirCabecalho(void);
 #define C8(v) ((v)>255?255:(v))
 
 static Stream *lista;
+static NvP3Reload p3Reload;
+static void p3ReloadAbort(void);
 static int n = 0;
 // Workers publish source mutations; UI caches consume this revision.
 static _Atomic unsigned folhaRevisao;
@@ -362,6 +365,7 @@ static int fitLinhas(int i) {
   return r.razao == SF_BITRATE_ESTIMADO ? 2 : 1;
 }
 void stream_definir_alvo(const char *id) {
+  if (strcmp(alvoPedido, id ? id : "")) p3ReloadAbort();
   snprintf(alvoPedido, sizeof alvoPedido, "%s", id ? id : "");
 }
 int stream_lista_do_alvo(const char *id) {
@@ -713,6 +717,9 @@ static int selosPacoteDa(Stream *s);
 static void selosAgendar(int ini, int qtd);
 static void textoAddonLimpar(void);
 void stream_definir_lista_idade(const Stream *l, int qtd, Uint32 idade) {
+  // A different target/account may replace the list while a reload is staged.
+  // The first *fresh* batch moves phase to FRESH before clearing the old cards.
+  if (p3Reload.phase == NV_P3_RELOAD_RETAINED) p3ReloadAbort();
   int i, k = 0;
   Stream *nova = l && qtd > 0 ? malloc(sizeof(Stream) * (size_t)qtd) : NULL;
   if (l && qtd > 0 && !nova) return;
@@ -765,6 +772,7 @@ void stream_definir_lista_idade(const Stream *l, int qtd, Uint32 idade) {
 }
 
 void stream_invalidar(const char *porque) {
+  p3ReloadAbort();
   if (n > 0) {
     printf("[fonte] %d fontes de %s descartadas: %s\n", n,
            alvoLista[0] ? alvoLista : "(sem alvo)", porque ? porque : "");
@@ -809,6 +817,61 @@ static FolhaMemoria memoriasAba[13];
 static void memoriaFolhaGuardar(void);
 static void memoriaFolhaRestaurar(void);
 static void memoriaFolhaPrimeiro(void);
+
+// Q31–Q33: retain a frozen *display* list during a same-target refresh, but
+// never let a retained card open playback. Source ownership is a generation,
+// not an array index; focus is restored from exact release provenance.
+static Stream p3FocusSource;
+static int p3FocusSaved, p3RestorePending;
+static char p3AddonKey[FONTEFALHA_CHAVE], p3AddonName[96];
+static float p3ScrollSaved;
+static void p3ReloadAbort(void) {
+  nv_p3_reload_finish(&p3Reload);
+  p3FocusSaved = p3RestorePending = 0;
+  p3AddonKey[0] = p3AddonName[0] = 0;
+}
+int stream_recarregar_iniciar(const char *id) {
+  if (!aberta || canalFolha || !id || !stream_lista_do_alvo(id)) return 0;
+  if (p3Reload.phase == NV_P3_RELOAD_IDLE) {
+    p3FocusSaved = 0;
+    if (grupo == 1 && foco >= 0) {
+      int i = filtrado(foco);
+      if (i >= 0 && i < n) {
+        p3FocusSource = lista[i];
+        p3FocusSaved = 1;
+      }
+    }
+    snprintf(p3AddonKey, sizeof p3AddonKey, "%s",
+             filtro > 0 && filtro < nProvedores ? provChaves[filtro] : "");
+    snprintf(p3AddonName, sizeof p3AddonName, "%s",
+             filtro > 0 && filtro < nProvedores ? provedores[filtro] : "");
+    p3ScrollSaved = rolagem;
+    p3RestorePending = 1;
+  }
+  nv_p3_reload_begin(&p3Reload);
+  // Revoke any pending OK from native/touch/Android *before* starting network.
+  escolha = -1; escolhaGeracao = 0;
+  atomic_store(&escolhaAndroid, -1);
+  pthread_mutex_lock(&verTrava);
+  listaGeracao++;
+  atomic_fetch_add(&folhaRevisao, 1);
+  pthread_mutex_unlock(&verTrava);
+  return 1;
+}
+void stream_recarregar_primeira(void) {
+  if (!nv_p3_reload_first(&p3Reload)) return;
+  // Keep the saved focus/provider/search snapshot, replace *only* stale cards.
+  stream_definir_lista(NULL, 0);
+}
+void stream_recarregar_concluir(void) {
+  if (p3Reload.phase == NV_P3_RELOAD_RETAINED)
+    stream_recarregar_primeira(); // real empty/failure, never leave stale cards playable
+  nv_p3_reload_finish(&p3Reload);
+  atomic_fetch_add(&folhaRevisao, 1);
+}
+int stream_recarregar_retendo(void) {
+  return p3Reload.phase == NV_P3_RELOAD_RETAINED;
+}
 
 void stream_lista_acrescentar(const Stream *l, int qtd, int ordemAddon) {
   int i, k = 0, focoIdx = -1, linhaAntes = -1, total;
@@ -5468,6 +5531,7 @@ static void ponteiroPartesLinha(int row, int b) { (void)b; ptFoco = row; }
 static void ponteiroPartesFora(int a, int b) { (void)a; (void)b; ptAberto = 0; }
 int stream_partes_escolheu(int *fonte, PartesLista *l, int *k) {
   if (ptEscolhaFonte < 0) return 0;
+  if (p3Reload.phase == NV_P3_RELOAD_RETAINED) { ptEscolhaFonte = -1; return 0; }
   if (ptEscolhaGeracao != listaGeracao || ptEscolhaFonte >= n) {
     ptEscolhaFonte = -1;
     printf("[partes] the list changed under the pick; nothing to play\n");
@@ -5483,6 +5547,7 @@ int stream_partes_escolheu(int *fonte, PartesLista *l, int *k) {
 // O toque curto (ou o OK de sempre) numa linha da lista: a mesma acao de antes.
 static void okNaLinha(void) {
   int i = filtrado(foco);
+  if (i >= 0 && p3Reload.phase == NV_P3_RELOAD_RETAINED) return;
   if (i >= 0) { escolha=i; escolhaGeracao=listaGeracao; aberta=0; }
   else if (i <= -2) {
     OndeVer o;
@@ -5523,7 +5588,8 @@ void stream_folha_evento(const SDL_Event *e) {
   // SEGURAR OK NUMA FONTE (so onde partes_disponivel): o OK arma no KEYDOWN e
   // so age no KEYUP. Linha que nao aceita (canal, "Onde ver", cabecalho) segue
   // o caminho de antes, com o OK no KEYDOWN.
-  if (aberta && grupo == 1 && (e->type == SDL_KEYDOWN || e->type == SDL_KEYUP)) {
+  if (aberta && grupo == 1 && p3Reload.phase != NV_P3_RELOAD_RETAINED &&
+      (e->type == SDL_KEYDOWN || e->type == SDL_KEYUP)) {
     switch (ctxhold_evento(&folhaHold, e, linhaAceitaPartes(filtrado(foco)))) {
       case CTXH_CONSUMIDO:
         // OK afundou numa fonte: a busca comeca ja, na lista da memoria, para a
@@ -5549,12 +5615,19 @@ void stream_folha_evento(const SDL_Event *e) {
     recarregarFonteConfirmacao = 0;
   if(k==SDLK_ESCAPE || k==SDLK_AC_BACK || k==SDLK_BACKSPACE || k==SDLK_DELETE) {aberta=0;return;}
   if(k==SDLK_r) {recarregar=1;return;}
+  // An intentional navigation during the refresh overrides saved-focus replay.
+  if (p3RestorePending && (k==SDLK_UP || k==SDLK_DOWN || k==SDLK_LEFT ||
+                           k==SDLK_RIGHT)) p3RestorePending = 0;
   montar(automaticaDaFolha());
   int nf=nOrdem;
   if(grupo==1 && stream_detalhe_tecla_abre(e)) {
     int i=filtrado(foco);
     if(i>=0) detalheAbrir(&lista[i]);
     return;
+  }
+  // On an empty selector, Down/OK can still reach Reload with the remote.
+  if (!nf && grupo == 1 && (k == SDLK_DOWN || k == SDLK_RETURN || k == SDLK_KP_ENTER)) {
+    grupo = -1; foco = 0; return;
   }
   // Dynamic Clock: moving focus NEVER activates a different provider.
   // Down from Search, Reload or chips restores the active provider's last row.
@@ -5829,7 +5902,9 @@ int stream_folha_escolher_externo(int indice, unsigned geracao) {
   int valido = 0;
   if (!atomic_load(&androidSelectorAtivo)) return 0;
   pthread_mutex_lock(&verTrava);
-  if (atomic_load(&androidSelectorAtivo) && geracao == listaGeracao && indice >= 0 && indice < n) {
+  if (atomic_load(&androidSelectorAtivo) &&
+      nv_p3_reload_selectable(&p3Reload, geracao, listaGeracao) &&
+      indice >= 0 && indice < n) {
     atomic_store(&escolhaAndroidGeracao, geracao);
     atomic_store_explicit(&escolhaAndroid, indice, memory_order_release);
     valido = 1;
@@ -5860,7 +5935,7 @@ int stream_folha_escolheu(int *out) {
   if(escolha<0) return 0;
   // A resposta da busca pode substituir a lista entre o OK e este quadro.
   // O indice escolhido so vale na mesma lista e para o alvo pedido.
-  if (escolha >= n || escolhaGeracao != listaGeracao ||
+  if (escolha >= n || !nv_p3_reload_selectable(&p3Reload, escolhaGeracao, listaGeracao) ||
       (alvoPedido[0] && !stream_lista_do_alvo(alvoPedido))) {
     stream_folha_abrir();
     return 0;
