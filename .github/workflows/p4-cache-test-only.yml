@@ -8,6 +8,7 @@ on:
       - feature/official-stream-selector
     paths:
       - .github/workflows/p4-cache-test-only.yml
+      - tests/p4_cache_ci_policy.py
 
 permissions:
   contents: read
