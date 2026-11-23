@@ -6228,7 +6228,9 @@ void app_atualizar(float dt, Uint32 agora) {
     stream_folha_abrir();
   }
 
-  if (aguardandoFonte == 1 &&
+  // A same-target selector refresh may display previous cards temporarily.
+  // No autoplay/recovery decision may consume them as playable sources.
+  if (aguardandoFonte == 1 && !stream_recarregar_retendo() &&
       (addons_estado() != ADD_BUSCANDO ||
        ((player_id_canal()[0] || !fontefalha_ativa()) && autoParcialPronto()))) {
     int retomarDireto = retomarDiretoPendente;
