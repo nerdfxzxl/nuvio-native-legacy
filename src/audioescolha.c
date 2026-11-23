@@ -133,14 +133,14 @@ int audioesc_qualidade(const char *codec, int canais, const char *rotulo) {
   else if (strstr(b, "dts-hd ma") || strstr(b, "dts/hd") || strstr(b, "dts.hd") || strstr(b, "dts-ma")) score = 905;
   else if (strstr(b, "flac") || strstr(b, "alac") || strstr(b, "pcm_") || strstr(b, "a_pcm")) score = 890;
   else if (strstr(b, "dts") || strstr(b, " dca")) score = 790;
-  if (score == 790 && rotulo &&
-      (strstr(rotulo, "DTS-HD MA") || strstr(rotulo, "DTS HD MA") ||
-       strstr(rotulo, "dts-hd ma"))) score = 905;
   else if (strstr(b, "eac3") || strstr(b, "e-ac3") || strstr(b, "e-ac-3")) score = 750;
   else if (strstr(b, "ac3") || strstr(b, "ac-3")) score = 710;
   else if (strstr(b, "opus")) score = 670;
   else if (strstr(b, "aac")) score = 650;
   else if (strstr(b, "mp3") || strstr(b, "mpeg")) score = 520;
+  if (score == 790 && rotulo &&
+      (strstr(rotulo, "DTS-HD MA") || strstr(rotulo, "DTS HD MA") ||
+       strstr(rotulo, "dts-hd ma"))) score = 905;
   if (strstr(b, "atmos")) score += 18;
   if (canais > 0 && canais <= 16) score += canais * 3;
   return score;
