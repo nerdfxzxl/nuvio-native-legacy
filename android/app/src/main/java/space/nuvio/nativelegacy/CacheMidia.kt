@@ -1,16 +1,20 @@
 package space.nuvio.nativelegacy
 
+import android.net.Uri
 import android.util.Log
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSink
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
+import androidx.media3.datasource.TransferListener
 import androidx.media3.datasource.cache.CacheDataSink
 import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.cache.CacheKeyFactory
 import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
 import androidx.media3.datasource.cache.SimpleCache
+import androidx.media3.datasource.cache.CacheSpan
 import java.io.File
+import java.io.IOException
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
@@ -126,7 +130,77 @@ class CacheMidia private constructor(
         }
     }
 
-    private class SinkProtegido(cache: SimpleCache, estado: CacheSessao.Estado, private val pasta: File) : DataSink {
+
+    private val integridade = CacheSpanP4C(pasta)
+    private val guarda = Any()
+
+    private fun trecho(span: CacheSpan): CacheSpanP4C.Trecho? =
+        span.file?.let { CacheSpanP4C.Trecho(span.key, span.position, span.length, it) }
+
+    private fun podarRegistro() {
+        val todos = cache.keys.flatMap { k -> cache.getCachedSpans(k).mapNotNull { trecho(it) } }
+        integridade.reterApenas(todos)
+    }
+
+    private fun registrar(spec: DataSpec?) {
+        if (spec == null || liberacaoAgendada) return
+        val chave = CacheSessao.chave(sessao, spec.uri.toString(), escopo)
+        synchronized(guarda) {
+            if (liberacaoAgendada) return
+            try {
+                for (span in cache.getCachedSpans(chave).toList()) {
+                    val t = trecho(span)
+                    // Never replace an existing digest with corrupted bytes.
+                    if (t == null || (!integridade.conhecido(t) && !integridade.registrar(t))) {
+                        cache.removeSpan(span)
+                        if (t != null) integridade.esquecer(t)
+                    }
+                }
+                podarRegistro()
+            } catch (e: Exception) { estado.falhou(e) }
+        }
+    }
+
+    private fun validar(chave: String): Boolean {
+        synchronized(guarda) {
+            if (liberacaoAgendada || estado.desligado) return false
+            return try {
+                var fim = -1L
+                for (span in cache.getCachedSpans(chave).toList()) {
+                    val t = trecho(span)
+                    val valido = t != null && span.position >= fim &&
+                        span.position >= 0 && span.length > 0 &&
+                        span.position <= Long.MAX_VALUE - span.length &&
+                        integridade.valido(t)
+                    if (!valido) {
+                        cache.removeSpan(span)
+                        if (t != null) integridade.esquecer(t)
+                    } else fim = span.position + span.length
+                }
+                podarRegistro()
+                true
+            } catch (e: Exception) {
+                estado.falhou(e)
+                false
+            }
+        }
+    }
+
+    private fun descartarChave(chave: String) {
+        synchronized(guarda) {
+            if (liberacaoAgendada) return
+            try {
+                for (span in cache.getCachedSpans(chave).toList()) {
+                    cache.removeSpan(span)
+                    trecho(span)?.let { integridade.esquecer(it) }
+                }
+                podarRegistro()
+            } catch (e: Exception) { estado.falhou(e) }
+        }
+    }
+
+    private class SinkProtegido(cache: SimpleCache, estado: CacheSessao.Estado, private val pasta: File,
+                                private val registrar: (DataSpec?) -> Unit) : DataSink {
         // bufferSize 0: Escrita buffers (see CacheSessao.Escrita).
         private val interno = CacheDataSink(cache, CacheDataSink.DEFAULT_FRAGMENT_SIZE, 0)
         private var spec: DataSpec? = null
@@ -143,7 +217,12 @@ class CacheMidia private constructor(
             }
             escrita.escrever(buffer, offset, length)
         }
-        override fun close() { escrita.fechar(); spec = null }
+        override fun close() {
+            val terminado = spec
+            escrita.fechar()
+            spec = null
+            registrar(terminado)
+        }
     }
 
     fun fabrica(upstream: DataSource.Factory): DataSource.Factory =
