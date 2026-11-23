@@ -371,6 +371,8 @@ object NvPlayer {
         }
     }
     private var cacheMidia: CacheMidia? = null
+    // Snapshot native provenance before queuing the open.
+    @Volatile private var cacheIdentidadeArmada: CacheProvaP4C.Identidade? = null
     private var cacheEstado = CacheSessao.DESLIGADO
     private var cacheTiques = 0
     // Volume of this open (0..200) and the processor of its audio sink.
@@ -1347,6 +1349,11 @@ object NvPlayer {
     @JvmStatic fun kbps(k: Int) { kbpsDeclarado = k.coerceIn(0, 400_000) }
     @JvmStatic fun cache(mb: Int) { cacheMbPedido = mb.coerceIn(0, CacheSessao.AUTOMATICO_MB) }
     @JvmStatic fun cacheTitle(id: String) { tituloPedido = id }
+    @JvmStatic fun cacheIdentity(conta: String, perfil: Int, catalogo: String,
+                                  addon: String, torrent: String, arquivo: Int, bytes: Long) {
+        cacheIdentidadeArmada = CacheProvaP4C.Identidade(
+            conta, perfil, catalogo, addon, torrent, arquivo, bytes).takeIf { it.forte() }
+    }
     // Profile switch (C side): the kept cache belongs to the old profile.
     @JvmStatic fun descartarGuardado() { principal.post { CacheMidia.descartar("profile switch"); esquecerQuadro() } }
     @JvmStatic fun ganho(pct: Int) {
@@ -1486,7 +1493,8 @@ object NvPlayer {
     private fun criarPlayer(act: Activity, url: String, cabecalhos: String, preset: Int,
                             pedidoCache: Int, preparando: Boolean, geracao: Int, construir: Boolean = true,
                             idiomaAudio: String = "", titulo: String = "", kbps: Int = kbpsDeclarado,
-                            profile: RamBufferProfile = activeBufferProfile): RecursosPlayer {
+                            profile: RamBufferProfile = activeBufferProfile,
+                             identidadeCache: CacheProvaP4C.Identidade? = null): RecursosPlayer {
         // Em aparelho de pouca RAM (ActivityManager: isLowRamDevice,
         // memoryClass <= 128 MB ou totalMem <= 3 GiB; a TCL de 2,4 GB tem
         // memoryClass 192 e so cai pelo totalMem)
@@ -1554,7 +1562,11 @@ object NvPlayer {
                 }
                 // Session-only disk cache until content provenance and cached
                 // byte representation can be proved independently of URL.
-                val (c, estado) = CacheMidia.criar(act.cacheDir, pedidoCache, aoFalhar)
+                val escopo = CacheProvaP4C.escopoCabecalhos(
+                    if (ua != null) props + ("User-Agent" to ua) else props)
+                val prova = identidadeCache?.takeIf { it.forte() && it.catalogo == titulo }?.assinatura()
+                val (c, estado) = CacheMidia.criar(act.cacheDir, pedidoCache, aoFalhar,
+                    listOf(prova ?: "unverified", escopo).joinToString(":"))
                 r.cache = c; r.cacheEstado = estado
             }
             r.rede = { token ->
@@ -1631,7 +1643,8 @@ object NvPlayer {
     private fun abrirMain(url: String, cabecalhos: String, reabrindo: Boolean,
                           inicioMs: Int, geracao: Int, pedido: Int, fracao: Int = 0, esperaInicio: Long = -1L,
                           preparada: Preparo? = null, mesmaFonte: Boolean = false,
-                          capturaTentada: Boolean = false) {
+                          capturaTentada: Boolean = false,
+                          identidadeCache: CacheProvaP4C.Identidade? = null) {
         if (pedido != pedidos.get()) {
             preparada?.recursos?.let { soltarRecursosPreparo(it) }
             return
@@ -1704,7 +1717,8 @@ object NvPlayer {
             quadrosPerdidos = 0L; statsTiques = 0
             val titulo = tituloPedido
             tituloAberto = ""
-            val r = preparada?.recursos ?: criarPlayer(act, url, cabecalhos, bufferPreset, cacheMbPedido, false, geracao, titulo = titulo)
+            val r = preparada?.recursos ?: criarPlayer(act, url, cabecalhos, bufferPreset, cacheMbPedido, false, geracao,
+                titulo = titulo, identidadeCache = identidadeCache)
             if (preparada != null) {
                 medidorToken = medidor.sessao(geracao)
                 r.promover(medidorToken)
