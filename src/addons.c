@@ -844,10 +844,12 @@ AddEstado addons_estado(void) {
       // agora zeraria o foco da folha, a fonte tocando e a verificacao em
       // curso — exatamente o que a publicacao por addon existe para preservar.
       if (!pendId[0] && !progPublicou) {
+        stream_recarregar_primeira();
         if (alvoVod())
           stream_definir_lista_idade(resultado, nResultado, SDL_GetTicks() - resultadoQuando);
         else stream_definir_lista(resultado, nResultado);
       }
+      if (!pendId[0]) stream_recarregar_concluir();
       if (progPublicou)
         printf("[addons] busca %s em %u ms\n", addons_busca_incompleta() ? "parcial encerrada" : "completa",
                (unsigned)(SDL_GetTicks() - progInicio));
@@ -917,6 +919,7 @@ static void progDrenar(void) {
         printf("[plugins] primeira fonte de plugin em %u ms: %s\n",
                (unsigned)(SDL_GetTicks() - progInicio), local[q].a[0].provedor);
       }
+      stream_recarregar_primeira();
       stream_lista_acrescentar(local[q].a, local[q].n, local[q].idx);
       progPublicou = 1;
       if (progPubN < (int)(sizeof progPub / sizeof *progPub)) {
@@ -3884,6 +3887,7 @@ static void dispararBusca(void) {
   }
   if (!pedido || pthread_create(&fio, NULL, buscar, pedido) != 0) {
     free(pedido); fioVivo = 0; progLigado = 0; estado = ADD_PARADO;
+    stream_recarregar_concluir(); // failed launch never re-enables stale cards
   }
 }
 
@@ -3894,7 +3898,7 @@ void addons_definir_origem(const char *base) {
 }
 
 static void buscarPedido(const char *imdb, const char *tipo, int forcar) {
-  int serie, renovar;
+  int serie, renovar, p3Retendo = 0;
   char id[sizeof alvoId];
   if (!imdb || !*imdb) return;
   stream_filtro_tipo(tipo);
@@ -3942,6 +3946,12 @@ static void buscarPedido(const char *imdb, const char *tipo, int forcar) {
   // id cru agora mesmo; aqui ele vira o que de fato foi perguntado.
   if (strcmp(id, imdb)) stream_definir_alvo(id);
   if (fioVivo) {
+    // A same-target Reload can be queued while addons are still responding.
+    // Keep cards visible but revoke their selection immediately; the old
+    // worker's late arrivals are discarded while pendId is populated.
+    if (forcar && !pendId[0] && !strcmp(id, alvoId) &&
+        !strcmp(tipo ? tipo : "movie", alvoTipo) && escopoAindaAtual(&fioEscopo))
+      p3Retendo = stream_recarregar_iniciar(id);
     if (forcar || !escopoAindaAtual(&fioEscopo) || strcmp(id, alvoId) || strcmp(tipo ? tipo : "movie", alvoTipo)) {
       snprintf(pendId, sizeof pendId, "%s", imdb);
       snprintf(pendTipo, sizeof pendTipo, "%s", tipo ? tipo : "movie");
@@ -3949,7 +3959,7 @@ static void buscarPedido(const char *imdb, const char *tipo, int forcar) {
       snprintf(pendBase, sizeof pendBase, "%s", alvoBase);
       // The running search is now obsolete; its partial list must not feed
       // Play while the new target waits for this worker to finish (#413).
-      stream_invalidar("pending source target");
+      if (!p3Retendo) stream_invalidar("pending source target");
     } else if (progLigado && !pendId[0] && !stream_lista_do_alvo(id))
       // O MESMO alvo, com a busca dele no ar, e a lista da tela nao e mais
       // dela: devolve o que ja chegou em vez de esperar (ou perder) — senao so
@@ -3966,7 +3976,8 @@ static void buscarPedido(const char *imdb, const char *tipo, int forcar) {
   // Pedir de novo a lista que ainda esta ativa e renovar/recarregar, inclusive
   // depois de falha de reproducao: esse pedido continua indo a rede.
   renovar = forcar || (stream_n() > 0 && stream_lista_do_alvo(alvoId));
-  stream_definir_lista(NULL, 0);
+  if (forcar) p3Retendo = stream_recarregar_iniciar(id);
+  if (!p3Retendo) stream_definir_lista(NULL, 0);
   { int t = 0, e = 0;
     idbase_episodio(alvoId, &t, &e);
     debrid_definir_episodio(t, e); }
