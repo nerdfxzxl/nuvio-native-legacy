@@ -49,10 +49,10 @@ object CacheSessao {
     // A signed URL is not durable media identity. Every playback has a
     // separate cache: even in one session, two signed URLs must never alias.
     // Hash the request URI so Media3's disk index stores no TorBox tokens.
-    fun chave(sessao: String, uri: String): String {
+    fun chave(sessao: String, uri: String, escopo: String = ""): String {
         require(nomeValido(sessao))
         val digest = MessageDigest.getInstance("SHA-256")
-            .digest(uri.substringBefore('#').toByteArray(Charsets.UTF_8))
+            .digest((uri.substringBefore('#') + "\u0000" + escopo).toByteArray(Charsets.UTF_8))
         val hex = "0123456789abcdef"
         return buildString {
             append("v2:"); append(sessao); append(':')
