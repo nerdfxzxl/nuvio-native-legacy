@@ -623,7 +623,7 @@ object NvPlayer {
         }
     }
 
-    private class SeletorAudioPreparo(context: Context, private val preferencia: String) :
+    private class SeletorAudioPreparo(private val context: Context, private val preferencia: String) :
         DefaultTrackSelector(context) {
 
         private data class FaixaAudio(
