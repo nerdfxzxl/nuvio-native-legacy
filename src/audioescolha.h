@@ -1,22 +1,12 @@
-// A ORDEM EM QUE O AUDIO E ESCOLHIDO SOZINHO (dono, 15/10/2026), em todos os
-// alvos:
-//   1. a faixa que a pessoa escolheu a mao neste titulo (o filme, ou a serie
-//      inteira: os outros episodios tambem; troca de fonte, reconexao,
-//      retomada, ida e volta do convertido). Gravada por perfil
-//      (audiomemoria.h), como o NuvioTV oficial (TrackPreferenceDataStore,
-//      por contentId): fechar o app ou abrir outro titulo no meio nao a perde.
-//      Com o MESMO bingeGroup da fonte em que ela foi escolhida (a mesma
-//      release, o mesmo arranjo de faixas) vale a faixa exata pelo numero;
-//      em outra fonte, a parecenca de idioma/rotulo/codec/canais;
-//   2. o idioma de audio preferido (ling_audio);
-//   3. o segundo idioma de audio (ling_audio2);
-//   4. o idioma original do titulo (ling_original, do TMDB);
-//   5. nada: fica a que o arquivo/player escolheu.
-// Em cada idioma (2-4), uma faixa que nao e DTS/TrueHD ganha; DTS/TrueHD so
-// quando e a unica naquele idioma. No Android (o FFmpeg do player decodifica
-// tudo) nao ha essa regra: o alvo marca dts = 0 e vale a primeira do idioma. Uma faixa que o alvo nao consegue tocar
-// (`pode` = 0: DTS/TrueHD no .wgt, ou no .tpk com a conversao desligada) nao
-// entra. Quem toca a escolhida (converter ou nao) e o alvo.
+// P5 Q36 native automatic audio policy:
+//   1. Retain the user's explicit remembered track, when positively matched.
+//   2. Prefer the highest-ranked genuinely supported original-language track.
+//   3. If the original is absent/unknown/unsupported, leave current selection
+//      unchanged. Do not silently substitute English/Malayalam or another dub.
+// Android must additionally validate renderer AND output-route compatibility;
+// this pure native scorer cannot prove an HDMI ARC path is lossless.
+// Remembered selections are scoped by title/profile and optional bingeGroup.
+// No new source or release is ever selected from this module.
 #ifndef NV_AUDIOESCOLHA_H
 #define NV_AUDIOESCOLHA_H
 
