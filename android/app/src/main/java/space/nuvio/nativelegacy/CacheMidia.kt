@@ -483,9 +483,13 @@ class CacheMidia private constructor(
                 }
 
                 override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+                    // Opening is not sufficient: a newer source generation can
+                    // cancel while Media3 is reading an old cached or HTTP span.
+                    conferirCancelamento()
                     val d = atual ?: throw IOException("DataSource closed")
                     return try {
                         val n = d.read(buffer, offset, length)
+                        conferirCancelamento()
                         if (n > 0 && !noCache && !respostaAindaCompativel(d)) {
                             // Never combine the already delivered cached prefix
                             // with a newly changed upstream object. A new player
@@ -500,6 +504,7 @@ class CacheMidia private constructor(
                         if (noCache || e is RepresentacaoMudou || !podeVoltarRede(e)) throw e
                         usarRede()
                         val n = atual!!.read(buffer, offset, length)
+                        conferirCancelamento()
                         if (n > 0) consumidos += n
                         n
                     }
