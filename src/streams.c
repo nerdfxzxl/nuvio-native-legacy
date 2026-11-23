@@ -7062,12 +7062,6 @@ static void corpoFolha(float x, float w, float anim, Uint32 agora, int ilha) {
       gfx_cor((GfxRect){tx,sy+116.0f,rw*.68f,12.0f},.30f,1,1,1,shade*.62f);
     }
   }
-  // Retained cards are display-only until a fresh response; the rotating
-  // refresh arrow above conveys activity, this label explains why cards stay.
-  if (p3Reload.phase == NV_P3_RELOAD_RETAINED && nf)
-    txt_desenhar_alpha(txt_linha_corta(TXT_PG_FIM,
-      i18n("Refreshing streams… Previous results cannot be played yet."),
-      170,175,184,255,rw-42),tx,folhaBase-30.0f,anim);
   // CABECALHOS DE GRUPO: "4K  ULTRA HD ........ 3 fontes", com um fio embaixo.
   for(int g=0;g<FOLHA_GRUPOS;g++){
     float y; char q[48];
@@ -7513,6 +7507,15 @@ static void corpoFolha(float x, float w, float anim, Uint32 agora, int ilha) {
                            235,235,235,255,rw-52),tx,FOLHA_TOPO+14.0f,anim);
       txt_bloco(TXT_PG_FIM,s,196,199,204,tx,FOLHA_TOPO+57.0f,rw-52,28,anim,3);
     } else txt_bloco(TXT_PG_FIM,s,196,199,204,tx,FOLHA_TOPO+20,rw-52,28,anim,3);
+  }
+  // Overlay the message *after* card rendering: stale cards stay visibly
+  // present, but the user can see why selecting them is temporarily disabled.
+  if (p3Reload.phase == NV_P3_RELOAD_RETAINED && nf) {
+    GfxRect aviso = {lx + 10.0f, folhaBase - 67.0f, rw - 20.0f, 50.0f};
+    gfx_cor(aviso, .22f, 0.0f,0.0f,0.0f, .90f * anim);
+    txt_desenhar_alpha(txt_linha_corta(TXT_PG_FIM,
+      i18n("Refreshing streams… Previous results cannot be played yet."),
+      200,202,207,255,rw-58),aviso.x+18.0f,aviso.y+14.0f,anim);
   }
   anim=animLista; lx-=dxLista; tx-=dxLista; tr-=dxLista;
   // Na ilha, de volta ao recorte dela (plrilha corta a forma inteira).
