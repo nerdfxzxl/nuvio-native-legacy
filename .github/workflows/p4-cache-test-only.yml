@@ -75,7 +75,11 @@ jobs:
           printf "rootProject.name='p4-test-deps'\n" > "$deps/settings.gradle"
           cat > "$deps/build.gradle" <<'GRADLE'
           repositories { google(); mavenCentral() }
-          configurations { p4TestOnly }
+          configurations { p4TestOnly; p4KotlinTools }
+          configurations.p4KotlinTools.attributes.attribute(
+            org.gradle.api.attributes.java.TargetJvmEnvironment.TARGET_JVM_ENVIRONMENT_ATTRIBUTE,
+            objects.named(org.gradle.api.attributes.java.TargetJvmEnvironment, 'standard-jvm')
+          )
           // Guava publishes Android and JRE variants; select Android explicitly.
           configurations.p4TestOnly.attributes.attribute(
             org.gradle.api.attributes.java.TargetJvmEnvironment.TARGET_JVM_ENVIRONMENT_ATTRIBUTE,
@@ -85,9 +89,15 @@ jobs:
             p4TestOnly 'androidx.annotation:annotation-jvm:1.6.0'
             p4TestOnly 'androidx.annotation:annotation-experimental:1.4.0'
             p4TestOnly 'com.google.guava:guava:33.3.1-android'
+            p4KotlinTools 'org.jetbrains.kotlin:kotlin-stdlib:2.0.21'
+            p4KotlinTools 'org.jetbrains.kotlin:kotlin-compiler-embeddable:2.0.21'
+            p4KotlinTools 'org.jetbrains.kotlin:kotlin-script-runtime:2.0.21'
           }
           tasks.register('resolveP4') {
-            doLast { configurations.p4TestOnly.files.each { println "Test dependency: " + it.name } }
+            doLast {
+              configurations.p4TestOnly.files.each { println "Android test dependency: " + it.name }
+              configurations.p4KotlinTools.files.each { println "Host compiler dependency: " + it.name }
+            }
           }
           GRADLE
           bash android/gradlew -p "$deps" resolveP4 --no-daemon
