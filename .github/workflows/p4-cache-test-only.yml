@@ -66,6 +66,27 @@ jobs:
           echo 'Gradle production dependencies resolved'
           grep -E 'media3-(exoplayer|datasource):1\.8\.0' "$RUNNER_TEMP/p4-deps.log" | head -n 8 || true
 
+      - name: Resolve pinned AndroidX harness JARs absent from default app graph
+        shell: bash
+        run: |
+          set -euo pipefail
+          deps="$RUNNER_TEMP/p4-test-deps"
+          mkdir -p "$deps"
+          printf "rootProject.name='p4-test-deps'\n" > "$deps/settings.gradle"
+          cat > "$deps/build.gradle" <<'GRADLE'
+          repositories { google(); mavenCentral() }
+          configurations { p4TestOnly }
+          dependencies {
+            p4TestOnly 'androidx.annotation:annotation-jvm:1.6.0'
+            p4TestOnly 'androidx.annotation:annotation-experimental:1.4.0'
+            p4TestOnly 'com.google.guava:guava:33.3.1-android'
+          }
+          tasks.register('resolveP4') {
+            doLast { configurations.p4TestOnly.files.each { println "Test dependency: " + it.name } }
+          }
+          GRADLE
+          bash android/gradlew -p "$deps" resolveP4 --no-daemon
+
       - name: Compile actual cache/player source against API35 and Media3; run JVM regressions
         shell: bash
         env:
