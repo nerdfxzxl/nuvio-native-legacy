@@ -1771,7 +1771,7 @@ object NvPlayer {
             }
             aplicarGanho()
             relatarCache(minha)
-            val ouv = ouvinte(minha, geracao); val ana = analitico(minha)
+            val ouv = ouvinte(minha, geracao); val ana = analitico(minha, geracao)
             ouvinteAtual = ouv; analiticoAtual = ana
             p.addListener(ouv)
             p.addAnalyticsListener(ana)
@@ -2568,7 +2568,8 @@ object NvPlayer {
         }
     }
 
-    private fun analitico(minha: Int) = object : AnalyticsListener {
+    private fun analitico(minha: Int, geracaoDaAbertura: Int) = object : AnalyticsListener {
+        private var ultimoFormatoEntrada: Format? = null
         // Per listener/session and callback/exception type, on the main looper.
         // First occurrence immediately, then at most once every 30 seconds.
         private val errosAudio = HashMap<Pair<String, Class<*>>, Pair<Long, Long>>()
@@ -2593,11 +2594,40 @@ object NvPlayer {
 
         override fun onAudioInputFormatChanged(eventTime: AnalyticsListener.EventTime, format: Format,
                                                decoderReuseEvaluation: DecoderReuseEvaluation?) {
+            ultimoFormatoEntrada = format
             relatarAudio(minha, "entrada mime=${format.sampleMimeType} canais=${format.channelCount} hz=${format.sampleRate}")
         }
 
         override fun onAudioTrackInitialized(eventTime: AnalyticsListener.EventTime, audioTrackConfig: AudioSink.AudioTrackConfig) {
+            if (!atual(minha)) return
             relatarAudio(minha, "AudioTrack encoding=${audioTrackConfig.encoding} hz=${audioTrackConfig.sampleRate} canaisMask=${audioTrackConfig.channelConfig} offload=${audioTrackConfig.offload} tunneling=${audioTrackConfig.tunneling}")
+            // Compare the REAL Media3 AudioTrack configuration, not only the
+            // source codec / renderer / route's advertised capabilities.
+            val src = ultimoFormatoEntrada ?: player?.audioFormat ?: return
+            val sink = audioTrackConfig
+            val enc = sink.encoding
+            val pcm = enc == android.media.AudioFormat.ENCODING_PCM_16BIT ||
+                enc == android.media.AudioFormat.ENCODING_PCM_8BIT ||
+                enc == android.media.AudioFormat.ENCODING_PCM_24BIT_PACKED ||
+                enc == android.media.AudioFormat.ENCODING_PCM_32BIT ||
+                enc == android.media.AudioFormat.ENCODING_PCM_FLOAT
+            val cap = AudioOutputProbeP5A.inspect(activity, src, true,
+                amplificacaoDb != 0 || baixoDb != 0 || centroDb != 0 || noiteNivel != 0)
+            val c = cap.result
+            val maskChannels = Integer.bitCount(sink.channelConfig)
+            val failed = if (pcm) {
+                !c.pcmCompatible || sink.sampleRate != src.sampleRate ||
+                    src.channelCount <= 0 || maskChannels != src.channelCount ||
+                    !c.outputFaithfulCandidate
+            } else {
+                !c.encodedPassthrough || enc != AudioOutputProbeP5A.encoding(src.sampleMimeType.orEmpty())
+            }
+            if (failed) {
+                relatarAudio(minha, "Q36 sink incompatible: route=${cap.routeType} encoded=${!pcm} " +
+                    "in=${src.channelCount}ch/${src.sampleRate}Hz out=${maskChannels}ch/${sink.sampleRate}Hz " +
+                    "outputEncoding=$enc; blocking silent downmix or lossy replacement")
+                ev(EV_AUDIO_SAIDA_INCOMPATIVEL, 0, 0, geracaoDaAbertura)
+            }
         }
 
         override fun onAudioPositionAdvancing(eventTime: AnalyticsListener.EventTime, playoutStartSystemTimeMs: Long) {
