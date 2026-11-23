@@ -19,8 +19,8 @@ int cacheboost_suportado(void);
 
 // --- seek cache --------------------------------------------------------------
 // Settings option index (Ajustes "Cache de seek em disco") -> MB requested.
-#define CB_CACHE_OPCOES 4
-int cacheboost_cache_mb(int opcao);   // 0 (off), 256, 512, 1024; out of range -> 0
+#define CB_CACHE_OPCOES 5
+int cacheboost_cache_mb(int opcao);   // 0, 256, 512, 1024, 2048 (auto); invalid -> 0
 
 // What the backend did with the request in the CURRENT session.
 enum {
