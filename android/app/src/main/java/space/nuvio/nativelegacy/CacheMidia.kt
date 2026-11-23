@@ -115,7 +115,7 @@ class CacheMidia private constructor(
         private fun vigiar() {
             fio.schedule({
                 val livre = try { raizVaga?.usableSpace ?: 0L } catch (e: SecurityException) { 0L }
-                if (vaga.vencer(System.currentTimeMillis(), livre)) Log.i(TAG, "kept cache dropped: time or space")
+                if (vaga.vencer(android.os.SystemClock.elapsedRealtime(), livre)) Log.i(TAG, "kept cache dropped: time or space")
                 else if (vaga.titulo() != null) vigiar()
             }, VIGIA_MS, TimeUnit.MILLISECONDS)
         }
@@ -175,6 +175,40 @@ class CacheMidia private constructor(
 
     private val integridade = CacheSpanP4C(pasta)
     private val guarda = Any()
+    // A previously verified signed URL is only an immutable *key* in our
+    // private SimpleCache. It is never used as an HTTP request on renewal.
+    private fun chaveBase() = CacheSessao.chave(sessao, urlBase, escopo)
+    private fun chaveGuarda(): String? =
+        if (prova != null && tituloProva.isNotEmpty() && urlBase.isNotEmpty())
+            prova + ":" + escopo else null
+
+    @Volatile private var urlPendente: String? = null
+    @Volatile private var aliasAtiva: String? = null
+    private fun chaveUrl(url: String): String =
+        if (aliasAtiva == url && urlBase.isNotEmpty()) chaveBase()
+        else CacheSessao.chave(sessao, url, escopo)
+
+    // Called from the NEW Media3 loader. The retired player has fully
+    // stopped by the time it placed this cache in the warm slot. No network
+    // request may occur on the main Android UI thread.
+    private fun validarRetomada(upstream: DataSource.Factory, spec: DataSpec): Boolean? {
+        synchronized(guarda) {
+            val candidato = urlPendente ?: return null
+            if (candidato != spec.uri.toString()) return null
+            urlPendente = null // exactly one validation per retained ownership
+            val old = chaveBase()
+            val aprovado = !liberacaoAgendada && validar(old) &&
+                spansExistem(old) && validarRemoto(upstream, spec)
+            if (aprovado) {
+                aliasAtiva = candidato
+            } else {
+                aliasAtiva = null
+                descartarChave(old)
+                representacao = null
+            }
+            return aprovado
+        }
+    }
 
     private fun trecho(span: CacheSpan): CacheSpanP4C.Trecho? =
         span.file?.let { CacheSpanP4C.Trecho(span.key, span.position, span.length, it) }
@@ -186,7 +220,7 @@ class CacheMidia private constructor(
 
     private fun registrar(spec: DataSpec?) {
         if (spec == null || liberacaoAgendada) return
-        val chave = CacheSessao.chave(sessao, spec.uri.toString(), escopo)
+        val chave = chaveUrl(spec.uri.toString())
         synchronized(guarda) {
             if (liberacaoAgendada) return
             try {
@@ -320,7 +354,7 @@ class CacheMidia private constructor(
                 SinkProtegido(cache, estado, pasta) { registrar(it) }
             }
             .setCacheKeyFactory(CacheKeyFactory { spec ->
-                CacheSessao.chave(sessao, spec.uri.toString(), escopo)
+                chaveUrl(spec.uri.toString())
             })
             .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
 
@@ -360,10 +394,12 @@ class CacheMidia private constructor(
                 override fun open(dataSpec: DataSpec): Long {
                     original = dataSpec
                     consumidos = 0L
-                    chave = CacheSessao.chave(sessao, dataSpec.uri.toString(), escopo)
+                    val retomadaValidada = validarRetomada(upstream, dataSpec)
+                    chave = chaveUrl(dataSpec.uri.toString())
                     val haviaSpans = spansExistem(chave)
                     noCache = !validar(chave) ||
-                        (haviaSpans && !validarRemoto(upstream, dataSpec))
+                        (haviaSpans && retomadaValidada != true &&
+                         !validarRemoto(upstream, dataSpec))
                     if (haviaSpans && noCache) {
                         descartarChave(chave)
                         representacao = null
