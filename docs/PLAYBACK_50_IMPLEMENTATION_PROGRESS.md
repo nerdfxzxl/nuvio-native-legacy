@@ -1,7 +1,7 @@
 # Nuvio Legacy — Q01–Q50 Implementation Progress
 
 **Last updated:** 2026-11-23
-**Status:** P0/P1 checkpointed. P2, P3 and **P4 SOURCE ACCEPTED after verified Media3/Q42 test-only CI**. Q18 remains owner-deferred. **P5 SOURCE WORK AUTHORIZED, NOT STARTED**. Full Android/NDK/Media3 app + real device verification pending P7/P8; no APK built for these checkpoints.
+**Status:** P0/P1 checkpointed; P2, P3 and **P4 SOURCE ACCEPTED after verified Media3/Q42 test-only CI**. Q18 owner-deferred. **P5-A PARTIAL: first PCM processing fix committed; P5 SOURCE ACCEPTANCE FAILED, P6 NOT AUTHORIZED.** Full Android/NDK/Media3 app + TV/device verification pending P7/P8; no P5 APK or Actions.
 **Branch:** `feature/official-stream-selector` (not `master`).
 **Prior feature baseline:** `6171645e05d2137d2a1e9ed1b113687246acd7ca` — docs: lock subtitle filename Format A and unbuilt wrapping/parser test handoff.
 **Latest planning commits:** master specification `7d3c81d81aee309843dd2f0b767c6ef3c2d59723`; work packages `b059a7a9a42ae2b91d87bff0a03bfeb314d0f647`; this progress tracker is an additional documentation-only commit. **Recheck actual HEAD at the beginning of every session.**
@@ -27,7 +27,7 @@
 | P2 | Cinematic/arc/status/speed | **SOURCE ACCEPTED (P2-D final review); Q18 explicitly deferred, runtime gates pending** | Original P2, P2-A/B/C plus 15 P2-D source/test commits; full register below | P2-D 41/41 host C11 GCC + Clang ASan/UBSan; P2-C 15/15; P2-B Kotlin 17/17; live source checks; **no NDK/Media3 build or TV tests** |
 | P3 | Selector/reload/recovery | SOURCE ACCEPTED | 17 source/test commits through `03acb8861d583ef7fec6c10d65673399bd3e7343` | Final review below, hardware pending |
 | P4 | Buffer/network/cache/seek | **SOURCE ACCEPTED — Q18 explicitly deferred; P7/P8 full integration/device gates** | P4-D/A/B, P4-C and test-only CI commits; exact SHAs below | Actual API35/Media3 Kotlin compile PASS; 18/18 P4-C contracts; 36 proof checks; disk integrity/session JVM PASS; **10/10 Robolectric real Media3 cache adapter regressions**; native VOD host PASS; no APK or TV verification |
-| P5 | Fidelity/HDR/surface/audio route | **AUTHORIZED FOR SOURCE WORK; NOT STARTED** | — | P4 acceptance permits P5 source phase only, not an APK build |
+| P5 | Fidelity/HDR/surface/audio route | **PARTIAL — P5-A PCM correction only; P5 SOURCE ACCEPTANCE FAILED** | `4454a3293540f7755e302ec9e320fe661e207872`, `2c12d4d0d3e2ee2d00a5e14819b418e83458b405` + checkpoint below | 14/14 targeted source predicates/independent JS numeric simulations; **NOT** Media3 JVM, actual Android compiler, physical TV or ARC; P5-B/C/D open |
 | P6 | Background/credits/post-play | NOT STARTED | — | — |
 | P7 | Integration/regression, post-#134 | NOT STARTED | — | — |
 | P8 | One cached APK + device tests | BLOCKED — NEEDS BUILD AUTHORIZATION | — | — |
@@ -41,7 +41,7 @@
 
 ## Immediate next action
 
-Continue **P4-C only** from the exact checkpoint at the end of this tracker. Complete durable release/account/episode/file provenance and validated HTTP/cache byte representation before P4 final acceptance. Android-wide compilation and device validation remain assigned to P7/P8; do not start P5.
+Continue **P5-A** from the latest checkpoint below. Validate and complete original-language/maximum-quality supported-audio output, capability-aware passthrough/PCM and explicit Audio Playback Error. Re-run the previously failing GanhoAudioProcessor Kotlin replay against production Media3 before calling P5-A complete. Then proceed with P5-B/C/D and final P5 source review; **do not start P6 or build/trigger Actions**.
 
 - **2026-11-22 / P2 source checkpoint:** Added reusable native animated loading arc, source-scoped Media3 startup phase events, measured byte-rate and P2P engine telemetry, first-frame gated fades and native tests. This is NOT the complete P2 acceptance gate; see appended P2 checkpoint.
 - **2026-11-22 / P1 source implementation:** Completed 13 scoped source commits, identity harness compilation and 32/32 source assertions; see detailed checkpoint. No GitHub Actions, APK or workflow changes.
@@ -715,3 +715,38 @@ Direct log evidence from actual checkout and CI runner:
 **FINAL VERDICT: P4 SOURCE IMPLEMENTATION ACCEPTED — Q18 explicitly deferred; full Android integration and device verification pending P7/P8. P5 SOURCE WORK AUTHORIZED.**
 
 Older P4-C and P4 final reviews marked FAILED or PARTIAL above are historical checkpoints **superseded by this final successful source-review checkpoint**. Continue with P5 only as separately authorized source work; do not trigger an APK build without separate owner consent.
+
+## P5-A first bounded source checkpoint + P5 source gate review — 2026-11-23 (PARTIAL; NOT ACCEPTED)
+
+**Repository/branch:** `nerdfxzxl/nuvio-native-legacy`, `feature/official-stream-selector`; verified starting HEAD `5d1b0afaa618d3b6ac3f0adca71d159ed3cabe29`. P4 source was accepted at this starting HEAD. P5 work below is *only the first audio-processor correction*; none of P5-A/B/C/D may be presented as complete.
+
+**Full owner specification located:** `NUVIO_LEGACY_MASTER_PLAYBACK_SPEC_Q01-Q50_2026-11-22.md` (441-line approved expanded spec) in the owner's ChatGPT File Library. Its §2.6 and Phase 5 were read alongside the five canonical repository documents. The in-repo condensed spec remains authoritative for repository handoffs. No conflicting new owner decisions inferred.
+
+### Committed P5-A source/test changes
+
+1. `4454a3293540f7755e302ec9e320fe661e207872` — `android/app/src/main/java/space/nuvio/nativelegacy/GanhoAudioProcessor.kt`. Investigated the historical `tests/cacheboost_android.py` embedded `Replay.kt:165` PCM failure: the gain processor used `(y * 32767f).toInt()`, which truncates 16-bit gain 2x of sample 1000 to 1999, contrary to the correctly expected 2000. Its amplified high-level float PCM was also *hard clipped* to -1, failing the replay's soft-limit expectation. Reused existing production `GanhoMath.amostra(y, volume)` tanh soft limiter on gain >1, and 32768-scale rounding with `roundToInt` and safe 16-bit clamping. Preserved bit-exact no-DSP fast path and existing compressed passthrough behavior; no encoder/transcoder inserted.
+2. `2c12d4d0d3e2ee2d00a5e14819b418e83458b405` — `tests/cacheboost_android.py`. Extended the existing real-processor JVM replay with an amplified positive/negative float PCM peak case; retained the original exact 16-bit gain, bypass and encoded AC3 rejection assertions. The replay test was **committed but not executed** on an Android/Media3 Kotlin classpath in this session.
+
+**What was actually executed:** 14/14 checks in a connector-side JavaScript source-predicate/independent numeric-model verification, against the committed production source and replay source fetched from this branch. This checked gain paths, bypass, PCM16 rounding, historical assertions, AC3 guard and independent tanh/PCM arithmetic scenarios. It is **NOT** the actual Kotlin `Replay.kt` JVM test, not an Android API35/Media3 compilation, and does not verify audio on a TV. The host environment had `kotlinc` but no production Media3 dependency classpath; the standalone `tests/cacheboost_android.py` replay was not honestly runnable here. The prior P4 green cache-only CI also excluded this replay; there is still **no verified 2026-11-23 Kotlin replay PASS**. The source cause is supported by code inspection and numerical reproduction; runtime acceptance of the fix remains open.
+
+### Actual source audit, remaining non-deferred gaps
+
+- **P5-A (Q36) remains PARTIAL.** `src/audioescolha.c` has original-language and codec-based prioritization, but `src/video_android.c` builds candidates with `pode=1` after Kotlin filters merely renderer-supported tracks; no route-specific fidelity proof or complete output-format validation is established. `NvPlayer.kt` constructs Media3 sink/decoder with FFmpeg fallback and existing PCM processing but cannot guarantee compatible HDMI ARC delivery from the track label. Native `src/player.c` responds to unsupported audio by a short warning while silent video may continue, and its error card has two actions, not the required explicit **Audio Playback Error — Retry / Change Stream / Back**. Track metadata remains incomplete (e.g. genuine sample rate and actual route/encoding not passed to UI). Do not claim original-language, lossless route or no silent fallback accepted.
+- **P5-B (Q37/Q39) NOT IMPLEMENTED/ACCEPTED.** Media3 built-in `setEnableDecoderFallback(true)` already exists and should remain; it does not prove every compatible fallback or correct distinction between DRM/decoder/output/surface failure. `NvPlayer.kt` currently classifies the selected format's ST2084 as `HDR10` even for a Dolby Vision MIME without an independently validated same-release HDR10 base layer. Missing DV profile/base-layer proof, supported-display/decoder path checking and explicit **Video Playback Error — Retry / Change Stream / Back**. No resolution/stream source substitution authorized.
+- **P5-C (Q29/Q38/Q47) PARTIAL/OPEN.** Existing genuine `onRenderedFirstFrame`, surface-stability gate, and muted-audio handoff are preserved and not changed. `logTaxaDeQuadros()` only logs fps and available display modes; **there is no source-verified opt-in AFR setting/mode switch/restore lifecycle (default OFF required)**. Existing `NvPlayer.kt` has device-specific forced `SurfaceView` recreation for SDR/HDR geometry; its safety on Xiaomi TV and requested in-place preference remain unverified. Detailed decoder/seek/surface recreation generation tests and output timing are absent here.
+- **P5-D (Q49) NOT IMPLEMENTED/ACCEPTED.** No debounced ARC/Bluetooth/TV-speaker route-change handling or sink capability renegotiation found in inspected `NvPlayer.kt` / `NuvioActivity.kt`. Preserve `setAudioAttributes(..., false)` workaround that protects HDMI volume/audio focus. Need in-place sink recovery where possible without video/network restart; enforce no silent lossy change and explicit error otherwise.
+- **Cross-cutting/P1–P4 preservation:** No P1–P4 cache, TorBox identity, subtitle, Dynamic Clock, video-surface, first-frame, master workflow or P6 file was edited in this checkpoint; only the PCM processor and its existing standalone replay test were modified. Compilation, physical HDR/DV/ARC and integrated UX regressions remain unverified.
+
+### Final P5 source acceptance disposition (this checkpoint)
+
+| Scope | Verdict |
+| --- | --- |
+| P5-A PCM regression | **Source correction committed; 14/14 independent predicates/model checks; actual Media3 Kotlin replay NOT RUN.** |
+| P5-A original audio, sink/ARC and errors | **OPEN / BLOCKING.** |
+| P5-B Q37/Q39 HDR/DV and decoder policy | **OPEN / BLOCKING.** |
+| P5-C Q29/Q38/Q47 AFR, first-frame and surfaces | **OPEN / BLOCKING.** |
+| P5-D Q49 route recovery | **OPEN / BLOCKING.** |
+| Q18 | **Owner explicitly deferred; do not restart.** |
+| Android full Gradle/NDK/TV verification | **P7/P8 hardware/integration gate; NOT RUN.** |
+
+**P5 SOURCE ACCEPTANCE FAILED — P5 remains PARTIAL; P6 NOT AUTHORIZED.** Continue P5-A with real Media3 JVM replay/compile, genuine track and route capability policies, and the explicit audio error actions. Then implement/test P5-B (DV/base-layer/fallback), P5-C (AFR and surfaces/first frame), P5-D (debounced route renegotiation), and rerun final P5 source acceptance **before** authorizing P6. No P5 GitHub Actions run, APK build, workflow trigger modification, or master merge occurred.
