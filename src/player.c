@@ -1004,9 +1004,27 @@ static int cinemaEscapeDisponivel(Uint32 agora) {
   return nv_loading_change_ready(agora, cine.desde,
     aberto && !erroFonte && !saindo && !ehCanal() && abrecine_navegacao(&cine));
 }
-// O botao em foco no modal do erro: 0 = Abrir Fontes, 1 = Voltar.
-static int erroBotao;
+// Audio and video share the existing native glass/error card. Video retains
+// its historic two-button behavior; Q36 audio has three distinct actions.
+static int erroBotao, erroAudioP5A, erroAudioRetentou;
 static void erroEscolher(int i) {
+#ifdef NV_ANDROID
+  if (erroAudioP5A) {
+    if (i == 0) { // Retry this SAME source once, with new JNI generation.
+      if (erroAudioRetentou || !video_audio_retry()) {
+        snprintf(erroDica, sizeof erroDica, "%s", "Audio retry unavailable for this source. Choose Change Stream or Back.");
+        return;
+      }
+      erroAudioRetentou = 1;
+      erroFonte = erroAudioP5A = 0;
+      avisouAudio = 0;
+      esperandoFonte = 0;
+      return;
+    }
+    if (i == 1) { player_voltar_a_esperar(); pedFontes = 1; return; }
+    saindo = 1; pediuSair = 1; return; // Back uses native exit ownership.
+  }
+#endif
 #ifdef NV_ANDROID
   (void)i;
   player_voltar_a_esperar(); pedFontes = 1; // Abrir Fontes e Voltar dispensam o erro (#409)
@@ -1059,7 +1077,7 @@ void player_erro_fonte(void) {
 #endif
   esperandoFonte = 0; erroFonte = 1; visivel = 0; tocando = 0; soBarra = 0;
   cinemaEscapeFoco = 0;
-  erroBotao = 0;
+  erroBotao = 0; erroAudioP5A = 0;
   erroTitulo[0] = erroDica[0] = 0;   // erro sem motivo nao herda o do anterior
   erroCausaDoPlayer();
 }
@@ -1068,6 +1086,15 @@ void player_erro_fonte_motivo(const char *titulo, const char *dica) {
   snprintf(erroTitulo, sizeof erroTitulo, "%s", titulo ? titulo : "");
   snprintf(erroDica, sizeof erroDica, "%s", dica ? dica : "");
 }
+#ifdef NV_ANDROID
+static void player_erro_audio(void) {
+  // Pause the silent video immediately, keep the selected URL/track for Retry.
+  video_pausar(1);
+  player_erro_fonte_motivo("Audio Playback Error",
+    "The selected audio cannot be delivered faithfully on this output. Retry the same stream, choose another stream, or go Back.");
+  erroAudioP5A = 1;
+}
+#endif
 // O VIDEO NAO ABRIU. Quase sempre e a fonte; mas quando o hub LS2 negou o
 // registro (registros 1720-1774: PERMISSION em toda sessao) nenhuma fonte
 // abriria, e "nao foi possivel abrir a fonte" mandava a pessoa trocar de fonte
@@ -1080,7 +1107,7 @@ static void erroSemVideo(void) {
 }
 // Desfaz o de cima quando a fonte que parecia morta volta a entregar. Ver a
 // nota no watchdog de canal em app.c.
-void player_limpar_erro_fonte(void) { if (erroFonte) { erroFonte = 0; tocando = 1; } }
+void player_limpar_erro_fonte(void) { if (erroFonte && !erroAudioP5A) { erroFonte = 0; tocando = 1; } }
 // Leitura do estado para o watchdog de canal do app.c: uma fonte ao vivo que
 // falhou (ou nao abre no prazo) deve trocar para a proxima da lista sozinha.
 int  player_fonte_falhou(void) { return erroFonte; }
@@ -1988,7 +2015,7 @@ void player_abrir(int indiceCatalogo, const char *url) {
     if (canalSessao) { guia_carregar(); epg_iniciar(); } }
   tocando = 1; pausaPessoa = 0; retomandoSalto = 0; visivel = 1; anim = 0.0f; entrada = 0.0f; soBarra = 0; cheio = 1.0f; fileira = 1.0f;
   barraBufferMem=0.0f;
-  pedFontes = erroFonte = pedFaixas = pedProxT = pedProxE = trocaEpisodio = 0; inicioImagem = 0;
+  pedFontes = erroFonte = erroAudioP5A = erroAudioRetentou = pedFaixas = pedProxT = pedProxE = trocaEpisodio = 0; inicioImagem = 0;
   durFonteAvisada = durFontePulou = pedProximaFonte = durFonteCurta = durFonteForaCache = 0;
   durFonteAcaoAte = 0; durFonteSkipEm = 0; durFonteManter = 0;
   abrindoExp = 0; abrindoT = 0.0f; abrindoDesde = 0;
@@ -2383,7 +2410,7 @@ void player_definir_fonte(const char *url) {
   durFonteAcaoAte = 0;
   duracaoReal = durCurtaAvisado = durPassouAvisado = 0;
   esperandoFonte = 0;
-  erroFonte = 0;
+  erroFonte = erroAudioP5A = erroAudioRetentou = 0;
   cinemaEscapeFoco = 0; /* A newly accepted source never inherits old focus. */
   /* Re-arm the source-owned 15s clock and visual handoff: changing sources
    * while the prior cinema is still visible must never inherit its age. */
@@ -2412,7 +2439,7 @@ void player_voltar_a_esperar(void) {
   if (comVideo) { video_parar(); comVideo = 0; }
   mkvass_parar();
   mkvass_video_aberto(0);
-  esperandoFonte = 1; erroFonte = 0; tocando = 1; pausaPessoa = 0;
+  esperandoFonte = 1; erroFonte = erroAudioP5A = 0; tocando = 1; pausaPessoa = 0;
   cinemaEscapeFoco = 0;
   erroTitulo[0] = erroDica[0] = 0;
   retomadaAplicada = 0; inicioImagem = 0;
@@ -4433,6 +4460,7 @@ void player_evento(const SDL_Event *e) {
     }
 #ifdef NV_ANDROID
     if (erroFonte && !ehCanal()) {
+      if (erroAudioP5A) { saindo = 1; pediuSair = 1; return; }
       player_voltar_a_esperar(); pedFontes = 1;
       return;
     }
@@ -4446,8 +4474,8 @@ void player_evento(const SDL_Event *e) {
   // DIREITA escolhem entre Abrir Fontes e Voltar; OK aciona. Voltar fecha o
   // player como o BACK (tratado acima); no Android ambos voltam as fontes (#409).
   if (erroFonte && !ehCanal()) {
-    if (k == SDLK_LEFT) erroBotao = 0;
-    else if (k == SDLK_RIGHT) erroBotao = 1;
+    if (k == SDLK_LEFT && erroBotao > 0) erroBotao--;
+    else if (k == SDLK_RIGHT && erroBotao < (erroAudioP5A ? 2 : 1)) erroBotao++;
     else if (k == SDLK_RETURN || k == SDLK_KP_ENTER || k == SDLK_SPACE) {
       erroEscolher(erroBotao);
     }
@@ -4741,16 +4769,19 @@ void player_atualizar(float dt, Uint32 agora) {
   video_dv_segurar(comVideo && !retomadaAplicada && retomarPct > 0 && !ehCanal());
   dvAgora = agora;
   dvTelaAtualizar(dt, agora);
-  // AUDIO QUE A TV NAO TOCA (uMS errorCode 200, registro 1545): o video segue
-  // mudo, e sem isto a pessoa nao tinha como saber que era a fonte e nao o
-  // volume. Um aviso por sessao, 6 s, no lugar do de proporcao.
+  // Q36: unsupported audio MUST NOT play as silent video behind a six-second toast.
+#ifdef NV_ANDROID
   if (comVideo && !avisouAudio && video_audio_nao_suportado()) {
     avisouAudio = 1;
-    snprintf(toastTexto, sizeof toastTexto, "%s",
-             i18n("Esta TV não toca o áudio desta fonte. Troque a fonte ou o áudio."));
-    snprintf(toastIcone, sizeof toastIcone, "aj_triangle-alert"); toastCor = 1;
-    toastAte = agora + 6000;
+    player_erro_audio();
   }
+#else
+  if (comVideo && !avisouAudio && video_audio_nao_suportado()) {
+    avisouAudio = 1;
+    player_toast_ex(i18n("Esta TV não toca o áudio desta fonte. Troque a fonte ou o áudio."),
+                    6000u, "aj_triangle-alert", 1);
+  }
+#endif
   // SEEK RECUSADO 3x pelo pipeline (webOS "seek Failure"): a fonte segue de
   // onde esta; um aviso por sessao em vez de pular o link.
   { static int seekAvisado;
@@ -6376,7 +6407,7 @@ static int erroToquePode(void) {
 }
 static void erroToqueAcao(int i, int b) {
   (void)b;
-  if (!erroToquePode() || i < 0 || i > 1) return;
+  if (!erroToquePode() || i < 0 || i >= (erroAudioP5A ? 3 : 2)) return;
   erroBotao = i; erroEscolher(i);
 }
 #endif
@@ -6406,10 +6437,13 @@ static void corpoErro(GfxRect r, float a, void *u) {
       ponteiro_camada();
       ponteiro_alvo(0, 0, NV_VTELA_W, NV_VTELA_H, NULL, NULL, 0, 0);
     }
-    for (int i = 0; i < 2; i++) {
-      GfxRect b = {x + i * (w + 12) * .5f, y, (w - 12) * .5f, 76};
+    int nBotoes = erroAudioP5A ? 3 : 2;
+    float larguraBotao = (w - (nBotoes - 1) * 12.0f) / nBotoes;
+    for (int i = 0; i < nBotoes; i++) {
+      GfxRect b = {x + i * (larguraBotao + 12.0f), y, larguraBotao, 76};
       int foco = erroBotao == i, tinta = foco ? plrui_tinta() : 225;
-      const char *rot = i18n(i ? "Voltar" : "Abrir Fontes");
+      const char *rot = erroAudioP5A ? (i == 0 ? "Retry" : i == 1 ? "Change Stream" : "Back")
+                                     : i18n(i ? "Voltar" : "Abrir Fontes");
       if (foco) plrui_pilula_foco_video(b, a); else plrui_botao_repouso_video(b, a);
       float th = txt_bloco_corta(TXT_G21B, rot, tinta, tinta, tinta, 0, 0, b.w - 32, 28, 0, 2);
       txt_bloco_corta(TXT_G21B, rot, tinta, tinta, tinta, b.x + 16, b.y + (b.h - th) * .5f, b.w - 32, 28, a, 2);
@@ -6418,8 +6452,14 @@ static void corpoErro(GfxRect r, float a, void *u) {
     return;
   }
 #endif
-  x += plrui_botao_video(x, y, "Abrir Fontes", "pl_layers", erroBotao == 0 ? 1.0f : 0.0f, a) + 12.0f;
-  plrui_botao_video(x, y, "Voltar", NULL, erroBotao == 1 ? 1.0f : 0.0f, a);
+  if (erroAudioP5A) {
+    x += plrui_botao_video(x, y, "Retry", "pl_refresh-cw", erroBotao == 0 ? 1.0f : 0.0f, a) + 12.0f;
+    x += plrui_botao_video(x, y, "Change Stream", "pl_layers", erroBotao == 1 ? 1.0f : 0.0f, a) + 12.0f;
+    plrui_botao_video(x, y, "Back", NULL, erroBotao == 2 ? 1.0f : 0.0f, a);
+  } else {
+    x += plrui_botao_video(x, y, "Abrir Fontes", "pl_layers", erroBotao == 0 ? 1.0f : 0.0f, a) + 12.0f;
+    plrui_botao_video(x, y, "Voltar", NULL, erroBotao == 1 ? 1.0f : 0.0f, a);
+  }
 }
 
 static void corpoDurFonte(GfxRect r, float a, void *u) {
@@ -7019,7 +7059,7 @@ void player_desenhar(Uint32 agora) {
     gfx_cor(tela, 0, 0, 0, 0, (ajustes_vidro() ? 0.58f : 0.65f) * entrada);
     memset(&pd, 0, sizeof pd);
     pd.icone = "aj_triangle-alert"; pd.corIcone = 1;
-    pd.texto = i18n("Fonte");
+    pd.texto = erroAudioP5A ? "Audio Playback Error" : i18n("Fonte");
     pd.w = erroLargura(); pd.h = alturaErro();
     pd.corpo = corpoErro; pd.modal = 1; pd.video = 1;
     plrilha_pedir(&pd);
