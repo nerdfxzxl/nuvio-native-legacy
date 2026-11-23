@@ -76,6 +76,11 @@ jobs:
           cat > "$deps/build.gradle" <<'GRADLE'
           repositories { google(); mavenCentral() }
           configurations { p4TestOnly }
+          // Guava publishes Android and JRE variants; select Android explicitly.
+          configurations.p4TestOnly.attributes.attribute(
+            org.gradle.api.attributes.java.TargetJvmEnvironment.TARGET_JVM_ENVIRONMENT_ATTRIBUTE,
+            objects.named(org.gradle.api.attributes.java.TargetJvmEnvironment, 'android')
+          )
           dependencies {
             p4TestOnly 'androidx.annotation:annotation-jvm:1.6.0'
             p4TestOnly 'androidx.annotation:annotation-experimental:1.4.0'
