@@ -96,7 +96,7 @@ require("HTTP measured payload from Media3 actual transfer events",
         "lidos.addAndGet(bytesTransferred.toLong())" in kotlin)
 require("HLS/DASH/serial fallback is not double-counted with parallel",
         "source !is ParaleloDataSource" in kotlin,
-        "if (e.usado) e.bytes.get() else recursosAtuais?.contadorHttp?.bytes()" in kotlin)
+        "if (e.usado) e.bytes.get() + serial.coerceAtLeast(0) else serial" in kotlin)
 require("live playlist revalidation and resource lifecycle accounted",
         "r.contadorHttp.medir(DefaultHttpDataSource.Factory()" in kotlin,
         "val contadorHttp = ContadorHttp()" in kotlin)
@@ -109,7 +109,8 @@ require("audio stays silent until first stable rendered video frame",
 require("P1 JNI generation guards survive",
         "(unsigned)geracao == sessao" in native)
 require("manual 15-second Change Stream and Back remote behavior",
-        "agora - cine.desde >= 15000u" in player,
+        "nv_loading_change_ready(agora, cine.desde" in player and
+        "NV_LOADING_CHANGE_MS 15000u" in source("src/loading_nav_p2c.h"),
         'i18n("Change Stream")' in player,
         "if (k == SDLK_DOWN) { cinemaEscapeFoco = 1; return; }" in player,
         "saindo = 1; pediuSair = 1;" in player)

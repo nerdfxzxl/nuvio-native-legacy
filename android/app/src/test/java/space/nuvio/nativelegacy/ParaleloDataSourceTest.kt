@@ -43,7 +43,11 @@ class ParaleloDataSourceTest {
             if (fim() < ini()) HTTP_REQ_TOO_LONG else HTTP_PARTIAL
         override fun getContentLengthLong(): Long = fim() - ini() + 1
         override fun getHeaderField(name: String?): String? =
-            if (name == "Content-Range") "bytes ${ini()}-${fim()}/$total" else super.getHeaderField(name)
+            when (name) {
+                "Content-Range" -> "bytes ${ini()}-${fim()}/$total"
+                "ETag" -> "\"release-A\""
+                else -> null
+            }
         override fun getInputStream(): InputStream =
             ByteArrayInputStream(ByteArray((fim() - ini() + 1).toInt()))
         private fun ini(): Long = faixa().first
@@ -52,8 +56,96 @@ class ParaleloDataSourceTest {
             val corpo = (pedidos["Range"] ?: "bytes=0-").removePrefix("bytes=")
             val ini = corpo.substringBefore('-').toLong()
             val fim = corpo.substringAfter('-', "")
-            return if (fim.isEmpty()) ini to (total - 1) else ini to fim.toLong()
+            return if (fim.isEmpty()) ini to (total - 1) else ini to minOf(fim.toLong(), total - 1)
         }
+    }
+
+    @Test fun ignoredRangeConsumesExactPrefixAndStopsAtRequestedEnd() {
+        val data = ByteArray(120) { it.toByte() }
+        val source = ParaleloDataSource(null, emptyMap(), novaConexao = { url ->
+            object : ConexaoFalsa(url) {
+                override fun getContentLengthLong() = data.size.toLong()
+                override fun getInputStream() = object : ByteArrayInputStream(data) {
+                    override fun skip(n: Long) = 0L
+                    override fun read(b: ByteArray, off: Int, len: Int) = super.read(b, off, minOf(3, len))
+                }
+            }
+        })
+        try {
+            val spec = DataSpec.Builder().setUri("https://example.invalid/f").setPosition(91).setLength(5).build()
+            assertEquals(5L, source.open(spec))
+            val out = ByteArray(10)
+            assertEquals(3, source.read(out, 0, 10))
+            assertEquals(2, source.read(out, 3, 7))
+            assertEquals(-1, source.read(out, 5, 5))
+            assertEquals(data.slice(91..95), out.take(5))
+            assertEquals(96L, source.stats.bytes.get())
+        } finally { source.close() }
+    }
+
+    @Test fun misplaced206ForcesFullBodyBeforeReturningAnyBytes() {
+        val opened = AtomicInteger()
+        val source = ParaleloDataSource(null, emptyMap(), novaConexao = { url ->
+            if (opened.incrementAndGet() == 1) object : ConexaoFaixa(url, 100) {
+                override fun getHeaderField(name: String?): String? =
+                    if (name == "Content-Range") "bytes 0-4/100" else super.getHeaderField(name)
+            } else object : ConexaoFalsa(url) {
+                override fun getContentLengthLong() = 100L
+                override fun getInputStream() = ByteArrayInputStream(ByteArray(100) { it.toByte() })
+            }
+        })
+        try {
+            val spec = DataSpec.Builder().setUri("https://example.invalid/f").setPosition(60).setLength(5).build()
+            assertEquals(5L, source.open(spec))
+            val out = ByteArray(10)
+            assertEquals(5, source.read(out, 0, 10))
+            assertEquals((60..64).map { it.toByte() }, out.take(5))
+            assertEquals(2, opened.get())
+        } finally { source.close() }
+    }
+
+    @Test fun stalledRangeSupportFallsBackAtFirstUnreadByte() {
+        val total = 1024L * 1024 * 3
+        val file = ByteArray(total.toInt()) { (it % 193).toByte() }
+        val opens = AtomicInteger()
+        val source = ParaleloDataSource(null, emptyMap(), conexoes = 2, pedaco = 256 * 1024,
+            novaConexao = { url ->
+                if (opens.incrementAndGet() == 1) object : ConexaoFaixa(url, total) {
+                    override fun getInputStream() = ByteArrayInputStream(file, 0, 1024 * 1024)
+                } else object : ConexaoFalsa(url) {
+                    override fun getHeaderField(name: String?): String? =
+                        if (name == "ETag") "\"release-A\"" else null
+                    override fun getContentLengthLong() = total
+                    override fun getInputStream() = ByteArrayInputStream(file)
+                }
+            })
+        try {
+            source.open(DataSpec.Builder().setUri("https://example.invalid/f").build())
+            val out = ByteArray(file.size)
+            var offset = 0
+            while (offset < out.size) {
+                val n = source.read(out, offset, minOf(8192, out.size - offset))
+                assertTrue(n > 0)
+                offset += n
+            }
+            assertTrue(file.contentEquals(out))
+            assertEquals(-1, source.read(out, 0, 1))
+        } finally { source.close() }
+    }
+
+    @Test fun shortSerialBodyRaisesEof() {
+        val source = ParaleloDataSource(null, emptyMap(), novaConexao = { url ->
+            object : ConexaoFalsa(url) { override fun getContentLengthLong() = 20L }
+        })
+        try {
+            source.open(DataSpec.Builder().setUri("https://example.invalid/f").build())
+            val out = ByteArray(20)
+            assertEquals(1, source.read(out, 0, 20))
+            try {
+                source.read(out, 0, 20)
+                throw AssertionError("accepted a partial representation")
+            } catch (_: java.io.EOFException) {}
+        } finally { source.close() }
     }
 
     @Test fun aberturaInicialRepeteFalhaDeConexaoComBackoffLimitado() {
@@ -121,7 +213,7 @@ class ParaleloDataSourceTest {
         val fonte = ParaleloDataSource(null, emptyMap())
         val entrada = ParaleloDataSource::class.java.getDeclaredField("unicaIn")
         entrada.isAccessible = true
-        ParaleloDataSource.Estat.conexoes.incrementAndGet()
+        fonte.stats.conexoes.incrementAndGet()
         entrada.set(fonte, object : InputStream() {
             override fun read(): Int { fonte.close(); return 1 }
         })
@@ -129,28 +221,32 @@ class ParaleloDataSourceTest {
             fonte.read(ByteArray(1), 0, 1)
             throw AssertionError("entregou bytes depois de close")
         } catch (_: InterruptedIOException) {} finally { fonte.close() }
-        assertEquals(0, ParaleloDataSource.Estat.conexoes.get())
+        assertEquals(0, fonte.stats.conexoes.get())
     }
 
     @Test fun pedacoRepeteConnectEDesconectaAntesDoBackoff() {
         val aberturas = AtomicInteger()
         val conexoes = ArrayList<ConexaoFalsa>()
         val esperas = ArrayList<Long>()
-        val fonte = ParaleloDataSource(null, emptyMap(), novaConexao = { url ->
+        lateinit var fonte: ParaleloDataSource
+        fonte = ParaleloDataSource(null, emptyMap(), novaConexao = { url ->
             val tentativa = aberturas.incrementAndGet()
             val c = object : ConexaoFalsa(url) {
                 override fun getResponseCode(): Int =
                     if (tentativa < 3) throw IOException("sem rota") else HTTP_PARTIAL
                 override fun getInputStream(): InputStream = ByteArrayInputStream(byteArrayOf(1, 2, 3, 4))
+                override fun getHeaderField(name: String?): String? =
+                    if (name == "Content-Range") "bytes 0-3/4" else null
                 override fun getContentLengthLong(): Long = 4
             }
             conexoes += c
             c
         }, dormir = {
             assertTrue(conexoes.last().desconectou.get())
-            assertEquals(0, ParaleloDataSource.Estat.conexoes.get())
+            assertEquals(0, fonte.stats.conexoes.get())
             esperas += it
         })
+        ParaleloDataSource::class.java.getDeclaredField("total").apply { isAccessible = true }.setLong(fonte, 4L)
         val baixar = ParaleloDataSource::class.java.getDeclaredMethod("baixar",
             URL::class.java, Long::class.javaPrimitiveType, Long::class.javaPrimitiveType)
         baixar.isAccessible = true
@@ -161,7 +257,7 @@ class ParaleloDataSourceTest {
         assertEquals(3, aberturas.get())
         assertEquals(listOf(250L, 750L), esperas)
         assertTrue(conexoes.all { it.desconectou.get() })
-        assertEquals(0, ParaleloDataSource.Estat.conexoes.get())
+        assertEquals(0, fonte.stats.conexoes.get())
     }
 
     @Test fun janelaPequenaUsaConexaoUnicaSemPool() {
@@ -259,7 +355,7 @@ class ParaleloDataSourceTest {
             // Os fios do pool contam +1/-1 em Estat.conexoes: sem espera-los,
             // o saldo vaza para o assert do teste seguinte.
             pool?.let { assertTrue(it.awaitTermination(10, TimeUnit.SECONDS)) }
-            assertEquals(0, ParaleloDataSource.Estat.conexoes.get())
+            assertEquals(0, fonte.stats.conexoes.get())
         }
     }
 
@@ -318,7 +414,7 @@ class ParaleloDataSourceTest {
         } finally {
             fonte.close()
             pool?.let { assertTrue(it.awaitTermination(10, TimeUnit.SECONDS)) }
-            assertEquals(0, ParaleloDataSource.Estat.conexoes.get())
+            assertEquals(0, fonte.stats.conexoes.get())
         }
     }
 
@@ -366,7 +462,7 @@ class ParaleloDataSourceTest {
         // 200 KB finais: menos de dois pedacos minimos, nada de pool.
         val (faixas, pool) = lerFim(24891962527L, 200L shl 10)
         assertFalse(pool)
-        assertEquals(2, faixas.size)   // sonda + reabertura da conexao unica
+        assertEquals(1, faixas.size)   // The probe already covers the requested tail.
     }
 
     // Link do addon que redireciona (307) para o CDN do debrid; o host em

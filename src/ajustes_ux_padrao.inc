@@ -381,3 +381,4 @@
   1, /* AJ_BUF_LOW_KEY */
   1, /* AJ_BUF_LOW_TIME */
   0, /* AJ_BUF_LOW_RAM */
+  0, 4, 4, /* Parallel HTTP on, four connections of four MiB */

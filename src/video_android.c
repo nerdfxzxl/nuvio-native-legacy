@@ -72,7 +72,7 @@ static jmethodID mPararMantendoPreparo;
 static unsigned preparoAdotar;
 // F07 (optional, like abrirPosicao): cache(mb) and ganho(pct). A shell without
 // them simply has no seek cache and no boost.
-static jmethodID mBufferProfile;
+static jmethodID mBufferProfile, mHttpConfig;
 static jmethodID mCache, mGanho, mBuffer, mKbps, mAudioAjustes;
 // Warm resume (#492, optional too): titulo(id) and descartarGuardado().
 static jmethodID mTitulo, mDescartar, mMorno, mQuadro;
@@ -90,6 +90,8 @@ static int resolverMetodos(JNIEnv *env) {
   mJanelaPronta = (*env)->GetStaticMethodID(env, gCls, "janelaPronta", "()Z");
   mEscolher = (*env)->GetStaticMethodID(env, gCls, "escolher", "(II)V");
   if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); return 0; }
+  mHttpConfig = (*env)->GetStaticMethodID(env, gCls, "httpConfig", "(III)V");
+  if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); mHttpConfig = NULL; }
   mBufferProfile = (*env)->GetStaticMethodID(env, gCls, "bufferProfile", "(IIIIIIII)V");
   if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); mBufferProfile = NULL; }
   mLimitedConnections = (*env)->GetStaticMethodID(env, gCls, "limitedConnections", "(I)V");
@@ -279,6 +281,12 @@ static void kInt(jmethodID m, int v) {
 }
 
 static void enviarPerfil(JNIEnv *env, int averageBps) {
+  if (mHttpConfig) {
+    int http[3];
+    ajustes_http_config(http);
+    (*env)->CallStaticVoidMethod(env, gCls, mHttpConfig, (jint)http[0], (jint)http[1], (jint)http[2]);
+    fimChamada(env);
+  }
   if (!mBufferProfile) return;
   int values[8];
   ajustes_buffer_profile(averageBps, values);

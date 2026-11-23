@@ -757,6 +757,7 @@ typedef enum {
   AJ_BUF_LOW_KEY,
   AJ_BUF_LOW_TIME,
   AJ_BUF_LOW_RAM,
+  AJ_HTTP_PARALLEL, AJ_HTTP_COUNT, AJ_HTTP_CHUNK,
   AJ_N
 } OpcaoId;
 _Static_assert(DEBRID_RD == 0 && DEBRID_TB == 1 && DEBRID_PM == 2 && DEBRID_AD == 3,
@@ -1924,6 +1925,9 @@ static const Opcao OPCOES[AJ_N] = {
   ESC("Keep back to keyframe", V_LIGA, 2),
   ESC("Prefer time threshold", V_LIGA, 2),
   ESC("RAM target", V_BUFFER, 4),
+  ESC("Parallel HTTP downloads", V_LIGA, 2),
+  NUM("HTTP connections", 2, 6, 1, NULL),
+  NUM("HTTP chunk size", 1, 4, 1, " MiB"),
   };
 
 // Nome de cada opcao no arquivo. O formato era POSICIONAL — uma linha por
@@ -2283,6 +2287,7 @@ static const char *CHAVE[] = {
   "bufferLowKeyLocal",
   "bufferLowTimeLocal",
   "bufferLowTargetLocal",
+  "httpParallelLocal", "httpCountLocal", "httpChunkMiBLocal",
 };
 // QUATRO VETORES PARALELOS indexados pelo mesmo enum AJ_*: OPCOES, CHAVE,
 // valor e as secoes. OPCOES ja e declarado [AJ_N], e `valor` aceita inicializacao
@@ -3373,6 +3378,12 @@ int ajustes_player_externo(int anime) {
 }
 const char *ajustes_player_pacote(int anime) { return ppPkg[anime ? 1 : 0]; }
 /* Snapshot on the SDL thread before dispatching the open to Media3. */
+void ajustes_http_config(int out[3]) {
+  out[0] = valor[AJ_HTTP_PARALLEL] == 0;
+  out[1] = valor[AJ_HTTP_COUNT];
+  out[2] = valor[AJ_HTTP_CHUNK];
+}
+
 void ajustes_buffer_profile(int averageBps, int out[8]) {
   int low = nv_buffer_low(averageBps, valor[AJ_BUF_THRESHOLD]);
   int first = low ? AJ_BUF_LOW_MIN : AJ_BUF_ALL_MIN;
@@ -6369,7 +6380,7 @@ static int somenteDesteAparelho(int op) {
 // linhas do titulo e legenda 2 saem daqui e passam a ser por perfil; 4K,
 // memoria, rede e idioma da interface ficam. Segredos nunca estao em valor[].
 static int soNaTv(int op) {
-  if (op >= AJ_BUF_THRESHOLD && op <= AJ_BUF_LOW_RAM) return 1;
+  if (op >= AJ_BUF_THRESHOLD && op <= AJ_HTTP_CHUNK) return 1;
   switch (op) {
     case AJ_ICONE_APP: case AJ_LOGO_APP: case AJ_ABERTURA:
     case AJ_IDIOMA: case AJ_FONTE_UI: case AJ_ANIM:

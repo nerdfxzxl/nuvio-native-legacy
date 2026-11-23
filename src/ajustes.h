@@ -9,6 +9,7 @@
 // Os valores sao gravados em <dir>/ajustes.txt, uma chave por linha.
 #ifndef NV_AJUSTES_H
 #define NV_AJUSTES_H
+void ajustes_http_config(int out[3]);
 void ajustes_buffer_profile(int averageBps, int out[8]);
 #include <SDL2/SDL.h>
 #include "idiomacod.h"

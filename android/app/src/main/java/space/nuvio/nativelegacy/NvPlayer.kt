@@ -775,6 +775,7 @@ object NvPlayer {
         lateinit var p: ExoPlayer
         lateinit var origem: OrigemPlayer
         val contadorHttp = ContadorHttp()
+        val parallelStats = ParaleloDataSource.Estat()
         lateinit var rede: (Long) -> DataSource.Factory
         lateinit var renderizadores: androidx.media3.exoplayer.DefaultRenderersFactory
         lateinit var fabricaMidia: DefaultMediaSourceFactory
@@ -1323,6 +1324,11 @@ object NvPlayer {
     // F07: cache limit for the NEXT opens (MB, 0 = off) and the session volume
     // 0..200 (above 100 only while the audio is PCM).
     // #338: buffer size in MiB (0 Auto; C already clamped it to free RAM), sticky, read at open.
+    private data class HttpConfig(val enabled: Boolean, val count: Int, val chunkMb: Int)
+    @Volatile private var httpSettings = HttpConfig(true, 4, 4)
+    @JvmStatic fun httpConfig(enabled: Int, count: Int, chunkMb: Int) {
+        httpSettings = HttpConfig(enabled != 0, count.coerceIn(2, 6), chunkMb.coerceIn(1, 4))
+    }
     private val nextProfile = ThreadLocal<RamBufferProfile>()
     private var activeBufferProfile = RamBufferProfile()
     private fun profileForCall(): RamBufferProfile {
@@ -1553,8 +1559,12 @@ object NvPlayer {
                 r.cache = c; r.cacheEstado = estado
             }
             r.rede = { token ->
+                val config = httpSettings
+                val budget = minOf(heap / 12, if (poucaRam) 12L shl 20 else 32L shl 20)
+                val chunk = minOf(config.chunkMb shl 20, (budget / (1 + config.count)).toInt()).coerceAtLeast(128 shl 10)
                 val rede: DataSource.Factory = if (limited) serialHttp
-                    else ParaleloDataSource.Factory(ua, props, http, medidor, token)
+                    else ParaleloDataSource.Factory(ua, props, http, medidor, token, r.parallelStats,
+                        if (config.enabled) config.count else 1, chunk)
                 r.cache?.fabrica(rede) ?: rede
             }
             val origemPreparo = r.cache?.fabrica(serialHttp) ?: serialHttp
@@ -1692,7 +1702,6 @@ object NvPlayer {
         abriuEm = SystemClock.elapsedRealtime()
         if (!reabrindo) retentou = false
         try {
-            ParaleloDataSource.Estat.zerar()
             quadrosPerdidos = 0L; statsTiques = 0
             val titulo = tituloPedido
             tituloAberto = ""
@@ -1938,7 +1947,8 @@ object NvPlayer {
     // Uma vez por segundo, do fio principal: leituras baratas, nada alocado
     // alem da string do host (que o JNI copia).
     private fun relatarStats(p: ExoPlayer) {
-        val e = ParaleloDataSource.Estat
+        val resources = recursosAtuais ?: return
+        val e = resources.parallelStats
         val buf = (p.bufferedPosition - p.currentPosition).coerceIn(0L, Int.MAX_VALUE.toLong()).toInt()
         var quadros = -1L
         var perdidos = -1L
@@ -1951,7 +1961,8 @@ object NvPlayer {
             // Parallel requests measure their own physical socket transfers.
             // Otherwise use only HTTP transfer events (adaptive/serial/revalidation),
             // never Media3's estimated bitrate or cached reads.
-            val bytesRede = if (e.usado) e.bytes.get() else recursosAtuais?.contadorHttp?.bytes() ?: -1L
+            val serial = resources.contadorHttp.bytes()
+            val bytesRede = if (e.usado) e.bytes.get() + serial.coerceAtLeast(0) else serial
             nativeStats(bytesRede, buf,
                 bufferAlvoMs,
                 if (e.usado) e.conexoes.get().coerceAtLeast(0) else -1,

@@ -65,6 +65,8 @@ static const Item TELA[] = {
 #endif
       OPC(AJ_CACHE_SEEK), OPC(AJ_MANTER_VIDEO), OPC(AJ_RETOMADA_MORNA), OPC(AJ_MANTER_PRAZO), OPC(AJ_SEEKR_AJUSTE),
 #ifdef NV_ANDROID
+    ROT("HTTP downloads"),
+      OPC(AJ_HTTP_PARALLEL), OPC(AJ_HTTP_COUNT), OPC(AJ_HTTP_CHUNK),
     ROT("RAM buffer · All Streams"),
       OPC(AJ_BUFFER),
       OPC(AJ_BUF_ALL_MIN),
