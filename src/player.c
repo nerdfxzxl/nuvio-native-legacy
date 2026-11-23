@@ -184,6 +184,7 @@ extern int trakt_scrobble_alvo(int, const TraktScrobbleAlvo *, double, double,
 // final". A regra e os degraus estao em salto.h.
 #include "salto.h"
 #include "seekgesto.h"    // .tpk: seek gesture (owner-tuned values, SEEKG_PADRAO)
+#include "audioerro_p5a.h" // Q36: production native focus + bounded Retry decisions
 #include "video_seekretry.h"
 // Sem tecla por este tempo, o avanco termina: manda a posicao ao pipeline e
 // retoma. 420 ms e maior que o intervalo de repeticao do controle (que na C9
@@ -1012,7 +1013,7 @@ static void erroEscolher(int i) {
 #ifdef NV_ANDROID
   if (erroAudioP5A) {
     if (i == 0) { // Retry this SAME source once, with new JNI generation.
-      if (erroAudioRetentou || !video_audio_retry()) {
+      if (!audioerro_p5a_pode_repetir(erroAudioRetentou) || !video_audio_retry()) {
         snprintf(erroDica, sizeof erroDica, "%s", "Audio retry unavailable for this source. Choose Change Stream or Back.");
         return;
       }
@@ -4475,8 +4476,10 @@ void player_evento(const SDL_Event *e) {
   // DIREITA escolhem entre Abrir Fontes e Voltar; OK aciona. Voltar fecha o
   // player como o BACK (tratado acima); no Android ambos voltam as fontes (#409).
   if (erroFonte && !ehCanal()) {
-    if (k == SDLK_LEFT && erroBotao > 0) erroBotao--;
-    else if (k == SDLK_RIGHT && erroBotao < (erroAudioP5A ? 2 : 1)) erroBotao++;
+    if (k == SDLK_LEFT)
+      erroBotao = erroAudioP5A ? audioerro_p5a_mover(erroBotao, -1) : 0;
+    else if (k == SDLK_RIGHT)
+      erroBotao = erroAudioP5A ? audioerro_p5a_mover(erroBotao, 1) : 1;
     else if (k == SDLK_RETURN || k == SDLK_KP_ENTER || k == SDLK_SPACE) {
       erroEscolher(erroBotao);
     }
