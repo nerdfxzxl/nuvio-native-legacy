@@ -351,6 +351,23 @@ class CacheMidia private constructor(
         return true
     }
 
+    private class RepresentacaoMudou : IOException("P4-C: HTTP byte representation changed")
+
+    // A CacheDataSource may transition from a previously verified disk span
+    // into an uncached HTTP hole DURING read(), not during open(). Inspect the
+    // actual current response before returning that read's bytes to Media3.
+    private fun respostaAindaCompativel(d: DataSource): Boolean {
+        val esperada = representacao ?: return true
+        val headers = d.responseHeaders
+        if (headers.isEmpty()) return true // disk-only read, no HTTP response
+        val range = headers.entries.firstOrNull { it.key.equals("Content-Range", true) }
+            ?.value?.firstOrNull()?.trim().orEmpty()
+        val inicio = Regex("^bytes ([0-9]+)-").find(range)?.groupValues?.get(1)
+            ?.toLongOrNull() ?: return false
+        val url = d.uri?.toString() ?: return false
+        return esperada.mesma(CacheProvaP4C.observada206(url, headers, inicio))
+    }
+
     fun fabrica(upstream: DataSource.Factory): DataSource.Factory {
         val media3 = CacheDataSource.Factory()
             .setCache(cache)
@@ -384,6 +401,7 @@ class CacheMidia private constructor(
                     val spec = original ?: throw IOException("DataSpec not opened")
                     try { atual?.close() } catch (_: Exception) {}
                     descartarChave(chave)
+                    representacao = null
                     noCache = true
                     val d = criar(upstream)
                     return try {
@@ -428,10 +446,18 @@ class CacheMidia private constructor(
                     val d = atual ?: throw IOException("DataSource closed")
                     return try {
                         val n = d.read(buffer, offset, length)
+                        if (n > 0 && !noCache && !respostaAindaCompativel(d)) {
+                            // Never combine the already delivered cached prefix
+                            // with a newly changed upstream object. A new player
+                            // generation must reopen the source from scratch.
+                            descartarChave(chave)
+                            representacao = null
+                            throw RepresentacaoMudou()
+                        }
                         if (n > 0) consumidos += n
                         n
                     } catch (e: IOException) {
-                        if (noCache) throw e
+                        if (noCache || e is RepresentacaoMudou) throw e
                         usarRede()
                         val n = atual!!.read(buffer, offset, length)
                         if (n > 0) consumidos += n
