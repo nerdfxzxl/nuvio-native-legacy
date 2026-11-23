@@ -1273,7 +1273,10 @@ object NvPlayer {
     @JvmStatic fun parar() {
         cancelarPreparo(0)
         val pedido = pedidos.incrementAndGet()
-        principal.post { if (pedido == pedidos.get()) { limparRetido(); liberar() } }
+        principal.post { if (pedido == pedidos.get()) {
+            limparRetido()
+            liberar(guardarCache = true)
+        } }
     }
     private var pausaPedida = false
     @JvmStatic fun pausar(p: Int) {
@@ -1578,7 +1581,8 @@ object NvPlayer {
                     if (ua != null) props + ("User-Agent" to ua) else props)
                 val prova = identidadeCache?.takeIf { it.forte() && it.catalogo == titulo }?.assinatura()
                 val (c, estado) = CacheMidia.criar(act.cacheDir, pedidoCache, aoFalhar,
-                    listOf(prova ?: "unverified", escopo).joinToString(":"))
+                    listOf(prova ?: "unverified", escopo).joinToString(":"),
+                    prova = prova, titulo = titulo, url = url)
                 r.cache = c; r.cacheEstado = estado
             }
             r.rede = { token ->
@@ -1821,7 +1825,10 @@ object NvPlayer {
 
     // Sobe a sessao e solta tudo; qualquer callback pendente do player velho
     // morre na conferencia do numero.
-    private fun liberar(preservarRetido: Boolean = false) {
+    private fun liberar(preservarRetido: Boolean = false, guardarCache: Boolean = false) {
+        // A stopped VOD may retain exactly one proven SimpleCache, but source
+        // replacement, app destruction and prepared-next-player adoption may not.
+        val pedidoNoFechamento = pedidos.get()
         if (!preservarRetido) limparRetido()
         buscaSerial++ // cancel any outstanding pre-seek PixelCopy continuation
         recuperacaoLive?.cancel()
@@ -1866,7 +1873,11 @@ object NvPlayer {
             superficie = null
             liberarEmFundo(p, sv) {
                 recursos?.let { liberarFontePreparo(it) }
-                cacheParaLiberar?.liberar()
+                cacheParaLiberar?.let { c ->
+                    if (guardarCache && pedidoNoFechamento == pedidos.get() &&
+                        activity != null && recursosAtuais == null) CacheMidia.guardar(c)
+                    else c.liberar()
+                }
             }
         } else cacheParaLiberar?.liberar()
         // P4-C: last Media3 loader/decoder has stopped before the 1500 ms
