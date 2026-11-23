@@ -3,6 +3,7 @@ package space.nuvio.nativelegacy
 import android.net.Uri
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
+import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.TransferListener
 import androidx.media3.datasource.cache.SimpleCache
 import org.junit.After
@@ -16,6 +17,10 @@ import java.io.File
 import java.io.IOException
 import java.io.InterruptedIOException
 import java.nio.file.Files
+import com.sun.net.httpserver.HttpServer
+import java.net.InetSocketAddress
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
 /** Real production Media3 SimpleCache/CacheDataSource; fake HTTPS origin serves exact 206 byte ranges. */
@@ -209,6 +214,102 @@ class P4Media3CacheTest {
         val next = create(primary, bodies.size)
         assertNotSame("old account cache must not carry over", cache, next)
         next.liberar()
+    }
+
+    @Test fun localHttpRangeServerFeedsActualMedia3DataSource() {
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        val served = AtomicInteger()
+        server.createContext("/vod") { exchange ->
+            val raw = exchange.requestHeaders.getFirst("Range") ?: "bytes=0-"
+            val match = Regex("^bytes=([0-9]+)-([0-9]*)$").matchEntire(raw)
+            if (match == null) {
+                exchange.sendResponseHeaders(416, -1)
+                exchange.close()
+            } else {
+                val start = match.groupValues[1].toInt()
+                val last = match.groupValues[2].toIntOrNull() ?: (bodies.size - 1)
+                val end = minOf(last, bodies.size - 1)
+                if (start !in bodies.indices || end < start) {
+                    exchange.sendResponseHeaders(416, -1)
+                    exchange.close()
+                } else {
+                    val count = end - start + 1
+                    exchange.responseHeaders.add("Content-Range", "bytes " + start + "-" + end + "/" + bodies.size)
+                    exchange.responseHeaders.add("ETag", "\"loopback\"")
+                    exchange.responseHeaders.add("Accept-Ranges", "bytes")
+                    exchange.sendResponseHeaders(206, count.toLong())
+                    exchange.responseBody.use { it.write(bodies, start, count) }
+                    served.addAndGet(count)
+                }
+            }
+        }
+        server.start()
+        try {
+            val uri = "http://127.0.0.1:" + server.address.port + "/vod"
+            val cache = create(uri, bodies.size)
+            val d = cache.fabrica(DefaultHttpDataSource.Factory()).createDataSource()
+            val start = 8192
+            val length = 16384
+            val out = ByteArrayOutputStream()
+            try {
+                d.open(DataSpec.Builder().setUri(Uri.parse(uri))
+                    .setPosition(start.toLong()).setLength(length.toLong()).build())
+                val buf = ByteArray(4096)
+                while (true) {
+                    val n = d.read(buf, 0, buf.size)
+                    if (n < 0) break
+                    out.write(buf, 0, n)
+                }
+            } finally { d.close() }
+            assertArrayEquals(bodies.copyOfRange(start, start + length), out.toByteArray())
+            assertEquals("HTTP range source should send only requested bytes", length, served.get())
+            cache.liberar()
+        } finally { server.stop(0) }
+    }
+
+    @Test fun evictionWhileReaderIsOpenCannotReturnWrongByteSequence() {
+        val origin = Origin(bodies)
+        val cache = create(primary, bodies.size)
+        assertArrayEquals(bodies, read(cache, origin, primary))
+        val field = CacheMidia::class.java.getDeclaredField("cache")
+        field.isAccessible = true
+        val simple = field.get(cache) as SimpleCache
+        val span = simple.getCachedSpans(simple.keys.first()).first()
+        val d = cache.fabrica(origin).createDataSource()
+        val out = ByteArrayOutputStream()
+        val pool = Executors.newSingleThreadExecutor()
+        try {
+            d.open(DataSpec.Builder().setUri(Uri.parse(primary)).setLength(bodies.size.toLong()).build())
+            val chunk = ByteArray(4096)
+            val first = d.read(chunk, 0, chunk.size)
+            assertEquals(chunk.size, first)
+            out.write(chunk, 0, first)
+            // Evict the underlying span from another thread while its reader is open.
+            pool.submit { simple.removeSpan(span) }.get(5, TimeUnit.SECONDS)
+            while (true) {
+                val n = d.read(chunk, 0, chunk.size)
+                if (n < 0) break
+                out.write(chunk, 0, n)
+            }
+            assertArrayEquals("active reader must never return mixed/wrong bytes", bodies, out.toByteArray())
+        } finally {
+            d.close()
+            pool.shutdownNow()
+            cache.liberar()
+        }
+    }
+
+    @Test fun nextEpisodeProofCannotAdoptPreviousMovieCache() {
+        val origin = Origin(bodies)
+        val cache = create(primary, bodies.size)
+        assertArrayEquals(bodies, read(cache, origin, primary))
+        CacheMidia.guardar(cache)
+        val (next, status) = CacheMidia.criar(folder, 256, {},
+            "account-profile-headers", "different-episode-proof",
+            "catalog:season-2:episode-3", rotated, bodies.size.toLong())
+        assertEquals(CacheSessao.ATIVO, status)
+        assertNotSame("next episode must have independent byte ownership", cache, next)
+        next?.liberar()
     }
 
     @Test fun cancellationBeforeAndDuringReadFailsClosed() {
