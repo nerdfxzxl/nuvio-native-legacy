@@ -370,6 +370,11 @@ typedef struct {
   // Nome ORIGINAL da legenda, quando o container/player informa. Separado do
   // rotulo para a folha mostra-lo abaixo do idioma sem mudar a memoria da faixa.
   char nome[128];
+#ifdef NV_ANDROID
+  // Q36: source facts vs current sink, independently of MIME/renderer presence.
+  int amostraHz, bits, bitrate;
+  int decodifica, pcmSaida, passthroughSaida, saidaFiel, saidaIncerta;
+#endif
 } VideoFaixa;
 
 // Identity used by candidates and manual audio memory, separate from selectTrack.
