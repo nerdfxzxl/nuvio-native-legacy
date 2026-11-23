@@ -1413,7 +1413,7 @@ object NvPlayer {
                 p.seekTo(pos)
                 p.prepare()
                 p.playWhenReady = resume
-                Log.i(TAG, "[audio] PCM processing=" + requirePcm + " (lossless decode, no lossy transcode)")
+                Log.i(TAG, "[audio] PCM processing=" + requirePcm + " (PCM route requested; output fidelity separately verified)")
             }
         }
     }
