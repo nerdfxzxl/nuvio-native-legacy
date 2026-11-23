@@ -1204,6 +1204,16 @@ static void aplicar(void) {
     }
     // F06: outra faixa de audio = outras falas; a escuta em curso nao vale mais.
     if (video_audio_atual() != indice) legsync_audio_trocou();
+    // Q36: never persist a manual selection that the actual Android output
+    // route cannot carry. The existing track sheet remains open on failure;
+    // the native audio error card takes ownership instead.
+#ifdef NV_ANDROID
+    { const VideoFaixa *f = video_audio(indice);
+      if (f && (!f->decodifica || !f->saidaFiel)) {
+        video_escolher_audio(indice); // signals Audio Playback Error
+        return;
+      } }
+#endif
     // A ordem automatica (audioescolha.h) volta a esta faixa neste titulo, e
     // nos outros episodios: gravada no perfil (audiomemoria.h), com o numero
     // dela para a mesma release (bingeGroup).
