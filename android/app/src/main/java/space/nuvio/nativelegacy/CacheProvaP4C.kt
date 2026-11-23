@@ -95,6 +95,25 @@ internal object CacheProvaP4C {
         return Representacao(o, etag, total).takeIf { it.confiavel() }
     }
 
+    // Inspect the *actual* upstream 206 returned by Media3 / the P4-B range
+    // downloader. The initial request may be an open-ended VOD read while the
+    // downloader probes just its first bounded chunk. Therefore a 206 can
+    // describe fewer bytes than the outer Media3 DataSpec requests.
+    fun observada206(url: String, headers: Map<String, List<String>>,
+                     inicio: Long): Representacao? {
+        fun h(nome: String) = headers.entries.firstOrNull { it.key.equals(nome, true) }
+            ?.value?.firstOrNull()?.trim().orEmpty()
+        val m = Regex("^bytes ([0-9]+)-([0-9]+)/([0-9]+)$", RegexOption.IGNORE_CASE)
+            .matchEntire(h("Content-Range")) ?: return null
+        val a = m.groupValues[1].toLongOrNull() ?: return null
+        val b = m.groupValues[2].toLongOrNull() ?: return null
+        if (a != inicio || b < a || b == Long.MAX_VALUE) return null
+        val len = b - a + 1
+        val declared = h("Content-Length").takeIf { it.isNotEmpty() }?.toLongOrNull()
+        if (declared != null && declared != len) return null
+        return resposta206(url, headers, inicio, len, len)
+    }
+
     // Length-prefix fields: concatenation cannot alias after embedded colons
     // or newline, and SHA-256 never exposes account/header/token values in keys.
     private fun resumo(fields: List<String>): String {
