@@ -225,6 +225,51 @@ class CacheMidia private constructor(
         }
     }
 
+    @Volatile private var representacao: CacheProvaP4C.Representacao? = null
+
+    private fun spansExistem(chave: String): Boolean = try {
+        cache.getCachedSpans(chave).isNotEmpty()
+    } catch (e: Exception) {
+        estado.falhou(e)
+        false
+    }
+
+    // One bounded one-byte 206 probe only when a NEW DataSource open might
+    // consume previously cached spans. Retain all signed URL/request headers.
+    // Missing/weak validator, changed object, redirect origin, 200 response,
+    // gzip, timeouts or storage error => do NOT consume cached bytes.
+    private fun validarRemoto(upstream: DataSource.Factory, spec: DataSpec): Boolean {
+        val esperado = representacao ?: return false
+        if (spec.httpRequestHeaders.keys.any { it.equals("Range", true) }) return false
+        val probe = try { spec.buildUpon().setPosition(0L).setLength(1L).build() }
+                    catch (_: Exception) { return false }
+        val rede = try { upstream.createDataSource() } catch (_: Exception) { return false }
+        return try {
+            if (rede.open(probe) <= 0) return false
+            val headers = rede.responseHeaders
+            val url = rede.uri?.toString() ?: spec.uri.toString()
+            val recebida = CacheProvaP4C.resposta206(url, headers, 0, 1, 1)
+            if (!esperado.mesma(recebida)) return false
+            val byte = ByteArray(1)
+            rede.read(byte, 0, 1) == 1
+        } catch (_: Exception) {
+            false
+        } finally {
+            try { rede.close() } catch (_: Exception) {}
+        }
+    }
+
+    private fun observarResposta(d: DataSource, spec: DataSpec): Boolean {
+        val headers = d.responseHeaders
+        if (headers.isEmpty()) return true // cache-only hit; already probed
+        val url = d.uri?.toString() ?: spec.uri.toString()
+        val nova = CacheProvaP4C.observada206(url, headers, spec.position)
+        val antiga = representacao
+        if (antiga != null && (nova == null || !antiga.mesma(nova))) return false
+        if (nova != null && antiga == null) representacao = nova
+        return true
+    }
+
     fun fabrica(upstream: DataSource.Factory): DataSource.Factory {
         val media3 = CacheDataSource.Factory()
             .setCache(cache)
@@ -274,11 +319,23 @@ class CacheMidia private constructor(
                     original = dataSpec
                     consumidos = 0L
                     chave = CacheSessao.chave(sessao, dataSpec.uri.toString(), escopo)
-                    noCache = !validar(chave)
+                    val haviaSpans = spansExistem(chave)
+                    noCache = !validar(chave) ||
+                        (haviaSpans && !validarRemoto(upstream, dataSpec))
+                    if (haviaSpans && noCache) {
+                        descartarChave(chave)
+                        representacao = null
+                    }
                     val d = criar(if (noCache) upstream else media3)
                     atual = d
-                    return try { d.open(dataSpec) }
-                    catch (e: IOException) {
+                    return try {
+                        val n = d.open(dataSpec)
+                        if (!noCache && !observarResposta(d, dataSpec)) {
+                            // Changed upstream object after the initial proof.
+                            // Never mix old spans with a new HTTP representation.
+                            usarRede()
+                        } else n
+                    } catch (e: IOException) {
                         if (noCache) throw e
                         usarRede()
                     }
