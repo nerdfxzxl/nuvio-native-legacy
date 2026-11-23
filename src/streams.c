@@ -817,6 +817,8 @@ static FolhaMemoria memoriasAba[13];
 static void memoriaFolhaGuardar(void);
 static void memoriaFolhaRestaurar(void);
 static void memoriaFolhaPrimeiro(void);
+static FolhaMemoria *memoriaFolhaDaAba(int aba);
+static uint64_t memoriaFolhaId(const Stream *s);
 
 // Q31–Q33: retain a frozen *display* list during a same-target refresh, but
 // never let a retained card open playback. Source ownership is a generation,
@@ -3897,12 +3899,17 @@ int stream_recarregar_iniciar(const char *id) {
   if (!aberta || canalFolha || !id || !stream_lista_do_alvo(id)) return 0;
   if (p3Reload.phase == NV_P3_RELOAD_IDLE) {
     p3FocusSaved = 0;
-    if (grupo == 1 && foco >= 0) {
-      int i = filtrado(foco);
-      if (i >= 0 && i < n) {
-        p3FocusSource = lista[i];
-        p3FocusSaved = 1;
-      }
+    int i = grupo == 1 && foco >= 0 ? filtrado(foco) : -1;
+    // Refresh chip lives above the cards; its focus must not erase the last
+    // stream focus remembered for this provider.
+    if (i < 0) {
+      FolhaMemoria *m = memoriaFolhaDaAba(filtro);
+      if (m && m->valido && m->indice >= 0 && m->indice < n &&
+          memoriaFolhaId(&lista[m->indice]) == m->fonteId) i = m->indice;
+    }
+    if (i >= 0 && i < n) {
+      p3FocusSource = lista[i];
+      p3FocusSaved = 1;
     }
     snprintf(p3AddonKey, sizeof p3AddonKey, "%s",
              filtro > 0 && filtro < nProvedores ? provChaves[filtro] : "");
@@ -5004,7 +5011,63 @@ static void memoriaFolhaGuardar(void) {
   } else m->valido = 0;
   m->offset = rolagem;
 }
+// The same CDN URL may have renewed. Focus follows P1's exact immutable
+// release identity rather than row index, arrival order, or signed URL.
 static float areaLista(void);
+static int p3MesmoLancamento(const Stream *a, const Stream *b) {
+  NvFonteId x = {a->addonChave, a->infoHash, a->fileIdx,
+                 a->arquivo, a->rotulo, a->tamanhoBytes, a->bingeGroup};
+  NvFonteId y = {b->addonChave, b->infoHash, b->fileIdx,
+                 b->arquivo, b->rotulo, b->tamanhoBytes, b->bingeGroup};
+  if (nv_fonte_mesma_liberacao(&x, &y)) return 1;
+  // A weaker source with no immutable metadata can retain focus ONLY when
+  // its original URL remains byte-exact and the addon/label/file still match.
+  return a->addonChave[0] && !strcmp(a->addonChave,b->addonChave) &&
+         a->url[0] && !strcmp(a->url,b->url) &&
+         a->fileIdx == b->fileIdx && !strcmp(a->rotulo,b->rotulo);
+}
+static void p3RestaurarAposResposta(void) {
+  if (!p3RestorePending || p3Reload.phase == NV_P3_RELOAD_RETAINED ||
+      !aberta || canalFolha) return;
+  int prov = 0;
+  if (p3AddonKey[0] || p3AddonName[0]) {
+    for (int k = 1; k < nProvedores; k++) {
+      if (p3AddonKey[0] ? !strcmp(p3AddonKey,provChaves[k]) :
+           (!provChaves[k][0] && !strcmp(p3AddonName,provedores[k]))) {
+        prov = k; break;
+      }
+    }
+    // More providers may still be loading. Don't incorrectly lock to All.
+    if (!prov && p3Reload.phase != NV_P3_RELOAD_IDLE) return;
+  }
+  if (prov && filtro != prov) {
+    filtro = abaFoco = prov;
+    montar(automaticaDaFolha());
+  }
+  if (grupo == 1 && p3FocusSaved) {
+    for (int row = 0; row < nOrdem; row++) {
+      int i = filtrado(row);
+      if (i < 0 || i >= n || !p3MesmoLancamento(&p3FocusSource,&lista[i])) continue;
+      foco = focoVisto = row;
+      linhaAnt = -1; abreFoco = 1.0f; abreAnt = 0.0f;
+      rolagem = fmaxf(0.0f,fminf(p3ScrollSaved,
+                  fmaxf(0.0f,alturaTotal-areaLista()+40.0f)));
+      velRol = 0.0f;
+      p3FocusSaved = p3RestorePending = 0;
+      return;
+    }
+  }
+  if (!p3FocusSaved || p3Reload.phase == NV_P3_RELOAD_IDLE) {
+    // Empty/failed search or vanished exact release: focus the first valid
+    // result without pretending a different addon/release is the old card.
+    if (grupo == 1 && nOrdem > 0 && !p3FocusSaved) {
+      rolagem = fmaxf(0.0f,fminf(p3ScrollSaved,
+                  fmaxf(0.0f,alturaTotal-areaLista()+40.0f)));
+      velRol = 0.0f;
+    }
+    p3FocusSaved = p3RestorePending = 0;
+  }
+}
 static void memoriaFolhaRestaurar(void) {
   FolhaMemoria *m = memoriaFolhaDaAba(filtro);
   int linha = -1;
@@ -5107,6 +5170,9 @@ static void desenharAudioBars(float x, float y, float alt, float alfa, Uint32 ag
 }
 
 void stream_folha_abrir(void) {
+  // A reopened sheet must not resurrect the old, display-only reload cards.
+  if (p3Reload.phase == NV_P3_RELOAD_RETAINED) stream_recarregar_primeira();
+  p3ReloadAbort();
   folhaOpcoesEp=0;
   folhaOpcoesEscolha=-1;
   // A busca nova pode estar na fila enquanto a lista ainda e do episodio
@@ -5753,6 +5819,7 @@ void stream_folha_atualizar(float dt, Uint32 agora) {
     if (r == ST_TEXTO || r == ST_FIM) {
       // A focus event with unchanged search text must never reset the list.
       if (strcmp(folhaBusca, texto)) {
+        p3RestorePending = 0; // explicit search wins over saved reload focus
         snprintf(folhaBusca, sizeof folhaBusca, "%s", texto);
         grupo = -2; foco = 0;
         montar(automaticaDaFolha());
@@ -5843,6 +5910,7 @@ void stream_folha_atualizar(float dt, Uint32 agora) {
       focoFixoY = foco >= 0 && foco < nOrdem ? linhaTopo(foco) : 0;
     } }
   montar(automaticaDaFolha());
+  p3RestaurarAposResposta();
   // On failed recovery, focus the first AVAILABLE stream (not a rejected,
   // outside-cache or informational row). A user D-pad move takes precedence.
   if (p1RecuperacaoFoco) {
@@ -6983,6 +7051,12 @@ static void corpoFolha(float x, float w, float anim, Uint32 agora, int ilha) {
       gfx_cor((GfxRect){tx,sy+116.0f,rw*.68f,12.0f},.30f,1,1,1,shade*.62f);
     }
   }
+  // Retained cards are display-only until a fresh response; the rotating
+  // refresh arrow above conveys activity, this label explains why cards stay.
+  if (p3Reload.phase == NV_P3_RELOAD_RETAINED && nf)
+    txt_desenhar_alpha(txt_linha_corta(TXT_PG_FIM,
+      i18n("Refreshing streams… Previous results cannot be played yet."),
+      170,175,184,255,rw-42),tx,folhaBase-30.0f,anim);
   // CABECALHOS DE GRUPO: "4K  ULTRA HD ........ 3 fontes", com um fio embaixo.
   for(int g=0;g<FOLHA_GRUPOS;g++){
     float y; char q[48];
@@ -7421,8 +7495,13 @@ static void corpoFolha(float x, float w, float anim, Uint32 agora, int ilha) {
           ? i18n("Ligue o P2P em Ajustes ou conecte uma conta de debrid.")
           : i18n("Use Recarregar para tentar novamente.")); s=frase; }
     }
-    // Com servicos de streaming na lista, a frase vem DEPOIS deles.
-    txt_bloco(TXT_PG_FIM,s,196,199,204,tx,FOLHA_TOPO+20,rw-52,28,anim,3);
+    // Explicit empty state: never start the cinematic without a selected card.
+    // Preserve the provider/network/debrid reason as a secondary explanation.
+    if (n == 0 && addons_estado() != ADD_BUSCANDO) {
+      txt_desenhar_alpha(txt_linha_corta(TXT_PAINEL_ITEM,i18n("No Streams Found"),
+                           235,235,235,255,rw-52),tx,FOLHA_TOPO+14.0f,anim);
+      txt_bloco(TXT_PG_FIM,s,196,199,204,tx,FOLHA_TOPO+57.0f,rw-52,28,anim,3);
+    } else txt_bloco(TXT_PG_FIM,s,196,199,204,tx,FOLHA_TOPO+20,rw-52,28,anim,3);
   }
   anim=animLista; lx-=dxLista; tx-=dxLista; tr-=dxLista;
   // Na ilha, de volta ao recorte dela (plrilha corta a forma inteira).
