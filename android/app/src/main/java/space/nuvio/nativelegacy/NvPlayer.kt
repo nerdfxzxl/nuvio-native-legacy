@@ -885,7 +885,7 @@ object NvPlayer {
             if (pedido != pedidosPreparo.get()) return@post
             soltarPreparo()
             val s = Preparo(token, pedido, url, cabecalhos, inicioMs.coerceAtLeast(0),
-                if (inicioMs > 0) 0 else fracao.coerceIn(0, 9999), buffer.coerceIn(0, 256), cacheMb.coerceIn(0, 1024), proximo, idiomaAudio, kbps.coerceIn(0, 400_000), profile)
+                if (inicioMs > 0) 0 else fracao.coerceIn(0, 9999), buffer.coerceIn(0, 256), cacheMb.coerceIn(0, CacheSessao.AUTOMATICO_MB), proximo, idiomaAudio, kbps.coerceIn(0, 400_000), profile)
             preparo = s
             prepararMain(s, SystemClock.elapsedRealtime())
         }
@@ -1345,7 +1345,7 @@ object NvPlayer {
     // Declared kbps of the next open (0 = unknown/trailer), sticky like buffer().
     @Volatile private var kbpsDeclarado = 0
     @JvmStatic fun kbps(k: Int) { kbpsDeclarado = k.coerceIn(0, 400_000) }
-    @JvmStatic fun cache(mb: Int) { cacheMbPedido = mb.coerceIn(0, 1024) }
+    @JvmStatic fun cache(mb: Int) { cacheMbPedido = mb.coerceIn(0, CacheSessao.AUTOMATICO_MB) }
     @JvmStatic fun cacheTitle(id: String) { tituloPedido = id }
     // Profile switch (C side): the kept cache belongs to the old profile.
     @JvmStatic fun descartarGuardado() { principal.post { CacheMidia.descartar("profile switch"); esquecerQuadro() } }
@@ -1552,10 +1552,9 @@ object NvPlayer {
                         }
                     }
                 }
-                // WARM RESUME: the same title and source reuse the downloaded part.
-                val guardado = if (titulo.isNotEmpty()) CacheMidia.pegar(titulo, url.substringBefore('#'), pedidoCache, aoFalhar) else null
-                val (c, estado) = if (guardado != null) guardado to CacheSessao.ATIVO
-                                  else CacheMidia.criar(act.cacheDir, pedidoCache, aoFalhar)
+                // Session-only disk cache until content provenance and cached
+                // byte representation can be proved independently of URL.
+                val (c, estado) = CacheMidia.criar(act.cacheDir, pedidoCache, aoFalhar)
                 r.cache = c; r.cacheEstado = estado
             }
             r.rede = { token ->
@@ -1841,8 +1840,9 @@ object NvPlayer {
         }
         // F07: the session cache goes with its player (released and deleted
         // off the main thread, after the canceled loaders unwind).
-        // WARM RESUME: a healthy cache of a known title is kept for the next open.
-        cacheMidia?.let { if (mornoLigado && tituloAberto.isNotEmpty()) CacheMidia.guardar(it, tituloAberto, chaveAberta) else it.liberar() }
+        // Session-only disk spans: no cross-reopen reuse from signed URLs.
+        // PixelCopy's warm frame remains separate and is unchanged.
+        cacheMidia?.liberar()
         cacheMidia = null
         tituloAberto = ""
         cacheEstado = CacheSessao.DESLIGADO
