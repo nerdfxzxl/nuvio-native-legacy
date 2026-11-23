@@ -76,6 +76,7 @@ class CacheMidia private constructor(
             val chave = c.chaveGuarda()
             if (chave == null || c.liberacaoAgendada || c.estado.desligado ||
                 c.representacao?.confiavel() != true ||
+                c.integridade.quantidade() == 0 ||
                 !c.spansExistem(c.chaveBase())) {
                 c.liberar()
                 return
@@ -97,8 +98,12 @@ class CacheMidia private constructor(
                 android.os.SystemClock.elapsedRealtime()) ?: return null
             val origem = CacheProvaP4C.origem(url)
             if (livre < CacheSessao.RESERVA_BYTES ||
+                CacheSessao.limiteMb(pedidoMb, livre) < c.limiteMb ||
                 c.liberacaoAgendada || c.estado.desligado ||
-                origem == null || origem != c.representacao?.origem) {
+                origem == null) {
+                // Remote redirect target is not known yet. Do NOT compare
+                // input URL with the old CDN response: the loader probes the
+                // actual redirected target before allowing any cache hit.
                 c.liberar()
                 return null
             }
