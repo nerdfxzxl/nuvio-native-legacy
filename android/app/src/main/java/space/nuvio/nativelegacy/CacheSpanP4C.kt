@@ -47,9 +47,13 @@ internal class CacheSpanP4C(private val raiz: File) {
     }
 
     @Synchronized fun registrar(t: Trecho): Boolean {
-        if (digests.size >= maxRegistros && !digests.containsKey(registro(t))) return false
+        val key = registro(t)
+        // A later close/re-registration must NOT replace the trusted hash.
+        // Otherwise a corrupted completed span would become the new baseline.
+        if (digests.containsKey(key)) return valido(t)
+        if (digests.size >= maxRegistros) return false
         val h = digest(t) ?: return false
-        digests[registro(t)] = h
+        digests[key] = h
         return true
     }
 
