@@ -97,6 +97,7 @@ object NvPlayer {
     private const val EV_CARGA_FASE = 13 // observed Media3 startup milestones
     private const val EV_SO_AUDIO = 14  // READY with selected audio and no video tracks
     private const val EV_SUPERFICIE_INVALIDADA = 15 // same session; rebuilt hardware plane
+    private const val EV_AUDIO_SAIDA_INCOMPATIVEL = 16 // P5-A: route cannot faithfully carry selected audio
 
     private const val TELA_W = 1920   // coordenadas de layout do app
     private const val TELA_H = 1080
@@ -152,6 +153,7 @@ object NvPlayer {
     private var jh = TELA_H
     private var atrasoMs = 0
     private var audios = ArrayList<Pair<Tracks.Group, Int>>()
+    private var capacidadesAudio = ArrayList<AudioOutputProbeP5A.Observation>()
     private var legendas = ArrayList<Pair<Tracks.Group, Int>>()
     private var assinatura = ""
     private var decoderDv = false
@@ -174,6 +176,8 @@ object NvPlayer {
     // (ROLE_FLAG_DESCRIBES_MUSIC_AND_SOUND); nome = Format.label.
     // mime/canais (#293): codec e canais da faixa de audio.
     @JvmStatic external fun nativeFaixa(tipo: Int, idx: Int, lingua: String, flags: Int, nome: String, mime: String, canais: Int)
+    @JvmStatic external fun nativeAudioCapacidade(idx: Int, hz: Int, bits: Int, bitrate: Int,
+                                                 decoder: Int, pcm: Int, pass: Int, fiel: Int, incerto: Int)
     @JvmStatic external fun nativeFaixasFim(selAudio: Int, selLeg: Int)
     @JvmStatic external fun nativeLegenda(texto: String, durMs: Int)
     @JvmStatic external fun nativePos(ms: Long, bufferFimMs: Long, live: Boolean,
@@ -627,7 +631,9 @@ object NvPlayer {
             val grupo: androidx.media3.common.TrackGroup,
             val indice: Int,
             val idioma: String,
-            val selecionada: Boolean
+            val selecionada: Boolean,
+            val qualidade: Long,
+            val fiel: Boolean
         )
 
         override fun selectAllTracks(
@@ -653,8 +659,11 @@ object NvPlayer {
                     for (i in 0 until grupo.length) {
                         if (mappedTrackInfo.getTrackSupport(r, g, i) != C.FORMAT_HANDLED) continue
                         val selecao = definicoes[r]
-                        faixas.add(FaixaAudio(r, grupo, i, codigoPublicado(grupo.getFormat(i).language),
-                            selecao != null && selecao.group == grupo && i in selecao.tracks))
+                        val f = grupo.getFormat(i)
+                        val cap = AudioOutputProbeP5A.inspect(context, f, decoder = true, dsp = false).result
+                        faixas.add(FaixaAudio(r, grupo, i, codigoPublicado(f.language),
+                            selecao != null && selecao.group == grupo && i in selecao.tracks,
+                            cap.sourceQualityScore, cap.outputFaithfulCandidate))
                         if (faixas.size == FAIXAS_MAX) break@publicar
                     }
                 }
@@ -665,9 +674,12 @@ object NvPlayer {
             // keeps the FIRST such published member, or audioAtual=0 if none was
             // published as selected. Preserve the full definition in either case.
             val atual = faixas.firstOrNull { it.selecionada } ?: faixas[0]
-            if (atual.idioma.isNotEmpty() && casa(atual.idioma, preferencia)) return definicoes
-            val alvo = faixas.firstOrNull { it.idioma.isNotEmpty() && casa(it.idioma, preferencia) }
-                ?: return definicoes
+            // Highest route-compatible original-language source, not simply
+            // the first renderer-decodable codec. Unknown is NOT 'lossless'.
+            val alvo = faixas.filter { it.fiel && it.idioma.isNotEmpty() &&
+                casa(it.idioma, preferencia) }.maxByOrNull { it.qualidade } ?: return definicoes
+            if (atual.renderer == alvo.renderer && atual.grupo == alvo.grupo &&
+                atual.indice == alvo.indice) return definicoes
 
             for (r in definicoes.indices) {
                 if (mappedTrackInfo.getRendererType(r) == C.TRACK_TYPE_AUDIO) definicoes[r] = null
@@ -1852,7 +1864,7 @@ object NvPlayer {
         videoW = 0; videoH = 0
         temJanela = false
         assinatura = ""
-        audios = ArrayList(); legendas = ArrayList()
+        audios = ArrayList(); capacidadesAudio = ArrayList(); legendas = ArrayList()
         decoderDv = false
         ultHdr = ""; ultDv = -1; ultAtmos = -1
         avisouSemAudio = false
@@ -2304,6 +2316,11 @@ object NvPlayer {
             val par = p.trackSelectionParameters.buildUpon()
             if (tipo == 0) {
                 val (g, i) = audios.getOrNull(idx) ?: return
+                if (capacidadesAudio.getOrNull(idx)?.result?.outputFaithfulCandidate != true) {
+                    relatarAudio(sessao, "seleção de áudio recusada: capacidade de saída não comprovada")
+                    ev(EV_AUDIO_SAIDA_INCOMPATIVEL, 0, 0, geracaoNative)
+                    return
+                }
                 relatarAudio(sessao, "escolha indice=$idx grupoIndice=$i mime=${g.getTrackFormat(i).sampleMimeType}")
                 par.setOverrideForType(TrackSelectionOverride(g.mediaTrackGroup, i))
             } else if (tipo == 1) {
@@ -2646,13 +2663,18 @@ object NvPlayer {
     // legenda). Legenda sobe sempre desligada.
     private fun publicarFaixas(tracks: Tracks) {
         val a = ArrayList<Pair<Tracks.Group, Int>>()
+        val caps = ArrayList<AudioOutputProbeP5A.Observation>()
         val l = ArrayList<Pair<Tracks.Group, Int>>()
+        val dsp = amplificacaoDb != 0 || baixoDb != 0 || centroDb != 0 || noiteNivel != 0
         var temAudio = false
         for (g in tracks.groups) {
             for (i in 0 until g.length) {
                 if (g.type == C.TRACK_TYPE_AUDIO) {
                     temAudio = true
-                    if (g.isTrackSupported(i) && a.size < FAIXAS_MAX) a.add(g to i)
+                    if (g.isTrackSupported(i) && a.size < FAIXAS_MAX) {
+                        a.add(g to i)
+                        caps.add(AudioOutputProbeP5A.inspect(activity, g.getTrackFormat(i), true, dsp))
+                    }
                 } else if (g.type == C.TRACK_TYPE_TEXT && g.isTrackSupported(i) && l.size < FAIXAS_MAX) {
                     l.add(g to i)
                 }
@@ -2662,13 +2684,21 @@ object NvPlayer {
         if (temAudio && a.isEmpty() && !avisouSemAudio) { avisouSemAudio = true; ev(EV_AUDIO_SEM_DECODER) }
 
         val sig = StringBuilder()
-        for ((g, i) in a) sig.append('a').append(g.getTrackFormat(i).id).append(g.getTrackFormat(i).language).append(';')
+        for ((n, par) in a.withIndex()) {
+            val f = par.first.getTrackFormat(par.second)
+            val cap = caps[n]
+            sig.append('a').append(f.id).append(f.language).append(':')
+                .append(f.channelCount).append(':').append(f.sampleRate).append(':')
+                .append(f.bitrate).append(':').append(cap.routeType).append(':')
+                .append(cap.result.outputFaithfulCandidate).append(':').append(dsp).append(';')
+        }
         for ((g, i) in l) sig.append('l').append(g.getTrackFormat(i).id).append(g.getTrackFormat(i).language).append(';')
         val nova = sig.toString()
         if (nova == assinatura) return
         val tinhaLegenda = legendas.isNotEmpty()
         assinatura = nova
         audios = a
+        capacidadesAudio = caps
         legendas = l
         if (a.isEmpty() && l.isEmpty()) return
         // Lista de legendas mudou: a escolha antiga nao vale (o C zera legAtual).
@@ -2684,7 +2714,14 @@ object NvPlayer {
                 val (g, i) = par
                 if (sel < 0 && g.isTrackSelected(i)) sel = n
                 val fmt = g.getTrackFormat(i)
-                nativeFaixa(0, n, fmt.language ?: "", 0, "", fmt.sampleMimeType ?: "", fmt.channelCount.coerceAtLeast(0))
+                nativeFaixa(0, n, fmt.language ?: "", 0, fmt.label ?: "",
+                    fmt.sampleMimeType ?: "", fmt.channelCount.coerceAtLeast(0))
+                val cap = caps[n]
+                val d = cap.result
+                nativeAudioCapacidade(n, cap.sampleRate, cap.bitDepth, cap.sourceBitrate,
+                    if (d.decoder) 1 else 0, if (d.pcmCompatible) 1 else 0,
+                    if (d.encodedPassthrough) 1 else 0,
+                    if (d.outputFaithfulCandidate) 1 else 0, if (d.unknown) 1 else 0)
             }
             for ((n, par) in l.withIndex()) {
                 val f = par.first.getTrackFormat(par.second)
