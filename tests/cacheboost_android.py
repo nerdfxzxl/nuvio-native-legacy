@@ -93,6 +93,12 @@ with tempfile.TemporaryDirectory(prefix="nuvio-cacheboost-android-", dir=os.envi
     print("compile-check: NvPlayer/CacheMidia/CacheSessao/GanhoMath/GanhoAudioProcessor (+ParaleloDataSource/PassivoMedidor"
           + ("/NuvioActivity" if java_roots else "") + ") against android-35 + Media3 1.8.0: OK")
 
+    # CI's cache-only verification must not be blocked by the independent
+    # audio-processor replay below. The default invocation still runs it.
+    if os.environ.get("NUVIO_CACHE_COMPILE_ONLY") == "1":
+        print("P4 cache production API35/Media3 Kotlin compilation: PASS (audio replay intentionally not run)")
+        raise SystemExit(0)
+
     replay = tmp / "Replay.kt"
     replay.write_text(r"""
 import space.nuvio.nativelegacy.CacheSessao
