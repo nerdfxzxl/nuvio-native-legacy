@@ -114,10 +114,16 @@ fun main() {
     check(CacheSessao.limiteMb(512, 64_000 * MB) == 512)
     check(CacheSessao.limiteMb(0, 64_000 * MB) == 0)
     check(CacheSessao.limiteMb(512, 0) == 0 && CacheSessao.limiteMb(512, -1) == 0)
+    check(CacheSessao.limiteMb(CacheSessao.AUTOMATICO_MB, 4096 * MB) == 512)
+    check(CacheSessao.limiteMb(CacheSessao.AUTOMATICO_MB, 1200 * MB) == 0)
     check(CacheSessao.limiteMb(100, 64_000 * MB) == 0)   // not an offered size
 
     // --- key and names
-    check(CacheSessao.chave("s3", "https://cdn.example/f.mkv?t=1#frag") == "s3|https://cdn.example/f.mkv?t=1")
+    check(CacheSessao.chave("s3", "https://cdn.example/f.mkv?t=1#frag") ==
+          CacheSessao.chave("s3", "https://cdn.example/f.mkv?t=1"))
+    check(!CacheSessao.chave("s3", "https://cdn.example/f.mkv?t=1").contains("t=1"))
+    check(CacheSessao.chave("s3", "https://cdn.example/f.mkv?t=1") !=
+          CacheSessao.chave("s3", "https://cdn.example/f.mkv?t=2"))
     check(CacheSessao.chave("s3", "x") != CacheSessao.chave("s4", "x"))
     check(CacheSessao.nomeValido("b1a2-s9") && !CacheSessao.nomeValido("..") && !CacheSessao.nomeValido("a/b")
           && !CacheSessao.nomeValido("") && !CacheSessao.nomeValido("A"))
