@@ -2,6 +2,7 @@ package space.nuvio.nativelegacy
 
 import java.io.File
 import java.io.IOException
+import java.security.MessageDigest
 
 // F07 (1.8): the PURE part of the seek cache — sizes, folders, keys, cleanup
 // and the write guard. No Android or Media3 import, so the JVM test
@@ -24,25 +25,42 @@ object CacheSessao {
     // Free space the cache never takes: the system, the app's own data and
     // other apps need room too. A 256 MB cache needs 768 MB free.
     const val RESERVA_BYTES = 512L shl 20
+    // 2048 is an Automatic request marker, not a 2 GiB disk allocation.
+    const val AUTOMATICO_MB = 2048
     private val OPCOES_MB = intArrayOf(1024, 512, 256)
 
     // The largest offered size <= `pedidoMb` that leaves RESERVA_BYTES free
     // (statvfs of the cache dir: File.usableSpace). Unknown/failed free space
     // (<= 0) means OFF: never guess that a disk has room.
     fun limiteMb(pedidoMb: Int, livreBytes: Long): Int {
-        if (pedidoMb <= 0 || livreBytes <= 0L) return 0
+        if (pedidoMb <= 0 || livreBytes <= RESERVA_BYTES) return 0
+        // Automatic consumes at most 1/4 of spare space beyond the reserve
+        // and never exceeds the existing 1 GiB LRU safety ceiling.
+        val pedido = if (pedidoMb == AUTOMATICO_MB)
+            ((livreBytes - RESERVA_BYTES) / 4L / (1L shl 20)).coerceAtMost(1024L).toInt()
+            else pedidoMb.coerceAtMost(1024)
         for (mb in OPCOES_MB) {
-            if (mb > pedidoMb) continue
+            if (mb > pedido) continue
             if ((mb.toLong() shl 20) + RESERVA_BYTES <= livreBytes) return mb
         }
         return 0
     }
 
-    // Cache key: the session first, so two sessions can never share a span even
-    // if a folder survived; the URI without fragment (Media3's own default key).
+    // A signed URL is not durable media identity. Every playback has a
+    // separate cache: even in one session, two signed URLs must never alias.
+    // Hash the request URI so Media3's disk index stores no TorBox tokens.
     fun chave(sessao: String, uri: String): String {
-        val i = uri.indexOf('#')
-        return sessao + "|" + (if (i >= 0) uri.substring(0, i) else uri)
+        require(nomeValido(sessao))
+        val digest = MessageDigest.getInstance("SHA-256")
+            .digest(uri.substringBefore('#').toByteArray(Charsets.UTF_8))
+        val hex = "0123456789abcdef"
+        return buildString {
+            append("v2:"); append(sessao); append(':')
+            for (b in digest) {
+                append(hex[(b.toInt() ushr 4) and 15])
+                append(hex[b.toInt() and 15])
+            }
+        }
     }
 
     // Only names this file creates: [a-z0-9-], never "..", never a separator.
