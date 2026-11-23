@@ -199,6 +199,13 @@ void stream_definir_lista_idade(const Stream *lista, int n, Uint32 idade);
 // mesma da lista inteira de antes. Com a folha aberta, o foco fica no mesmo
 // cartao e a rolagem compensa as linhas que entraram acima dele.
 void stream_lista_acrescentar(const Stream *lista, int n, int ordemAddon);
+// P3: retain same-title selector cards during a forced refresh. Retained cards
+// are display-only; a fresh result replaces them atomically on the UI thread.
+// Never use this for another target, account, or player auto-selection.
+int  stream_recarregar_iniciar(const char *id);
+void stream_recarregar_primeira(void);
+void stream_recarregar_concluir(void);
+int  stream_recarregar_retendo(void);
 // No trabalhador, antes de publicar: pode carregar o motor P2P do pacote.
 void stream_preparar_dica_p2p(const Stream *lista, int n);
 // O addon (ordemAddon) de cada fonte, como entrou; 0 na lista inteira.
