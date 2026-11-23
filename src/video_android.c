@@ -75,7 +75,7 @@ static unsigned preparoAdotar;
 static jmethodID mBufferProfile, mHttpConfig;
 static jmethodID mCache, mGanho, mBuffer, mKbps, mAudioAjustes;
 // Warm resume (#492, optional too): titulo(id) and descartarGuardado().
-static jmethodID mTitulo, mDescartar, mMorno, mQuadro;
+static jmethodID mTitulo, mIdentidade, mDescartar, mMorno, mQuadro;
 // #202 (opcional, como os de cima): velocidade(centesimos). Casca sem ele =
 // sem a linha da velocidade.
 static jmethodID mVelocidade;
@@ -110,6 +110,9 @@ static int resolverMetodos(JNIEnv *env) {
   if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); mCache = NULL; }
   mTitulo = (*env)->GetStaticMethodID(env, gCls, "cacheTitle", "(Ljava/lang/String;)V");
   if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); mTitulo = NULL; }
+  mIdentidade = (*env)->GetStaticMethodID(env, gCls, "cacheIdentity",
+      "(Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;Ljava/lang/String;IJ)V");
+  if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); mIdentidade = NULL; }
   mDescartar = (*env)->GetStaticMethodID(env, gCls, "descartarGuardado", "()V");
   if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); mDescartar = NULL; }
   mMorno = (*env)->GetStaticMethodID(env, gCls, "morno", "(I)V");
@@ -1057,6 +1060,25 @@ int video_tocar_posicao(const char *u, double segundos) { return video_tocar_ret
 void cacheboost_backend_buffer(int mb) { bufferPreset = mb >= 0 && mb <= 256 ? mb : 0; }
 void cacheboost_backend_cache(int mb) { cacheArmado = mb > 0 ? mb : 0; }
 void cacheboost_backend_titulo(const char *id) { snprintf(tituloArmado, sizeof tituloArmado, "%s", id ? id : ""); }
+void cacheboost_backend_identidade(const char *conta, int perfil, const char *catalogo,
+                                   const char *addon, const char *torrent,
+                                   int arquivo, unsigned long long bytes) {
+  JNIEnv *env = ambiente();
+  if (!env || !mIdentidade) return; // Older Kotlin shells: no durable reuse.
+  jstring c = paraJString(env, conta ? conta : "");
+  jstring t = paraJString(env, catalogo ? catalogo : "");
+  jstring a = paraJString(env, addon ? addon : "");
+  jstring h = paraJString(env, torrent ? torrent : "");
+  if (c && t && a && h) {
+    (*env)->CallStaticVoidMethod(env, gCls, mIdentidade, c, (jint)perfil,
+        t, a, h, (jint)arquivo, (jlong)bytes);
+  }
+  if (c) (*env)->DeleteLocalRef(env, c);
+  if (t) (*env)->DeleteLocalRef(env, t);
+  if (a) (*env)->DeleteLocalRef(env, a);
+  if (h) (*env)->DeleteLocalRef(env, h);
+  fimChamada(env);
+}
 void cacheboost_backend_descartar(void) { if (mDescartar) kSemArg(mDescartar); }
 void cacheboost_backend_morno(int ligado) { if (mMorno) kInt(mMorno, ligado); }
 int cacheboost_backend_quadro(int acao) {
