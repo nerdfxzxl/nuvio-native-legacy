@@ -268,7 +268,13 @@ fun main() {
         val o1 = processar(C.ENCODING_PCM_16BIT, 1f, { b -> b.putShort(32767); b.putShort(-32768) }, 4)
         check(o1.short == 32767.toShort() && o1.short == (-32768).toShort())
         val of = processar(C.ENCODING_PCM_FLOAT, 1.5f, { b -> b.putFloat(0.2f); b.putFloat(-1f) }, 8)
+        // Positive gain is linear below the -1 dBFS knee; loud samples must
+        // pass through GanhoMath's smooth limiter, not hard-clip at full scale.
         check(Math.abs(of.float - 0.3f) < 1e-6f && of.float > -1f)
+        val peak = processar(C.ENCODING_PCM_FLOAT, 2f, { b -> b.putFloat(0.6f); b.putFloat(-0.6f) }, 8)
+        check(peak.float in 0.9f..1f && peak.float in -1f..-0.9f)
+        // Small 16-bit samples must round to the *correct* integer, not
+        // truncate 1999.94 to 1999 at 2x gain (prior Replay.kt:165 failure).
         val p = GanhoAudioProcessor()
         check(p.configure(AudioProcessor.AudioFormat(48000, 6, C.ENCODING_AC3)) == AudioProcessor.AudioFormat.NOT_SET && !p.isActive)
     }
