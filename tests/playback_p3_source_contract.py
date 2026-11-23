@@ -129,6 +129,20 @@ check("P2-D cinematic visible handoff and 200ms fade preserved",
 check("P2-C 15s Change Stream and Down/OK ownership preserved",
       "NV_LOADING_CHANGE_MS 15000u" in nav and
       "if (k == SDLK_DOWN) { cinemaEscapeFoco = 1; return; }" in player)
+check("search cancellation and account changes terminate frozen reload",
+      "if (!pendId[0]) stream_recarregar_concluir();" in final and
+      "account or profile changed during the search" in final)
+check("D-pad changes to retained cards update focus before fresh swap",
+      "p3CapturarFocoAtual();" in first and
+      "static void p3CapturarFocoAtual(void) {" in streams and
+      "p3Reload.phase != NV_P3_RELOAD_RETAINED" in events)
+check("preferred and active releases rebind by identity, not old list position",
+      "p3PreferredSource = lista[preferida]" in streams and
+      "p3PlayingSource = lista[atual]" in streams and
+      "p3MesmoLancamento(&p3PreferredSource,&lista[i])" in restore and
+      "p3MesmoLancamento(&p3PlayingSource,&lista[i])" in restore)
+check("selector entry and first-frame exit are independently timed",
+      "t / 0.2f" in player and "agora - a->fim >= 200u" in cinema)
 check("post-134 scope remains protected",
       (ROOT / "docs/PLAYER_PENDING_REFINEMENTS_AFTER_134.md").exists() and
       (ROOT / "tests/playback_p3_reload.c").exists())
