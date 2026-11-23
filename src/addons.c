@@ -835,6 +835,10 @@ AddEstado addons_estado(void) {
       // pertence mais a tela, nem pode recriar o cache depois do logout.
       free(resultado); resultado = NULL; nResultado = 0;
       estado = ADD_PARADO;
+      // A cancelled profile/addon search must terminate any staged same-title
+      // reload even when NO addon published a result; otherwise frozen old
+      // cards could remain on screen indefinitely after cancellation.
+      if (!pendId[0]) stream_recarregar_concluir();
       if (progPublicou && !pendId[0]) stream_invalidar("account or profile changed during the search");
     } else {
       if (alvoVod() && resultadoCacheavel)
