@@ -44,7 +44,7 @@ internal object AudioOutputProbeP5A {
         else -> 0
     }
 
-    private fun encoding(mime: String): Int = when (mime.lowercase()) {
+    fun encoding(mime: String): Int = when (mime.lowercase()) {
         "audio/ac3", "audio/ac-3" -> AudioFormat.ENCODING_AC3
         "audio/eac3", "audio/e-ac3", "audio/eac3-joc" -> AudioFormat.ENCODING_E_AC3
         "audio/vnd.dts", "audio/dts" -> AudioFormat.ENCODING_DTS
