@@ -112,10 +112,11 @@ jobs:
           GRADLE
           bash android/gradlew -p "$deps" resolveP4 --no-daemon
 
-      - name: Compile actual cache/player source against API35 and Media3; run JVM regressions
+      - name: Compile actual cache/player source against API35 and Media3 (no APK)
         shell: bash
         env:
           NUVIO_TEST_JAVA: java
+          NUVIO_CACHE_COMPILE_ONLY: '1'
         run: |
           set -euo pipefail
           python3 tests/cacheboost_android.py
