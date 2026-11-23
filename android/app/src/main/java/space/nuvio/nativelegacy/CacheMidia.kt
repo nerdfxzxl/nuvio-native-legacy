@@ -29,6 +29,9 @@ import java.util.concurrent.TimeUnit
 // (the index lives in the folder and dies with it), LRU-bounded to the
 // effective limit. Writes go through CacheSessao.Escrita: ENOSPC or any other
 // write error turns the cache off for the session, playback continues.
+// P4-C: warm cross-open reuse is disabled until source and representation
+// identity, cached-byte integrity and account/profile scope can be proven.
+// In-session seeks still benefit from the Media3 disk cache.
 @androidx.annotation.OptIn(UnstableApi::class)
 class CacheMidia private constructor(
     private val pasta: File,
@@ -56,23 +59,16 @@ class CacheMidia private constructor(
         private var raizVaga: File? = null
         private val vaga = CacheSessao.Vaga<CacheMidia> { it.liberar() }
 
-        // Player closed: keep this session's cache for `titulo` instead of
-        // deleting it (when it is healthy, has bytes and the disk has room).
+        // Fail closed: neither title nor signed URL proves immutable
+        // addon/release/file/account identity or validates persisted bytes.
         fun guardar(c: CacheMidia, titulo: String, chave: String) {
-            val sadio = !c.estado.desligado && c.cache.cacheSpace > 0
-            val livre = try { c.pasta.usableSpace } catch (e: SecurityException) { 0L }
-            val ficou = vaga.guardar(c, if (sadio) titulo else "", chave, c.pedidoMb, System.currentTimeMillis(), livre)
-            if (ficou) { raizVaga = c.pasta.parentFile?.parentFile; Log.i(TAG, "kept for the next open: $titulo (${c.usadoMb()} MB)"); vigiar() }
+            c.liberar()
+            descartar("unverified warm cache")
         }
-
-        // A VOD opens: the kept cache, rebound to this session, or null.
-        fun pegar(titulo: String, chave: String, pedidoMb: Int, aoFalhar: (Boolean) -> Unit): CacheMidia? {
-            val livre = try { raizVaga?.usableSpace ?: 0L } catch (_: SecurityException) { 0L }
-            vaga.vencer(System.currentTimeMillis(), livre)
-            val c = vaga.pegar(titulo, chave, pedidoMb, System.currentTimeMillis()) ?: return null
-            c.estado.aoFalhar = aoFalhar
-            Log.i(TAG, "reusing the kept cache: $titulo (${c.usadoMb()} MB)")
-            return c
+        fun pegar(titulo: String, chave: String, pedidoMb: Int,
+                  aoFalhar: (Boolean) -> Unit): CacheMidia? {
+            descartar("unverified warm cache")
+            return null
         }
 
         // Another title, setting off, profile switch.
@@ -127,14 +123,23 @@ class CacheMidia private constructor(
         }
     }
 
-    private class SinkProtegido(cache: SimpleCache, estado: CacheSessao.Estado) : DataSink {
+    private class SinkProtegido(cache: SimpleCache, estado: CacheSessao.Estado, private val pasta: File) : DataSink {
         // bufferSize 0: Escrita buffers (see CacheSessao.Escrita).
         private val interno = CacheDataSink(cache, CacheDataSink.DEFAULT_FRAGMENT_SIZE, 0)
         private var spec: DataSpec? = null
         private val escrita = CacheSessao.Escrita(estado, ESCRITA_BUF,
             { interno.open(spec!!) }, { b, o, n -> interno.write(b, o, n) }, { interno.close() })
         override fun open(dataSpec: DataSpec) { spec = dataSpec; escrita.abrir() }
-        override fun write(buffer: ByteArray, offset: Int, length: Int) = escrita.escrever(buffer, offset, length)
+        override fun write(buffer: ByteArray, offset: Int, length: Int) {
+            // Another app may consume storage after cache initialization.
+            // Never write into the reserved 512 MiB of free disk space.
+            if (length > 0 && !estado.desligado) {
+                val livre = try { pasta.usableSpace } catch (_: SecurityException) { 0L }
+                if (livre < CacheSessao.RESERVA_BYTES)
+                    estado.falhou(java.io.IOException("ENOSPC: cache reserve depleted"))
+            }
+            escrita.escrever(buffer, offset, length)
+        }
         override fun close() { escrita.fechar(); spec = null }
     }
 
@@ -142,8 +147,9 @@ class CacheMidia private constructor(
         CacheDataSource.Factory()
             .setCache(cache)
             .setUpstreamDataSourceFactory(upstream)
-            .setCacheWriteDataSinkFactory { SinkProtegido(cache, estado) }
-            .setCacheKeyFactory(CacheKeyFactory { spec -> CacheSessao.chave(sessao, spec.key ?: spec.uri.toString()) })
+            .setCacheWriteDataSinkFactory { SinkProtegido(cache, estado, pasta) }
+            // A custom Media3 key must never alias different signed URL bytes.
+            .setCacheKeyFactory(CacheKeyFactory { spec -> CacheSessao.chave(sessao, spec.uri.toString()) })
             // A cache read error bypasses the cache for that load instead of
             // failing playback.
             .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
