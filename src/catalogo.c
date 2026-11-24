@@ -1903,8 +1903,10 @@ int cat_id_stream(int indiceItem, int t, int e, char *dst, unsigned tam) {
     }
     // Sem id publicado nao se inventa o endereco de um especial do addon.
     if (t == 0 && !idbase_e_imdb(c->imdb)) return 0;
-    // Sem o video: a convencao dos addons de anime e "<id>:<episodio>".
+    // The legacy single-season addon convention cannot distinguish T2:E1
+    // from T1:E1. Only a published ID may address a later season.
     if (!idbase_e_imdb(c->imdb)) {
+      if (t != 1) return 0;
       int len = snprintf(dst, tam, "%s:%d", base, e);
       if (len < 0 || (unsigned)len >= tam || !nv_stream_id_valid(dst)) { dst[0] = 0; return 0; }
       return 1;

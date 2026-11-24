@@ -94,6 +94,7 @@ int main(void) {
   cat_definir_tudo(&c,1,NULL,0);
   assert(!cat_id_stream(0,1,123,cw,sizeof cw) && !cw[0]);
   assert(cat_id_stream(0,1,123,large,sizeof large) && strlen(large)==67);
+  assert(!cat_id_stream(0,2,123,large,sizeof large) && !large[0]);
   assert(!cat_id_stream(0,-1,0,small,sizeof small) && !small[0]);
   assert(cw_card_episodio(&c,longid,0,456));
   assert(!strcmp(c.imdb,longid) && c.temporada==0 && c.episodio==456);
