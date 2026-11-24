@@ -673,6 +673,10 @@ object NvPlayer {
     private val pedidosPreparo = AtomicInteger()
     @Volatile private var consultaPreparo = ConsultaPreparo(0, 0)
     @Volatile private var preparo: Preparo? = null
+    // Main-looper ownership of a selected preload detached from the speculative slot.
+    private val pendingAdoptionP6 = PendingAdoptionP6<Preparo> { s ->
+        s.recursos?.let { soltarRecursosPreparo(it) }
+    }
     private const val PREPARO_MAX_US = 5_000_000L
     private const val PREPARO_ESPERA_MS = 30_000L
 
@@ -1331,6 +1335,7 @@ object NvPlayer {
                     s.ouvinte?.let { r.p.removeListener(it) }
                     s.analitico?.let { r.p.removeAnalyticsListener(it) }
                 }
+                pendingAdoptionP6.offer(pedido, s)
                 abrirMain(url, cabecalhos, false, inicio, geracao, pedido, f, preparada = s,
                     identidadeCache = identidade)
             } else {
@@ -1452,6 +1457,7 @@ object NvPlayer {
         cancelarPreparo(0)
         soltarPreparo()
         pedidos.incrementAndGet()
+        pendingAdoptionP6.cancelAll()
         liberar()
         ++p6LifecycleEpoch
         playbackIntentP6.reset()
@@ -1509,6 +1515,7 @@ object NvPlayer {
         cancelarPreparo(0)
         val pedido = pedidos.incrementAndGet()
         principal.post { if (pedido == pedidos.get()) {
+            pendingAdoptionP6.cancelAll()
             limparRetido()
             liberar(guardarCache = true)
         } }
@@ -1558,6 +1565,7 @@ object NvPlayer {
                 cancelarPreparo(0)
                 soltarPreparo()
             }
+            pendingAdoptionP6.cancelAll()
             liberar()
         }
     }
@@ -2012,12 +2020,15 @@ object NvPlayer {
                           capturaTentada: Boolean = false,
                           identidadeCache: CacheProvaP4C.Identidade? = null) {
         if (pedido != pedidos.get()) {
-            preparada?.recursos?.let { soltarRecursosPreparo(it) }
+            pendingAdoptionP6.cancel(pedido)
             return
         }
+        pendingAdoptionP6.cancelExcept(pedido)
+        // A delayed continuation cannot resurrect a canceled preload.
+        if (preparada != null && !pendingAdoptionP6.owns(pedido, preparada)) return
         val act = activity
         if (act == null) {
-            preparada?.recursos?.let { soltarRecursosPreparo(it) }
+            pendingAdoptionP6.cancel(pedido)
             confirmarRetomada(geracao, false)
             return
         }
@@ -2057,6 +2068,8 @@ object NvPlayer {
             }
             Log.i(TAG, "[player] esperou o release anterior $ms ms (pendentes=${liberacoesEmCurso.get()})")
         }
+        // Only the request reaching construction takes ownership out of the slot.
+        if (preparada != null && pendingAdoptionP6.take(pedido) !== preparada) return
         limitedSession = limitedNext
         novaSuperficie(act)
         mostrarQuadro(url, tituloPedido)
@@ -2095,6 +2108,8 @@ object NvPlayer {
             val p = r.p
             recursosAtuais = r
             player = p
+            // Publish cache ownership before any fallible route/listener setup.
+            cacheMidia = r.cache; cacheEstado = r.cacheEstado
             r.routeDebounce.seed(r.routeObserver.key(r.routeObserver.route()))
             // An adopted warm player has already created its actual AudioTrack.
             if (preparada != null) r.routeValidatedSerial = r.routeObserver.output?.serial ?: 0L
@@ -2102,7 +2117,6 @@ object NvPlayer {
             processador = r.proc
             r.tap.ligado = tap.ligado
             tap = r.tap
-            cacheMidia = r.cache; cacheEstado = r.cacheEstado
             if (preparada == null && r.cache != null) { tituloAberto = titulo; chaveAberta = url.substringBefore('#') }
             bufferAlvoMs = r.alvoMs; bufferMinMs = r.carga.minMs; bufferBytes = r.carga.bytes
             if (preparada != null) {
@@ -2176,9 +2190,12 @@ object NvPlayer {
             principal.postDelayed(tique(minha), TIQUE_MS)
         } catch (e: Exception) {
             preparada?.recursos?.let { if (recursosAtuais !== it) soltarRecursosPreparo(it) }
+            // A partially attached player must not retain its route observer,
+            // audio output, cache or renderer after a failed opening.
+            if (recursosAtuais != null) liberar(preservarRetido = mesmaFonte)
             confirmarRetomada(geracao, false)
-            Log.w(TAG, "abrir: $e")
-            ev(EV_ERRO, -1, 0)
+            Log.w(TAG, "abrir: ${e.javaClass.simpleName}")
+            ev(EV_ERRO, -1, 0, geracao = geracao)
         }
     }
 

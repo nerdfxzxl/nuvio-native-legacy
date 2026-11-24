@@ -12,3 +12,6 @@ cc -std=c11 -Wall -Wextra -Werror tests/watched_p6.c -lm -o "$tmp/watched"
 kt=android/app/src/main/java/space/nuvio/nativelegacy
 kotlinc "$kt/PlaybackIntentP6.kt" tests/p6/PlaybackIntentP6Test.kt -include-runtime -d "$tmp/intent.jar"
 java -jar "$tmp/intent.jar"
+
+kotlinc "$kt/PendingAdoptionP6.kt" tests/p6/PendingAdoptionP6Test.kt -include-runtime -d "$tmp/adoption.jar"
+java -jar "$tmp/adoption.jar"

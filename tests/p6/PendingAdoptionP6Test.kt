@@ -1,0 +1,40 @@
+package space.nuvio.nativelegacy
+
+fun main() {
+    val released = mutableListOf<Any>()
+    val slot = PendingAdoptionP6<Any> { released.add(it) }
+    val a = Any(); val b = Any(); val c = Any(); val d = Any()
+    var checks = 0
+    fun verify(ok: Boolean) { check(ok); checks++ }
+    slot.offer(1, a)
+    verify(slot.owns(1, a))
+    verify(!slot.owns(2, a))
+    slot.offer(1, a)
+    verify(released.isEmpty())
+    slot.cancelExcept(1)
+    verify(slot.owns(1, a))
+    slot.cancel(0)
+    verify(released.isEmpty())
+    slot.cancelAll()
+    verify(released == listOf(a))
+    verify(!slot.owns(1, a))
+    verify(slot.take(1) == null)
+    slot.cancel(1)
+    verify(released.size == 1)
+    slot.offer(2, b)
+    slot.offer(3, c)
+    verify(released == listOf(a, b))
+    slot.cancel(2)
+    verify(slot.owns(3, c))
+    verify(slot.take(2) == null)
+    verify(slot.take(3) === c)
+    slot.cancelAll()
+    verify(released == listOf(a, b))
+    verify(!slot.owns(3, c))
+    slot.offer(4, d)
+    slot.cancelExcept(5)
+    verify(released == listOf(a, b, d))
+    slot.cancel(4)
+    verify(released.size == 3)
+    println("P6 detached preload ownership: $checks assertions PASS")
+}
