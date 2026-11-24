@@ -30,6 +30,12 @@ internal object HdrPolicyP5 {
     }
 
 
+    // Preserve Media3's ordering within each hardware class. The renderer
+    // still sorts candidates by support for the actual format afterwards.
+    fun <T> hardwareFirst(candidates: List<T>, hardware: (T) -> Boolean,
+                          software: (T) -> Boolean): List<T> =
+        candidates.sortedBy { if (hardware(it)) 0 else if (software(it)) 2 else 1 }
+
     fun compatibleDolby(displayDv: Boolean, profileSupported: Boolean, sizeSupported: Boolean): Boolean =
         displayDv && profileSupported && sizeSupported
 
