@@ -961,6 +961,7 @@ object NvPlayer {
         var liberado = false
         @Volatile var adotado = carga.adotada
         @Volatile var videoConfig: HdrCodecFallbackP5B.VideoConfig? = null
+        @Volatile var runtimeVideoRecovery: HdrCodecFallbackP5B.RuntimeRecovery? = null
         @Volatile var audioFormato = AudioSyncTap.FMT_NENHUM
         @Volatile var velocidadePcm = false
         @Volatile var ajustePcm = false // DSP requires decoded PCM, never lossy AC-3 transcoding
@@ -1505,6 +1506,7 @@ object NvPlayer {
             if (pedido != pedidos.get() || pedidoAtivo != pedido) return@post
             val p = player ?: return@post
             val busca = ++buscaSerial
+            ++retidoPedido // invalidate an older PixelCopy even for an in-buffer seek
             val alvo = ms.coerceAtLeast(0).toLong()
             relatarAudio(sessao, "seek alvoMs=$ms")
             // In-buffer seeks and ordinary buffering keep the SAME hardware
@@ -1516,6 +1518,10 @@ object NvPlayer {
                 if (pedido != pedidos.get() || player !== p || busca != buscaSerial) return@applySeek
                 val commit = {
                     if (pedido == pedidos.get() && player === p && busca == buscaSerial) {
+                        // A startup seek must not authorize handoff with an
+                        // already queued frame from the superseded position.
+                        // An ordinary post-handoff seek retains the existing plane.
+                        if (!estavelEmitido) invalidarQuadroSuperficie()
                         p.seekTo(alvo)
                         appliedSeekRevision = revision
                     }
@@ -1838,6 +1844,7 @@ object NvPlayer {
                     HdrCodecFallbackP5B.Factory(super.getCodecAdapterFactory(),
                         { displayHdr(act, android.view.Display.HdrCapabilities.HDR_TYPE_HDR10) },
                         { displayHdr(act, android.view.Display.HdrCapabilities.HDR_TYPE_DOLBY_VISION) },
+                        { r.runtimeVideoRecovery },
                         { config -> r.videoConfig = config })
                 override fun buildAudioSink(context: Context, enableFloatOutput: Boolean,
                                             enableAudioTrackPlaybackParams: Boolean): AudioSink =
@@ -1846,7 +1853,12 @@ object NvPlayer {
                         .setEnableAudioTrackPlaybackParams(false)
                         .setAudioProcessors(arrayOf(r.proc)).build(), r.tap, { r.velocidadePcm || r.ajustePcm })
             }.setExtensionRendererMode(androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
-                .setMediaCodecSelector(videoCodecSelector)
+                .setMediaCodecSelector(MediaCodecSelector { mime, secure, tunneling ->
+                    val candidates = videoCodecSelector.getDecoderInfos(mime, secure, tunneling)
+                    val failed = r.runtimeVideoRecovery?.failed
+                    if (failed != null && MimeTypes.isVideo(mime))
+                        candidates.filter { it.name != failed } else candidates
+                })
                 .setEnableDecoderFallback(true)
             r.fabricaMidia = DefaultMediaSourceFactory(act)
                 // ParaleloDataSource faz as tres tentativas de transporte;
@@ -2682,6 +2694,13 @@ object NvPlayer {
                         val selectedAudio = groups.any { g ->
                             g.type == C.TRACK_TYPE_AUDIO && (0 until g.length).any { i -> g.isTrackSelected(i) }
                         }
+                        val selectedVideo = groups.any { g ->
+                            g.type == C.TRACK_TYPE_VIDEO && (0 until g.length).any { i -> g.isTrackSelected(i) }
+                        }
+                        if (recursosAtuais?.runtimeVideoRecovery?.completed == false && !selectedVideo) {
+                            falhaVideo(minha, HdrPolicyP5.FAIL_DECODER, 0, geracaoDaAbertura)
+                            return
+                        }
                         if (selectedAudio && groups.none { it.type == C.TRACK_TYPE_VIDEO }) {
                             ev(EV_SO_AUDIO, 1)
                             esconderQuadro()
@@ -2874,6 +2893,34 @@ object NvPlayer {
             val videoFailure = HdrPolicyP5.failure(error.errorCode, tipo == C.TRACK_TYPE_VIDEO,
                 tipo == C.TRACK_TYPE_AUDIO)
             if (videoFailure != 0) {
+                val r = recursosAtuais
+                // A real runtime codec failure is distinct from initialization
+                // fallback (Media3 already tries that list). Exclude only the
+                // failed actual decoder for one same-player reprepare. Keep
+                // all original media, track parameters, position and effects.
+                if (videoFailure == HdrPolicyP5.FAIL_DECODER &&
+                    error.errorCode == PlaybackException.ERROR_CODE_DECODING_FAILED &&
+                    p != null && r != null && r.runtimeVideoRecovery == null &&
+                    !retentou) {
+                    val failed = generateSequence(error.cause) { it.cause }
+                        .filterIsInstance<MediaCodecDecoderException>().firstOrNull()?.codecInfo
+                    val config = r.videoConfig
+                    val format = exo?.rendererFormat ?: p.videoFormat
+                    if (failed != null && config != null && format != null &&
+                        config.matches(format, failed.name)) {
+                        r.runtimeVideoRecovery = HdrCodecFallbackP5B.RuntimeRecovery(failed.name, format)
+                        retentou = true
+                        invalidarQuadroSuperficie()
+                        principal.postDelayed({
+                            if (atual(minha) && !videoOutputFailed && player === p && recursosAtuais === r) {
+                                try { p.prepare() } catch (_: Exception) {
+                                    falhaVideo(minha, videoFailure, error.errorCode, geracaoDaAbertura)
+                                }
+                            }
+                        }, 400)
+                        return
+                    }
+                }
                 // Media3 has already tried its compatible decoder list. One same-player
                 // resource retry may help a transient init/decode failure; no new URL,
                 // track-selection policy, cache identity, or source-quality choice.
@@ -3008,6 +3055,11 @@ object NvPlayer {
                 decoderDv = nativeDv
                 publicarHdr(p.currentTracks)
             }
+            val r = recursosAtuais
+            if (r?.runtimeVideoRecovery?.handoff(r.videoConfig, f, videoDecoderName) == false) {
+                falhaVideo(minha, HdrPolicyP5.FAIL_DECODER, 0, geracaoDaAbertura)
+                return
+            }
             // The retained frame stays visible until the current surface is stable.
             if (estavelEmitido) { esconderQuadro(); limparRetido() }
             ev(EV_PRIMEIRO_QUADRO, geracao = geracaoDaAbertura)
@@ -3047,6 +3099,7 @@ object NvPlayer {
         val alvo = d * f / 10000L
         fracaoPendente = 0
         try {
+            if (!estavelEmitido) invalidarQuadroSuperficie()
             p.seekTo(alvo)
             Log.i(TAG, "[player] retomada na preparacao: ${alvo} ms de ${d} ms (${f / 100}.${"%02d".format(f % 100)}%)")
             confirmarRetomada(geracaoNative, true)
