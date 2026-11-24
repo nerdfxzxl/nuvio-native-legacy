@@ -43,14 +43,26 @@ typedef struct {
   // COMO ESTA POSICAO FOI ALCANCADA (#205), so deste aparelho e nao
   // sincronizado: 1 tocando, 0 por seek, -1 desconhecido (linha antiga ou vinda
   // do servidor) — vale como 1, como antes da #205. Descreve ESTA posSeg.
-  // 2 = Q45 actual viewing proof; watched is independently owned by history.
+  // 2 = Q45 actual viewing proof; 3 = Q45 checkpoint without viewing proof.
+  // Both preserve the actual resume point independently of watched history.
   int  tocou;
 } ProgRegistro;
+
+// The local P6 playback position is not a watched flag. Keep post-credit
+// checkpoints and seek checkpoints resumable until actual end of media.
+static inline int prog_q45_local(const ProgRegistro *r) { return r->tocou == 2 || r->tocou == 3; }
+static inline int prog_prova_tocou(const ProgRegistro *r) { return r->tocou == 1 || r->tocou == 2; }
+static inline int prog_fim_retomada(const ProgRegistro *r, int limite) {
+  if (prog_q45_local(r)) return r->posSeg >= r->durSeg - 1.0;
+  return r->posSeg * 100.0 >= r->durSeg * limite;
+}
+// -1 = no matching P6 checkpoint; 0 = at end; 1 = actual resume available.
+int prog_q45_retomada(const char *id, int t, int e, int pct, long long ms);
 
 // A confirmed local checkpoint remains resumable even early in a long movie.
 static inline int prog_inicio_continuar(const ProgRegistro *r, int pctMinimo) {
   return r->posSeg * 100.0 >= r->durSeg * pctMinimo ||
-         (pctMinimo == 1 && r->tocou > 0 && r->posSeg >= 30.0);
+         (pctMinimo == 1 && prog_prova_tocou(r) && r->posSeg >= 30.0);
 }
 
 // Chave no formato do web (toProgressKey): "%s_s%de%d" quando temporada >= 0 e
