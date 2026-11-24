@@ -105,7 +105,7 @@ static char   proxNome[120];
 // Temporada0 e especial; quem distingue ausencia e o numero do episodio.
 static int temProximo(void) { return serie && proxT >= 0 && proxE > 0; }
 static int temPedidoEpisodio(void) { return pedT >= 0 && pedE > 0; }
-static char   preEpisodio[64], preAlvo[64];
+static char   preEpisodio[NV_STREAM_ID_CAP], preAlvo[NV_STREAM_ID_CAP];
 static int    preTentou;
 static int    preVideoTentou, preVideoRenovou;
 static FontecacheEscopo preEscopo;
@@ -338,7 +338,7 @@ static void prepararProximo(int ehSerie, double resta) {
   // Desconhecido nao prova que ja estreou: nao gasta rede especulativa.
   if (quando == PROX_SEM_DATA || quando > (long long)time(NULL) * 1000) return;
   if (!cat_id_stream(idx, px->temporada, px->episodio, preAlvo, sizeof preAlvo) ||
-      jfid_e(preAlvo)) return;
+      jfid_e(preAlvo)) { cancelarPreparo(1); proximopreparo_cancelar(); return; }
   preEscopo = escopo;
   if (video) {
     // O novo toggle nao depende de preparar as fontes na pagina de titulo.
@@ -453,11 +453,11 @@ void posplay_atualizar(float dt, Uint32 agora, double posSeg, double durSeg,
   anim = anim_mola(anim, visivel ? 1.0f : 0.0f, dt, NV_MOLA_TELA);
   // A CADA QUADRO, e nao so na abertura do painel (#190): com o cartao no ar o
   // `idx` guardado envelhecia junto com o catalogo.
-  { char episodio[64] = "";
+  { char episodio[NV_STREAM_ID_CAP] = "";
     int t = 0, e = 0;
     player_episodio_atual(&t, &e);
     if (ehSerie && t >= 0 && e > 0)
-      cat_id_stream(idxCatalogo, t, e, episodio, sizeof episodio);
+      player_id_stream(episodio,sizeof episodio);
     if (preEpisodio[0] && strcmp(preEpisodio, episodio)) {
       cancelarPreparo(1);
       posplay_fechar();

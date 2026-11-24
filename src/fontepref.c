@@ -749,6 +749,7 @@ static void autoGravar(void) {
 
 static int autoAchar(const char *base) {
   int i;
+  if (!base || !*base) return -1;
   for (i = 0; i < nAuto; i++) if (!strcmp(tabAuto[i].p.id, base)) return i;
   return -1;
 }
@@ -1197,7 +1198,7 @@ static int escolherAuto(const char *id) {
   if (!autoUsavel(k)) return -1;
   melhor = melhorAuto(&tabAuto[k], stream_n(), itemGlobal, NULL, semPerdaGlobal, NULL, &como);
   // Logged when the answer changes, not on every repeat of the same pick.
-  { static char ultBase[24]; static int ultMelhor = -2;
+  { static char ultBase[64]; static int ultMelhor = -2;
     if (melhor >= 0 && (melhor != ultMelhor || strcmp(ultBase, base))) {
       printf("[fonte] preferida de %s na posicao %d pela fonte que o automatico tocou, por %s (lancamento=%s)\n",
              base, melhor, como, tabAuto[k].p.lancamento[0] ? tabAuto[k].p.lancamento : "-");

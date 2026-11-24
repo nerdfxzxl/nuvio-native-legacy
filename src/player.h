@@ -50,6 +50,8 @@ void player_precarregar_cancelar(unsigned token);
 void player_precarregar_adotar(unsigned token);
 #endif
 void player_episodio_atual(int *temporada, int *episodio);
+// Exact playing wire target, frozen at first source opening; no truncation.
+void player_id_stream(char *dst,unsigned tam);
 void player_aprender_creditos(void);
 int player_indice(void);
 const char *player_linha_episodio(void);

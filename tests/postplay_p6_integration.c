@@ -31,6 +31,7 @@ double intro_creditos_seg(void){return 0;}
 double intro_creditos_janela_filme(double d){return fmin(d*.5,fmin(INTRO_CRED_FILME_MAX_S,fmax(INTRO_CRED_FILME_MIN_S,d*INTRO_CRED_FILME_FRAC)));}
 double intro_fim_estimado_filme(double d){return d<INTRO_FILME_MIN_S?0:d<INTRO_FILME_CURTO_ATE_S?INTRO_FIM_FILME_CURTO_S:INTRO_FIM_FILME_S;}
 void player_episodio_atual(int *t,int *e){*t=epT;*e=epE;}
+void player_id_stream(char *dst,unsigned tam){cat_id_stream(0,epT,epE,dst,tam);}
 int player_velocidade_efetiva(void){return 100;}
 int player_janela_proximo(double a){(void)a;return window;}
 void player_aprender_creditos(void){learned++;}

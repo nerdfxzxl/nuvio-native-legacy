@@ -1,5 +1,7 @@
 #include "stream_id_p6.h"
 #include "proximopreparo.h"
+#include "catalogo.h"
+#include "idbase.h"
 #include "addons.h"
 #include "ajustes.h"
 #include "fonteantecipa.h"
@@ -25,7 +27,7 @@ typedef struct {
   int n, indice, resultado, renovou, bufferTentou, continuar;
   int catalogo, temporada, episodio;
   int transferido; // UI only: the authorized next player now owns this worker
-  char atual[NV_STREAM_ID_CAP], alvo[NV_STREAM_ID_CAP];
+  char atual[NV_STREAM_ID_CAP], alvo[NV_STREAM_ID_CAP], titulo[64];
   Stream escolhida;
   FonteFalhaSessao *politica;
   Uint32 metadadosEm, resolvidaEm;
@@ -137,7 +139,8 @@ static int despachar(ProximoJob *j, int estado) {
 
 int proximopreparo_agendar(int catalogo, int t, int e, const char *atual,
                           const char *alvo, const FontecacheEscopo *escopo) {
-  if (!nv_stream_id_valid(atual) || !nv_stream_id_valid(alvo) || !strcmp(atual, alvo) ||
+  if (!nv_stream_id_valid(atual) || !nv_stream_id_valid(alvo)) { proximopreparo_cancelar(); return 0; }
+  if (!strcmp(atual, alvo) ||
       strlen(atual) >= sizeof ((ProximoJob *)0)->atual ||
       strlen(alvo) >= sizeof ((ProximoJob *)0)->alvo || !escopo || t < 0 || e < 1 ||
       !ajustes_fonte_precarregar() || ajustes_fonte_manual()) return 0;
@@ -155,6 +158,9 @@ int proximopreparo_agendar(int catalogo, int t, int e, const char *atual,
   j->configuracao = stream_preparo_config_atual();
   j->addons = addons_consulta_capturar();
   j->catalogo = catalogo; j->temporada = t; j->episodio = e; j->indice = -1;
+  const CatItem *titulo=cat_item(catalogo);
+  if (titulo && idbase_len(titulo->imdb)==strlen(titulo->imdb))
+    nv_stream_id_copy(j->titulo,sizeof j->titulo,titulo->imdb);
   snprintf(j->atual, sizeof j->atual, "%s", atual);
   snprintf(j->alvo, sizeof j->alvo, "%s", alvo);
   if (!j->addons || !contextoAtual(j)) { soltar(j); return 0; }
@@ -224,7 +230,7 @@ void proximopreparo_passo(const char *atual) {
     // cache pode recusá-la pelo teto; o snapshot abaixo conserva TODA a lista.
     fontecache_vod_guardar(j->alvo, "series", "", &j->escopo,
                            j->metadados, j->n, j->metadadosEm);
-    j->fontes = stream_preparo_criar_alvo(j->metadados, j->n, -1, j->alvo);
+    j->fontes = stream_preparo_criar_alvo_titulo(j->metadados,j->n,-1,j->alvo,j->titulo);
     free(j->metadados); j->metadados = NULL;
     // A fronteira de conta pode ocorrer durante a captura do resolvedor.
     // A metadata pertence ao ator original, mesmo se o novo snapshot for atual.

@@ -2730,8 +2730,8 @@ static int preparoGrupoSemPerda(int i, int forte, void *u) {
 void stream_preparo_definir_episodio(StreamPreparo *p, int t, int e) {
   if (p) { p->debrid.temporada = t; p->debrid.episodio = e; }
 }
-StreamPreparo *stream_preparo_criar_alvo(const Stream *fontes, int total, int preferidaNext, const char *alvo) {
-  if (!fontes || total <= 0) return NULL;
+StreamPreparo *stream_preparo_criar_alvo_titulo(const Stream *fontes, int total, int preferidaNext, const char *alvo, const char *titulo) {
+  if (!fontes || total <= 0 || (alvo && *alvo && !nv_stream_id_valid(alvo))) return NULL;
   if (ordemDoAddon()) preferidaNext = -1;
   StreamPreparo *p = calloc(1, sizeof *p);
   int *ordem = NULL, *fila = NULL, *rank = NULL;
@@ -2787,12 +2787,12 @@ StreamPreparo *stream_preparo_criar_alvo(const Stream *fontes, int total, int pr
   if (lgMp4Primeiro()) mp4PrimeiroNasFontes(fontes, alvo ? alvo : "", ordem, pts, grupo, excl, total);
   int nc = fonteauto_fila_o(ajustes_fonte_primeira() ? FONTEAUTO_PRIMEIRA : FONTEAUTO_MELHOR,
             total, pref, pts, acima, excl, grupo, rank, ajustes_fonte_ordem_uso(), total, fila);
-  if (!ordemDoAddon() && preferidaNext < 0 && alvo && alvo[0]) {
+  if (!ordemDoAddon() && preferidaNext < 0 && titulo && titulo[0]) {
     PreparoQualidade qualidade = {fontes, ordem, grupo, excl, total,
                                  nc > 0 ? ordem[fila[0]] : -1, lgMp4Primeiro()};
     // O preparo e sempre do PROXIMO episodio: primeiro o bingeGroup da fonte
     // que esta tocando (fontepref.h, Next), depois a memoria do titulo.
-    int lembrada = fontepref_escolher_lista_next(alvo, fontes, total, preparoGrupoSemPerda, &qualidade);
+    int lembrada = fontepref_escolher_lista_next(titulo, fontes, total, preparoGrupoSemPerda, &qualidade);
     if (lembrada >= 0 && fonteregra_no_escopo(&escopo, ehPlugin(&fontes[lembrada]))) {
       for (int q = 0; q < total; q++) if (ordem[q] == lembrada) { pref = q; break; }
       // A politica de providers tambem recebe a preferida da lista propria.
@@ -2819,6 +2819,10 @@ StreamPreparo *stream_preparo_criar_alvo(const Stream *fontes, int total, int pr
 erro:
   free(ordem); free(fila); free(rank); free(pts); free(acima); free(excl); free(grupo);
   stream_preparo_liberar(p); return NULL;
+}
+StreamPreparo *stream_preparo_criar_alvo(const Stream *fontes,int total,int preferidaNext,const char *alvo) {
+  // An opaque target alone cannot prove its catalogue title.
+  return stream_preparo_criar_alvo_titulo(fontes,total,preferidaNext,alvo,NULL);
 }
 StreamPreparo *stream_preparo_criar(const Stream *fontes, int total, int preferidaNext) {
   return stream_preparo_criar_alvo(fontes, total, preferidaNext, "");

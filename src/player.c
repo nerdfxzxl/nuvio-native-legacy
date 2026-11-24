@@ -2036,6 +2036,7 @@ void player_aspecto_ciclar(void) {
 }
 
 static void alvoStream(char *dst, unsigned tam);
+static char p6StreamFrozen[NV_STREAM_ID_CAP];
 
 // Warm resume (#492): the id of this title/episode goes with the cache arming,
 // so the Android shell keeps the downloaded part of the LAST title when the
@@ -2068,6 +2069,7 @@ void player_abrir(int indiceCatalogo, const char *url) {
   quadroCapturado = 0;
   player_descartar_retido();
   memset(&p6EpIdentidade, 0, sizeof p6EpIdentidade);
+  p6StreamFrozen[0]=0;
   p6WatchState = 0; p6WatchTry = 0; p6WatchStarted = contapend_agora_ms();
   p6PendingPause = 0;
 #ifdef NV_ANDROID
@@ -2189,6 +2191,7 @@ void player_abrir(int indiceCatalogo, const char *url) {
   // refuses HLS/DASH). Arms only the next video_tocar: trailers stay uncached.
   cacheboost_backend_cache(ehCanal() ? 0 : ajustes_cache_seek_mb());
   epT = itemFixo.temporada; epE = itemFixo.episodio;
+  if (url && *url && !ehCanal()) alvoStream(p6StreamFrozen,sizeof p6StreamFrozen);
   armarTituloGuardado();
   cacheboost_backend_buffer(cacheboost_buffer_mb(ajustes_buffer_preset(), memlog_livre_mb()));
   loadEm = SDL_GetTicks();
@@ -2385,6 +2388,10 @@ static int preTituloLegendaUsar(const char *url) {
 
 static void tocarFonteInterno(const char *url);
 static void tocarFonteInterno(const char *url) {
+  if (!ehCanal() && !p6StreamFrozen[0]) {
+    alvoStream(p6StreamFrozen,sizeof p6StreamFrozen);
+    if (!p6StreamFrozen[0] && item() && item()->imdb[0]) { erroSemVideo(); return; }
+  }
   if (p6EpIdentidade.capturado) p6EpIdentidade.frozen=1;
   marco("abrir: url ao pipeline");
   skipLiberado = 0;
@@ -2776,11 +2783,14 @@ static void wsParou(int played, int duracaoBoa) {
 // (alvoPlayer): "tt1" no filme, o id do episodio na serie.
 static void alvoStream(char *dst, unsigned tam) {
   const CatItem *c = item();
+  if (!dst || !tam) return;
+  if (p6StreamFrozen[0]) { nv_stream_id_copy(dst,tam,p6StreamFrozen); return; }
   dst[0] = 0;
   if (!c || !c->imdb[0]) return;
   if (epT >= 0 && epE > 0) cat_id_stream(idxAtual(), epT, epE, dst, tam);
   else nv_stream_id_copy(dst,tam,c->imdb);
 }
+void player_id_stream(char *dst,unsigned tam) { alvoStream(dst,tam); }
 
 // O FILME EM PARTES (partes.h): com a sessao de partes deste alvo, o que vai
 // ao Continuar assistindo, ao Trakt e a conta e a posicao do FILME INTEIRO,

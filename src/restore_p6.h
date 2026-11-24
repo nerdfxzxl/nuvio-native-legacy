@@ -68,6 +68,16 @@ static inline int p6_restore_decode(const char *s, P6RestoreTicket *r) {
   int n = 0;
   if (!s || !r || strlen(s) >= P6_RESTORE_TEXT_CAP) return 0;
   memset(r, 0, sizeof *r);
+  // scanf widths alone permit adjacent tokens without a separator. Validate
+  // the complete wire target token before decoding the numeric fields.
+  const char *target=s;
+  for (int i=0;i<7;i++) {
+    target+=strcspn(target," \t\r\n");
+    target+=strspn(target," \t\r\n");
+    if (!*target) return 0;
+  }
+  size_t targetLen=strcspn(target," \t\r\n");
+  if (!targetLen || targetLen>=NV_STREAM_ID_CAP) return 0;
   // Numeric bounds are checked below; width also bounds conversion input.
   return sscanf(s, "p6v2 %36s %95s %9d %63s %7s %9d %9d %127s %10lld %10lld %64s %39s %40s %9d %19llu %16llx %1d %16llx %23s%n",
       r->task, r->account, &r->profile, r->title, r->type, &r->season,

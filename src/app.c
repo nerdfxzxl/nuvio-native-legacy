@@ -1,4 +1,5 @@
 #include "stream_id_p6.h"
+#include "idbase.h"
 // Roteador de telas.
 //
 // Antes disto o main.c decidia entre home e detalhe com um if. Com menu, busca,
@@ -1099,15 +1100,8 @@ static void trocarTela(Tela nova) {
 }
 
 static void alvoPlayer(char *alvo, size_t tam) {
-  const CatItem *c = cat_item(player_indice());
-  int t, e;
-  player_episodio_atual(&t, &e);
-  // Canal no ar: o id congelado na abertura vence o indice, que uma
-  // republicacao do catalogo ja pode ter apontado para outro item.
   if (player_id_canal()[0]) { nv_stream_id_copy(alvo,tam,player_id_canal()); return; }
-  if (!c) { alvo[0] = 0; return; }
-  if (t >= 0 && e > 0) cat_id_stream(player_indice(), t, e, alvo, (unsigned)tam);
-  else nv_stream_id_copy(alvo,tam,c->imdb);
+  player_id_stream(alvo,(unsigned)tam);
 }
 // --- StreamFit runtime and passive gate (F03) -------------------------------
 // RUNTIME OF THE EXACT TARGET, from metadata the catalog already parsed. Asked
@@ -1480,7 +1474,9 @@ static void idBaseDoTitulo(char *dst, size_t tam) {
   if (player_id_canal()[0]) return;
   c = cat_item(player_aberto() ? player_indice() : detail_indice());
   if (!c || !c->imdb[0]) return;
-  fontepref_id_base(c->imdb, dst, (unsigned)tam);
+  // This is a catalogue title, not a wire video ID. Ambiguous legacy
+  // composites cannot borrow a different title's preference.
+  if (idbase_len(c->imdb)==strlen(c->imdb)) nv_stream_id_copy(dst,tam,c->imdb);
 }
 
 // O nome que a folha de Fontes poe no titulo de cada linha: o do item que

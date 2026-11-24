@@ -27,6 +27,7 @@
 #ifdef NV_ANDROID
 #include "marco.h"
 #include "streams.h"
+#include "stream_id_p6.h"
 #include "player.h"
 #include "video.h"
 #include "mediaurl.h"
@@ -447,7 +448,7 @@ static int cacheArmado = -1, cacheSessao, cacheEnviado;
 static volatile int playerSessao; // full player opening, not a trailer
 // Warm resume (#492): id of the title the player armed for the next open, the
 // one of this open (empty for trailers/channels) and the one Kotlin has.
-static char tituloArmado[96], tituloSessao[96], tituloEnviado[96];
+static char tituloArmado[NV_STREAM_ID_CAP], tituloSessao[NV_STREAM_ID_CAP], tituloEnviado[NV_STREAM_ID_CAP];
 static int ganhoEnviado = CB_VOL_NORMAL;
 static int retomadaInicialEstado = -1;
 static pthread_mutex_t travaRetomada = PTHREAD_MUTEX_INITIALIZER;
@@ -1289,14 +1290,14 @@ int video_tocar_posicao(const char *u, double segundos) { return video_tocar_ret
 
 void cacheboost_backend_buffer(int mb) { bufferPreset = mb >= 0 && mb <= 256 ? mb : 0; }
 void cacheboost_backend_cache(int mb) { cacheArmado = mb > 0 ? mb : 0; }
-void cacheboost_backend_titulo(const char *id) { snprintf(tituloArmado, sizeof tituloArmado, "%s", id ? id : ""); }
+void cacheboost_backend_titulo(const char *id) { nv_stream_id_copy(tituloArmado,sizeof tituloArmado,id); }
 void cacheboost_backend_identidade(const char *conta, int perfil, const char *catalogo,
                                    const char *addon, const char *torrent,
                                    int arquivo, unsigned long long bytes) {
   JNIEnv *env = ambiente();
   if (!env || !mIdentidade) return; // Older Kotlin shells: no durable reuse.
   jstring c = paraJString(env, conta ? conta : "");
-  jstring t = paraJString(env, catalogo ? catalogo : "");
+  jstring t = paraJString(env, nv_stream_id_valid(catalogo) ? catalogo : "");
   jstring a = paraJString(env, addon ? addon : "");
   jstring h = paraJString(env, torrent ? torrent : "");
   if (c && t && a && h) {

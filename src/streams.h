@@ -311,6 +311,7 @@ StreamPreparo *stream_preparo_criar(const Stream *fontes, int n, int preferida);
 // Usa somente o runtime comprovado deste alvo para StreamFit; nunca herda
 // a duracao da reproducao em andamento. Sem alvo, a duracao e desconhecida.
 StreamPreparo *stream_preparo_criar_alvo(const Stream *fontes, int n, int preferida, const char *alvo);
+StreamPreparo *stream_preparo_criar_alvo_titulo(const Stream *fontes,int n,int preferida,const char *alvo,const char *titulo);
 void stream_preparo_definir_episodio(StreamPreparo *preparo, int temporada, int episodio);
 // Marca interna de preferencias/credenciais; nunca publicar em diagnosticos.
 uint64_t stream_preparo_config_atual(void);
