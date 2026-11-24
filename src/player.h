@@ -190,6 +190,7 @@ int  player_pediu_guia(void);
 int  player_pediu_guia_cheio(void);
 int  player_pediu_zap(void);        // deslocamento em canais (+3, -1...), 0 = nenhum
 int  player_pediu_recarregar(void);  // live OSD or current VOD source reload
+int  player_video_retry_rearm(void); // consumes successful same-source video Retry deadline reset
 // Capture on Sources open. A changed source/session rejects the request.
 unsigned player_recarregar_contexto(void);
 int player_recarregar_fonte(unsigned contexto);
