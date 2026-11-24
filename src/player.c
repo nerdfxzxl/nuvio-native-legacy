@@ -117,6 +117,11 @@ extern int trakt_scrobble_alvo(int, const TraktScrobbleAlvo *, double, double,
 #include "proximo.h"
 #include "creditosauto.h"
 #include "credfonte.h"
+#include "watched_p6.h"
+#include "contapend.h"
+#ifdef NV_ANDROID
+#include "capmkv.h"
+#endif
 #include "credaprende.h"
 #include "seekr.h"
 #include "visto.h"     /* fim de episodio/filme para Simkl e conta */
@@ -439,6 +444,10 @@ static double monoSeg(void) {
 // Prova de reproducao da fonte principal, independente de posicao/seek.
 static char fonteSessao[NV_MEDIA_URL_MAX];
 static double assistidoSeg, assistidoMono, assistidoPos;
+static double p6Played; // actual progressing media, excluding explicit skip credit
+static int p6WatchState; // 0 not emitted, 1 history owned, -1 newer manual unwatch
+static long long p6WatchStarted;
+static Uint32 p6WatchTry;
 static double eofDesde = -1.0;
 static int assistidoAmostra;
 static unsigned trailerSessao;
@@ -452,7 +461,7 @@ static int scrubAnterior;
 static void identidadeFonteAberta(void);
 static void zerarAssistido(void) {
   eofDesde = -1.0;
-  assistidoSeg = 0; assistidoAmostra = 0; trailerSessao = trailer_geracao();
+  assistidoSeg = p6Played = 0; assistidoAmostra = 0; trailerSessao = trailer_geracao();
   parcialPos = -1.0; parcialPausa = 0;
   parcialRelogio = parcialConta = 0;
   tocouS = parcialSeek = 0; scrubAnterior = 0;
@@ -813,8 +822,10 @@ static void medirAssistido(void) {
     if (dp == 0) return;
     // Segundos de MIDIA: a 1,5x o titulo inteiro passa em 2/3 do relogio, e
     // quem viu assim viu tudo. O teto e a maior velocidade que o app oferece.
-    if (dp > 0 && dp <= dm * 4.0 + 0.5)
-      assistidoSeg += fmin(dm * VEL_LISTA[VEL_N - 1] / 100.0, dp);
+    if (dp > 0 && dp <= dm * 4.0 + 0.5) {
+      double visto = fmin(dm * VEL_LISTA[VEL_N - 1] / 100.0, dp);
+      assistidoSeg += visto; p6Played += visto;
+    }
   }
   assistidoMono = m; assistidoPos = p; assistidoAmostra = ok;
 }
@@ -1987,6 +1998,7 @@ void player_abrir(int indiceCatalogo, const char *url) {
   scrobbleTvdbCapturado = 0;
   quadroCapturado = 0;
   player_descartar_retido();
+  p6WatchState = 0; p6WatchTry = 0; p6WatchStarted = contapend_agora_ms();
   // O trailer usa o mesmo plano de video (LG) — solta antes de o player
   // carregar a fonte, senao o load novo pisa no mediaId do trailer.
   trailer_fechar();
@@ -2711,6 +2723,95 @@ static double credEfetivo(void) {
   return s;
 }
 
+// Q45 is intentionally independent of recommendation estimates and the
+// provider scrobble thresholds. Neither an unnamed chapter nor duration-only
+// third-party metadata proves the selected release.
+static double p6WatchMarker(void) {
+  double raw = 0.0;
+#ifdef NV_ANDROID
+  raw = capmkv_creditos_verificados();
+#endif
+  return p6_watched_marker(raw, duracaoSeg,
+      epE > 0 ? intro_creditos_janela(duracaoSeg) : intro_creditos_janela_filme(duracaoSeg));
+}
+
+static int p6WatchReached(void) {
+  if (!identidadeValida() || !fontePrincipal() || !video_pronto() || !video_ativo() ||
+      !duracaoReal || !retomadaAplicada || scrubbing || retomandoSalto ||
+      creditosAuto.buscaPendente || esperandoFonte || erroFonte || video_falhou() ||
+      video_reconectando() || video_bufferando_ms() || ehCanal() || partesMeio() ||
+      (!partesAtiva() && player_duracao_suspeita(duracaoSeg, duracaoCatalogo()))) return 0;
+  double p = video_pos();
+  if (!isfinite(p) || fabs(p - posSeg) > 2.0) return 0;
+  double base = 0.0;
+  if (baseTocou > 0 && baseDur > 0.0 && fabs(baseDur - duracaoSeg) <= fmax(5.0, duracaoSeg * 0.02))
+    base = basePos;
+  return p6_watched_reached(p, duracaoSeg, p6WatchMarker(), ajustes_cw_concluido(), base, p6Played);
+}
+
+// Use the existing durable, per-profile history journal and asynchronous
+// writers. A later manual unwatch wins and must not be re-emitted by exit.
+static int p6WatchOverride(const CatItem *ci) {
+  long long ms = 0;
+  if (p6WatchState < 0) return 1;
+  if (ci && !strncmp(ci->imdb, "tt", 2) &&
+      contapend_intencao(ci->imdb, ci->tipo, epE > 0 ? epT : 0, epE > 0 ? epE : 0, &ms) == 0 &&
+      ms >= p6WatchStarted) {
+    p6WatchState = -1;
+    return 1;
+  }
+  return 0;
+}
+
+static int p6WatchMark(void) {
+  const CatItem *ci = item();
+  if (!ci || !identidadeValida() || !nv_perfil_sessao_travar(itemSessao)) return 0;
+  int marcado = 0;
+  if (p6WatchOverride(ci)) goto fim;
+  if (p6WatchState > 0) { marcado = 1; goto fim; }
+  if (!p6WatchReached()) goto fim;
+  // The existing history protocol is IMDb keyed. Personal-server playback
+  // remains private, and other addon IDs must not be truncated into IMDb keys.
+  if (strncmp(ci->imdb, "tt", 2)) { marcado = 1; goto fim; }
+  const int serie = epT >= 0 && epE > 0;
+  int ia = cat_indice_por_imdb_tipo(ci->imdb, ci->tipo);
+  if (ia < 0) goto fim;
+  if ((serie ? vistoep_estado(ci->imdb, epT, epE) : cat_historico_estado_id(ci->imdb, ci->tipo)) != 1) {
+    Uint32 agora = SDL_GetTicks();
+    if (p6WatchTry && (Uint32)(agora - p6WatchTry) < 1000u) goto fim;
+    p6WatchTry = agora | 1u;
+    int dest = visto_destinos();
+    // Do not publish a guessed episode number to Trakt. Wait for the
+    // already-established, generation-owned episode target to be proven.
+    if (serie && (dest & VISTO_TRAKT) && !alvoTrakt(ci)) goto fim;
+    if (serie) {
+      VistoPar par = { (short)epT, (short)epE };
+      visto_episodios_item(ia, ci->imdb, "series", &par, 1, 1, dest);
+    } else visto_titulo(ci->imdb, ci->tipo, NULL, 0, 1, dest);
+    if (contapend_intencao(ci->imdb, ci->tipo, serie ? epT : 0, serie ? epE : 0, NULL) != 1) goto fim;
+    if (serie) vistoep_definir(ci->imdb, epT, epE, 1);
+    else cat_historico_definir_id(ci->imdb, ci->tipo, 1);
+  }
+  p6WatchState = 1;
+  marcado = 1;
+  // Keep the actual checkpoint, not a synthetic 100% position. Journal
+  // history owns the watched badge; post-play and the decoder keep running.
+  double vp = posSeg, vd = duracaoSeg;
+  partesVirt(&vp, &vd, NULL);
+  cat_salvar_progresso_ep(ia, vp, vd, epT, epE, 2);
+  parcialPos = posSeg;
+  sync_sujar_progresso();
+  dados_sincronizar_logo();
+  char id[64]; idTrakt(ci, id, sizeof id);
+  scrobbleTrakt(SCR_EV_HISTORICO_JA_GRAVADO, ci, vp, vd, assistidoSeg, 1);
+  simkl_scrobble(SCR_EV_HISTORICO_JA_GRAVADO, id, vp, vd, assistidoSeg, 1);
+  printf("[visto] Q45 history owned, pos=%.3f dur=%.3f marker=%.3f\n", vp, vd, p6WatchMarker());
+  fflush(stdout);
+fim:
+  nv_perfil_sessao_destravar();
+  return marcado;
+}
+
 // A FONTE PARA O PROXIMO RETOMAR (fontevolta.h). Roda uma vez por sessao, no
 // fechamento de verdade ou na suspensao — nunca no descarte da retida, que ja
 // passou por aqui. So a sessao que TOCOU guarda: pronto, sem erro, duracao de
@@ -2719,7 +2820,6 @@ static double credEfetivo(void) {
 static void lembrarFonte(void) {
   const Stream *s = stream_item(stream_atual());
   const char *url = video_url_atual();
-  double cred;
   char alvo[64];
   if (ehCanal() || !comVideo) return;
   alvoStream(alvo, sizeof alvo);
@@ -2727,8 +2827,7 @@ static void lembrarFonte(void) {
     fontevolta_esquecer_alvo(alvo, sessao_usuario(), perfis_ativo(), "sessao falhou"); return;
   }
   if (!video_pronto() || duracaoSeg < 120.0f) return;
-  cred = credEfetivo();
-  if (concluiuAgora(cred)) {
+  if (p6WatchState > 0 && !p6WatchOverride(item()) && posSeg >= duracaoSeg - 1.0) {
     fontevolta_esquecer_alvo(alvo, sessao_usuario(), perfis_ativo(), "titulo concluido"); return;
   }
   // A lista pode ter sido trocada por baixo (a busca de fundo do Retomar que
@@ -2820,18 +2919,10 @@ static void fecharSessao(int manter, int trocaFonte) {
   double base = baseDur > 0.0 ? basePos : duracaoSeg * basePct / 100.0;
   if (!baseTocou || (baseDur > 0.0 && fabs(baseDur - duracaoSeg) > fmax(5.0, duracaoSeg * 0.02))) base = 0.0;
   int chegou;
-  // `chegou` (alcancado tocando) continua sendo a regra #205: ele so diz COMO a
-  // posicao foi alcancada, para a base da proxima sessao. O VISTO segue o
-  // oficial: posicao >= 90% (ou o fim de Legacy: creditos / cartao A seguir).
-  // VISTO = a regra de Legacy OU a do oficial. A de Legacy (#205/#100) conclui
-  // antes dos 90% — no marcador de creditos ou no cartao A seguir — mas so com
-  // o trecho realmente tocado. A do oficial (WatchProgress.isCompleted) e so a
-  // POSICAO >= 90%, inclusive depois de um seek.
+  (void)player_regra_visto(base, assistidoSeg, posSeg, 0, &chegou);
   double cred = credEfetivo();
   int duracaoContradita = cred > 1.0 && cred - duracaoSeg > intro_creditos_janela(duracaoSeg);
-  int fimLegacy = player_regra_visto(base, assistidoSeg, posSeg, concluiuAgora(cred), &chegou);
-  // A known later ending disproves completion by the reported percentage.
-  int assistiu = !duracaoContradita && scrobble_concluiu(posSeg, duracaoSeg, fimLegacy);
+  int assistiu = !jaRetido && !trocaFonte && prova && !duracaoErrada && !duracaoContradita && p6WatchMark();
   // FILME EM PARTES: so a ULTIMA parte conclui, pela regra do proprio
   // arquivo (a minutagem do catalogo e a do filme inteiro). O ponto da parte
   // fica guardado para o Retomar; concluido, sai.
@@ -2843,8 +2934,7 @@ static void fecharSessao(int manter, int trocaFonte) {
       // IntroDB describes the whole movie; embedded chapters describe this file.
       if (video_creditos() <= 1.0)
         duracaoContradita = cred > 1.0 && cred - vd > intro_creditos_janela(vd);
-      assistiu = ult && !duracaoContradita &&
-                 (player_regra_concluiu(posSeg, duracaoSeg, cred) || scrobble_concluiu(posSeg, duracaoSeg, 0));
+      assistiu = ult && !duracaoContradita && assistiu;
       durG = vd; posG = vp;
       chegou = chegou && assistiu;
       printf("[partes] closing on part %d of %d at %.0f s: movie position %.0f of %.0f s%s\n",
@@ -2868,6 +2958,8 @@ static void fecharSessao(int manter, int trocaFonte) {
   // de visto do catalogo (cat_visto) le, como o markAsCompleted do oficial.
   if (assistiu) chegou = 1;
   if (duracaoContradita) chegou = 0;
+  int p6Override = identidadeValida() && p6WatchOverride(item());
+  if (p6Override) assistiu = chegou = 0;
   // Sem ela a posicao REAL continua gravada (barra, Continuar assistindo,
   // conta): so o arredondamento para 100% e o visto ficam de fora.
   if (identidadeValida() && !duracaoErrada && !jaRetido && prova && video_pronto() && duracaoSeg >= 120.0f &&
@@ -2888,7 +2980,7 @@ static void fecharSessao(int manter, int trocaFonte) {
     // Agora ha um numero so, e e o do cartao (player_regra_concluiu). As duas
     // fontes de marcador sao lidas na mesma ordem de ofertaProximo: o capitulo
     // do Matroska descreve ESTA copia, o TheIntroDB descreve o lancamento.
-    float pos = assistiu ? durG : posG;
+    float pos = posG; // Q45 watched history and real resume position are independent.
     // Pelo indice CORRENTE do titulo, nao pelo guardado: depois de uma
     // republicacao o guardado grava o progresso no titulo errado.
     const CatItem *ci = item();
@@ -2908,7 +3000,7 @@ static void fecharSessao(int manter, int trocaFonte) {
     }
     // A posicao gravada e sempre a REAL (ponto de retomada), com o como ela
     // foi alcancada: cat_visto e a proxima base leem `tocou`.
-    if (ia >= 0) cat_salvar_progresso_ep(ia, pos, durG, epT, epE, chegou);
+    if (ia >= 0 && !p6Override) cat_salvar_progresso_ep(ia, pos, durG, epT, epE, chegou ? 2 : 0);
     // E tambem para o Trakt, que e de onde o "continue assistindo" vem: gravar
     // so aqui deixaria este app discordando dos outros aparelhos do dono.
     // Personal-server items stay private: no Trakt, friends feed or social
@@ -2918,12 +3010,13 @@ static void fecharSessao(int manter, int trocaFonte) {
       int simklScr;
       idTrakt(ci, id, sizeof id);
       // Trakt also completes by percentage, so an invalid duration cannot be sent.
-      if (!trocaFonte && !duracaoContradita) {
-        scrobbleTrakt(SCR_EV_SAIU, ci, pos, durG, assistidoSeg, assistiu);
+      if (!trocaFonte) {
+        int evento = p6WatchState != 0 ? SCR_EV_HISTORICO_JA_GRAVADO : SCR_EV_SAIU_SEM_VISTO;
+        scrobbleTrakt(evento, ci, pos, durG, assistidoSeg, 0);
       }
       // Simkl (#459): mesmo scrobble, independente de o Trakt estar ligado.
       // Sem vinculo, id fora do IMDb ou guarda recusando: SCR_NADA.
-      simklScr = trocaFonte ? SCR_NADA : simkl_scrobble(SCR_EV_SAIU, id, pos, durG, assistidoSeg, assistiu);
+      simklScr = trocaFonte ? SCR_NADA : simkl_scrobble(p6WatchState != 0 ? SCR_EV_HISTORICO_JA_GRAVADO : SCR_EV_SAIU_SEM_VISTO, id, pos, durG, assistidoSeg, 0);
       // "ASSISTIU" para os amigos, so quando CONCLUIU e so se ela ligou a
       // atividade (ou os "vistos recentemente" do perfil). Largar aos 8% nao
       // assistiu nada — e nao chega a lugar nenhum.
@@ -2949,7 +3042,7 @@ static void fecharSessao(int manter, int trocaFonte) {
       // de fora da mascara porque o scrobble acima ja fecha o visto la. Um
       // pedido por conclusao, e so quando o check local ainda nao existia —
       // rever um episodio ja visto nao reescreve historico.
-      if (assistiu) {
+      if (assistiu && p6WatchState == 0 && !strncmp(ci->imdb, "tt", 2)) {
         int dest = visto_destinos() & ~VISTO_TRAKT;
         // O stop do scrobble ja fecha o visto no Simkl (e cai no historico
         // sozinho se falhar): mandar o historico de novo seria pedido em dobro.
@@ -2963,7 +3056,7 @@ static void fecharSessao(int manter, int trocaFonte) {
           visto_titulo(ci->imdb, ci->tipo, NULL, 0, 1, dest);
         }
       }
-      if (assistiu && epT >= 0 && epE > 0) vistoep_definir(ci->imdb, epT, epE, 1);
+      // Q45 owns all automatic IMDb history; never re-mark on closing.
       // E para a CONTA. Trakt e conta sao dois destinos diferentes: nem todo
       // usuario liga o Trakt, e o progresso do app oficial vem da conta.
       sync_sujar_progresso();
@@ -3097,6 +3190,7 @@ static void gravarProgressoParcial(int conta, const char *porque) {
       assistidoSeg < PLR_PROVA_MIN_S ||
       (!partesAtiva() && player_duracao_suspeita((double)duracaoSeg, duracaoCatalogo())))
     return;
+  if (p6WatchOverride(ci)) return;
   if (parcialPos >= 0.0 && fabs(posSeg - parcialPos) < (conta ? 0.5 : PLR_PARCIAL_LIMIAR_S)) return;
   ia = cat_indice_por_imdb_tipo(ci->imdb, ci->tipo);
   if (ia < 0) {
@@ -3111,7 +3205,7 @@ static void gravarProgressoParcial(int conta, const char *porque) {
   if (cred > 1.0 && cred - duracaoSeg > intro_creditos_janela(duracaoSeg)) chegou = 0;
   { double vp = posSeg, vd = duracaoSeg;
     if (partesVirt(&vp, &vd, NULL)) chegou = 0;   // o visto e so da saida da ultima parte
-    if (!cat_salvar_progresso_ep(ia, vp, vd, epT, epE, chegou)) return; }
+    if (!cat_salvar_progresso_ep(ia, vp, vd, epT, epE, chegou ? 2 : 0)) return; }
   dados_sincronizar_logo();
   if (conta) {
     sync_sujar_progresso();
@@ -3120,8 +3214,10 @@ static void gravarProgressoParcial(int conta, const char *porque) {
     else snprintf(id, sizeof id, "%s", ci->imdb);
     double sp = posSeg, sd = duracaoSeg;
     partesVirt(&sp, &sd, NULL);
-    scrobbleTrakt(SCR_EV_PONTO, ci, sp, sd, assistidoSeg, 0);
-    simkl_scrobble(SCR_EV_PONTO, id, sp, sd, assistidoSeg, 0);
+    if (p6WatchState == 0) {
+      scrobbleTrakt(SCR_EV_PONTO, ci, sp, sd, assistidoSeg, 0);
+      simkl_scrobble(SCR_EV_PONTO, id, sp, sd, assistidoSeg, 0);
+    }
     parcialConta = 0;
   }
   parcialPos = posSeg;
@@ -5093,9 +5189,8 @@ void player_atualizar(float dt, Uint32 agora) {
       // tocando e fim (90% ou creditos, pela MESMA regra da saida). Sem envio
       // permitido, atividade.c so acompanha o trecho e nada sai.
       if (ci && ci->imdb[0] && video_pronto() && duracaoSeg >= 120.0f) {
-        double cr = credEfetivo();
         atividade_player_passo(ci, epT, epE, posSeg, duracaoSeg, tocando && !scrubbing,
-                               concluiuAgora(cr), dt);
+                               p6WatchState > 0, dt);
       }
     }
     // #202: confere que o pipeline anda na velocidade pedida antes de usa-la.
@@ -5155,6 +5250,8 @@ void player_atualizar(float dt, Uint32 agora) {
   }
   if (!posVisSolto) { posVis = posSeg; posVisV = 0.0f; }
 
+  if (p6WatchState == 0 && !saindo && (tocando || video_terminou()) && p6WatchReached()) p6WatchMark();
+
   // TRAKT "NOW WATCHING" (#179). Ate a 1.5.3 o Trakt so ouvia pause/stop, ao
   // SAIR: nunca havia /scrobble/start, e sem ele o episodio nao aparece em
   // "Now Watching" nem o progresso anda durante a exibicao. Start depois de
@@ -5175,8 +5272,10 @@ void player_atualizar(float dt, Uint32 agora) {
       if (tocouS >= PLR_SCR_TOCOU_S) {
         { double sp = posSeg, sd = duracaoSeg;
           partesVirt(&sp, &sd, NULL);
-          scrobbleTrakt(SCR_EV_TOCANDO, cs, sp, sd, assistidoSeg, 0);
-          simkl_scrobble(SCR_EV_TOCANDO, id, sp, sd, assistidoSeg, 0); }
+          if (p6WatchState == 0) {
+            scrobbleTrakt(SCR_EV_TOCANDO, cs, sp, sd, assistidoSeg, 0);
+            simkl_scrobble(SCR_EV_TOCANDO, id, sp, sd, assistidoSeg, 0);
+          } }
         wsTocando();
       }
       parcialRelogio += dt;
@@ -5197,8 +5296,10 @@ void player_atualizar(float dt, Uint32 agora) {
         else snprintf(id, sizeof id, "%s", cs->imdb);
         { double sp = posSeg, sd = duracaoSeg;
           partesVirt(&sp, &sd, NULL);
-          scrobbleTrakt(SCR_EV_PAUSOU, cs, sp, sd, assistidoSeg, 0);
-          simkl_scrobble(SCR_EV_PAUSOU, id, sp, sd, assistidoSeg, 0); }
+          if (p6WatchState == 0) {
+            scrobbleTrakt(SCR_EV_PAUSOU, cs, sp, sd, assistidoSeg, 0);
+            simkl_scrobble(SCR_EV_PAUSOU, id, sp, sd, assistidoSeg, 0);
+          } }
         if (!saindo) wsPausou();
         parcialPausa = 1;
       }
@@ -5269,7 +5370,8 @@ void player_atualizar(float dt, Uint32 agora) {
     double fimT = 0.0; int tipoT = 0;
     if (intro_auto_ativo(posSeg, &fimT, &tipoT) &&
         intro_auto_pular(tipoT, fimT, duracaoSeg, ajustes_pular_abertura(), ajustes_pular_resumo(),
-                         ajustes_pular_creditos() && !creditosAuto.fonteMudou) &&
+                         ajustes_pular_creditos() && !creditosAuto.fonteMudou &&
+                         !(item() && item()->posCreditos)) &&
         !intro_auto_ja(tipoT, fimT)) {
       intro_auto_marcar(tipoT, fimT);
       pularTrecho(tipoT == INTRO_CREDITOS ? fimT : puloDestino(fimT));
