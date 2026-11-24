@@ -728,15 +728,20 @@ JNIEXPORT void JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativeFaixasFim(JN
 
 // Texto da legenda embutida em vigor, valido por `durMs` (estimada no Kotlin:
 // o Media3 nao diz quando o cue acaba, so quando o proximo grupo chega).
-JNIEXPORT void JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativeLegenda(JNIEnv *env, jclass cls, jstring texto, jint dur) {
+JNIEXPORT void JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativeLegenda(JNIEnv *env, jclass cls, jstring texto, jint dur, jint geracao) {
   char buf[sizeof legTexto];
   (void)cls;
-  if (!travaLeg) return;
   deJString(env, texto, buf, sizeof buf);
+  pthread_mutex_lock(&travaEvento);
+  if (!travaLeg || !ativo || geracao <= 0 || (unsigned)geracao != sessao) {
+    pthread_mutex_unlock(&travaEvento);
+    return;
+  }
   SDL_LockMutex(travaLeg);
-  memcpy(legTexto, buf, sizeof legTexto);
+  snprintf(legTexto, sizeof legTexto, "%s", buf);
   legAte = SDL_GetTicks() + (Uint32)(dur > 0 ? dur : 3000);
   SDL_UnlockMutex(travaLeg);
+  pthread_mutex_unlock(&travaEvento);
 }
 
 JNIEXPORT void JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativePos(JNIEnv *env, jclass cls,
@@ -779,15 +784,17 @@ JNIEXPORT void JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativeStats(JNIEnv
   int sinal;
   int memoria, pico;
   (void)cls;
+  deJString(env, host, h, sizeof h);
+  pthread_mutex_lock(&travaEvento);
   pthread_mutex_lock(&travaRetomada);
   /* P1 identity: an old player's telemetry cannot describe a new stream. */
   if (!ativo || geracao <= 0 || (unsigned)geracao != sessao) {
     pthread_mutex_unlock(&travaRetomada);
+    pthread_mutex_unlock(&travaEvento);
     return;
   }
   memoria = sampleBytes; pico = samplePeakBytes;
   pthread_mutex_unlock(&travaRetomada);
-  deJString(env, host, h, sizeof h);
   pthread_mutex_lock(&travaStats);
   video_stats_vazio(&statsAndroid);
   nv_download_amostrar(&medidorDownload, bytes >= 0 ? (int64_t)bytes : -1, SDL_GetTicks());
@@ -812,6 +819,7 @@ JNIEXPORT void JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativeStats(JNIEnv
   if (redeFit.sinal && !sinal)
     printf("[stream_fit] playback flagged reason=throughput mbps=%.1f declared_kbps=%d\n", mbps, redeKbps);
   pthread_mutex_unlock(&travaStats);
+  pthread_mutex_unlock(&travaEvento);
   fflush(stdout);
 }
 // 1 = this open's source cannot keep up (app.c tentarProximaFonteVOD).
@@ -1136,10 +1144,15 @@ static int abrirSessao(int inicioMs, int fracao, int mesmaFonte) {
   redeMbps = -1; redeMinMs = redeMaxMs = redeMaxMb = -1;
   memset(&redeFit, 0, sizeof redeFit); redeKbps = playerSessao ? stream_kbps_atual() : 0;
   pthread_mutex_unlock(&travaStats);
-  nAudio = nLeg = 0; audioAtual = 0; legAtual = -1; legAte = 0;
+  nAudio = nLeg = 0; audioAtual = 0; legAtual = -1;
   nNovasA = nNovasL = 0;
   temEnv = 0;   // a SurfaceView nova ainda nao recebeu janela nenhuma
   if (!travaLeg) travaLeg = SDL_CreateMutex();
+  if (travaLeg) {
+    SDL_LockMutex(travaLeg);
+    legAte = 0; legTexto[0] = 0;
+    SDL_UnlockMutex(travaLeg);
+  }
   unsigned geracao = novaRetomada(-1);
   if (!mesmaFonte) videoerro_p5b_retry_clear(&retryVideoP5B);
   videoerro_p5b_retry_bind(&retryVideoP5B, geracao, SDL_GetTicks());

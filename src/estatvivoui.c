@@ -185,6 +185,19 @@ static float ret[4], retV[4], alvoRet[4], entraA, contA[EV_TAM_N];
 static float sm[5], dtq = 1.0f / 60.0f;
 static float larg[EV_TAM_N * 8], larguraI, escP = 1;
 static int larguraBase;
+static const char *nomePlataforma(int p) {
+  switch (p) {
+    case PTV_TIZEN: return "Samsung · Tizen";
+#ifdef NV_TPK40
+    case PTV_TPK: return "Samsung · Tizen 4/5";
+#else
+    case PTV_TPK: return "Samsung · Tizen 6+";
+#endif
+    case PTV_ANDROID: return "Android TV";
+    default: return "LG webOS";
+  }
+}
+
 #ifdef ESTATVIVO_TESTE
 static int teste;
 static float testePainel[4], testeDicas[4];
@@ -994,19 +1007,6 @@ static float tileQuadros(GfxRect r, float a) {
   return 154 + texto(EVU_TEXTO, i18n(samsung ? "O decodificador da Samsung não conta quadros"
                                              : "O player desta TV não conta quadros"),
                      180, 180, 182, x, r.y + 154, w, 3, 0, 0, a);
-}
-
-static const char *nomePlataforma(int p) {
-  switch (p) {
-    case PTV_TIZEN: return "Samsung · Tizen";
-#ifdef NV_TPK40
-    case PTV_TPK: return "Samsung · Tizen 4/5";
-#else
-    case PTV_TPK: return "Samsung · Tizen 6+";
-#endif
-    case PTV_ANDROID: return "Android TV";
-    default: return "LG webOS";
-  }
 }
 
 static void ptFora(int x, int y) {

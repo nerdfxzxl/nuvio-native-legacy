@@ -33,10 +33,10 @@
 #include "buffer_profile.h"
 #include "dvtela.h"
 #include "abrecine.h"
+#include "loading_nav_p2c.h"
 #include "loading_handoff_p2d.h"
 #ifdef NV_ANDROID
 #include "loading_telemetry_p2.h"
-#include "loading_nav_p2c.h"
 #include "p2pmotor.h"
 #endif
 #include "ilhacart.h"
@@ -6469,7 +6469,7 @@ static const char *estadoCargaP2(void) {
     default: return "Preparing stream…";
   }
 #else
-  return video_bufferando_ms() && video_quadro_visto() ? "Buffering…" : "Starting stream…";
+  return video_bufferando_ms() && video_pos() > 0 ? "Buffering…" : "Starting stream…";
 #endif
 }
 static int linhasAbrindo(const Stream *st, AbrLinha *L) {

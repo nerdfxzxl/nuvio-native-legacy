@@ -197,7 +197,7 @@ object NvPlayer {
     @JvmStatic external fun nativeAudioRouteCapacidade(geracao: Int, idx: Int, hz: Int, bits: Int, bitrate: Int,
                                                        decoder: Int, pcm: Int, pass: Int, fiel: Int, incerto: Int)
     @JvmStatic external fun nativeFaixasFim(selAudio: Int, selLeg: Int)
-    @JvmStatic external fun nativeLegenda(texto: String, durMs: Int)
+    @JvmStatic external fun nativeLegenda(texto: String, durMs: Int, geracao: Int)
     @JvmStatic external fun nativePos(ms: Long, bufferFimMs: Long, live: Boolean,
                                       sampleBytes: Int, geracao: Int, seekRevision: Int)
     @JvmStatic external fun nativeDecoder4k(hevc: Int, avc: Int, vp9: Int, av1: Int)
@@ -3354,7 +3354,7 @@ object NvPlayer {
             // proximo grupo (inclusive o vazio) substitui antes disso.
             val dur = if (texto.isEmpty()) 0 else (800 + texto.length * 60).coerceIn(2000, 7000)
             val entregar = Runnable {
-                if (atual(minha)) try { nativeLegenda(texto, dur) } catch (e: UnsatisfiedLinkError) { }
+                if (atual(minha)) try { nativeLegenda(texto, dur, geracaoDaAbertura) } catch (e: UnsatisfiedLinkError) { }
             }
             if (atrasoMs > 0) principal.postDelayed(entregar, atrasoMs.toLong()) else entregar.run()
         }
