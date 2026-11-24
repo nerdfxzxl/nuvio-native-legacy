@@ -113,6 +113,10 @@ void video_escala_definir(int sw, int sh);
 // esta tocando — e a unica coisa que identifica o arquivo, nos dois alvos.
 const char *video_url_atual(void);
 double video_pos(void);      // segundos decorridos
+#ifdef NV_ANDROID
+// Last backend-confirmed position, never the native seek preview.
+double video_pos_confirmada(void);
+#endif
 double video_duracao(void);  // 0 enquanto desconhecida
 
 // Segundo em que comecam os CREDITOS, ou 0 quando o arquivo nao diz. Sai do
