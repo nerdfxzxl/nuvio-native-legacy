@@ -457,7 +457,20 @@ int cat_visto(const CatItem *c) {
   int prova = prog_tocou(c->imdb);
   // Q45 checkpoints preserve viewing proof without inferring watched from a
   // percentage. Explicit history above owns the badge; old records migrate unchanged.
-  return c->progresso >= 90 && prova != 0 && prova != 2;
+  return c->progresso >= 90 && prova != 0 && prova != 2 && prova != 3;
+}
+
+// Resume is independent of history: a watched movie may have post-credits left.
+int cat_p6_retomavel(const CatItem *c) {
+  if (!c || c->progresso <= 0) return -1;
+  int serie = !strcmp(c->tipo, "series");
+  return prog_q45_retomada(c->imdb, serie ? c->temporada : 0,
+                           serie ? c->episodio : 0, c->progresso, c->retomadoMs);
+}
+int cat_retomavel(const CatItem *c, int limite) {
+  if (!c || c->progresso <= 0) return 0;
+  int real = cat_p6_retomavel(c);
+  return real >= 0 ? real : c->progresso < limite;
 }
 
 // Compatibilidade para chamadores antigos que so conhecem o IMDb. A serie e
@@ -1737,6 +1750,9 @@ __attribute__((weak)) int prog_removido_vence(const char *imdb, long long instan
   (void)imdb; (void)instanteMs; return 0;
 }
 __attribute__((weak)) int prog_tocou(const char *imdb) { (void)imdb; return -1; }
+__attribute__((weak)) int prog_q45_retomada(const char *id, int t, int e, int pct, long long ms) {
+  (void)id; (void)t; (void)e; (void)pct; (void)ms; return -1;
+}
 
 static int fileiraContinuar(void) {
   int r;
