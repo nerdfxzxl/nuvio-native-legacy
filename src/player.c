@@ -304,6 +304,7 @@ static void fonteAcaoInvalidar(void) { if (!++fonteAcaoGeracao) ++fonteAcaoGerac
 // limiar do start: um seek logo depois de abrir nao pode custar o ponto.
 #define PLR_PROVA_MIN_S 1.0
 static int   tocando = 1;
+static int p6PendingPause;
 static int   pausaPessoa;   // pausa pedida pela pessoa (player_pausa_pessoa, #302)
 static int retomandoSalto; // seek requested playback; buffering is not user pause
 static CreditosAuto creditosAuto;
@@ -1999,6 +2000,7 @@ void player_abrir(int indiceCatalogo, const char *url) {
   quadroCapturado = 0;
   player_descartar_retido();
   p6WatchState = 0; p6WatchTry = 0; p6WatchStarted = contapend_agora_ms();
+  p6PendingPause = 0;
   // O trailer usa o mesmo plano de video (LG) — solta antes de o player
   // carregar a fonte, senao o load novo pisa no mediaId do trailer.
   trailer_fechar();
@@ -2335,6 +2337,7 @@ static void tocarFonteInterno(const char *url) {
       if (ponto > 0.0) marco("abrir: ponto salvo vai na abertura (segundos)");
       else marco("abrir: ponto salvo vai na abertura (percentual)");
     }
+    video_p6_armar_abertura_pausada(p6PendingPause);
     comVideo = video_tocar_retomada(proxyts_resolver(url, px, sizeof px),
                                     retomadaNaPreparacao ? ponto : 0.0,
                                     retomadaNaPreparacao && retomarFonteSeg < 0.0 && ponto <= 0.0 ? retomarPct : 0.0);
@@ -2508,7 +2511,7 @@ int   player_pausado(void) { return !tocando; }
 // Pausa DA PESSOA (tecla/botao), nunca o `tocando` espelhado do backend: no
 // quadro, `tocando = video_tocando()` vira 0 quando o provedor fecha o fluxo
 // (PlaybackCompleted) e o vigia do canal (livestall.h) lia isso como pausa (#302).
-int   player_pausa_pessoa(void) { return pausaPessoa; }
+int   player_pausa_pessoa(void) { return pausaPessoa || p6PendingPause; }
 float player_duracao_seg(void) { return duracaoSeg; }
 int   player_eh_canal(void) { return ehCanal(); }
 // StreamFit (F03): the backend's REAL duration of this session's own source,
@@ -3233,11 +3236,12 @@ void player_ciclo_evento(Uint32 tipo) {
     // Activity.onPause also pauses Media3; the native intent must agree so an
     // in-flight reconnect cannot silently start playback behind Android UI.
     if ((tipo == SDL_APP_WILLENTERBACKGROUND || tipo == SDL_APP_DIDENTERBACKGROUND) &&
-        aberto && comVideo) {
+        aberto) {
+      p6PendingPause = 1; tocando = 0;
       // Do not let an interrupted D-pad seek restore its pre-Home play state.
       scrubTocava = retomandoSalto = 0;
       assistidoAmostra = 0;
-      video_pausar_sistema();
+      if (comVideo) video_pausar_sistema();
     }
 #endif
   }
@@ -4016,6 +4020,7 @@ static void alternarTocando(void) {
   retomandoSalto = 0;
   tocando = !tocando;
   pausaPessoa = !tocando;
+  if (tocando) p6PendingPause = 0;
   if (comVideo) video_pausar(!tocando);
 }
 
