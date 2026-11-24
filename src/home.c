@@ -1431,7 +1431,7 @@ static const char *arte_card_retomada(const CatItem *item) {
     ProxSugestao prox;
     const char *ep;
     // Match continuar_desenhar: a completed card advertises the next episode.
-    if (item->progresso >= ajustes_cw_concluido()) {
+    if (item->progresso >= ajustes_cw_concluido() && !cat_retomavel(item, ajustes_cw_concluido())) {
       int idx = cat_indice_titulo(item->imdb, cat_indice_por_imdb(item->imdb));
       if (idx >= 0 && prox_seguinte(item, cat_episodio(idx, 0), cat_n_episodios(idx),
                                   ajustes_cw_concluido(), (long long)time(NULL) * 1000LL, &prox)) {
@@ -8634,7 +8634,7 @@ int home_retorno_vale(int indice, double posSeg, double durSeg) {
   double p;
   if (indice < 0 || durSeg <= 1.0) return 0;
   p = posSeg / durSeg;
-  return p * 100.0 >= (double)ajustes_cw_minimo() && p * 100.0 < ajustes_cw_concluido();
+  return p * 100.0 >= (double)ajustes_cw_minimo() && posSeg < durSeg - 1.0;
 }
 void home_registrar_retorno(int indice, double posSeg, double durSeg) {
   int novo = home_retorno_vale(indice, posSeg, durSeg) ? indice : -1;
