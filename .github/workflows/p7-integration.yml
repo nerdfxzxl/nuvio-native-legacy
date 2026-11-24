@@ -56,40 +56,8 @@ jobs:
           nm -D --defined-only "$elf" > "$RUNNER_TEMP/main.symbols"
           grep ' SDL_main$' "$RUNNER_TEMP/main.symbols"
           grep ' Java_space_nuvio_nativelegacy_NvPlayer_nativeEvento$' "$RUNNER_TEMP/main.symbols"
-          grep ' nv_mkvcore_achar_tracks
-    runs-on: macos-15
-    timeout-minutes: 110
-    strategy:
-      fail-fast: false
-      matrix:
-        suites:
-          - addons_alvo_pendente addons_stream_pending fonte_manual_resume playback_p3_reload
-          - posplay posplay_recuo proxprefetch postplay_p6_integration proximo
-          - player_eof_episodios player_visto_trailer player_scrobble_trailer
-          - player player_republica player_retido player_back
-          - catalog_episode_identity512 episode_identity512 player_identity524 cw_stats_identity524 visto_identidade512
-          - addons_legendas legendasui stream_parser fileiras
-    steps:
-      - uses: actions/checkout@v4
-      - run: brew install sdl2 sdl2_image sdl2_ttf ripgrep
-      - name: Execute each original suite and retain individual results
-        env:
-          SUITES: ${{ matrix.suites }}
-        run: |
-          failed=0
-          for suite in $SUITES; do
-            echo "::group::$suite"
-            if bash "tests/$suite.sh"; then
-              echo "$suite passed" >> "$GITHUB_STEP_SUMMARY"
-            else
-              echo "::error::$suite failed"
-              echo "$suite failed" >> "$GITHUB_STEP_SUMMARY"
-              failed=1
-            fi
-            echo "::endgroup::"
-          done
-          exit "$failed"
- "$RUNNER_TEMP/main.symbols"
+          nm --defined-only "$elf" > "$RUNNER_TEMP/main.all-symbols"
+          grep ' nv_mkvcore_achar_tracks$' "$RUNNER_TEMP/main.all-symbols"
           strings "$elf" > "$RUNNER_TEMP/main.strings"
           grep 'Nuvio Engine/' "$RUNNER_TEMP/main.strings"
           python3 tests/p7_jni_contract.py android/app/build "$RUNNER_TEMP/main.symbols"
