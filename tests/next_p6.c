@@ -25,6 +25,14 @@ int main(void) {
   CHECK(!p6_next_player_matches(&i,"tt1:0:1",11,4));
   p6_next_clear(&i);
   CHECK(!p6_next_player_matches(&i,"tt1:0:1",10,4));
+  char a[NV_STREAM_ID_CAP],b[NV_STREAM_ID_CAP],over[NV_STREAM_ID_CAP+1];
+  memset(a,'a',sizeof a-1); a[sizeof a-1]=0;
+  memcpy(b,a,sizeof b); b[sizeof b-2]='b';
+  memset(over,'a',sizeof over-1); over[sizeof over-1]=0;
+  CHECK(!p6_next_begin(&i,over,0,1,6,10,4));
+  CHECK(p6_next_begin(&i,a,0,1,6,10,4));
+  CHECK(p6_next_player_matches(&i,a,10,4));
+  CHECK(!p6_next_player_matches(&i,b,10,4));
   printf("P6 Next cinematic ownership: %u assertions PASS\n",n);
   return 0;
 }

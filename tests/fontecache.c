@@ -38,7 +38,7 @@ int addons_base_desligada(const char *b) { (void)b; return 0; }   // 203-desliga
 static pthread_mutex_t redeTrava = PTHREAD_MUTEX_INITIALIZER;
 static int solto[3];
 static int consultas;            // quantas vezes foi chamada
-static char ultimoId[64];        // id da ultima chamada
+static char ultimoId[NV_STREAM_ID_CAP];        // id da ultima chamada
 static int dentro;               // 1 enquanto uma chamada esta bloqueada
 static int addonsPerguntados;    // ate onde a ultima chamada chegou
 static int ignoraCancel;         // devolve lista mesmo cancelada (simula a corrida)
@@ -340,6 +340,18 @@ int main(void) {
   assert(fontecache_pegar("canal:p", "tv", &l, &n) == FC_NADA);
   puts("ok  encerrar com prefetch no ar cede, junta o fio e esvazia");
 
+  char a[NV_STREAM_ID_CAP],b[NV_STREAM_ID_CAP],over[NV_STREAM_ID_CAP+1];
+  memset(a,'x',sizeof a-1); a[sizeof a-1]=0;
+  memcpy(b,a,sizeof b); b[sizeof b-2]='y';
+  memset(over,'x',sizeof over-1); over[sizeof over-1]=0;
+  Stream *g=listaDe(1,"long-a"), *g2=listaDe(1,"long-b");
+  fontecache_guardar(a,"tv",g,1); fontecache_guardar(b,"tv",g2,1);
+  fontecache_guardar(over,"tv",g2,1);
+  assert(fontecache_pegar(over,"tv",&l,&n)==FC_NADA);
+  assert(fontecache_pegar(a,"tv",&l,&n)==FC_ACERTO && !strcmp(l[0].rotulo,"long-a-0")); free(l);
+  assert(fontecache_pegar(b,"tv",&l,&n)==FC_ACERTO && !strcmp(l[0].rotulo,"long-b-0")); free(l);
+  free(g); free(g2);
+  puts("fontecache: exact 127-byte target and prefix isolation PASS");
   puts("fontecache: tudo ok");
   return 0;
 }

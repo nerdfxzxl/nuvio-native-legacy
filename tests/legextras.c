@@ -1,5 +1,6 @@
 // Ver tests/legextras.sh (#201): extras do Stremio na busca de legendas.
 #include "../src/legextras.h"
+#include "../src/stream_id_p6.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -47,8 +48,16 @@ int main(int argc, char **argv) {
   // (buildSubtitlesUrl do Nuvio web).
   ok(legextras_url(url, sizeof url, "https://a.example/cfg?k=1", "movie", "tt1", "videoSize=1") &&
      !strcmp(url, "https://a.example/cfg/subtitles/movie/tt1/videoSize=1.json?k=1"), "query depois do caminho", url);
-  ok(legextras_url(url, sizeof url, "https://a.example/cfg", "movie", "x y", NULL) &&
-     !strcmp(url, "https://a.example/cfg/subtitles/movie/x%20y.json"), "id codificado", url);
+  ok(legextras_url(url, sizeof url, "https://a.example/cfg", "movie", "x/y", NULL) &&
+     !strcmp(url, "https://a.example/cfg/subtitles/movie/x%2Fy.json"), "id codificado", url);
+  ok(!legextras_url(url,sizeof url,"https://a.example/cfg","movie","x y",NULL) && !url[0],"invalid whitespace target rejected",NULL);
+  char a[NV_STREAM_ID_CAP],b[NV_STREAM_ID_CAP],over[NV_STREAM_ID_CAP+1],url2[700];
+  memset(a,'x',sizeof a-1); a[sizeof a-1]=0;
+  memcpy(b,a,sizeof b); b[sizeof b-2]='y';
+  memset(over,'x',sizeof over-1); over[sizeof over-1]=0;
+  ok(legextras_url(url,sizeof url,"https://a.example/cfg","series",a,NULL) && strstr(url,a)!=NULL,"exact opaque 127-byte subtitle target",url);
+  ok(legextras_url(url2,sizeof url2,"https://a.example/cfg","series",b,NULL) && strcmp(url,url2),"distinct long-prefix subtitle target",url2);
+  ok(!legextras_url(url,sizeof url,"https://a.example/cfg","series",over,NULL) && !url[0],"oversized target rejected",NULL);
 
   ok(legextras_nome_da_url("https://cdn.example/d/abc/My%20Movie.2024.mkv?token=1", nome, sizeof nome) &&
      !strcmp(nome, "My Movie.2024.mkv"), "nome pela URL, decodificado, sem query", nome);

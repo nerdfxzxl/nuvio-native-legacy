@@ -1,6 +1,7 @@
 // Ver legextras.h (#201, #269).
 #include "legextras.h"
 #include "addonurl.h"
+#include "stream_id_p6.h"
 #include <stdio.h>
 #include <string.h>
 #include <strings.h>
@@ -50,7 +51,7 @@ int legextras_url(char *dst, size_t n, const char *base, const char *tipo,
   if (!dst || !n) return 0;
   // nv_addon_url: a query da URL instalada vai DEPOIS do caminho, e o id sai
   // codificado (nv_addon_id), como no buildSubtitlesUrl do Nuvio oficial.
-  if (!nv_addon_id(idUrl, sizeof idUrl, id) || !idUrl[0]) { dst[0] = 0; return 0; }
+  if (!nv_stream_id_valid(id) || !nv_addon_id(idUrl, sizeof idUrl, id) || !idUrl[0]) { dst[0] = 0; return 0; }
   if (seg && seg[0]) w = nv_addon_url(dst, n, base, "/subtitles/%s/%s/%s.json", tipo, idUrl, seg);
   else w = nv_addon_url(dst, n, base, "/subtitles/%s/%s.json", tipo, idUrl);
   if (w < 0 || (size_t)w >= n) { dst[0] = 0; return 0; }

@@ -81,13 +81,16 @@ jobs:
           # and every APK workflow unchanged.
           p6_preflight="$(mktemp tools/android/p6-preflight.XXXXXX.sh)"
           trap 'rm -f "$p6_preflight"' EXIT
-          sed 's@src/main.c src/home.c src/streams.c@src/proximopreparo.c src/posplay.c src/continuar.c src/atividade.c src/contapend.c src/capmkv.c src/mkv.c src/main.c src/home.c src/streams.c@' tools/android/preflight-c.sh > "$p6_preflight"
+          sed 's@src/main.c src/home.c src/streams.c@src/addons.c src/fontecache.c src/fontevolta.c src/fontepref.c src/partes.c src/legextras.c src/proximopreparo.c src/posplay.c src/continuar.c src/atividade.c src/contapend.c src/capmkv.c src/mkv.c src/main.c src/home.c src/streams.c@' tools/android/preflight-c.sh > "$p6_preflight"
           bash "$p6_preflight"
           bash tests/contalib.sh
           # Includes exact bounded stream/CW identity composition regressions.
           bash tests/catalog_episode_identity512.sh
           C_INCLUDE_PATH=/usr/include/SDL2 bash tests/cwfrente.sh
           cc -std=gnu11 -O1 -Isrc src/js.c tests/p6_exact_id.c -lm -o /tmp/p6-exact-id && /tmp/p6-exact-id
+          C_INCLUDE_PATH=/usr/include/SDL2 bash tests/fontecache.sh
+          C_INCLUDE_PATH=/usr/include/SDL2 bash tests/fontevolta.sh
+          bash tests/legextras.sh
           bash tests/p6_account_pull.sh
           # Actual history dispatch/retry test uses mock HTTP, never external calls.
           C_INCLUDE_PATH=/usr/include/SDL2 bash tests/visto.sh

@@ -1,6 +1,7 @@
 // Regras da fonte guardada para o Retomar (fontevolta.h), sem rede: a sonda
 // e trocada por uma falsa e o relogio e passado a mao.
 #include "fontevolta.h"
+#include "stream_id_p6.h"
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
@@ -128,6 +129,16 @@ int main(void) {
     assert(!fontevolta_abertura_vencida(NULL, 1));
   }
   puts("ok prazo manual: so sem pronto, carregando e vencido");
+  char a[NV_STREAM_ID_CAP],b[NV_STREAM_ID_CAP],over[NV_STREAM_ID_CAP+1];
+  memset(a,'x',sizeof a-1); a[sizeof a-1]=0;
+  memcpy(b,a,sizeof b); b[sizeof b-2]='y';
+  memset(over,'x',sizeof over-1); over[sizeof over-1]=0;
+  fontevolta_guardar(a,"conta-a",1,&s,0,t0);
+  fontevolta_guardar(over,"conta-a",1,&s,0,t0);
+  assert(!fontevolta_pegar(b,"conta-a",1,t0,&g));
+  assert(!fontevolta_pegar(over,"conta-a",1,t0,&g));
+  assert(fontevolta_pegar(a,"conta-a",1,t0,&g));
+  puts("fontevolta: exact saved target PASS");
   puts("fontevolta: tudo ok");
   return 0;
 }
