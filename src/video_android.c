@@ -679,8 +679,9 @@ JNIEXPORT void JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativeLegenda(JNIE
 JNIEXPORT void JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativePos(JNIEnv *env, jclass cls,
     jlong ms, jlong fimMs, jboolean live, jint memoria, jint geracao, jint revision) {
   (void)env; (void)cls;
+  pthread_mutex_lock(&travaEvento);
   pthread_mutex_lock(&travaRetomada);
-  if (ativo && geracao > 0 && (unsigned)geracao == sessao && revision == seekRevision) {
+  if (ativo && !terminalVideoP5B && geracao > 0 && (unsigned)geracao == sessao && revision == seekRevision) {
     /* Media3 TIME_UNSET is not a playback position. */
     int conhecida = ms > (jlong)(INT64_MIN + 1);
     posMs = posNativoMs = !conhecida || ms < 0 ? 0 : ms > INT_MAX ? INT_MAX : (int)ms;
@@ -694,6 +695,7 @@ JNIEXPORT void JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativePos(JNIEnv *
     if (sampleBytes > samplePeakBytes) samplePeakBytes = sampleBytes;
   }
   pthread_mutex_unlock(&travaRetomada);
+  pthread_mutex_unlock(&travaEvento);
 }
 
 // ESTATISTICAS AO VIVO (video.h, VideoStats): o Kotlin manda 1x/s, do fio
@@ -857,10 +859,14 @@ JNIEXPORT void JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativeAudioLog(JNI
   fflush(stdout);
 }
 
-JNIEXPORT void JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativeHdr(JNIEnv *env, jclass cls, jstring hdr, jint dv, jint atmos) {
+JNIEXPORT void JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativeHdr(JNIEnv *env, jclass cls, jstring hdr, jint dv, jint atmos, jint geracao) {
   char h[24];
   (void)cls;
   deJString(env, hdr, h, sizeof h);
+  pthread_mutex_lock(&travaEvento);
+  if (geracao <= 0 || !videoerro_p5b_evento_aceito(ativo, (unsigned)geracao, sessao, terminalVideoP5B)) {
+    pthread_mutex_unlock(&travaEvento); return;
+  }
   // So literais: video_hdr() devolve o ponteiro cru ao fio do app.
   hdrAtual = !strcmp(h, "HDR10") ? "HDR10" : !strcmp(h, "HLG") ? "HLG" :
              !strcmp(h, "DolbyVision") ? "DolbyVision" : "none";
@@ -868,6 +874,7 @@ JNIEXPORT void JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativeHdr(JNIEnv *
   atmosAtual = atmos != 0;
   printf("[video] android hdr=%s dv=%d atmos=%d\n", (const char *)hdrAtual, dvAtual, atmosAtual);
   fflush(stdout);
+  pthread_mutex_unlock(&travaEvento);
 }
 
 // F07: what the Kotlin player did with the seek cache in this open. Kotlin
@@ -991,6 +998,14 @@ JNIEXPORT void JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativeEvento(JNIEn
       semDecoderAudio = 1; tocando = 0; break;
     case 17: /* EV_VIDEO_FALHA: terminal video capability/renderer error. */
       terminalVideo(a, b);
+      break;
+    case 18: /* EV_VIDEO_RECOVERY: one same-generation decoder recovery. */
+      if (!videoerro_p5b_retry_owned(&retryVideoP5B, sessao)) {
+        videoerro_p5b_retry_arm(&retryVideoP5B, a > 0 ? a : 1);
+        videoerro_p5b_retry_bind(&retryVideoP5B, sessao, SDL_GetTicks());
+      }
+      reconErroPend = 0; tocando = 0;
+      quadroSuperficie = superficieEstavel = 0;
       break;
     case EV_CARGA_FASE: if (a >= 0 && a <= 3) cargaFase = a; break;
     case EV_SO_AUDIO:
@@ -1322,6 +1337,9 @@ static int bombearRetryVideo(double pos) {
     int reason = videoerro_p5b_retry_fail(&retryVideoP5B, gen);
     if (reason) terminalVideo(reason, 2002);
     pthread_mutex_unlock(&travaEvento);
+    // SDL owns native opens; pause the timed-out player immediately rather
+    // than letting an old audio output run until the modal is drawn.
+    if (reason) video_pausar(1);
   }
   return 1;
 }
@@ -1341,6 +1359,13 @@ void video_bombear(void) {
     return;
   }
   double pos = video_pos();
+  if (mVelocidade && ativo && prontoLoad && velEnviada != velPedida) {
+    velEnviada = velPedida;
+    kInt(mVelocidade, velEnviada);
+    // So "enviado": o setPlaybackSpeed nao recusa nada, e quem prova que andou
+    // e o medidor do player (VelMedidor), pela posicao contra o relogio.
+    vel_log(velEnviada, "enviado ao ExoPlayer");
+  }
   if (bombearRetryVideo(pos)) return;
   int eraRecarga = recarregarPausa >= 0;
   if (recarregarPausa >= 0) {
@@ -1353,13 +1378,6 @@ void video_bombear(void) {
       if (recarregarPausa) video_pausar(1);
       recarregarPausa = -1;
     }
-  }
-  if (mVelocidade && ativo && prontoLoad && velEnviada != velPedida) {
-    velEnviada = velPedida;
-    kInt(mVelocidade, velEnviada);
-    // So "enviado": o setPlaybackSpeed nao recusa nada, e quem prova que andou
-    // e o medidor do player (VelMedidor), pela posicao contra o relogio.
-    vel_log(velEnviada, "enviado ao ExoPlayer");
   }
   if (prontoLoad && pos > 0.5) reconIniciou = 1;
   if (prontoLoad && reconBuscarMs < 0) nv_recon_progresso(&recon, pos);
