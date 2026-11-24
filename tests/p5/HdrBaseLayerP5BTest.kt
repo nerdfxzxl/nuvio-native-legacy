@@ -1,6 +1,8 @@
 package space.nuvio.nativelegacy
 
 import java.nio.ByteBuffer
+import androidx.media3.common.Format
+import androidx.media3.common.MimeTypes
 
 // Original 64x64 black test streams generated with libx265, not mock SPS
 // values. ffprobe independently confirmed Main10 BT.2020 PQ / HLG and
@@ -51,5 +53,26 @@ fun main() {
     check(proof.ready())
     proof.valid = false
     check(!proof.ready())
-    println("P5-B actual HEVC CSD/IRAP and codec proof: PASS (23 assertions)")
+    // The actual Media3 Format (not a simulated renderer) is the identity
+    // guard for one runtime decoder recovery.
+    val original = Format.Builder().setId("selected").setSampleMimeType(MimeTypes.VIDEO_DOLBY_VISION)
+        .setCodecs("dvhe.08.06").setWidth(64).setHeight(64).setFrameRate(24f)
+        .setAverageBitrate(2000000).setPeakBitrate(3000000).setInitializationData(listOf(pq)).build()
+    val recovery = HdrCodecFallbackP5B.RuntimeRecovery("failed.hw", original)
+    check(!recovery.completed)
+    check(recovery.sameRepresentation(original))
+    check(recovery.permits("compatible.sw", original.buildUpon().build()))
+    check(!recovery.permits("failed.hw", original))
+    check(!recovery.permits("compatible.sw", original.buildUpon().setWidth(32).build()))
+    check(!recovery.permits("compatible.sw", original.buildUpon().setHeight(32).build()))
+    check(!recovery.permits("compatible.sw", original.buildUpon().setFrameRate(30f).build()))
+    check(!recovery.permits("compatible.sw", original.buildUpon().setAverageBitrate(1000000).build()))
+    check(!recovery.permits("compatible.sw", original.buildUpon().setPeakBitrate(1000000).build()))
+    check(!recovery.permits("compatible.sw", original.buildUpon().setId("other").build()))
+    check(!recovery.permits("compatible.sw", original.buildUpon().setCodecs("dvhe.05.06").build()))
+    check(!recovery.permits("compatible.sw", original.buildUpon().setSampleMimeType(MimeTypes.VIDEO_H265).build()))
+    check(!recovery.permits("compatible.sw", original.buildUpon().setInitializationData(listOf(hlg)).build()))
+    check(!recovery.handoff(null, original, "compatible.sw"))
+    check(!recovery.completed)
+    println("P5-B actual HEVC CSD/IRAP, codec proof and runtime representation guard: PASS (38 assertions)")
 }
