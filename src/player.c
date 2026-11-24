@@ -812,6 +812,9 @@ static Uint32 episodioPedidoEm, recarregarPedidoEm;
 static int recarregarPedidoMarcado;
 static void medirAssistido(void) {
   double m = monoSeg(), p = video_pos();
+#ifdef NV_ANDROID
+  p = video_pos_confirmada();
+#endif
   int ok = fontePrincipal() && video_ativo() && video_pronto() && video_tocando() &&
            !video_bufferando_ms() && !video_falhou() && !scrubbing &&
            !esperandoFonte && !erroFonte && retomadaAplicada;
@@ -2453,7 +2456,10 @@ void player_definir_fonte(const char *url) {
   barraBufferMem=0.0f;
   fonteAcaoInvalidar();
   // A primeira fonte ainda pode aproveitar a legenda antecipada na espera.
-  if (comVideo) legenda_pre_descartar(i18n("troca de fonte"));
+  if (comVideo) {
+    posplay_fechar(); // old source recommendation/countdown cannot survive replacement
+    legenda_pre_descartar(i18n("troca de fonte"));
+  }
   durFonteAvisada = pedProximaFonte = durFonteCurta = durFonteForaCache = 0;
   durFonteSkipEm = 0; durFonteManter = 0;
   // Fonte nova: a duracao esperada conhecida nao vale mais (mesmo titulo,
@@ -2496,7 +2502,8 @@ void player_voltar_a_esperar(void) {
   if (comVideo) { video_parar(); comVideo = 0; }
   mkvass_parar();
   mkvass_video_aberto(0);
-  esperandoFonte = 1; erroFonte = erroAudioP5A = erroVideoP5B = 0; tocando = 1; pausaPessoa = 0;
+  posplay_fechar();
+  esperandoFonte = 1; erroFonte = erroAudioP5A = erroVideoP5B = 0; tocando = !p6PendingPause; pausaPessoa = 0;
   cinemaEscapeFoco = 0;
   erroTitulo[0] = erroDica[0] = 0;
   retomadaAplicada = 0; inicioImagem = 0;
@@ -2750,7 +2757,7 @@ static int p6WatchReached(void) {
   double p = video_pos();
 #ifdef NV_ANDROID
   p = video_pos_confirmada();
-  if (capmkv_creditos_pendentes()) return 0;
+  if (capmkv_creditos_pendentes() && !video_terminou()) return 0;
 #endif
   if (!isfinite(p) || fabs(p - posSeg) > 2.0 || p6WatchRawMarker() > duracaoSeg + 1.0) return 0;
   double base = 0.0;
