@@ -15,7 +15,8 @@ import androidx.media3.common.Format
  * Dolby TrueHD or DTS-HD MA. A route advertises *possible* fidelity, not proof
  * of physical bit-perfect output; AudioTrack telemetry/P7-P8 must confirm it.
  *
- * No audio-device callbacks or route renegotiation here: that belongs to P5-D.
+ * P5-D can supply the observed AudioTrack route; direct-playback evidence
+ * still requires the Android media-attributes route to match that device.
  */
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 internal object AudioOutputProbeP5A {
@@ -69,21 +70,26 @@ internal object AudioOutputProbeP5A {
             (counts.isEmpty() || channels in counts)
     }
 
-    fun inspect(ctx: Context?, fmt: Format, decoder: Boolean, dsp: Boolean): Observation {
+    private fun mediaAttributes() = android.media.AudioAttributes.Builder()
+        .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
+        .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MOVIE).build()
+
+    fun mediaRoute(manager: AudioManager?): AudioDeviceInfo? =
+        if (Build.VERSION.SDK_INT >= 33) try {
+            manager?.getAudioDevicesForAttributes(mediaAttributes())?.singleOrNull()
+        } catch (_: RuntimeException) { null } else null
+
+    fun inspect(ctx: Context?, fmt: Format, decoder: Boolean, dsp: Boolean,
+                observed: AudioDeviceInfo? = null, actualRoute: Boolean = false): Observation {
         val channels = fmt.channelCount.coerceAtLeast(0)
         val hz = fmt.sampleRate.coerceAtLeast(0)
         val bits = bitDepth(fmt.pcmEncoding)
         val bitrate = fmt.bitrate.coerceAtLeast(0)
         val mime = fmt.sampleMimeType.orEmpty()
         val manager = ctx?.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
-        val attrs = android.media.AudioAttributes.Builder()
-            .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
-            .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MOVIE).build()
-        // API < 33 cannot prove which one of several connected devices actually
-        // receives *these* attributes. Fail closed instead of picking getDevices.
-        val route: AudioDeviceInfo? = if (Build.VERSION.SDK_INT >= 33) try {
-            manager?.getAudioDevicesForAttributes(attrs)?.singleOrNull()
-        } catch (_: RuntimeException) { null } else null
+        val attrs = mediaAttributes()
+        val policyRoute = mediaRoute(manager)
+        val route = if (actualRoute) observed else policyRoute
         val type = route?.type ?: -1
         val arc = type == AudioDeviceInfo.TYPE_HDMI_ARC
         // Standard ARC physically supports stereo LPCM, not 5.1/7.1 LPCM;
@@ -100,7 +106,8 @@ internal object AudioOutputProbeP5A {
         // Never assert HD encoded delivery without an explicitly observed eARC
         // path; decoder presence or HDMI ports are not an eARC guarantee.
         val hdTransportProven = type == AudioDeviceInfo.TYPE_HDMI_EARC
-        val canBitstream = if (route == null || enc == 0 || mask == 0 ||
+        val canBitstream = if (Build.VERSION.SDK_INT < 33 || route == null ||
+            policyRoute?.id != route.id || enc == 0 || mask == 0 ||
             hz <= 0 || enc !in route.encodings || dsp ||
             (hdSource && !hdTransportProven)) false else try {
             val af = AudioFormat.Builder().setEncoding(enc).setSampleRate(hz)

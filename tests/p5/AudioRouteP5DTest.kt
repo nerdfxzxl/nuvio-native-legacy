@@ -1,0 +1,52 @@
+package space.nuvio.nativelegacy
+
+fun main() {
+    var n = 0
+    fun ok(value: Boolean) { check(value) { "Q49 assertion ${n+1}" }; n++ }
+    fun key(id: Int, type: Int, enc: List<Int> = listOf(2)) =
+        AudioRouteP5D.Key(id, type, enc, listOf(48000), listOf(2), listOf(12))
+    val arc = key(1, 10, listOf(2, 5))
+    val bt = key(2, 8)
+    val speaker = key(3, 2)
+    val d = AudioRouteP5D.Debounce()
+    d.seed(arc)
+    ok(d.observe(arc, 0) == AudioRouteP5D.Debounce.Result.NONE)
+    ok(d.observe(arc.copy(), 100) == AudioRouteP5D.Debounce.Result.NONE) // duplicate/volume/inventory
+    ok(d.observe(bt, 200) == AudioRouteP5D.Debounce.Result.WAIT)
+    ok(d.observe(bt, 500) == AudioRouteP5D.Debounce.Result.WAIT)
+    ok(d.observe(speaker, 600) == AudioRouteP5D.Debounce.Result.WAIT)
+    ok(d.observe(speaker, 1349) == AudioRouteP5D.Debounce.Result.WAIT)
+    ok(d.observe(speaker, 1350) == AudioRouteP5D.Debounce.Result.CHANGED)
+    ok(d.observe(speaker, 1500) == AudioRouteP5D.Debounce.Result.NONE)
+    ok(d.observe(arc, 1600) == AudioRouteP5D.Debounce.Result.WAIT)
+    ok(d.observe(speaker, 1700) == AudioRouteP5D.Debounce.Result.NONE)
+    ok(!d.pending)
+    ok(d.observe(speaker.copy(rates=listOf(44100)), 1800) == AudioRouteP5D.Debounce.Result.WAIT)
+    ok(d.observe(speaker.copy(rates=listOf(44100)), 2550) == AudioRouteP5D.Debounce.Result.CHANGED)
+    ok(d.observe(null, 3000) == AudioRouteP5D.Debounce.Result.WAIT)
+    ok(d.observe(null, 3750) == AudioRouteP5D.Debounce.Result.CHANGED)
+    ok(d.observe(arc, 4000) == AudioRouteP5D.Debounce.Result.WAIT)
+    ok(d.observe(arc, 4750) == AudioRouteP5D.Debounce.Result.CHANGED)
+    ok(d.observe(bt, 5000) == AudioRouteP5D.Debounce.Result.WAIT)
+    ok(d.observe(speaker, 9999) == AudioRouteP5D.Debounce.Result.WAIT)
+    ok(d.observe(bt, 10000) == AudioRouteP5D.Debounce.Result.UNSTABLE)
+    val A = AudioRouteP5D.Action.KEEP
+    ok(AudioRouteP5D.plan(true, true, true, true, false) == A)
+    ok(AudioRouteP5D.plan(true, true, false, true, true) == A)
+    ok(AudioRouteP5D.plan(true, true, false, false, false) == AudioRouteP5D.Action.RESELECT_PCM)
+    ok(AudioRouteP5D.plan(true, false, true, false, true) == AudioRouteP5D.Action.RESELECT_ENCODED)
+    ok(AudioRouteP5D.plan(false, true, false, false, true) == AudioRouteP5D.Action.ERROR)
+    val tx = AudioRouteP5D.Transaction()
+    val t = tx.begin(100)
+    ok(tx.owns(t) && !tx.expired(8099))
+    ok(tx.expired(8100))
+    ok(tx.allowPrepare(t))
+    ok(!tx.allowPrepare(t))
+    tx.cancel()
+    ok(!tx.owns(t) && !tx.allowPrepare(t))
+    val t2 = tx.begin(10000)
+    ok(t2 != t && tx.owns(t2) && !tx.owns(t))
+    tx.cancel()
+    ok(!tx.active)
+    println("P5-D route policy: $n assertions PASS")
+}
