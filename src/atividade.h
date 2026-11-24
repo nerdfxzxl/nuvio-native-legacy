@@ -6,7 +6,7 @@
 //   inicio    a imagem comecou a andar de verdade (video pronto e tocando)
 //   progresso a cada 5 min TOCANDO (pausado nao conta), e na parada entre
 //             20% e o fim
-//   fim       passou de 90% ou entrou nos creditos (player_regra_concluiu)
+//   fim       only the authoritative player watched decision (Q45)
 //   (parada)  SAIR DO PLAYER antes do fim NAO E MAIS EVENTO DE FEED (dono,
 //             06/10/2026: "muito sujo"). Sai um "progresso" com parou=1, que
 //             o servidor usa so para fechar o "assistindo agora" e somar o
@@ -39,7 +39,7 @@
 
 #define ATIV_FILA_MAX     32
 #define ATIV_PROGRESSO_S  300.0    // 5 min tocando entre dois "progresso"
-#define ATIV_FIM_PCT      90       // a partir disto e "fim", com ou sem creditos
+#define ATIV_FIM_PCT      90       // legacy constant; not a Q45 completion trigger
 
 typedef struct {
   char ev[12];          // "inicio" | "progresso" | "fim" | "abandono" | "reacao" | "salvo"
@@ -68,13 +68,12 @@ int  atividade_envia(void);
 
 // --- ganchos do player ------------------------------------------------------
 // Por quadro, SO com titulo de verdade (video pronto, duracao >= 120 s, nao
-// canal). `concluiu` e player_regra_concluiu na posicao corrente. Troca de
+// canal). `concluiu` is the authoritative Q45 watched decision. Troca de
 // titulo/episodio no meio fecha o trecho anterior como uma parada.
 void atividade_player_passo(const CatItem *ci, int temporada, int episodio,
                             double posSeg, double durSeg, int tocando,
                             int concluiu, float dt);
-// Na saida do player (fecharSessao). Fecha o trecho: fim (pelo pct ou pelos
-// creditos) ou a parada (progresso com parou=1). Sem `inicio` antes, nada.
+// Na saida do player (fecharSessao). Fecha o trecho: fim (Q45) ou a parada (progresso com parou=1). Sem `inicio` antes, nada.
 void atividade_player_saiu(double posSeg, double durSeg, int concluiu);
 
 // --- outros ganchos ---------------------------------------------------------
