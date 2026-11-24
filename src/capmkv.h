@@ -30,6 +30,7 @@ void capmkv_zerar(void);
 double capmkv_creditos(double dur);
 // Current-generation freshly read explicit chapter only; URL-cache hints are not proof.
 double capmkv_creditos_verificados(void);
+int capmkv_creditos_pendentes(void);
 // Entrega capitulos ja lidos (LG/.wgt): guarda para capmkv_creditos e alimenta
 // o modulo de intro (abertura/creditos/previa).
 void capmkv_aplicar(const MkvCap *caps, int n);
