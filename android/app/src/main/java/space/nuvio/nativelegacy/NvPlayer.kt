@@ -410,7 +410,7 @@ object NvPlayer {
     // transcode, downmix, reselect tracks or suppress network buffering.
     private var somLiberado = false
     private var volumeRequisitado = 1f
-    private fun aplicarVolume() { player?.volume = if (somLiberado && !videoOutputFailed) volumeRequisitado else 0f }
+    private fun aplicarVolume() { player?.volume = if (somLiberado && !videoOutputFailed && afrGate == null) volumeRequisitado else 0f }
     private fun liberarSom() {
         if (!videoOutputFailed && !somLiberado) { somLiberado = true; aplicarVolume() }
     }
@@ -445,10 +445,19 @@ object NvPlayer {
     private var afrLease: FrameRateP5C.PreferenceLease<android.view.Window>? = null
     private var afrEvaluated = false
     private var afrSuspended = false
+    private var afrGate: FrameRateP5C.SwitchGate? = null
+    private var afrPoll: Runnable? = null
+
+    private fun clearAfrGate() {
+        afrPoll?.let { principal.removeCallbacks(it) }
+        afrPoll = null
+        afrGate = null
+    }
 
     private fun restoreAfr() {
         val w = activity?.window
         val lease = afrLease
+        clearAfrGate()
         afrLease = null
         afrEvaluated = false
         if (w != null && lease != null) try {
@@ -461,8 +470,44 @@ object NvPlayer {
         } catch (e: Exception) { Log.w(TAG, "AFR restore: $e") }
     }
 
-    private fun applyAfr(minha: Int, format: Format?) {
-        if (!atual(minha) || videoOutputFailed || player == null || afrEvaluated || afrSuspended || !nativeAfr()) return
+    private fun observeAfr(minha: Int, p: ExoPlayer, act: Activity, target: Int,
+                           gate: FrameRateP5C.SwitchGate) {
+        val poll = object : Runnable {
+            override fun run() {
+                if (afrGate !== gate || !atual(minha) || player !== p) return
+                val stillOwned = try {
+                    activity === act && act.window.attributes.preferredDisplayModeId == target && nativeAfr()
+                } catch (_: Exception) { false }
+                val active = if (stillOwned) try {
+                    act.windowManager.defaultDisplay.mode.modeId
+                } catch (_: Exception) { null } else null
+                val status = if (stillOwned) gate.observe(active, SystemClock.elapsedRealtime())
+                    else FrameRateP5C.SwitchStatus.TIMED_OUT
+                if (status == FrameRateP5C.SwitchStatus.WAITING) {
+                    principal.postDelayed(this, 100L)
+                    return
+                }
+                if (status == FrameRateP5C.SwitchStatus.TIMED_OUT) {
+                    Log.w(TAG, "AFR mode not confirmed; releasing only our display preference")
+                    restoreAfr()
+                    afrEvaluated = true // no repeated mode requests in this session
+                } else {
+                    clearAfrGate()
+                    Log.i(TAG, "AFR display mode confirmed: $target")
+                }
+                aplicarVolume()
+                hdrNaSuperficie()
+                avaliarEstavel()
+            }
+        }
+        afrPoll = poll
+        principal.post(poll)
+    }
+
+    private fun applyAfr(minha: Int, format: Format?, resumed: Boolean = false) {
+        if (!atual(minha) || videoOutputFailed || afrEvaluated || afrSuspended || recriando ||
+            (!resumed && estavelEmitido) || !nativeAfr()) return
+        val p = player ?: return
         val f = format ?: return
         if (!f.frameRate.isFinite() || f.frameRate <= 0f) return
         val act = activity ?: return
@@ -484,6 +529,10 @@ object NvPlayer {
             // color transfer, retain all current advertised HDR capabilities.
             // On older APIs do not switch an unclassified video mode.
             if (!known && required == null && !knownSdr) return
+            // Do not change a non-DV output into a DV mode merely because the
+            // source advertises DV. The alternate HDR10 path has its own proof.
+            if (required == android.view.Display.HdrCapabilities.HDR_TYPE_DOLBY_VISION &&
+                required !in current.hdrTypes) return
             val retainHdr = when {
                 required == android.view.Display.HdrCapabilities.HDR_TYPE_HDR10 ->
                     current.hdrTypes.intersect(setOf(android.view.Display.HdrCapabilities.HDR_TYPE_HDR10_PLUS))
@@ -499,13 +548,29 @@ object NvPlayer {
                 val previous = attrs.preferredDisplayModeId
                 if (previous != target) {
                     val lease = FrameRateP5C.PreferenceLease(w, previous, target)
+                    val gate = FrameRateP5C.SwitchGate(target, SystemClock.elapsedRealtime())
+                    afrGate = gate
+                    principal.removeCallbacks(estavelRun)
+                    if (recriaAgendada && !estavelEmitido) hdrRecriadoPara = ""
+                    principal.removeCallbacks(recriar)
+                    recriaAgendada = false
+                    aplicarVolume()
+                    // Install the lease before submitting, so a partial
+                    // failure cannot strand our requested window preference.
+                    afrLease = lease
                     attrs.preferredDisplayModeId = target
                     w.attributes = attrs
-                    afrLease = lease
+                    observeAfr(minha, p, act, target, gate)
                     Log.i(TAG, "AFR requested supported mode=$target fps=${f.frameRate}")
                 }
             }
-        } catch (e: Exception) { Log.w(TAG, "AFR mode query/request: $e") }
+        } catch (e: Exception) {
+            Log.w(TAG, "AFR mode query/request: $e")
+            restoreAfr()
+            afrEvaluated = true
+            aplicarVolume()
+            avaliarEstavel()
+        }
     }
 
     // All video-terminal paths share the same one-shot latch. A READY,
@@ -1401,7 +1466,8 @@ object NvPlayer {
             pausaPedida = p != 0
             if (!pausaPedida && afrSuspended) {
                 afrSuspended = false
-                applyAfr(sessao, player?.videoFormat)
+                applyAfr(sessao, player?.videoFormat, resumed = true)
+                aplicarVolume()
                 hdrNaSuperficie()
                 avaliarEstavel()
             }
@@ -2370,6 +2436,7 @@ object NvPlayer {
                                p: ExoPlayer, sv: SurfaceView) {
         if (!detachDono(ticket, origem, p, sv)) return
         cancelarDetach()
+        applyAfr(origem, p.videoFormat)
         avaliarEstavel()
     }
 
@@ -2440,7 +2507,7 @@ object NvPlayer {
     private val recriar = Runnable {
         recriaAgendada = false
         if (!atual(sessao) || videoOutputFailed) return@Runnable
-        if (afrSuspended || !recriaTcl || semRecriar ||
+        if (afrSuspended || afrGate != null || !recriaTcl || semRecriar ||
             (decoderDv && !estavelEmitido) || recriando) {
             avaliarEstavel()
             return@Runnable
@@ -2492,7 +2559,7 @@ object NvPlayer {
         // gesto que o dono fazia na mao para o Dolby ligar — vetar aqui deixava
         // o plano preso na geometria de abertura e nenhum modo mudava (TCL,
         // 14/10). O veto do HDR sozinho ja cobre a transicao (hdrNaSuperficie).
-        if (videoOutputFailed || afrSuspended || recriando || !recriaTcl || semRecriar || (decoderDv && !estavelEmitido)) return
+        if (videoOutputFailed || afrSuspended || afrGate != null || recriando || !recriaTcl || semRecriar || (decoderDv && !estavelEmitido)) return
         principal.removeCallbacks(estavelRun)
         principal.removeCallbacks(recriar)
         recriaAgendada = true
@@ -2506,7 +2573,7 @@ object NvPlayer {
     private var hdrRecriadoPara = ""
     private var estavelEmitido = false
     private val estavelRun = Runnable {
-        if (atual(sessao) && !afrSuspended && !videoOutputFailed && player != null && quadroVisto && !estavelEmitido && !recriando && !recriaAgendada &&
+        if (atual(sessao) && !afrSuspended && afrGate == null && !videoOutputFailed && player != null && quadroVisto && !estavelEmitido && !recriando && !recriaAgendada &&
             superficie?.holder?.surface?.isValid == true) {
             estavelEmitido = true
             Log.i(TAG, "[aspect] superficie estavel (hdr=$ultHdr) sessao=$sessao soltando=${soltando != null} holder=${System.identityHashCode(superficie?.holder)}")
@@ -2517,7 +2584,7 @@ object NvPlayer {
         }
     }
     private fun avaliarEstavel() {
-        if (videoOutputFailed || afrSuspended || !quadroVisto || estavelEmitido) return
+        if (videoOutputFailed || afrSuspended || afrGate != null || !quadroVisto || estavelEmitido) return
         principal.removeCallbacks(estavelRun)
         if (recriando || recriaAgendada) return
         principal.postDelayed(estavelRun, 150L)
@@ -2537,7 +2604,7 @@ object NvPlayer {
     }
     private fun hdrNaSuperficie() {
         // Native DV handles the panel transition without destroying its output.
-        if (afrSuspended || recriando || !recriaTcl || semRecriar || decoderDv) return
+        if (afrSuspended || afrGate != null || recriando || !recriaTcl || semRecriar || decoderDv) return
         if (!quadroVisto || ultHdr.isEmpty() || ultHdr == "none" || ultHdr == hdrRecriadoPara) return
         hdrRecriadoPara = ultHdr
         Log.i(TAG, "HDR ($ultHdr): recria a superficie para a TV ligar o modo HDR")
