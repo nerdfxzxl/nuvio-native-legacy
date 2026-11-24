@@ -476,8 +476,21 @@ object NvPlayer {
             val known = android.os.Build.VERSION.SDK_INT >= 34
             fun mode(m: android.view.Display.Mode) = FrameRateP5C.Mode(m.modeId, m.physicalWidth,
                 m.physicalHeight, m.refreshRate, if (known) m.supportedHdrTypes.toSet() else emptySet())
-            val target = FrameRateP5C.choose(true, f.frameRate, mode(display.mode),
-                display.supportedModes.map(::mode), required, known)
+            val current = mode(display.mode)
+            val knownSdr = f.colorInfo?.colorTransfer == C.COLOR_TRANSFER_SDR
+            // PQ alone does not distinguish HDR10 from dynamic HDR10+ metadata.
+            // Preserve HDR10+ if the current mode advertises it; for unknown
+            // color transfer, retain all current advertised HDR capabilities.
+            // On older APIs do not switch an unclassified video mode.
+            if (!known && required == null && !knownSdr) return
+            val retainHdr = when {
+                required == android.view.Display.HdrCapabilities.HDR_TYPE_HDR10 ->
+                    current.hdrTypes.intersect(setOf(android.view.Display.HdrCapabilities.HDR_TYPE_HDR10_PLUS))
+                required == null && !knownSdr -> current.hdrTypes
+                else -> emptySet()
+            }
+            val target = FrameRateP5C.choose(true, f.frameRate, current,
+                display.supportedModes.map(::mode), required, known, retainHdr)
             afrEvaluated = true
             if (target != null) {
                 val attrs = act.window.attributes
