@@ -13,6 +13,34 @@ package space.nuvio.nativelegacy
 //   SDR, sem recriacao, nao caiu (registros D1 66008, 66017, 65445).
 // Devolve o nome da familia dispensada, ou null para recriar.
 object RecriaHdr {
+    // Main-looper transaction: a background pause cancels capture-only
+    // work or changes an already sent detach into a same-surface reattach.
+    // Completion/expiry is one-shot; late renderer acknowledgments cannot
+    // execute a second transition.
+    enum class DetachAction { IGNORE, RETAIN, RECREATE }
+    class DetachTicket {
+        private enum class Phase { CAPTURE, SENT, FINISHED }
+        private var phase = Phase.CAPTURE
+        private var retain = false
+        fun pause() { retain = true }
+        fun send(): Boolean {
+            if (phase != Phase.CAPTURE || retain) return false
+            phase = Phase.SENT
+            return true
+        }
+        fun acknowledge(): DetachAction {
+            if (phase != Phase.SENT) return DetachAction.IGNORE
+            phase = Phase.FINISHED
+            return if (retain) DetachAction.RETAIN else DetachAction.RECREATE
+        }
+        fun expire(): Boolean {
+            if (phase != Phase.SENT) return false
+            phase = Phase.FINISHED
+            return true
+        }
+        fun cancel() { phase = Phase.FINISHED }
+    }
+
     // Media3 ExoTimeoutException.OPERATION_DETACH_SURFACE = 3.
     fun timeoutRecuperavel(codigo: Int, recriando: Boolean, operacao: Int): Boolean =
         codigo == 1003 && recriando && operacao == 3
