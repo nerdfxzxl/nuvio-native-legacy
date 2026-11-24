@@ -3162,7 +3162,7 @@ static long long instanteDaConta(const CatItem *c) {
   int temp = c->temporada, ep = c->episodio;
   if (c->retomadoMs > 0) return c->retomadoMs;
   prog_content_id(id, sizeof id, c->imdb, &temp, &ep);
-  
+
   if (!prog_por_titulo(id, temp, ep, &r)) return 0;
   return r.lastWatchedMs;
 }
@@ -3186,7 +3186,7 @@ static int candidatoVence(const CatItem *novo, const CatItem *velho) {
     char id[64];
     int t = velho->temporada, e = velho->episodio;
     prog_content_id(id, sizeof id, velho->imdb, &t, &e);
-    
+
     // A Next seed is not proof that the remaining post-credit scenes were played.
     if (cat_p6_retomavel(velho) == 1) return 0;
     if (!trakt_cw_concluiu(velho->imdb, antes) &&
@@ -3288,7 +3288,7 @@ static int filtrarRemoto(CatItem *v, int n, int (*aSeguir)(const char *),
     { ProgRegistro r; char id[64];
       int tt = v[i].temporada, ee = v[i].episodio;
       prog_content_id(id, sizeof id, v[i].imdb, &tt, &ee);
-      
+
       if (prog_por_titulo(id, tt, ee, &r) && r.durSeg > 1.0 &&
           r.lastWatchedMs > v[i].retomadoMs) {
         int pct = (int)(100.0 * r.posSeg / r.durSeg);

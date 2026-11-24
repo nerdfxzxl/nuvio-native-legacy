@@ -5231,7 +5231,7 @@ static void heroWeb(float a, float desloc) {
   if(retomando && ci && ci->imdb[0]) {
     ProgRegistro checkpoint;
     int st=ehSerie()?ci->temporada:0, ep=ehSerie()?ci->episodio:0;
-    
+
     if(prog_por_titulo(ci->imdb,st,ep,&checkpoint) && checkpoint.posSeg>=60.0) {
       size_t n=strlen(rot);
       snprintf(rot+n,sizeof rot-n," · %d min watched",(int)(checkpoint.posSeg/60.0));
@@ -5246,7 +5246,7 @@ static void heroWeb(float a, float desloc) {
       ProgRegistro progress;
       int st=ehSerie()?ci->temporada:0, ep=ehSerie()?ci->episodio:0;
       if (ehSerie()) (void)episodioAlvo(&st,&ep,NULL);
-      
+
       if (prog_por_titulo(ci->imdb,st,ep,&progress) && progress.durSeg > 1.0)
         resumeProgress = (float)(progress.posSeg / progress.durSeg);
     }

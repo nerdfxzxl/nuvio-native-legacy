@@ -92,7 +92,7 @@ require("phoneSecondTap" in main and
         "phoneRemoteKeyEvent(SDLK_RETURN,SDL_KEYDOWN,0)" in main and
         "phoneRemoteKeyEvent(SDLK_RETURN,SDL_KEYUP,0)" in main,
         "Double tap + hold must map to a balanced native long-OK gesture")
-require("0.898f,0.035f,0.078f" in detail and "prog_por_chave(key,&progress)" in detail,
+require("0.898f,0.035f,0.078f" in detail and "prog_por_titulo(ci->imdb,st,ep,&progress)" in detail,
         "Resume progress must be red and sourced from saved checkpoint data")
 settings = read("src/ajustes.c")
 settings_page = read("src/ajustes_ux_tela.inc")

@@ -901,10 +901,10 @@ static int p6HistoryPair(const CatItem *c, int *t, int *e) {
   if (!p6EpIdentidade.provisoria) {
     int unchanged=p6EpIdentidade.versao==cat_versao_episodios();
     if (!unchanged && p6EpIdentidade.topologia && cat_episodio_identidade) {
-      uint64_t atual=0;
+      unsigned snapshot=cat_versao_episodios(); uint64_t atual=0;
       int estado=cat_episodio_identidade(ix,c->imdb,p6EpIdentidade.t,p6EpIdentidade.e,NULL,NULL,0,&atual);
-      unchanged=estado==2 && atual==p6EpIdentidade.topologia;
-      if (unchanged) p6EpIdentidade.versao=cat_versao_episodios();
+      unchanged=estado==2 && atual==p6EpIdentidade.topologia && snapshot==cat_versao_episodios();
+      if (unchanged) p6EpIdentidade.versao=snapshot;
     }
     if (unchanged) { *t=p6EpIdentidade.t; *e=p6EpIdentidade.e; return 1; }
   }
