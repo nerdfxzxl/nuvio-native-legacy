@@ -64,6 +64,7 @@ void video_parar(void);
 void video_pausar(int pausado);
 #ifdef NV_ANDROID
 void video_pausar_sistema(void);
+void video_p6_armar_abertura_pausada(int pausada);
 #endif
 // Volume do pipeline, 0..100 (uMS setVolume). Existe para o trailer mudo no
 // fundo da pagina de titulo (trailer.h); a reproducao normal nao mexe nisto.
