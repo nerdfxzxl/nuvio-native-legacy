@@ -62,6 +62,9 @@ void video_precarregar_adotar(unsigned token);
 void video_bombear(void);
 void video_parar(void);
 void video_pausar(int pausado);
+#ifdef NV_ANDROID
+void video_pausar_sistema(void);
+#endif
 // Volume do pipeline, 0..100 (uMS setVolume). Existe para o trailer mudo no
 // fundo da pagina de titulo (trailer.h); a reproducao normal nao mexe nisto.
 void video_volume(int pct);
