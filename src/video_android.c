@@ -541,11 +541,10 @@ static int nNovasA, nNovasL;
 // `flags` (#287): bit 0 = SELECTION_FLAG_FORCED, bit 1 = ROLE_FLAG_DESCRIBES_
 // MUSIC_AND_SOUND (SDH); `nome` = Format.label (o Name da faixa do MKV).
 // `mime`/`canais` (#293): codec e canais da faixa de audio.
-JNIEXPORT void JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativeFaixa(JNIEnv *env, jclass cls, jint tipo, jint idx, jstring lingua,
+static void prepararFaixa(JNIEnv *env, jint tipo, jint idx, jstring lingua,
                                                                        jint flags, jstring nome, jstring mime, jint canais) {
   VideoFaixa *f;
   char l[16], nm[48], mm[24], ai[40];
-  (void)cls;
   deJString(env, lingua, l, sizeof l);
   deJString(env, nome, nm, sizeof nm);
   if (tipo == 0) { if (nNovasA >= MAX_FAIXAS) return; f = &novasA[nNovasA++]; }
@@ -583,13 +582,30 @@ JNIEXPORT void JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativeFaixa(JNIEnv
   }
 }
 
+// The Android main looper enumerates tracks serially. The SDL thread can
+// retire the open between any two JNI calls in that enumeration.
+static int faixaDaSessao(jint geracao) {
+  return ativo && geracao > 0 && (unsigned)geracao == sessao;
+}
+JNIEXPORT void JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativeFaixa(JNIEnv *env, jclass cls,
+    jint tipo, jint idx, jstring lingua, jint flags, jstring nome, jstring mime, jint canais, jint geracao) {
+  (void)cls;
+  pthread_mutex_lock(&travaEvento);
+  if (faixaDaSessao(geracao)) prepararFaixa(env, tipo, idx, lingua, flags, nome, mime, canais);
+  pthread_mutex_unlock(&travaEvento);
+}
+
 // Q36 current-route capability is separate from renderer support. Arrives
 // immediately after nativeFaixa in the SAME Kotlin track enumeration callback.
 JNIEXPORT void JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativeAudioCapacidade(JNIEnv *env, jclass cls,
-    jint idx, jint hz, jint bits, jint bitrate, jint dec, jint pcm, jint pas, jint fiel, jint incerto) {
+    jint idx, jint hz, jint bits, jint bitrate, jint dec, jint pcm, jint pas, jint fiel, jint incerto, jint geracao) {
   VideoFaixa *f;
   (void)env; (void)cls;
-  if (idx < 0 || idx >= nNovasA) return;
+  pthread_mutex_lock(&travaEvento);
+  if (!faixaDaSessao(geracao) || idx < 0 || idx >= nNovasA) {
+    pthread_mutex_unlock(&travaEvento);
+    return;
+  }
   f = &novasA[idx];
   f->amostraHz = hz > 0 ? hz : 0;
   f->bits = bits > 0 ? bits : 0;
@@ -599,6 +615,7 @@ JNIEXPORT void JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativeAudioCapacid
   f->passthroughSaida = pas == 1;
   f->saidaFiel = fiel == 1;
   f->saidaIncerta = incerto == 1;
+  pthread_mutex_unlock(&travaEvento);
 }
 
 /* Q49 refreshes capabilities only; never republish track selection/subtitles. */
@@ -644,12 +661,11 @@ static void validarAudioSelecionadoP5A(void) {
   }
 }
 
-JNIEXPORT void JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativeFaixasFim(JNIEnv *env, jclass cls, jint selAudio, jint selLeg) {
+static void publicarFaixas(jint selAudio) {
   // Lista de legendas VAZIA mandada com a de audio ja existente = releitura so
   // do audio (HLS que publica as faixas depois de tocar): a legenda que o app
   // ja escolheu fica.
   int releitura = (nAudio || nLeg) && !nNovasL && nLeg;
-  (void)env; (void)cls; (void)selLeg;
   memcpy(faixaAudio, novasA, sizeof novasA);
   audioAtual = selAudio >= 0 ? selAudio : 0;
   if (!releitura) {
@@ -724,6 +740,14 @@ JNIEXPORT void JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativeFaixasFim(JN
   }
   if (!restaurouAudio) escolherAudioPreferido();
   validarAudioSelecionadoP5A();
+}
+
+JNIEXPORT void JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativeFaixasFim(JNIEnv *env, jclass cls,
+    jint selAudio, jint selLeg, jint geracao) {
+  (void)env; (void)cls; (void)selLeg;
+  pthread_mutex_lock(&travaEvento);
+  if (faixaDaSessao(geracao)) publicarFaixas(selAudio);
+  pthread_mutex_unlock(&travaEvento);
 }
 
 // Texto da legenda embutida em vigor, valido por `durMs` (estimada no Kotlin:

@@ -51,6 +51,14 @@ int main(void) {
   assert(!legTexto[0] && !legAte);
   Java_space_nuvio_nativelegacy_NvPlayer_nativeLegenda(&env, NULL, host, 3000, sessao);
   assert(!strcmp(legTexto, "old") && legAte);
+  // The route probe may finish after the previous list has been retired.
+  nNovasA = 1;
+  Java_space_nuvio_nativelegacy_NvPlayer_nativeAudioCapacidade(&env, NULL, 0, 48000,
+      24, 640000, 1, 1, 0, 1, 0, old);
+  assert(!novasA[0].amostraHz);
+  Java_space_nuvio_nativelegacy_NvPlayer_nativeAudioCapacidade(&env, NULL, 0, 96000,
+      24, 640000, 1, 1, 0, 1, 0, sessao);
+  assert(novasA[0].amostraHz == 96000 && novasA[0].saidaFiel);
   SDL_DestroyMutex(travaLeg);
   puts("PASS: delayed subtitle publication belongs to its opening");
   puts("PASS: source replacement rejects late telemetry and accepts the new sample");

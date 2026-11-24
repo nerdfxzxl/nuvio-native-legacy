@@ -191,12 +191,12 @@ object NvPlayer {
     // flags (#287): 1 = forcada (SELECTION_FLAG_FORCED), 2 = SDH
     // (ROLE_FLAG_DESCRIBES_MUSIC_AND_SOUND); nome = Format.label.
     // mime/canais (#293): codec e canais da faixa de audio.
-    @JvmStatic external fun nativeFaixa(tipo: Int, idx: Int, lingua: String, flags: Int, nome: String, mime: String, canais: Int)
+    @JvmStatic external fun nativeFaixa(tipo: Int, idx: Int, lingua: String, flags: Int, nome: String, mime: String, canais: Int, geracao: Int)
     @JvmStatic external fun nativeAudioCapacidade(idx: Int, hz: Int, bits: Int, bitrate: Int,
-                                                 decoder: Int, pcm: Int, pass: Int, fiel: Int, incerto: Int)
+                                                 decoder: Int, pcm: Int, pass: Int, fiel: Int, incerto: Int, geracao: Int)
     @JvmStatic external fun nativeAudioRouteCapacidade(geracao: Int, idx: Int, hz: Int, bits: Int, bitrate: Int,
                                                        decoder: Int, pcm: Int, pass: Int, fiel: Int, incerto: Int)
-    @JvmStatic external fun nativeFaixasFim(selAudio: Int, selLeg: Int)
+    @JvmStatic external fun nativeFaixasFim(selAudio: Int, selLeg: Int, geracao: Int)
     @JvmStatic external fun nativeLegenda(texto: String, durMs: Int, geracao: Int)
     @JvmStatic external fun nativePos(ms: Long, bufferFimMs: Long, live: Boolean,
                                       sampleBytes: Int, geracao: Int, seekRevision: Int)
@@ -3670,6 +3670,7 @@ object NvPlayer {
     // quando a LISTA muda; troca de selecao nao reenvia (o C reiniciaria a
     // legenda). Legenda sobe sempre desligada.
     private fun publicarFaixas(tracks: Tracks) {
+        val owner = geracaoNative
         val a = ArrayList<Pair<Tracks.Group, Int>>()
         val caps = ArrayList<AudioOutputProbeP5A.Observation>()
         val l = ArrayList<Pair<Tracks.Group, Int>>()
@@ -3732,21 +3733,21 @@ object NvPlayer {
                 if (sel < 0 && g.isTrackSelected(i)) sel = n
                 val fmt = g.getTrackFormat(i)
                 nativeFaixa(0, n, fmt.language ?: "", 0, fmt.label ?: "",
-                    fmt.sampleMimeType ?: "", fmt.channelCount.coerceAtLeast(0))
+                    fmt.sampleMimeType ?: "", fmt.channelCount.coerceAtLeast(0), owner)
                 val cap = caps[n]
                 val d = cap.result
                 nativeAudioCapacidade(n, cap.sampleRate, cap.bitDepth, cap.sourceBitrate,
                     if (d.decoder) 1 else 0, if (d.pcmCompatible) 1 else 0,
                     if (d.encodedPassthrough) 1 else 0,
-                    if (d.outputFaithfulCandidate) 1 else 0, if (d.unknown) 1 else 0)
+                    if (d.outputFaithfulCandidate) 1 else 0, if (d.unknown) 1 else 0, owner)
             }
             for ((n, par) in l.withIndex()) {
                 val f = par.first.getTrackFormat(par.second)
                 val flags = (if (f.selectionFlags and C.SELECTION_FLAG_FORCED != 0) 1 else 0) or
                     (if (f.roleFlags and C.ROLE_FLAG_DESCRIBES_MUSIC_AND_SOUND != 0) 2 else 0)
-                nativeFaixa(1, n, f.language ?: "", flags, f.label ?: "", "", 0)
+                nativeFaixa(1, n, f.language ?: "", flags, f.label ?: "", "", 0, owner)
             }
-            nativeFaixasFim(sel, -1)
+            nativeFaixasFim(sel, -1, owner)
         } catch (e: UnsatisfiedLinkError) { Log.w(TAG, "faixas sem lib: $e") }
     }
 
