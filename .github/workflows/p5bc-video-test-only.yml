@@ -15,7 +15,7 @@ permissions:
 
 concurrency:
   group: p5bc-video-test-only-feature-branch
-  cancel-in-progress: true
+  cancel-in-progress: false # Preserve the prior verification while this revision queues.
 
 jobs:
   verify:
@@ -42,12 +42,13 @@ jobs:
         with:
           cache-read-only: false
 
-      - name: Execute full original-language and native audio-error C regressions
+      - name: Execute original-language, native audio/video error and first-frame C regressions
         shell: bash
         run: |
           set -euo pipefail
           bash tests/audioescolha.sh
           bash tests/audioerro_p5a.sh
+          bash tests/videoerro_p5b.sh
           bash tests/playback_p2_timing.sh
           bash tests/playback_p2d_handoff.sh
 
