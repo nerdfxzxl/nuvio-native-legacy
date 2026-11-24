@@ -1221,7 +1221,24 @@ static int retryMesmoSourceP5(void) {
   return abrirSessao(posicao, 0, 1);
 }
 int video_audio_retry(void) { return retryMesmoSourceP5(); }
-int video_video_retry(void) { return terminalVideoP5B && retryMesmoSourceP5(); }
+int video_video_retry(void) {
+  int motivo = terminalVideoP5B;
+  int posicao = posNativoMs, posVisivel = posMs, duracao = durMs;
+  int codigo = reconErroCod;
+  char motivoTexto[sizeof erroTxt];
+  if (!motivo) return 0;
+  snprintf(motivoTexto, sizeof motivoTexto, "%s", erroTxt);
+  if (retryMesmoSourceP5()) return 1;
+  // abrirSessao resets the terminal reason before making the JNI call.
+  // If that call fails synchronously, retain ownership of the explicit
+  // video-error card rather than exposing a generic source watchdog.
+  terminalVideoP5B = motivo;
+  reconErroCod = codigo; reconErroVideo = 1; reconErroPend = 0;
+  posNativoMs = posicao; posMs = posVisivel; durMs = duracao;
+  tocando = bufferando = 0; falhou = 1;
+  snprintf(erroTxt, sizeof erroTxt, "%s", motivoTexto);
+  return 0;
+}
 int video_erro_video_p5b(void) { return ativo ? terminalVideoP5B : 0; }
 int  video_reconectando(void) {
   return nv_recon_ativa(&recon) && (recon.pendente || !prontoLoad) ? recon.tentativa : 0;
