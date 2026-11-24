@@ -2500,7 +2500,7 @@ static void *fioScrobble(void *u) {
 // Recusa. Na SAIDA a sessao acabou mesmo sem chamada: com o start ainda "em
 // pe" a proxima abertura do mesmo titulo nao mandaria /scrobble/start.
 static int recusar(int evento) {
-  if (evento == SCR_EV_SAIU) {
+  if (evento == SCR_EV_SAIU || evento == SCR_EV_SAIU_SEM_VISTO || evento == SCR_EV_HISTORICO_JA_GRAVADO) {
     pthread_mutex_lock(&travaScr); scrEstado.ativo = 0; pthread_mutex_unlock(&travaScr);
   }
   return SCR_NADA;
@@ -2512,15 +2512,16 @@ int trakt_scrobble_alvo(int evento, const TraktScrobbleAlvo *alvo, double posSeg
   int acao;
   double pct;
   pthread_t t;
-  (void)assistiu;
+  if (evento == SCR_EV_HISTORICO_JA_GRAVADO) return recusar(evento);
+  if (evento == SCR_EV_SAIU && !assistiu) evento = SCR_EV_SAIU_SEM_VISTO;
   const char *imdb = alvo ? alvo->id : NULL;
   if (!ligado || !imdb || !*imdb || !isfinite(posSeg) || !isfinite(durSeg) ||
       !isfinite(assistidoSeg) || durSeg < 120.0) return recusar(evento);
   // PARIDADE COM O NUVIOTV OFICIAL: o start exige reproducao continua (o player
   // so o pede depois de PLR_SCR_TOCOU_S), mas a SAIDA fala pela posicao, como
   // o flushPlaybackSnapshotForSwitchOrExit de la — inclusive depois de um seek.
-  if (evento != SCR_EV_SAIU && assistidoSeg < 5.0) return recusar(evento);
-  if (evento == SCR_EV_SAIU && (posSeg < 1.0 || assistidoSeg < 1.0)) return recusar(evento);
+  if (evento != SCR_EV_SAIU && evento != SCR_EV_SAIU_SEM_VISTO && assistidoSeg < 5.0) return recusar(evento);
+  if ((evento == SCR_EV_SAIU || evento == SCR_EV_SAIU_SEM_VISTO) && (posSeg < 1.0 || assistidoSeg < 1.0)) return recusar(evento);
   pct = 100.0 * posSeg / durSeg;
   // As validacoes acima vem ANTES da vaga pendente: nem um stop sem reproducao
   // entra na fila.
