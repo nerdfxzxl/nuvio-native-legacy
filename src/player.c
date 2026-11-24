@@ -3159,7 +3159,6 @@ void player_descartar_retido(void) {
 }
 
 void player_ciclo_evento(Uint32 tipo) {
-  posplay_ciclo_evento(tipo);
   if (tipo == SDL_APP_WILLENTERBACKGROUND || tipo == SDL_APP_DIDENTERBACKGROUND ||
       tipo == SDL_APP_LOWMEMORY || tipo == SDL_APP_TERMINATING) {
     if (aberto && fontePrincipal() && !scrubbing) {
@@ -3174,7 +3173,12 @@ void player_ciclo_evento(Uint32 tipo) {
     // Activity.onPause also pauses Media3; the native intent must agree so an
     // in-flight reconnect cannot silently start playback behind Android UI.
     if ((tipo == SDL_APP_WILLENTERBACKGROUND || tipo == SDL_APP_DIDENTERBACKGROUND) &&
-        aberto && comVideo) video_pausar(1);
+        aberto && comVideo) {
+      // Do not let an interrupted D-pad seek restore its pre-Home play state.
+      scrubTocava = retomandoSalto = 0;
+      assistidoAmostra = 0;
+      video_pausar_sistema();
+    }
 #endif
   }
 }
