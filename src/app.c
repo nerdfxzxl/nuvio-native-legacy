@@ -3142,6 +3142,13 @@ static void vigiarAberturaManual(void) {
       fonteVODAutomatica || aguardandoFonte != 0) {
     fonteManualDesde = 0; return;
   }
+#ifdef NV_ANDROID
+  // A genuine stable video frame proves the opening even if the user
+  // paused at position zero (including after a long explicit video Retry).
+  if (!video_falhou() && video_pronto() && video_quadro_visto() && video_superficie_estavel()) {
+    fonteManualDesde = 0; return;
+  }
+#endif
   // Progresso encerra a abertura mesmo sem duracao.
   if (fonteProvouTocar() || (!video_falhou() && video_pronto() && video_pos() > 0.25)) {
     fonteManualDesde = 0; return;
