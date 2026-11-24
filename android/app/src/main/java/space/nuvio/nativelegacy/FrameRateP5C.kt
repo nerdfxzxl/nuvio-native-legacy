@@ -4,6 +4,15 @@ import kotlin.math.abs
 import kotlin.math.round
 
 internal object FrameRateP5C {
+    // Own only the preference actually changed on this exact Window. A
+    // replacement Activity or another component's later mode vote is not ours.
+    class PreferenceLease<W : Any>(private val owner: W, private val previous: Int,
+                                   private val requested: Int) {
+        fun restoreTarget(currentOwner: W?, currentPreference: Int): Int? =
+            if (currentOwner === owner && currentPreference == requested &&
+                previous != requested) previous else null
+    }
+
     data class Mode(val id: Int, val width: Int, val height: Int, val hz: Float,
                     val hdrTypes: Set<Int> = emptySet())
     fun choose(enabled: Boolean, fps: Float, current: Mode, supported: List<Mode>,
