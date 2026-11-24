@@ -179,6 +179,10 @@ int main(void) {
   capmkv_aplicar(caps, 5);
   ok(chamadas == 1 && nGravado == 3, "alimenta o modulo de intro");
   ok(perto(capmkv_creditos(1400), 1260), "creditos = Ending (nome vale sem duracao)");
+  ok(mkv_creditos_verificados(caps, 5) == 1260, "Q45 explicit Ending");
+  ok(capmkv_creditos_verificados() == 0.0, "Q45 injected/cached chapters are only hints");
+  { MkvCap scenes[] = {{500, "Opening Credits"}, {1200, "Post-Credits Scene"}, {1300, "Next Episode Preview"}};
+    ok(mkv_creditos_verificados(scenes, 3) == 0.0, "Q45 reject opening/post-credit scene/preview"); }
 
   { MkvCap fm[3] = { {0, "Chapter 1"}, {3000, "Chapter 2"}, {7000, "End Credits"} };
     n = capmkv_trechos(fm, 3, t, 4);
@@ -199,11 +203,13 @@ int main(void) {
   for (int i = 0; i < 300 && !nGravado; i++) usleep(10000);
   usleep(50000);
   ok(nGravado == 3, "fio entregou os trechos ao modulo de intro");
+  ok(capmkv_creditos_verificados() == 1260, "Q45 current-generation direct Range proof");
   antes = pedidos;
   capmkv_iniciar("https://x.test/d.mkv");
   usleep(100000);
   ok(pedidos == antes, "mesma URL de novo: cache, nenhum pedido");
   ok(perto(capmkv_creditos(1400), 1260), "e os creditos continuam la");
+  ok(capmkv_creditos_verificados() == 0.0, "Q45 URL-only cache not proof");
   pedidos = 0;
   capmkv_iniciar("https://x.test/filme.mp4");
   usleep(100000);
@@ -224,6 +230,7 @@ int main(void) {
   usleep(300000);
   capmkv_teste_antes_de_publicar = NULL;
   ok(capmkv_creditos(1400) == 0.0, "B sem creditos vindos de A");
+  ok(capmkv_creditos_verificados() == 0.0, "Q45 stale worker cannot verify B");
   ok(nGravado == 0, "B sem trechos de intro vindos de A");
 
   printf("%s\n", falhas ? "FALHOU" : "capmkv: ok");
