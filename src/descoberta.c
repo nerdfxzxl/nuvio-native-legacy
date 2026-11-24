@@ -3016,7 +3016,7 @@ static void *fioCatalogo(void *u) {
 static ProgRegistro *contRegs;
 static int contRegCount;
 
-static int continuarLocal(CatItem *saida, int max) {
+static int continuarLocal(CatItem *saida, int max, int soP6) {
   ProgRegistro *regs = contRegs;
   int k, i, n = 0;
   k = contRegCount;
@@ -3025,9 +3025,9 @@ static int continuarLocal(CatItem *saida, int max) {
     CatItem *d;
     double p;
     int j, repetido = 0;
-    if (r->durSeg < 60.0) continue;
+    if (r->durSeg < 60.0 || (soP6 && !prog_q45_local(r))) continue;
     p = r->posSeg / r->durSeg;
-    if (!prog_inicio_continuar(r, ajustes_cw_minimo()) || p * 100.0 >= ajustes_cw_concluido()) continue;
+    if (!prog_inicio_continuar(r, ajustes_cw_minimo()) || prog_fim_retomada(r, ajustes_cw_concluido())) continue;
     // Uma serie com varios episodios gravados entra UMA vez, no mais recente.
     for (j = 0; j < n; j++) {
       size_t L = idbase_len(saida[j].imdb);   // "kitsu:41370" inteiro, nao "kitsu"
@@ -3137,7 +3137,9 @@ static int continuarLocal(CatItem *saida, int max) {
 // home_registrar_retorno. Abaixo de 1% nao se comecou, do Percentual assistido
 // (90% de fabrica) em diante acabou — e "continuar" nao e nem uma coisa nem a
 // outra.
-static int emAndamento(int pct) { return pct >= ajustes_cw_minimo() && pct < ajustes_cw_concluido(); }
+static int emAndamento(const CatItem *c) {
+  return c && c->progresso >= ajustes_cw_minimo() && cat_retomavel(c, ajustes_cw_concluido());
+}
 
 // QUANDO este item foi visto por ultimo, em ms. 0 = nao se sabe.
 //
@@ -3178,16 +3180,18 @@ static int mesmaObra(const CatItem *a, const CatItem *b) {
 // Uma sugestao so supera progresso da mesma obra com conclusao posterior.
 static int candidatoVence(const CatItem *novo, const CatItem *velho) {
   long long ms = instanteDaConta(novo), antes = instanteDaConta(velho);
-  int np = emAndamento(novo->progresso), vp = emAndamento(velho->progresso);
+  int np = emAndamento(novo), vp = emAndamento(velho);
   if (!np && vp) {
     ProgRegistro r;
     char id[24], chave[48];
     int t = velho->temporada, e = velho->episodio;
     prog_content_id(id, sizeof id, velho->imdb, &t, &e);
     prog_chave(chave, sizeof chave, id, t, e);
+    // A Next seed is not proof that the remaining post-credit scenes were played.
+    if (cat_p6_retomavel(velho) == 1) return 0;
     if (!trakt_cw_concluiu(velho->imdb, antes) &&
         !(prog_por_chave(chave, &r) && r.durSeg > 1.0 &&
-          r.tocou != 0 && 100.0 * r.posSeg / r.durSeg >= ajustes_cw_concluido() &&
+          r.tocou != 0 && r.tocou != 3 && prog_fim_retomada(&r, ajustes_cw_concluido()) &&
           r.lastWatchedMs > antes && r.lastWatchedMs <= ms)) return 0;
   }
   if (np && !vp) return !candidatoVence(velho, novo);
@@ -3274,7 +3278,7 @@ static int filtrarRemoto(CatItem *v, int n, int (*aSeguir)(const char *),
     // "A SEGUIR" (issue #66) entra com 0%: e o proximo episodio de uma serie
     // cujo ultimo terminou. Nao e "pausado", mas e "continuar".
     if ((!ajustes_cw_proximo() || !aSeguir(v[i].imdb)) &&
-        !emAndamento(v[i].progresso)) { (*fora)++; continue; }
+        !emAndamento(&v[i])) { (*fora)++; continue; }
     // O REGISTRO LOCAL MAIS NOVO VENCE A RESPOSTA REMOTA. Sem este cruzamento
     // a refazagem da fileira (issue #38) lia um /sync/playback que ainda nao
     // recebeu o scrobble que acabamos de mandar: o titulo terminado voltava a
@@ -3296,7 +3300,7 @@ static int filtrarRemoto(CatItem *v, int n, int (*aSeguir)(const char *),
         // sendo "a seguir" (progresso 0); do fim para cima (>90%) sai, como
         // antes, porque ai terminou. Vale para Trakt e Simkl (aSeguir).
         if (pct < 1 && aSeguir(v[i].imdb)) pct = 0;
-        else if (!emAndamento(pct)) { (*fora)++; continue; }
+        else if (pct < ajustes_cw_minimo() || prog_fim_retomada(&r, ajustes_cw_concluido())) { (*fora)++; continue; }
         v[i].progresso = pct;
       } }
     // O EPISODIO VELHO DO REMOTO NAO VOLTA POR CIMA DO QUE ESTA TV VIU DEPOIS.
@@ -3339,7 +3343,7 @@ static int filtrarRemoto(CatItem *v, int n, int (*aSeguir)(const char *),
         }
       }
     }
-    if (!ajustes_cw_proximo() && !emAndamento(v[i].progresso)) { (*fora)++; continue; }
+    if (!ajustes_cw_proximo() && !emAndamento(&v[i])) { (*fora)++; continue; }
     // "A seguir" que passa da desmarcacao da pessoa recua (ajustarASeguir).
     if (v[i].progresso == 0 && v[i].temporada >= 0 && v[i].episodio > 0 &&
         aSeguir(v[i].imdb)) ajustarASeguir(&v[i]);
@@ -3530,7 +3534,9 @@ static int montarContinuarAlocado(CatItem **result, int max) {
     if (nS < 0) goto cleanup;
     nS = filtrarRemoto(doSimkl,nS,simkl_e_a_seguir,&fora);
   }
-  int localSlots = querConta ? contRegCount + PROX_MAX_BUSCAS : 0;
+  // Trackers cannot safely represent an unwatched pause above their STOP cutoff.
+  // Retain locally recorded P6 resume points even in a tracker-only CW mode.
+  int localSlots = querConta ? contRegCount + PROX_MAX_BUSCAS : (querTrakt || querSimkl ? contRegCount : 0);
   if (localSlots > max) localSlots = max;
   int slots = nT + nS + localSlots + 1;
   if (localSlots) daConta = malloc(sizeof *daConta * (size_t)localSlots);
@@ -3570,7 +3576,7 @@ static int montarContinuarAlocado(CatItem **result, int max) {
     if (candidatoVence(&doSimkl[i], remotos[achou]))
       remotos[achou] = &doSimkl[i];
   }
-  nL = querConta ? continuarLocal(daConta, localSlots) : 0;
+  nL = localSlots ? continuarLocal(daConta, localSlots, !querConta) : 0;
   // Fonte "Conta" escolhida: a conta da o "a seguir" mesmo com Trakt/Simkl
   // vinculado (decisao do dono). Em "Ambas" ele continua sendo do vinculo.
   if (querConta && (fonte == AJ_CWF_CONTA || (!trakt_ativo() && !simkl_ativo())))
@@ -3657,8 +3663,8 @@ static int montarContinuarAlocado(CatItem **result, int max) {
     while (k > 0) {
       long long a = juntos[k].ms, b = juntos[k - 1].ms;
       int troca;
-      int pa = emAndamento(juntos[k].item->progresso);
-      int pb = emAndamento(juntos[k - 1].item->progresso);
+      int pa = emAndamento(juntos[k].item);
+      int pb = emAndamento(juntos[k - 1].item);
       if (ajustes_cw_ordem() != CWO_PADRAO && pa != pb) troca = pa;
       else if (a != b) troca = a > b;
       else        troca = juntos[k].ord < juntos[k - 1].ord;
@@ -3682,13 +3688,13 @@ static int montarContinuarAlocado(CatItem **result, int max) {
     for (i = 0; i < nJ; i++) {
       const CatItem *c = juntos[i].item;
       CwoItem x;
-      x.aSeguir = !emAndamento(c->progresso);
+      x.aSeguir = !emAndamento(c);
       // "PROXIMO EPISODIO NO CONTINUAR" desligado (#203): sai todo item que e o
       // PROXIMO — o "a seguir" e o episodio terminado que o card trocaria pelo
       // seguinte (continuar_desenhar). Fica so o que esta em andamento.
       if (!ajustes_cw_proximo() &&
           (x.aSeguir || (!strcmp(c->tipo, "series") && c->temporada >= 0 && c->episodio > 0 &&
-                         c->progresso >= ajustes_cw_concluido()))) {
+                         c->progresso >= ajustes_cw_concluido() && !cat_retomavel(c, ajustes_cw_concluido())))) {
         proxFora++;
         continue;
       }
@@ -3721,7 +3727,7 @@ static int montarContinuarAlocado(CatItem **result, int max) {
     // cortados, e "Separar futuros"/"Estilo streaming" nao mudavam nada.
     // Reserva para futuros apenas DEPOIS dos pausados, nunca contra eles.
     { int pausados = 0;
-      while (pausados < principal && emAndamento(ordenados[pausados].item->progresso)) pausados++;
+      while (pausados < principal && emAndamento(ordenados[pausados].item)) pausados++;
       if (pausados > max) pausados = max;
       cwo_corte(principal - pausados, nJ - principal, max - pausados, &mp, &mf);
       mp += pausados;
@@ -3764,7 +3770,7 @@ static int montarContinuarAlocado(CatItem **result, int max) {
     if (!ajustes_cw_proximo()) {
       int w = 0;
       for (i = 0; i < k; i++)
-        if (emAndamento(saida[i].progresso)) saida[w++] = saida[i];
+        if (emAndamento(&saida[i])) saida[w++] = saida[i];
       k = w;
     }
     // A metade que falta provar: por que a conta veio 0. Registros no
@@ -3901,7 +3907,7 @@ int desc_continuar_otimista(int indice) {
   int n, k, mudou, travou;
   if (!ci || !ci->imdb[0]) return 0;
   novo = *ci;
-  if (novo.progresso < ajustes_cw_minimo() || novo.progresso >= ajustes_cw_concluido()) return 0;
+  if (novo.progresso < ajustes_cw_minimo() || !cat_retomavel(&novo, ajustes_cw_concluido())) return 0;
   if (ajustes_cw_fonte() == AJ_CWF_SIMKL && !simkl_ativo()) return 0;
   if (!strcmp(novo.tipo, "series") && novo.temporada >= 0 && novo.episodio > 0) {
     char base[64];
