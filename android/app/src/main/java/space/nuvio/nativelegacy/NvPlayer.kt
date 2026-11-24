@@ -100,6 +100,7 @@ object NvPlayer {
     private const val EV_SUPERFICIE_INVALIDADA = 15 // same session; rebuilt hardware plane
     private const val EV_AUDIO_SAIDA_INCOMPATIVEL = 16 // P5-A: route cannot faithfully carry selected audio
     private const val EV_VIDEO_FALHA = 17 // P5-B: user-owned terminal video error
+    private const val EV_VIDEO_RECOVERY = 18 // bounded same-source decoder recovery
 
     private const val TELA_W = 1920   // coordenadas de layout do app
     private const val TELA_H = 1080
@@ -2687,19 +2688,19 @@ object NvPlayer {
             when (state) {
                 Player.STATE_BUFFERING -> ev(EV_BUFFER, 0)
                 Player.STATE_READY -> {
+                    val groups = p.currentTracks.groups
+                    val selectedVideo = groups.any { g ->
+                        g.type == C.TRACK_TYPE_VIDEO && (0 until g.length).any { i -> g.isTrackSelected(i) }
+                    }
+                    if (recursosAtuais?.runtimeVideoRecovery?.completed == false && !selectedVideo) {
+                        falhaVideo(minha, HdrPolicyP5.FAIL_DECODER, 0, geracaoDaAbertura)
+                        return
+                    }
                     if (!pronto) {
                         /* Audio-only is a verified track outcome, not a 3s
                          * approximation of a missing video first frame. */
-                        val groups = p.currentTracks.groups
                         val selectedAudio = groups.any { g ->
                             g.type == C.TRACK_TYPE_AUDIO && (0 until g.length).any { i -> g.isTrackSelected(i) }
-                        }
-                        val selectedVideo = groups.any { g ->
-                            g.type == C.TRACK_TYPE_VIDEO && (0 until g.length).any { i -> g.isTrackSelected(i) }
-                        }
-                        if (recursosAtuais?.runtimeVideoRecovery?.completed == false && !selectedVideo) {
-                            falhaVideo(minha, HdrPolicyP5.FAIL_DECODER, 0, geracaoDaAbertura)
-                            return
                         }
                         if (selectedAudio && groups.none { it.type == C.TRACK_TYPE_VIDEO }) {
                             ev(EV_SO_AUDIO, 1)
@@ -2911,6 +2912,7 @@ object NvPlayer {
                         r.runtimeVideoRecovery = HdrCodecFallbackP5B.RuntimeRecovery(failed.name, format)
                         retentou = true
                         invalidarQuadroSuperficie()
+                        ev(EV_VIDEO_RECOVERY, videoFailure, geracao = geracaoDaAbertura)
                         principal.postDelayed({
                             if (atual(minha) && !videoOutputFailed && player === p && recursosAtuais === r) {
                                 try { p.prepare() } catch (_: Exception) {
