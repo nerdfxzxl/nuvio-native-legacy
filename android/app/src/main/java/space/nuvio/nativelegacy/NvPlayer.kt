@@ -1306,7 +1306,7 @@ object NvPlayer {
 
     @JvmOverloads @JvmStatic fun abrirPreparada(url: String, cabecalhos: String, inicioMs: Int, fracao: Int,
                                  geracao: Int, token: Int, idiomaAudio: String = "") {
-        val pedido = pedidos.incrementAndGet()
+        val pedido = p6OpenRequest()
         val preparoPedido = synchronized(travaPreparo) {
             val n = pedidosPreparo.incrementAndGet()
             consultaPreparo = ConsultaPreparo(0, 0) // a token can be consumed once
@@ -1455,6 +1455,7 @@ object NvPlayer {
         liberar()
         ++p6LifecycleEpoch
         playbackIntentP6.reset()
+        p6NextPaused.set(false); p6PausedRequest.set(-1)
         esquecerQuadro(); limparRetido(); CacheMidia.descartar("app exit")
         val sv = superficie
         if (sv != null) (sv.parent as? FrameLayout)?.removeView(sv)
@@ -1468,7 +1469,7 @@ object NvPlayer {
     @JvmStatic fun abrir(url: String, cabecalhos: String) { abrirPosicao(url, cabecalhos, 0, 0) }
     @JvmStatic fun abrirPosicao(url: String, cabecalhos: String, inicioMs: Int, geracao: Int) {
         cancelarPreparo(0)
-        val pedido = pedidos.incrementAndGet()
+        val pedido = p6OpenRequest()
         val profile = profileForCall()
         val identidade = cacheIdentidadeArmada
         principal.post {
@@ -1482,7 +1483,7 @@ object NvPlayer {
     // restart. No user-selected release/episode may call this entry point.
     @JvmStatic fun abrirRecuperacao(url: String, cabecalhos: String, inicioMs: Int, geracao: Int) {
         cancelarPreparo(0)
-        val pedido = pedidos.incrementAndGet()
+        val pedido = p6OpenRequest()
         val profile = profileForCall()
         val identidade = cacheIdentidadeArmada
         principal.post {
@@ -1494,7 +1495,7 @@ object NvPlayer {
     }
     @JvmStatic fun abrirRetomada(url: String, cabecalhos: String, inicioMs: Int, fracao: Int, geracao: Int) {
         cancelarPreparo(0)
-        val pedido = pedidos.incrementAndGet()
+        val pedido = p6OpenRequest()
         val profile = profileForCall()
         val identidade = cacheIdentidadeArmada
         principal.post {
@@ -1513,6 +1514,14 @@ object NvPlayer {
         } }
     }
     private val playbackIntentP6 = PlaybackIntentP6()
+    private val p6NextPaused = java.util.concurrent.atomic.AtomicBoolean(false)
+    private val p6PausedRequest = java.util.concurrent.atomic.AtomicInteger(-1)
+    @JvmStatic fun p6ArmPausedOpen() { p6NextPaused.set(true) }
+    private fun p6OpenRequest(): Int {
+        val request = pedidos.incrementAndGet()
+        if (p6NextPaused.getAndSet(false)) p6PausedRequest.set(request)
+        return request
+    }
     @Volatile private var p6LifecycleEpoch = 0
     private var pausaPedida = false
     @JvmStatic fun pausar(p: Int) {
@@ -2032,7 +2041,7 @@ object NvPlayer {
             liberar(preservarRetido = mesmaFonte)
             // O C envia ganho/pausa depois de abrir; a espera nao pode apaga-los.
             ganhoPct = 100
-            pausaPedida = playbackIntentP6.opening(pedido, mesmaFonte, reabrindo, pausaPedida)
+            pausaPedida = playbackIntentP6.opening(pedido, mesmaFonte, reabrindo, pausaPedida, p6PausedRequest.get() == pedido)
             afrSuspended = playbackIntentP6.systemPaused
         }
         // MStar/Amlogic: o overlay e o decoder antigos precisam sair antes do novo.
