@@ -19,6 +19,7 @@ void (*capmkv_teste_antes_de_publicar)(void);
 static pthread_mutex_t trava = PTHREAD_MUTEX_INITIALIZER;
 static unsigned ger;                       // reproducao corrente
 static double verificado;
+static int provaPendente;
 static double nomeado, ultimo;             // regra da LG: nome > ultimo no ultimo quarto
 
 // URL NO HEAP, do tamanho dela, e nao char[512]: o player guarda ate 4096
@@ -114,6 +115,9 @@ static int publicar(const MkvCap *caps, int n, int checa, unsigned g, int prova)
 
 void capmkv_aplicar(const MkvCap *caps, int n) { publicar(caps, n, 0, 0, 0); }
 
+int capmkv_creditos_pendentes(void) {
+  int p; pthread_mutex_lock(&trava); p = provaPendente; pthread_mutex_unlock(&trava); return p;
+}
 double capmkv_creditos_verificados(void) {
   double v;
   pthread_mutex_lock(&trava); v = verificado; pthread_mutex_unlock(&trava);
@@ -184,13 +188,16 @@ static void *fio(void *arg) {
       fflush(stdout);
     }
   }
+  pthread_mutex_lock(&trava);
+  if (ger == p->g) provaPendente = 0;
+  pthread_mutex_unlock(&trava);
   free(p);
   return NULL;
 }
 
 void capmkv_zerar(void) {
   pthread_mutex_lock(&trava);
-  ger++; nomeado = ultimo = verificado = 0.0;
+  ger++; nomeado = ultimo = verificado = 0.0; provaPendente = 0;
   intro_definir_capitulos(NULL, 0);   // sob a trava: nenhum fio publica no meio
   pthread_mutex_unlock(&trava);
 }
@@ -212,8 +219,12 @@ void capmkv_iniciar(const char *url) {
       return;
     }
     memcpy(p->url, url, tam); }
-  pthread_mutex_lock(&trava); p->g = ger; pthread_mutex_unlock(&trava);
-  if (pthread_create(&t, NULL, fio, p) == 0) pthread_detach(t); else free(p);
+  pthread_mutex_lock(&trava); p->g = ger; provaPendente = 1; pthread_mutex_unlock(&trava);
+  if (pthread_create(&t, NULL, fio, p) == 0) pthread_detach(t);
+  else {
+    pthread_mutex_lock(&trava); if (ger == p->g) provaPendente = 0; pthread_mutex_unlock(&trava);
+    free(p);
+  }
 }
 
 int capmkv_ler_agora(const char *url, MkvCap *caps, int max, int esperaMs) {
