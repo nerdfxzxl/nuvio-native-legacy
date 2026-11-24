@@ -6379,6 +6379,16 @@ void app_atualizar(float dt, Uint32 agora) {
     fonteFalhaEsperando = 0;
     if (pedirFonteJob(FJOB_FALHA, fontePedidoGeracao, NULL, 0) < 0) fonteEscolhida = -1;
   }
+#ifdef NV_ANDROID
+  // Explicit video Retry is the same selected release with a fresh opening
+  // deadline, not a new automatic source attempt. Consume before watchdogs.
+  if (player_video_retry_rearm() && player_aberto() && !player_quer_sair() &&
+      !player_id_canal()[0]) {
+    Uint32 inicioRetry = SDL_GetTicks() | 1u;
+    if (fonteVODAutomatica) fonteVODDesde = inicioRetry;
+    else fonteManualDesde = inicioRetry;
+  }
+#endif
   vigiarAntecipada();
   if (aguardandoFonte == 2 && fonteEscolhida != -2) {
     const Stream *s = fonteEscolhida >= 0 ? stream_item(fonteEscolhida) : NULL;
