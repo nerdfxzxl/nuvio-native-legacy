@@ -81,3 +81,34 @@ Exact production header blob `9c22c86938547bd8959ee117b378372f57dd9449` and test
 | Q50 | PARTIAL | Real-EOF countdown and native overlay preserved, invalid source and replacement guards. Existing bounded automatic credits skip may still use release-unverified third-party bounds; ensure Q45/Q50 post-credit safety for those intervals. Verify final-episode/movie dismissal and pending Next integration. |
 
 Physical device lifecycle, rendered frame/surface stability, HDMI ARC and complete application linking remain separate authorized integration/device gates. No APK assembly, signing, publication, default-branch merge, P7 or P8 implementation. Existing APK workflow and post-#134 handoff files unchanged in comparison. The new CI must be verified at the exact input, then address only the concrete remaining source gates above; do not reopen accepted P0–P5 without a demonstrated regression.
+
+
+## Credits-provenance continuation — 2026-11-24 (latest checkpoint)
+
+Starting HEAD `b8e88de88717a2a3da6ebe91ca8f77fa1ab3ca14`. Comparison against `79ca121a541c5d8d2f348cd3e0f126ecef0e698d` shows two documentation-only commits. Prior CI evidence is now independently established, superseding the earlier owner-reported/pending status.
+
+| P6 test-only CI | Exact tested revision | Verified conclusion |
+|---|---|---|
+| [#1 / 45347395005](https://github.com/nerdfxzxl/nuvio-native-legacy/actions/runs/45347395005) | `b9ef36390c31e3c83ef453a3e426be907b5584ff` | SUCCESS |
+| [#2 / 45349531453](https://github.com/nerdfxzxl/nuvio-native-legacy/actions/runs/45349531453) | `c0d83b8264091c0d8005e510b4095e7672f335dd` | SUCCESS |
+| [#3 / 45355672435](https://github.com/nerdfxzxl/nuvio-native-legacy/actions/runs/45355672435) | `79ca121a541c5d8d2f348cd3e0f126ecef0e698d` | SUCCESS |
+| [#4 / 45364177583](https://github.com/nerdfxzxl/nuvio-native-legacy/actions/runs/45364177583) | `cfb6fbf2bfdacff521d010ce6a1f8fa3aaaee0ba` | IN PROGRESS at checkpoint |
+
+Actual completed #3 job 138312747703 logs: NDK C/JNI preflight and API35/Media3 1.8.0 Kotlin production compile passed; actual PCM and HEVC/Format 47 assertions, native chapter/history/progress checks (including 620 distinct persisted titles), P6 postplay 17, watched 35, playback intent 33, audio fidelity 17, route 46, HDR 27, AFR 34, surface 55, P2 frame hold 17 and cinematic 41 passed. No need to rerun unchanged #3.
+
+### New production correction
+
+In `cfb6fbf2bfdacff521d010ce6a1f8fa3aaaee0ba`, `src/intro.c/.h` now separates exact current-file chapter interval provenance from recommendation/manual hints. `intro_auto_ativo` cannot authorize automatic credits seeking for third-party or cached URL-only bounds. `src/capmkv.c` publishes proof only for freshly read, generation-current strict closing credits with an exact matching end at the immediately following chapter boundary; a later preview boundary cannot be used to jump across an intervening chapter. Proof is reset on chapter/source replacement and shutdown. Existing opening/recap automatic skip and native overlay are preserved. `tests/intro.c` exercises actual automatic versus manual selection, cache/third-party rejection, exact and mismatched bounds, post-credit and invalidation; `tests/capmkv.c` checks direct-read versus cached publication. Added actual intro test invocation to existing P6-only workflow. CI #4 job 138341515079 has successfully completed exact-input verification, native audio/video/first-frame regressions, native chapter/history/progress regressions including the new intro tests, and NDK C/JNI syntax step. Full Android compile/replay and remaining policy steps not yet complete at checkpoint. No physical-device or full-link claim.
+
+### Current verdicts and remaining demonstrated source gates
+
+| Q | Verdict | Remaining gate |
+|---|---|---|
+| Q20 | PARTIAL | `app.c:abrirProximoEpisodio/proximoPreparoPasso` still wait in the previous player's toast during in-flight preload. Transfer pending job ownership to the next episode cinematic immediately without cancellation by `posplay_fechar`; test exact target, Back, Home, duplicate Next and manual source selection, and preserve cold fallback and prepared-result adoption. |
+| Q22 | PARTIAL | Request-owned native/Kotlin intent policy compiled and passed CI #3. Still trace and test actual route/decoder/surface retry integration: ordinary automatic recovery vs Home/background and superseding explicit commands; do not reopen earlier accepted recovery infrastructure indiscriminately. |
+| Q44 | PARTIAL | Confirmed checkpoint and delayed-open pause paths present and CI #3 passed. Explicit Activity destruction/recreation and resource reclamation restoration source paths and regressions remain. |
+| Q45 | PARTIAL | Current strict marker, percentage fallback, viewed intervals, in-play marking and persisted progress tests passed. `player.c:p6WatchMark/p6WatchOverride` still use mutable season/episode and IMDb-only durable history. Freeze authorized episode identity across numbering changes, support opaque non-IMDb IDs without key truncation/collision, and verify remote reconciliation cannot revive manual unwatch. IntroDB lacks release proof and must remain a hint. |
+| Q48 | PARTIAL | Prior generation-aware detach/async release and route/AFR paths preserved. Verify pending/failed adoption cancellation, exactly-once cleanup and Activity destruction with pending release against real paths. |
+| Q50 | PARTIAL | New unverified-bound auto-seek defect corrected, chapter/intro tests passed in #4; real EOF and native overlay preserved. Final pending Next integration and final-episode/movie dismissal audit remain, and #4 full conclusion is pending. |
+
+**P6 OVERALL: PARTIAL / NOT SOURCE ACCEPTED.** No P7/P8 implementation or authorization; P0–P5 accepted source checkpoints and Q18 owner deferral preserved. No APK build, signing, publication or default-branch merge. Full linking and physical-device checks remain separate. Next continuation should complete these specific gates and review exact new CI, without rerunning already verified #3.
