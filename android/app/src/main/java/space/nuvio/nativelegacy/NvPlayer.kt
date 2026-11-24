@@ -171,6 +171,7 @@ object NvPlayer {
     // --- natives (src/video_android.c, Java_space_nuvio_nativelegacy_NvPlayer_*) ---
     @JvmStatic external fun nativeIniciar()
     @JvmStatic external fun nativeLimitedStatus(): Int
+    @JvmStatic external fun nativeAfr(): Boolean
     @JvmStatic external fun nativeTunneling(): Boolean
     @JvmStatic external fun nativeEvento(tipo: Int, a: Int, b: Int, geracao: Int)
     // flags (#287): 1 = forcada (SELECTION_FLAG_FORCED), 2 = SDH
@@ -436,6 +437,57 @@ object NvPlayer {
     }
 
     private fun atual(minha: Int) = minha == sessao && pedidoAtivo == pedidos.get()
+
+    // One opt-in request per visible session; never let a preloaded player vote.
+    private var afrPrevious: Int? = null
+    private var afrRequested: Int? = null
+    private var afrEvaluated = false
+    private var afrSuspended = false
+
+    private fun restoreAfr() {
+        val w = activity?.window
+        val prev = afrPrevious
+        val requested = afrRequested
+        afrPrevious = null; afrRequested = null; afrEvaluated = false
+        if (w != null && prev != null && requested != null) try {
+            val a = w.attributes
+            if (a.preferredDisplayModeId == requested) {
+                a.preferredDisplayModeId = prev
+                w.attributes = a
+            }
+        } catch (e: Exception) { Log.w(TAG, "AFR restore: $e") }
+    }
+
+    private fun applyAfr(minha: Int, format: Format?) {
+        if (!atual(minha) || player == null || afrEvaluated || afrSuspended || !nativeAfr()) return
+        val f = format ?: return
+        if (!f.frameRate.isFinite() || f.frameRate <= 0f) return
+        val act = activity ?: return
+        val required = when {
+            f.sampleMimeType == MimeTypes.VIDEO_DOLBY_VISION -> android.view.Display.HdrCapabilities.HDR_TYPE_DOLBY_VISION
+            f.colorInfo?.colorTransfer == C.COLOR_TRANSFER_ST2084 -> android.view.Display.HdrCapabilities.HDR_TYPE_HDR10
+            f.colorInfo?.colorTransfer == C.COLOR_TRANSFER_HLG -> android.view.Display.HdrCapabilities.HDR_TYPE_HLG
+            else -> null
+        }
+        try {
+            val display = act.windowManager.defaultDisplay
+            val known = android.os.Build.VERSION.SDK_INT >= 34
+            fun mode(m: android.view.Display.Mode) = FrameRateP5C.Mode(m.modeId, m.physicalWidth,
+                m.physicalHeight, m.refreshRate, if (known) m.supportedHdrTypes.toSet() else emptySet())
+            val target = FrameRateP5C.choose(true, f.frameRate, mode(display.mode),
+                display.supportedModes.map(::mode), required, known)
+            afrEvaluated = true
+            if (target != null) {
+                val attrs = act.window.attributes
+                afrPrevious = attrs.preferredDisplayModeId
+                afrRequested = target
+                attrs.preferredDisplayModeId = target
+                act.window.attributes = attrs
+                Log.i(TAG, "AFR requested supported mode=$target fps=${f.frameRate}")
+            }
+        } catch (e: Exception) { Log.w(TAG, "AFR mode query/request: $e") }
+    }
+
     private fun confirmarRetomada(geracao: Int, aceita: Boolean) {
         if (geracao != 0) try { nativeRetomada(geracao, if (aceita) 1 else 0) }
         catch (e: UnsatisfiedLinkError) { Log.w(TAG, "retomada sem lib: $e") }
@@ -1224,6 +1276,8 @@ object NvPlayer {
         val aindaAtual = pedidoAtivo == pedidos.get()
         val pedido = pedidos.incrementAndGet()
         if (aindaAtual) pedidoAtivo = pedido
+        afrSuspended = true
+        restoreAfr()
         try { player?.pause() } catch (e: Exception) { Log.w(TAG, "pausarPeloSistema: $e") }
     }
 
@@ -1298,6 +1352,10 @@ object NvPlayer {
         principal.post {
             if (pedido != pedidos.get()) return@post
             pausaPedida = p != 0
+            if (!pausaPedida && afrSuspended) {
+                afrSuspended = false
+                applyAfr(sessao, player?.videoFormat)
+            }
             player?.playWhenReady = !pausaPedida
         }
     }
@@ -1652,6 +1710,7 @@ object NvPlayer {
             // Renderer teardown runs on Media3's playback thread. Bound UI waits.
             .setReleaseTimeoutMs(200)
             .setDetachSurfaceTimeoutMs(200)
+            .setVideoChangeFrameRateStrategy(C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_OFF)
         val seletor = if (r.idiomaAudio.isNotEmpty()) SeletorAudioPreparo(act, r.idiomaAudio)
                       else DefaultTrackSelector(act)
         seletor.parameters = seletor.parameters.buildUpon()
@@ -1850,6 +1909,8 @@ object NvPlayer {
         recuperacaoLive?.cancel()
         recuperacaoLive = null
         sessao++
+        restoreAfr()
+        afrSuspended = false
         principal.removeCallbacks(recriar)
         principal.removeCallbacks(estavelRun)
         recriaAgendada = false
@@ -2489,6 +2550,9 @@ object NvPlayer {
         override fun onTracksChanged(tracks: Tracks) {
             if (!atual(minha)) return
             publicarFaixas(tracks)
+            for (g in tracks.groups) if (g.type == C.TRACK_TYPE_VIDEO) {
+                for (i in 0 until g.length) if (g.isTrackSelected(i)) applyAfr(minha, g.getTrackFormat(i))
+            }
             for (g in tracks.groups) if (g.type == C.TRACK_TYPE_AUDIO) {
                 for (i in 0 until g.length) if (g.isTrackSelected(i)) {
                     val f = g.getTrackFormat(i)
