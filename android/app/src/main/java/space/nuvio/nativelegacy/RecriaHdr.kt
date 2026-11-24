@@ -22,10 +22,14 @@ object RecriaHdr {
         private enum class Phase { CAPTURE, SENT, FINISHED }
         private var phase = Phase.CAPTURE
         private var retain = false
+        private var framesBlocked = false
+        fun blocksFrames(): Boolean = framesBlocked
+        fun attaching() { framesBlocked = false }
         fun pause() { retain = true }
         fun send(): Boolean {
             if (phase != Phase.CAPTURE || retain) return false
             phase = Phase.SENT
+            framesBlocked = true
             return true
         }
         fun acknowledge(): DetachAction {
@@ -38,7 +42,7 @@ object RecriaHdr {
             phase = Phase.FINISHED
             return true
         }
-        fun cancel() { phase = Phase.FINISHED }
+        fun cancel() { phase = Phase.FINISHED; framesBlocked = false }
     }
 
     // Media3 ExoTimeoutException.OPERATION_DETACH_SURFACE = 3.
