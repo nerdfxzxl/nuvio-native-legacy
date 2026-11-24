@@ -349,7 +349,10 @@ long long contapend_gesto_alvos(const char *imdb, const char *tipo,
   if (!id[0] || perfil < 1 || n < 0 || (n && !pares)) return 0;
   // Local-only manual and playback history must remain durable in the anon
   // journal too; no account or tracker means no remote destinations.
-  if (!sessao_logada()) destinos &= ~VISTO_CONTA;
+  if (!sessao_logada()) {
+    destinos &= ~VISTO_CONTA;
+    if (!(destinos & (VISTO_TRAKT | VISTO_SIMKL)) && strncmp(id, "tt", 2)) return 0;
+  }
   for (i = 0; temporadas && i < nt; i++) {
     size_t u = strlen(temps);
     if (u + 12 >= sizeof temps) return 0;
