@@ -175,6 +175,9 @@ void player_definir_fonte(const char *url);
 // quando a sessao foi iniciada com "Assistir do comeco". Chamar antes de parar.
 // Zero e um ponto valido (a pessoa voltou ao inicio), nao retomada ausente.
 void player_definir_retomada_fonte(double segundos);
+#ifdef NV_ANDROID
+void player_p6_armar_restauro(double segundos);
+#endif
 // Desfaz a fonte em curso SEM fechar a tela: o video para e a sessao volta a
 // "abrindo fonte", como logo depois de player_abrir. E o recuo da fonte
 // guardada (fontevolta.h) para a busca normal, sem a pessoa ver o player

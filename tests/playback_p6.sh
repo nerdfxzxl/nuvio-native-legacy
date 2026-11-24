@@ -15,3 +15,6 @@ java -jar "$tmp/intent.jar"
 
 kotlinc "$kt/PendingAdoptionP6.kt" tests/p6/PendingAdoptionP6Test.kt -include-runtime -d "$tmp/adoption.jar"
 java -jar "$tmp/adoption.jar"
+
+cc -std=c11 -Wall -Wextra -Werror tests/restore_p6.c -o "$tmp/restore"
+"$tmp/restore"

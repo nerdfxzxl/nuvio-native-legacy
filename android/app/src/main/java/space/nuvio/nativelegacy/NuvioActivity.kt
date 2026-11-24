@@ -67,6 +67,10 @@ class NuvioActivity : SDLActivity() {
     // SDL2 e compartilhada; SDL2_image e SDL2_ttf entram estaticas na libmain.
     override fun getLibraries(): Array<String> = arrayOf("SDL2", "main")
 
+    // A fresh Activity has a new nonce. Only a saved Android task (or our
+    // intentional same-process restart) can request the previous checkpoint.
+    private val p6TaskToken = java.util.UUID.randomUUID().toString()
+    private var p6RestoreToken = ""
     private val streamCardText by lazy { StreamCardText(this) }
 
     fun layoutStreamCard(generation: Int, index: Int, width: Int, fields: ByteArray?) =
@@ -193,12 +197,18 @@ class NuvioActivity : SDLActivity() {
         "retomada=$mIsResumedCalled superficie=${mSurface?.mIsSurfaceReady == true}"
 
     override fun onSaveInstanceState(outState: Bundle) {
+        outState.putString("nuvio.p6.task", p6TaskToken)
         registroDownload.salvar(outState)
         fontImport.salvar(outState)
         super.onSaveInstanceState(outState)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        p6RestoreToken = if (intent?.data == null) {
+            savedInstanceState?.getString("nuvio.p6.task")
+                ?: intent?.getStringExtra("nuvio.p6.recreate") ?: ""
+        } else ""
+        intent?.removeExtra("nuvio.p6.recreate")
         registroDownload.restaurar(savedInstanceState)
         fontImport.restaurar(savedInstanceState)
         // SEGUNDO onCreate NO MESMO PROCESSO = SEGUNDO main() DO C (o
@@ -333,6 +343,7 @@ class NuvioActivity : SDLActivity() {
         try {
             packageManager.getLaunchIntentForPackage(packageName)?.let {
                 it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+                if (p6RestoreToken.isNotEmpty()) it.putExtra("nuvio.p6.recreate", p6RestoreToken)
                 startActivity(it)
             }
         } catch (_: Exception) {}
@@ -810,6 +821,8 @@ class NuvioActivity : SDLActivity() {
         fun env(k: String, v: String) = Os.setenv(k, v, true)
         env("NUVIO_INTERFACE_AUTO", if (automaticMobile) "1" else "0")
         env("NUVIO_DADOS", dados.path)
+        env("NUVIO_P6_TASK", p6TaskToken)
+        env("NUVIO_P6_RESTORE", p6RestoreToken)
         val regenerable = File(cacheDir, "regenerable").apply { mkdirs() }
         ApkCache.prune(File(regenerable, "atualizacao"), installedVersion(), null, ::apkVersion)
         val p2pCache = File(cacheDir, "engine").apply { mkdirs() }

@@ -152,6 +152,9 @@ extern int trakt_scrobble_alvo(int, const TraktScrobbleAlvo *, double, double,
 #include "legsync.h"   // F05 AutoSync: lifecycle + offset (hunks marcados F05)
 #include "progresso.h"
 #include "fontevolta.h"
+#ifdef NV_ANDROID
+#include "restore_p6.h"
+#endif
 #include "retomamorna.h"
 #include "marco.h"
 #include "ilha_voo.h"   /* NV_ILHA_VOO_MS: quanto dura o voo da saida */
@@ -308,6 +311,9 @@ unsigned player_geracao_fonte(void) { return fonteAcaoGeracao; }
 #define PLR_PROVA_MIN_S 1.0
 static int   tocando = 1;
 static int p6PendingPause;
+#ifdef NV_ANDROID
+static int p6RestoreInternal;
+#endif
 static int   pausaPessoa;   // pausa pedida pela pessoa (player_pausa_pessoa, #302)
 static int retomandoSalto; // seek requested playback; buffering is not user pause
 static CreditosAuto creditosAuto;
@@ -2052,6 +2058,9 @@ void player_abrir(int indiceCatalogo, const char *url) {
   memset(&p6EpIdentidade, 0, sizeof p6EpIdentidade);
   p6WatchState = 0; p6WatchTry = 0; p6WatchStarted = contapend_agora_ms();
   p6PendingPause = 0;
+#ifdef NV_ANDROID
+  p6RestoreInternal = 0;
+#endif
   // O trailer usa o mesmo plano de video (LG) — solta antes de o player
   // carregar a fonte, senao o load novo pisa no mediaId do trailer.
   trailer_fechar();
@@ -2416,6 +2425,7 @@ static void sairParaExterno(void) { saindo = 1; pediuSair = 1; }
 #endif
 static void tocarFonte(const char *url) {
 #ifdef NV_ANDROID
+  if (p6RestoreInternal) { p6RestoreInternal = 0; tocarFonteInterno(url); return; }
   const CatItem *c = item();   // #501: Interno / Externo / Perguntar sempre
   if (extplayer_tentar(url, c ? c->titulo : "", c && artehero_eh_anime(c), tocarFonteInterno, sairParaExterno)) return;
 #endif
@@ -2495,6 +2505,13 @@ static void dvTelaAtualizar(float dt, Uint32 agora) {
 // So depois do loadCompleted. Antes disso o pipeline ainda nao pos nada no
 // plano de hardware, e furar a superficie cedo trocava a arte por um retangulo
 // PRETO enquanto o fluxo abria — que era o "clica em reproduzir e fica preto".
+#ifdef NV_ANDROID
+void player_p6_armar_restauro(double segundos) {
+  if (!aberto || comVideo || ehCanal() || !isfinite(segundos) || segundos < 0.0) return;
+  p6PendingPause = 1; p6RestoreInternal = 1;
+  tocando = 0; pausaPessoa = 0; retomarFonteSeg = segundos;
+}
+#endif
 void player_definir_retomada_fonte(double segundos) {
   if ((aberto || mini) && !ehCanal() && isfinite(segundos) && segundos >= 0.0)
     retomarFonteSeg = segundos;
@@ -3304,9 +3321,53 @@ void player_descartar_retido(void) {
   retomarMkv = 0; retidoVoo = 0;
 }
 
+#ifdef NV_ANDROID
+static int p6_checkpoint_restauro(void) {
+  const char *task = getenv("NUVIO_P6_TASK");
+  const CatItem *c = item();
+  if (!p6_restore_token(task) || !aberto || saindo || pediuSair || !comVideo ||
+      !fontePrincipal() || ehCanal() || !identidadeValida() || !c ||
+      !duracaoReal || esperandoFonte || erroFonte || video_falhou() || !video_pronto() ||
+      video_terminou() || partesAtiva() || !video_quadro_visto()) return 0;
+  double p = video_pos_confirmada(), d = video_duracao();
+  if (!isfinite(p) || !isfinite(d) || p < 0 || d < 120 || p >= d - 1 ||
+      d > INT_MAX / 1000.0 || player_duracao_suspeita(d, duracaoCatalogo())) return 0;
+  P6RestoreTicket t = {0};
+  int ht, he;
+  if (!p6HistoryPair(c, &ht, &he) || !p6_restore_field(sessao_usuario(), sizeof t.account) ||
+      !p6_restore_field(c->imdb, sizeof t.title) || !p6_restore_field(c->tipo, sizeof t.type)) return 0;
+  if (!strcmp(c->tipo, "series") && (ht != epT || he != epE ||
+      !cat_episodio_existe_final(cat_indice_titulo(c->imdb, idxAtual()), c->imdb, ht, he))) return 0;
+  memcpy(t.task, task, 37);
+  snprintf(t.account, sizeof t.account, "%s", sessao_usuario());
+  snprintf(t.title, sizeof t.title, "%s", c->imdb);
+  snprintf(t.type, sizeof t.type, "%s", c->tipo);
+  t.profile = perfis_ativo(); t.season = ht; t.episode = he;
+  if (!strcmp(t.type, "movie")) t.season = t.episode = 0;
+  alvoStream(t.target, sizeof t.target);
+  t.posMs = (long long)(p * 1000.0); t.durMs = (long long)(d * 1000.0);
+  const char *url = video_url_atual(), *cab = video_p6_cabecalhos();
+  if (!video_p6_fingerprint(url, cab, t.fingerprint, sizeof t.fingerprint)) return 0;
+  strcpy(t.addon, "-"); strcpy(t.hash, "-"); t.file = -1;
+  const Stream *s = stream_item(stream_atual());
+  if (s && stream_lista_do_alvo(t.target) && !strcmp(s->url, url) && !strcmp(s->cabecalhos, cab)) {
+    const char *hash = s->infoHash[0] ? s->infoHash : s->hashTorrent;
+    if (s->fileIdx >= 0 && p6_restore_hex(hash, 40) && p6_restore_hex(s->addonChave, 32)) {
+      memcpy(t.addon, s->addonChave, 33); memcpy(t.hash, hash, 41);
+      t.file = s->fileIdx; t.bytes = s->tamanhoBytes;
+    }
+    // Honor the existing opt-in; never persist raw link data for Q44 alone.
+    if (ajustes_link_reusar())
+      fontevolta_guardar(t.target, t.account, t.profile, s, stream_idade_ms(), SDL_GetTicks());
+  }
+  char ticket[640];
+  return p6_restore_encode(&t, ticket, sizeof ticket) && dados_gravar(P6_RESTORE_FILE, ticket);
+}
+#endif
 void player_ciclo_evento(Uint32 tipo) {
   const int fundo = tipo == SDL_APP_WILLENTERBACKGROUND || tipo == SDL_APP_DIDENTERBACKGROUND;
 #ifdef NV_ANDROID
+  if (tipo == SDL_APP_DIDENTERFOREGROUND) dados_apagar(P6_RESTORE_FILE);
   if (fundo && aberto) {
     // A preview is not a committed seek. Discard it before saving the
     // last backend-confirmed checkpoint, and revoke queued transport actions.
@@ -3339,6 +3400,7 @@ void player_ciclo_evento(Uint32 tipo) {
       assistidoAmostra = 0;
       if (comVideo) video_pausar_sistema();
     }
+    if (fundo && !p6_checkpoint_restauro()) dados_apagar(P6_RESTORE_FILE);
 #endif
   }
 }

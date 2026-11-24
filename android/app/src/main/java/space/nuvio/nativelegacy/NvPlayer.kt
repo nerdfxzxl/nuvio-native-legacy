@@ -1522,6 +1522,16 @@ object NvPlayer {
     private val p6NextPaused = java.util.concurrent.atomic.AtomicBoolean(false)
     private val p6PausedRequest = java.util.concurrent.atomic.AtomicInteger(-1)
     @JvmStatic fun p6ArmPausedOpen() { p6NextPaused.set(true) }
+    // Exact raw source fingerprint, not a URL, header, or reusable credential.
+    @JvmStatic fun p6SourceFingerprint(url: ByteArray, headers: ByteArray): String {
+        val md = java.security.MessageDigest.getInstance("SHA-256")
+        fun field(bytes: ByteArray) {
+            md.update(java.nio.ByteBuffer.allocate(4).putInt(bytes.size).array())
+            md.update(bytes)
+        }
+        field(url); field(headers)
+        return md.digest().joinToString("") { "%02x".format(it.toInt() and 255) }
+    }
     private fun p6OpenRequest(): Int {
         val request = pedidos.incrementAndGet()
         if (p6NextPaused.getAndSet(false)) p6PausedRequest.set(request)

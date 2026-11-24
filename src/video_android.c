@@ -67,7 +67,7 @@ static jmethodID mAbrirPosicao, mAbrirRecuperacao, mJanelaPronta, mLimitedConnec
 // 2.0.3 (opcional): abrirRetomada(url, cab, inicioMs, fracao, geracao). So o
 // percentual conhecido (retomada da conta, sem registro local): o Kotlin
 // aplica fracao/10000 da duracao do CONTAINER antes do primeiro quadro.
-static jmethodID mAbrirRetomada, mP6ArmPaused;
+static jmethodID mAbrirRetomada, mP6ArmPaused, mP6Fingerprint;
 static jmethodID mPreparar, mPrepararProximo, mPrepararEstado, mCancelarPreparo, mAbrirPreparada;
 static jmethodID mPararMantendoPreparo;
 static unsigned preparoAdotar;
@@ -105,6 +105,8 @@ static int resolverMetodos(JNIEnv *env) {
   // a video frame. A user-selected new release never uses this method.
   mP6ArmPaused = (*env)->GetStaticMethodID(env, gCls, "p6ArmPausedOpen", "()V");
   if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); mP6ArmPaused = NULL; }
+  mP6Fingerprint = (*env)->GetStaticMethodID(env, gCls, "p6SourceFingerprint", "([B[B)Ljava/lang/String;");
+  if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); mP6Fingerprint = NULL; }
   mAbrirRecuperacao = (*env)->GetStaticMethodID(env, gCls, "abrirRecuperacao", "(Ljava/lang/String;Ljava/lang/String;II)V");
   if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); mAbrirRecuperacao = NULL; }
   mAbrirRetomada = (*env)->GetStaticMethodID(env, gCls, "abrirRetomada", "(Ljava/lang/String;Ljava/lang/String;III)V");
@@ -1706,6 +1708,35 @@ unsigned video_bufferando_ms(void) {
 }
 void video_definir_dv(int dv) { (void)dv; }
 void video_definir_cabecalhos(const char *c) { snprintf(cabecalhos, sizeof cabecalhos, "%s", c ? c : ""); }
+const char *video_p6_cabecalhos(void) { return cabecalhos; }
+int video_p6_fingerprint(const char *url, const char *cab, char *out, unsigned cap) {
+  if (!out || cap < 65) return 0;
+  out[0] = 0;
+  if (!url || !*url || !cab || strlen(url) >= NV_MEDIA_URL_MAX || strlen(cab) >= sizeof cabecalhos) return 0;
+  JNIEnv *env = ambiente();
+  if (!env || !mP6Fingerprint) return 0;
+  jsize nu = (jsize)strlen(url), nc = (jsize)strlen(cab);
+  jbyteArray u = (*env)->NewByteArray(env, nu), c = NULL;
+  jstring digest = NULL;
+  if (u && !(*env)->ExceptionCheck(env)) c = (*env)->NewByteArray(env, nc);
+  if (c && !(*env)->ExceptionCheck(env)) {
+    (*env)->SetByteArrayRegion(env, u, 0, nu, (const jbyte *)url);
+    if (!(*env)->ExceptionCheck(env) && nc) (*env)->SetByteArrayRegion(env, c, 0, nc, (const jbyte *)cab);
+    if (!(*env)->ExceptionCheck(env)) digest = (jstring)(*env)->CallStaticObjectMethod(env, gCls, mP6Fingerprint, u, c);
+    if (digest && !(*env)->ExceptionCheck(env)) {
+      const char *s = (*env)->GetStringUTFChars(env, digest, NULL);
+      if (s) {
+        if (strlen(s) == 64) memcpy(out, s, 65);
+        (*env)->ReleaseStringUTFChars(env, digest, s);
+      }
+    }
+  }
+  if (digest) (*env)->DeleteLocalRef(env, digest);
+  if (u) (*env)->DeleteLocalRef(env, u);
+  if (c) (*env)->DeleteLocalRef(env, c);
+  if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); out[0] = 0; }
+  return out[0] != 0;
+}
 const char *video_cabecalhos(void) { return cabecalhos; }
 void video_definir_mp4(int m) { (void)m; }
 int  video_tocando(void) { return tocando; }
