@@ -69,6 +69,8 @@ int main(void) {
   snprintf(opaque[1].vid, sizeof opaque[1].vid, "addon:episode-unique");
   cat_definir_episodios(0, opaque, 2);
   assert(!cat_episodio_por_video(0,c.imdb,"addon:episode-unique",&t,&e));
+  char ambiguous[128];
+  assert(!cat_id_stream(0,2,3,ambiguous,sizeof ambiguous) && !ambiguous[0]);
   c=title(1); CatEp numeric[]={ep(1,5,0),ep(1,6,0)};
   snprintf(numeric[0].vid,sizeof numeric[0].vid,"kitsu:123:5");
   cat_definir_tudo(&c,1,NULL,0); cat_definir_episodios(0,numeric,2);
@@ -119,6 +121,19 @@ int main(void) {
   assert(cat_id_stream(0,0,2,wire,sizeof wire) && !strcmp(wire,wide[1].vid));
   assert(cat_episodio_por_video(0,c.imdb,wire,&t,&e) && t==0 && e==2);
   assert(!cat_id_stream(0,0,1,large,sizeof large) && !large[0]);
+  assert(cat_indice_stream_exato(0,c.imdb,0,2,wire)==0);
+  assert(cat_indice_stream_exato(0,c.imdb,0,1,wire)==-1);
+  assert(!cat_id_stream(-1,0,2,wire,sizeof wire));
+  assert(!cat_id_stream(1,0,2,wire,sizeof wire));
+  CatItem pair[2]={title(0),title(0)};
+  strcpy(pair[0].imdb,"tt999999"); strcpy(pair[1].imdb,c.imdb);
+  cat_definir_tudo(pair,2,NULL,0); cat_definir_episodios(1,wide,2);
+  assert(cat_indice_stream_exato(0,c.imdb,0,2,wide[1].vid)==1);
+  assert(cat_indice_stream_exato(0,pair[0].imdb,0,2,wide[1].vid)==-1);
+  CatEp conflict[]={ep(1,1,0),ep(1,1,0)};
+  strcpy(conflict[0].vid,"addon:one"); strcpy(conflict[1].vid,"addon:two");
+  cat_definir_episodios(1,conflict,2);
+  assert(!cat_id_stream(1,1,1,wire,sizeof wire));
   puts("catalog_episode_identity512: PASS");
   return 0;
 }

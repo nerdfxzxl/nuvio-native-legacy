@@ -587,6 +587,7 @@ const CatEp  *cat_episodio(int indiceItem, int i);   // indice circular; NULL se
 // dele "<id>:<E>" (a convencao do Kitsu/MAL). t<=0 ou e<=0 = sem episodio: devolve o id
 // do titulo. 1 se escreveu algo.
 int           cat_id_stream(int indiceItem, int t, int e, char *dst, unsigned tam);
+int cat_indice_stream_exato(int preferido,const char *titulo,int t,int e,const char *alvo);
 // Exact-identity lookups are accepted only after the final episode list has
 // replaced any provisional early list. Conflicting assignments return 0.
 int           cat_episodios_finais(int indiceItem, const char *id);

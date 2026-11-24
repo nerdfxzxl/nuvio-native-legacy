@@ -27,7 +27,7 @@ typedef struct {
   int n, indice, resultado, renovou, bufferTentou, continuar;
   int catalogo, temporada, episodio;
   int transferido; // UI only: the authorized next player now owns this worker
-  char atual[NV_STREAM_ID_CAP], alvo[NV_STREAM_ID_CAP], titulo[64];
+  char atual[NV_STREAM_ID_CAP], alvo[NV_STREAM_ID_CAP], titulo[64], donoTitulo[64];
   Stream escolhida;
   FonteFalhaSessao *politica;
   Uint32 metadadosEm, resolvidaEm;
@@ -159,7 +159,9 @@ int proximopreparo_agendar(int catalogo, int t, int e, const char *atual,
   j->addons = addons_consulta_capturar();
   j->catalogo = catalogo; j->temporada = t; j->episodio = e; j->indice = -1;
   const CatItem *titulo=cat_item(catalogo);
-  if (titulo && idbase_len(titulo->imdb)==strlen(titulo->imdb))
+  if (!titulo || !nv_stream_id_copy(j->donoTitulo,sizeof j->donoTitulo,titulo->imdb) ||
+      cat_indice_stream_exato(catalogo,j->donoTitulo,t,e,alvo)<0) { soltar(j); return 0; }
+  if (idbase_len(titulo->imdb)==strlen(titulo->imdb))
     nv_stream_id_copy(j->titulo,sizeof j->titulo,titulo->imdb);
   snprintf(j->atual, sizeof j->atual, "%s", atual);
   snprintf(j->alvo, sizeof j->alvo, "%s", alvo);
@@ -181,6 +183,9 @@ static void prepararVideo(ProximoJob *j) {
 #ifdef NV_ANDROID
   if (!j->bufferTentou && j->resultado == 1 && j->indice >= 0 && j->escolhida.url[0]) {
     j->bufferTentou = 1;
+    int ix=cat_indice_stream_exato(j->catalogo,j->donoTitulo,j->temporada,j->episodio,j->alvo);
+    if (ix<0) return;
+    j->catalogo=ix;
     unsigned token = player_precarregar_novo_token();
     if (token && player_precarregar_proxima_fonte(j->catalogo, j->temporada, j->episodio,
                                                  &j->escolhida, token)) j->token = token;
@@ -315,7 +320,8 @@ int proximopreparo_consumir(const char *alvo, ProximoPreparoResultado *saida) {
   if (!saida) return 0;
   memset(saida, 0, sizeof *saida); saida->indiceFonte = -1;
   if (!j) return 0;
-  if (!alvo || strcmp(j->alvo, alvo) || !contextoAtual(j)) {
+  if (!alvo || strcmp(j->alvo, alvo) || !contextoAtual(j) ||
+      cat_indice_stream_exato(j->catalogo,j->donoTitulo,j->temporada,j->episodio,alvo)<0) {
     proximopreparo_cancelar(); return 0;
   }
   // A falha pode chegar no mesmo quadro do OK. Recolher o estado nativo antes

@@ -1878,42 +1878,80 @@ const CatEp *cat_episodio(int indiceItem, int i) {
   return e;
 }
 
+// pubTrava and epTrava are held: one coherent catalogue snapshot, no
+// modulo-wrapped index or duplicate published video may authorize a source.
+static int catIdStreamLocked(int indiceItem, int t, int e, char *dst, unsigned tam) {
+  if (indiceItem<0 || indiceItem>=n || !itens || !itens[indiceItem].imdb[0]) return 0;
+  const CatItem *c=&itens[indiceItem];
+  char base[96], alvo[NV_STREAM_ID_CAP]="";
+  if (t<0 || e<=0) return nv_stream_id_copy(dst,tam,c->imdb);
+  if (!idbase_copiar_exato(c->imdb,base,sizeof base)) return 0;
+  // Prefer exact title copies with episodes. Only the old canonical IMDb
+  // composite CW card can fall back to a base-title metadata copy.
+  int ix=-1;
+  for (int i=0;i<n;i++) {
+    if (strcmp(itens[i].imdb,c->imdb) || strcmp(itens[i].tipo,c->tipo) ||
+        !epQtd || !epIni || i>=nFaixas || epQtd[i]<=0) continue;
+    ix=i;
+    if (i==indiceItem) break;
+  }
+  if (ix<0 && idbase_imdb_historico(base) && strcmp(base,c->imdb)) {
+    int ct=0,ce=0;
+    if (idbase_campos_episodio(c->imdb,&ct,&ce)==2 && ct==c->temporada && ce==c->episodio) {
+      for (int i=0;i<n;i++) if (!strcmp(itens[i].imdb,base) && !strcmp(itens[i].tipo,c->tipo) &&
+          epQtd && epIni && i<nFaixas && epQtd[i]>0) { ix=i; break; }
+    }
+  }
+  const CatEp *v=NULL; int q=0, found=-1;
+  if (ix>=0 && epIni[ix]>=0 && epQtd[ix]<=CAT_EP_MAX-epIni[ix]) {
+    v=eps+epIni[ix]; q=epQtd[ix];
+    for (int i=0;i<q;i++) if (v[i].temporada==t && v[i].episodio==e) {
+      if (found>=0 || v[i].vidInvalido || !memchr(v[i].vid,0,sizeof v[i].vid)) return 0;
+      found=i;
+      if (v[i].vid[0] && !nv_stream_id_copy(alvo,sizeof alvo,v[i].vid)) return 0;
+    }
+  }
+  if (!alvo[0]) {
+    if (idbase_imdb_historico(base)) {
+      if (!idbase_compor_episodio(base,t,e,alvo,sizeof alvo)) return 0;
+    } else {
+      // Never strip a numeric suffix from an opaque title to invent a video.
+      if (t!=1 || strcmp(base,c->imdb) || idbase_e_imdb(base)) return 0;
+      int len=snprintf(alvo,sizeof alvo,"%s:%d",base,e);
+      if (len<0 || (size_t)len>=sizeof alvo) return 0;
+    }
+  }
+  // Also reject collision between a synthesized ID and another published ID.
+  for (int i=0;i<q;i++) if (i!=found && !v[i].vidInvalido &&
+      memchr(v[i].vid,0,sizeof v[i].vid) && !strcmp(v[i].vid,alvo)) return 0;
+  return nv_stream_id_copy(dst,tam,alvo);
+}
+
 int cat_id_stream(int indiceItem, int t, int e, char *dst, unsigned tam) {
-  const CatItem *c = cat_item(indiceItem);
-  char base[96];
-  int i, n;
   if (!dst || !tam) return 0;
-  dst[0] = 0;
-  if (!c || !c->imdb[0]) return 0;
-  if (!idbase_copiar_exato(c->imdb, base, sizeof base)) return 0;
-  if (t < 0 || e <= 0) {
-    return nv_stream_id_copy(dst,tam,c->imdb);
-  }
-  { // CW copies may have no episodes; reuse the loaded copy's published IDs.
-    indiceItem = cat_indice_titulo(c->imdb, indiceItem);
-    n = cat_n_episodios(indiceItem);
-    for (i = 0; i < n; i++) {
-      const CatEp *ep = cat_episodio(indiceItem, i);
-      if (ep && ep->temporada == t && ep->episodio == e) {
-        if (ep->vidInvalido || !memchr(ep->vid,0,sizeof ep->vid)) return 0;
-        if (ep->vid[0]) {
-          return nv_stream_id_copy(dst,tam,ep->vid);
-        }
-      }
-    }
-    // Sem id publicado nao se inventa o endereco de um especial do addon.
-    if (t == 0 && !idbase_e_imdb(c->imdb)) return 0;
-    // The legacy single-season addon convention cannot distinguish T2:E1
-    // from T1:E1. Only a published ID may address a later season.
-    if (!idbase_e_imdb(c->imdb)) {
-      if (t != 1) return 0;
-      int len = snprintf(dst, tam, "%s:%d", base, e);
-      if (len < 0 || (unsigned)len >= tam || !nv_stream_id_valid(dst)) { dst[0] = 0; return 0; }
-      return 1;
-    }
-  }
-  if (!idbase_compor_episodio(base,t,e,dst,tam) || !nv_stream_id_valid(dst)) { dst[0]=0; return 0; }
-  return 1;
+  dst[0]=0;
+  catTravar();
+  pthread_mutex_lock(&epTrava);
+  int ok=catIdStreamLocked(indiceItem,t,e,dst,tam);
+  pthread_mutex_unlock(&epTrava);
+  pthread_mutex_unlock(&pubTrava);
+  return ok;
+}
+
+// Resolve a prepared Next's captured title and pair, never a recycled index.
+// Matching a wire ID alone cannot prove the title/pair still owns it.
+int cat_indice_stream_exato(int preferido,const char *titulo,int t,int e,const char *alvo) {
+  if (!nv_stream_id_valid(titulo) || !nv_stream_id_valid(alvo) || t<0 || e<=0) return -1;
+  char atual[NV_STREAM_ID_CAP]; int ix=-1;
+  catTravar();
+  pthread_mutex_lock(&epTrava);
+  if (preferido>=0 && preferido<n && !strcmp(itens[preferido].imdb,titulo) &&
+      catIdStreamLocked(preferido,t,e,atual,sizeof atual) && !strcmp(atual,alvo)) ix=preferido;
+  if (ix<0) for (int i=0;i<n;i++) if (!strcmp(itens[i].imdb,titulo) &&
+      catIdStreamLocked(i,t,e,atual,sizeof atual) && !strcmp(atual,alvo)) { ix=i; break; }
+  pthread_mutex_unlock(&epTrava);
+  pthread_mutex_unlock(&pubTrava);
+  return ix;
 }
 
 static int episodioFaixaValidaEx(int indice, const char *id, int exigirFinal) {
