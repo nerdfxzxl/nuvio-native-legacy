@@ -27,10 +27,11 @@ internal object AudioOutputProbeP5A {
         val sampleRate: Int,
         val bitDepth: Int,
         val sourceBitrate: Int,
-        val result: AudioFidelityDecisionP5A
+        val result: AudioFidelityDecisionP5A,
+        val pcmFaithful: Boolean
     )
 
-    private fun bitDepth(encoding: Int): Int = when (encoding) {
+    fun bitDepth(encoding: Int): Int = when (encoding) {
         C.ENCODING_PCM_8BIT -> 8
         C.ENCODING_PCM_16BIT -> 16
         C.ENCODING_PCM_24BIT -> 24
@@ -118,6 +119,8 @@ internal object AudioOutputProbeP5A {
         val decision = AudioFidelityP5A.assess(
             mime, channels, hz, bits, bitrate, decoder, pcmRoute, canBitstream,
             arc, dsp)
-        return Observation(type, route != null, channels, hz, bits, bitrate, decision)
+        val pcmFaithful = AudioFidelityP5A.assess(mime, channels, hz, bits, bitrate,
+            decoder, pcmRoute, false, arc, dsp).outputFaithfulCandidate
+        return Observation(type, route != null, channels, hz, bits, bitrate, decision, pcmFaithful)
     }
 }

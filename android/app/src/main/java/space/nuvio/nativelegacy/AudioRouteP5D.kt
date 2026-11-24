@@ -17,6 +17,15 @@ internal object AudioRouteP5D {
         return Action.ERROR
     }
 
+    /** Validate the concrete sink configuration independently of prospective support. */
+    fun validate(pcm: Boolean, pcmFaithful: Boolean, encodedFaithful: Boolean,
+                 sourceRate: Int, sourceChannels: Int, sourceBits: Int,
+                 sinkRate: Int, sinkChannels: Int, sinkBits: Int, exactEncoding: Boolean): Boolean =
+        if (pcm) pcmFaithful && sourceRate > 0 && sourceRate == sinkRate &&
+            sourceChannels > 0 && sourceChannels == sinkChannels &&
+            sinkBits > 0 && (sourceBits <= 0 || sinkBits >= sourceBits)
+        else encodedFaithful && exactEncoding
+
     /** Duplicate samples do not extend the quiet period or absolute deadline. */
     class Debounce {
         private var initialized = false
