@@ -213,3 +213,5 @@ New exact revisions:
 - `cb92c47dfcd2a0b7f3a3d44858868457a0977d39`: reject over-width or ambiguous composed CW identities, reject truncated returned stream identities, preserve persisted progress; extend actual catalogue fixture for buffer boundaries. [CI #19](https://github.com/nerdfxzxl/nuvio-native-legacy/actions/runs/45387980228) queued.
 
 No claim that new tests have passed. No full native link/device execution or APK build performed. **P6 PARTIAL / NOT SOURCE ACCEPTED.** Verify exact latest runs, address demonstrated failures, reconcile Q50 full production tests and complete remaining integration gates before authorization of P7/P8. P0–P5 and owner-deferred Q18 unchanged. No default branch merge.
+
+CI #18 subsequently completed FAILURE: actual history regression could not link because the older mock HTTP harness lacked rede_pedir, rede_resposta_limpar and rede_baixar_st_retry. These mock-only implementations are added in the next test-only commit; no production networking changed. CI #19 was already in progress on the previous revision and does not include the mock fix. Exact corrected revision requires a new CI result; P6 remains partial.

@@ -13,6 +13,7 @@
 // nuvem, catalogo. STDOUT E CAPTURADO e conferido no fim: nenhum token pode
 // aparecer no que os modulos imprimem. O progresso do teste sai por stderr.
 #include "../src/visto.h"
+#include "../src/rede.h"
 #include "nvtmp.h"
 #include "../src/vistoep.h"
 #include "../src/simkl.h"
@@ -154,6 +155,26 @@ char *rede_postar(const char *u, int s, const char *const *c, const char *b) { i
 char *rede_apagar(const char *u, int s, const char *const *c, int *st) { (void)u; (void)s; (void)c; nOutro++; *st = 204; return strdup(""); }
 char *rede_baixar_st(const char *u, int s, const char *const *c, int *st) { (void)u; (void)s; (void)c; nOutro++; *st = 200; return strdup("[]"); }
 char *rede_baixar_com(const char *u, int s, const char *const *c) { (void)u; (void)s; (void)c; nOutro++; return strdup("[]"); }
+// The provider pagination/retry wrapper now uses the additive HTTP API.
+char *rede_baixar_st_retry(const char *u, int s, const char *const *c,
+                           int *st, int *retry) {
+  if (retry) *retry = 0;
+  return rede_baixar_st(u, s, c, st);
+}
+int rede_pedir(const RedePedido *p, RedeResposta *r) {
+  memset(r, 0, sizeof *r);
+  assert(p && (!p->metodo || !strcmp(p->metodo, "GET")));
+  r->corpo = rede_baixar_st(p->url, (int)(p->prazo_ms / 1000), p->cabecalhos, &r->status);
+  if (!r->corpo) { r->erro = REDE_TRANSPORTE; return 0; }
+  r->n_corpo = strlen(r->corpo);
+  r->erro = REDE_OK;
+  return 1;
+}
+void rede_resposta_limpar(RedeResposta *r) {
+  free(r->corpo);
+  free(r->cabecalhos);
+  memset(r, 0, sizeof *r);
+}
 char *rede_baixar(const char *u, int s) { (void)u; (void)s; nOutro++; return strdup("[]"); }
 
 static struct { char fn[64], corpo[8192]; } rpc[MAXP];

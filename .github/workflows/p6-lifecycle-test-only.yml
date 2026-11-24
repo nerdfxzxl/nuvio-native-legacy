@@ -86,6 +86,7 @@ jobs:
           bash tests/contalib.sh
           # Includes exact bounded stream/CW identity composition regressions.
           bash tests/catalog_episode_identity512.sh
+          # Actual history dispatch/retry test uses mock HTTP, never external calls.
           C_INCLUDE_PATH=/usr/include/SDL2 bash tests/visto.sh
 
       - name: Install Android API 35 (no NDK build or APK)
