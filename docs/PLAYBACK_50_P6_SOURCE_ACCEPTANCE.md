@@ -37,3 +37,17 @@ Dedicated [test-only workflow](../.github/workflows/p6-lifecycle-test-only.yml) 
 ## Next bounded continuation
 
 Verify exact P6 CI run and logs; fix demonstrated regressions only. Complete the above unresolved P6 source gates, especially Q45 and Q20/Q44 integration; then run updated exact-source CI and final P6 review. No P7 until P6 accepted; P8 remains build-authorization gated. No APK assembly, signing, upload, publication, default-branch merge or physical-device verification performed. Prior P0–P5 accepted checkpoints are preserved, not reopened.
+
+
+## Continuation checkpoint — 2026-11-24 (supersedes prior remaining implementation list where addressed)
+
+Starting HEAD: `e436435bc75c74bc6093a7524e17f84fb24c8d5f`. Owner reported the previous P6 test-only run succeeded; exact prior run logs were not independently available. Updated production/test/CI input: `c0d83b8264091c0d8005e510b4095e7672f335dd`.
+
+- Q45: added strict, current-generation MKV closing-credit chapter proof distinct from recommendation hints; cached/unnamed/preview/neighbor markers do not authorize completion. IntroDB release identity remains unproven by its current response, therefore use the configured percentage fallback rather than guessing. Actual viewed media and trusted same-duration resume proof govern watched marking during playback. Preserve actual checkpoint and multipart post-credit resume, prevent duplicate exit marking, persist local/anonymous IMDb history through the existing journal and respect newer manual unwatch and profile identity. Trakt/Simkl no longer turn an unaccepted exit into a watched event by their independent STOP thresholds.
+- Q44/Q22: propagate background pause through delayed native source resolution and one-shot Android open request ownership; distinguish ordinary retry and system pause; explicit command for the same ticket takes precedence.
+- Q20/Q50/Q48: cancel pending Next/related-title requests and background preload advancement on Home; preserve existing cinematic and resource adoption pathways.
+- Tests: exact matching Git blob content executed locally using strict C11 and Kotlin JVM: post-play 17/17 PASS; watched policy 23/23 PASS; intent policy 33/33 PASS (73 assertions). New chapter provenance, anonymous/profile history journal and persisted resume-proof tests added to the dedicated test-only workflow, along with the earlier Android/Media3 compilation and P5 regressions. New CI results are not yet verified. No APK build.
+
+### Remaining source acceptance gates
+
+P6 remains PARTIAL / NOT SOURCE ACCEPTED. Verify the new exact-input CI and fix any regressions. Review real integration of the watched transition across all resume/CW presentation and sync paths (including non-IMDb/personal-server behavior, multipart/seek proof, and stale overrides), post-credit behavior and auto/manual Next ownership, late open/background recovery, and cleanup. Existing CW percent-based routing is not claimed fully reconciled with the separate watched journal. IntroDB timing may be accepted only with trustworthy release matching, otherwise fallback. Device lifecycle, HDMI and actual rendering tests remain future authorized integration/device gates. Do not treat passing isolated policy tests as full production acceptance. No P7 or P8 authorization.
