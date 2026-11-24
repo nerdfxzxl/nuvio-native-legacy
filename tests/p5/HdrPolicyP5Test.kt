@@ -27,5 +27,9 @@ fun main() {
     check(p.failure(4001, false, true) == 0)
     check(p.failure(6008, false, true) == 0)
     check(p.failure(2002, false, false) == 0)
-    println("P5 Q37/Q39 HDR and video failure production Kotlin replay: 18/18 PASS")
+    check(p.compatibleDolby(true,true,true))
+    check(!p.compatibleDolby(false,true,true))
+    check(!p.compatibleDolby(true,false,true))
+    check(!p.compatibleDolby(true,true,false))
+    println("P5 Q37/Q39 HDR and video failure production Kotlin replay: 22/22 PASS")
 }

@@ -30,6 +30,9 @@ internal object HdrPolicyP5 {
     }
 
 
+    fun compatibleDolby(displayDv: Boolean, profileSupported: Boolean, sizeSupported: Boolean): Boolean =
+        displayDv && profileSupported && sizeSupported
+
     fun decide(
         dolbyVisionMime: Boolean,
         dolbyVisionDecoder: Boolean,
