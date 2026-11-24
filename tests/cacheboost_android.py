@@ -292,7 +292,7 @@ fun main() {
 
     # Q37: real Media3 NalUnitUtil on independently encoded HEVC data. Compile
     # actual production parser/adapter with the fixture (no mock parser).
-    kotlinc([kt / "HdrBaseLayerP5B.kt", kt / "HdrCodecFallbackP5B.kt",
+    kotlinc([kt / "HdrBaseLayerP5B.kt", kt / "HdrCodecFallbackP5B.kt", kt / "HdrPolicyP5.kt",
              root / "tests/p5/HdrBaseLayerP5BTest.kt"], tmp / "hdr-replay",
             os.pathsep.join(map(str, deps)))
     hdr_rt = os.pathsep.join(map(str, (tmp / "hdr-replay", stdlib,
