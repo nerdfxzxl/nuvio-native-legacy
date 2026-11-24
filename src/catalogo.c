@@ -1886,16 +1886,21 @@ static int catIdStreamLocked(int indiceItem, int t, int e, char *dst, unsigned t
   char base[96], alvo[NV_STREAM_ID_CAP]="";
   if (t<0 || e<=0) return nv_stream_id_copy(dst,tam,c->imdb);
   if (!idbase_copiar_exato(c->imdb,base,sizeof base)) return 0;
-  // Prefer exact title copies with episodes. Only the old canonical IMDb
-  // composite CW card can fall back to a base-title metadata copy.
+  // Prefer exact title copies with episodes. Only a proven CW row (or
+  // canonical IMDb composite) with an explicit matching pair may use a
+  // base-title metadata copy.
   int ix=-1;
-  for (int i=0;i<n;i++) {
+  if (epQtd && epIni && indiceItem<nFaixas && epQtd[indiceItem]>0) ix=indiceItem;
+  for (int i=0;ix<0 && i<n;i++) {
     if (strcmp(itens[i].imdb,c->imdb) || strcmp(itens[i].tipo,c->tipo) ||
         !epQtd || !epIni || i>=nFaixas || epQtd[i]<=0) continue;
     ix=i;
     if (i==indiceItem) break;
   }
-  if (ix<0 && idbase_imdb_historico(base) && strcmp(base,c->imdb)) {
+  int cw=0;
+  for (int i=0;ix<0 && i<nFils;i++) if (!strcmp(fils[i].chave,"continue_watching") &&
+      indiceItem>=fils[i].ini && indiceItem-fils[i].ini<fils[i].n) { cw=1; break; }
+  if (ix<0 && (cw || idbase_imdb_historico(base)) && strcmp(base,c->imdb)) {
     int ct=0,ce=0;
     if (idbase_campos_episodio(c->imdb,&ct,&ce)==2 && ct==c->temporada && ce==c->episodio) {
       for (int i=0;i<n;i++) if (!strcmp(itens[i].imdb,base) && !strcmp(itens[i].tipo,c->tipo) &&

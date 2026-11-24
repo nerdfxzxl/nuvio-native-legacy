@@ -85,6 +85,7 @@ jobs:
           bash "$p6_preflight"
           bash tests/contalib.sh
           # Includes exact bounded stream/CW identity composition regressions.
+          # P6 exact title/pair/wire ownership after catalogue replacement.
           bash tests/catalog_episode_identity512.sh
           C_INCLUDE_PATH=/usr/include/SDL2 bash tests/cwfrente.sh
           cc -std=gnu11 -O1 -Isrc src/js.c tests/p6_exact_id.c -lm -o /tmp/p6-exact-id && /tmp/p6-exact-id

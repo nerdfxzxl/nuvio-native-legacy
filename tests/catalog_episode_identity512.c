@@ -134,6 +134,17 @@ int main(void) {
   strcpy(conflict[0].vid,"addon:one"); strcpy(conflict[1].vid,"addon:two");
   cat_definir_episodios(1,conflict,2);
   assert(!cat_id_stream(1,1,1,wire,sizeof wire));
+  // A real CW composite may find its exact base metadata, while an opaque
+  // title with the same numeric suffix outside CW is not that title.
+  CatItem anime[2]={title(0),title(0)};
+  strcpy(anime[1].imdb,"kitsu:123");
+  assert(cw_card_episodio(&anime[0],anime[1].imdb,1,5));
+  CatEp animeEp=ep(1,5,0); strcpy(animeEp.vid,"kitsu:123:5");
+  CatFileira row={0}; strcpy(row.chave,"continue_watching"); row.n=1;
+  cat_definir_tudo(anime,2,&row,1); cat_definir_episodios(1,&animeEp,1);
+  assert(cat_id_stream(0,1,5,wire,sizeof wire) && !strcmp(wire,animeEp.vid));
+  cat_definir_tudo(anime,2,NULL,0); cat_definir_episodios(1,&animeEp,1);
+  assert(!cat_id_stream(0,1,5,wire,sizeof wire));
   puts("catalog_episode_identity512: PASS");
   return 0;
 }
