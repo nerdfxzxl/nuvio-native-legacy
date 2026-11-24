@@ -199,7 +199,8 @@ static void capturarDestinos(Envio *e) { // caller holds the profile opening gat
   if ((e->destinos & VISTO_SIMKL) && simkl_destino_capturar && !simkl_destino_capturar(&e->simkl)) e->destinos &= ~VISTO_SIMKL;
 }
 static int episodiosEnviar(int indice, const char *imdb, const char *tipo,
-                           const VistoPar *pares, int n, int visto, int destinos) {
+                           const VistoPar *pares, int n, int visto, int destinos,
+                           int congelado, int tvdbCongelado, unsigned versaoEsperada) {
   if (!imdb || !imdb[0] || jfid_e(imdb) || !pares || n < 1) return 0;
   if (!idbase_imdb_historico(imdb)) destinos &= ~(VISTO_TRAKT | VISTO_SIMKL);
   if (n > VT_LOTE) n = VT_LOTE;
@@ -207,7 +208,16 @@ static int episodiosEnviar(int indice, const char *imdb, const char *tipo,
   if (!nv_perfil_sessao_travar(sessao)) return 0;
   int tvdbEps[VT_LOTE] = {0}, temAlvoTrakt = 0, confirmarSemEnvio = 0;
   int destinosFio = destinos;
-  if (indice >= 0 && (destinos & VISTO_TRAKT) &&
+  // Playback already proved the exact episode against its frozen identity.
+  // Never look up a replacement TVDB id by a mutable season/episode pair.
+  if (congelado) {
+    if (n != 1 || !cat_versao_episodios ||
+        cat_versao_episodios() != versaoEsperada) {
+      nv_perfil_sessao_destravar(); return 0;
+    }
+    tvdbEps[0] = tvdbCongelado > 0 ? tvdbCongelado : 0;
+    temAlvoTrakt = tvdbEps[0] > 0;
+  } else if (indice >= 0 && (destinos & VISTO_TRAKT) &&
       (!tipo || !tipo[0] || !strcmp(tipo, "series")) &&
       cat_episodio_tvdb) {
     unsigned versao = cat_versao_episodios ? cat_versao_episodios() : 0;
@@ -226,10 +236,11 @@ static int episodiosEnviar(int indice, const char *imdb, const char *tipo,
   }
   long long ms = contapend_gesto_alvos(imdb, tipo, pares, tvdbEps, n, visto,
                                        destinos, NULL, 0);
+  if (congelado && !ms) { nv_perfil_sessao_destravar(); return 0; }
   if (confirmarSemEnvio)
     contapend_confirmar_gesto(imdb, pares, n, ms, confirmarSemEnvio);
   Envio *e = calloc(1, sizeof *e);
-  if (!e) { nv_perfil_sessao_destravar(); return 0; }
+  if (!e) { nv_perfil_sessao_destravar(); return congelado && ms != 0; }
   snprintf(e->imdb, sizeof e->imdb, "%s", imdb);
   snprintf(e->tipo, sizeof e->tipo, "%s", tipo && tipo[0] ? tipo : "series");
   memcpy(e->pares, pares, sizeof(VistoPar) * (size_t)n);
@@ -242,15 +253,20 @@ static int episodiosEnviar(int indice, const char *imdb, const char *tipo,
   }
   capturarDestinos(e);
   int ok = lancar(e);
-  nv_perfil_sessao_destravar(); return ok;
+  nv_perfil_sessao_destravar(); return congelado ? ms != 0 : ok;
 }
 int visto_episodios(const char *imdb, const char *tipo, const VistoPar *pares,
                     int n, int visto, int destinos) {
-  return episodiosEnviar(-1, imdb, tipo, pares, n, visto, destinos);
+  return episodiosEnviar(-1, imdb, tipo, pares, n, visto, destinos, 0, 0, 0);
 }
 int visto_episodios_item(int indice, const char *imdb, const char *tipo,
                         const VistoPar *pares, int n, int visto, int destinos) {
-  return episodiosEnviar(indice, imdb, tipo, pares, n, visto, destinos);
+  return episodiosEnviar(indice, imdb, tipo, pares, n, visto, destinos, 0, 0, 0);
+}
+int visto_episodio_reproducao(const char *imdb, const VistoPar *par, int tvdb,
+                             unsigned versao, int destinos) {
+  if (!par || par->temporada < 0 || par->episodio <= 0) return 0;
+  return episodiosEnviar(-1, imdb, "series", par, 1, 1, destinos, 1, tvdb, versao);
 }
 int visto_titulo(const char *imdb, const char *tipo, const int *temporadas,
                  int nt, int visto, int destinos) {

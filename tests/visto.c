@@ -101,6 +101,12 @@ int dados_apagar(const char *n) {
   if (strstr(n, "conta-pend-")) { free(journal); journal = NULL; }
   return 1;
 }
+static unsigned catalogVersion = 42;
+static int catalogTvdbLookups;
+unsigned cat_versao_episodios(void) { return catalogVersion; }
+int cat_episodio_tvdb(int i, const char *id, int t, int e) {
+  (void)i; (void)id; (void)t; (void)e; catalogTvdbLookups++; return 999999;
+}
 int cat_indice_por_imdb(const char *imdb) { (void)imdb; return -1; }
 void cat_aplicar_progresso(int i, double p, double d, int t, int e) { (void)i; (void)p; (void)d; (void)t; (void)e; }
 void cat_historico_definir_id(const char *i, const char *t, int v) { (void)i; (void)t; (void)v; }
@@ -461,6 +467,24 @@ int main(void) {
   assert(vistoep_estado("tt5480005", 1, 1) == 1 && nRpc == 0);
   logada = 1;
   OK("#548: movie timestamp precedence, profile isolation, trackers without Nuvio login");
+
+  // Q45: an old numeric pair must not resolve a different TVDB episode after
+  // catalog replacement. Freeze the proven ID into both initial and retry writes.
+  free(journal); journal = NULL; contapend_esquecer(); zerar(); nWorkers = 0;
+  VistoPar exactPair = {2, 7};
+  int beforeLookups = catalogTvdbLookups;
+  assert(!visto_episodio_reproducao("tt5480010", &exactPair, 123456, catalogVersion - 1, VISTO_TRAKT));
+  assert(nWorkers == 0 && contapend_intencao("tt5480010", "series", 2, 7, NULL) == -1);
+  assert(visto_episodio_reproducao("tt5480010", &exactPair, 123456, catalogVersion, VISTO_TRAKT));
+  assert(nWorkers == 1 && catalogTvdbLookups == beforeLookups);
+  catalogVersion++; offline = 1;
+  workers[0].run(workers[0].arg);
+  assert(nPost == 1 && strstr(post[0].corpo, "\"tvdb\":123456") && !strstr(post[0].corpo, "999999"));
+  offline = 0; contapend_esquecer(); zerar();
+  assert(contapend_reenviar() >= 0);
+  assert(nPost == 1 && strstr(post[0].corpo, "\"tvdb\":123456") && !strstr(post[0].corpo, "999999"));
+  assert(catalogTvdbLookups == beforeLookups && contapend_pendentes() == 0 && gateDepth == 0);
+  OK("Q45 frozen playback TVDB identity survives catalogue change and journal retry");
 
   assert(bearerSimkl > 0 && bearerTrakt > 0);   // os tokens foram, no cabecalho
 

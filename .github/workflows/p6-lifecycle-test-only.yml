@@ -85,6 +85,7 @@ jobs:
           bash "$p6_preflight"
           bash tests/contalib.sh
           bash tests/catalog_episode_identity512.sh
+          C_INCLUDE_PATH=/usr/include/SDL2 bash tests/visto.sh
 
       - name: Install Android API 35 (no NDK build or APK)
         shell: bash

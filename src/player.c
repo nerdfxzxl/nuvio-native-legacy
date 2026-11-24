@@ -2891,6 +2891,7 @@ static int p6WatchMark(void) {
   // the exact namespace-aware local journal, never a guessed IMDb mapping.
   if (jfid_e(ci->imdb)) { p6WatchState = 1; marcado = 1; goto fim; }
   int histT, histE;
+  unsigned histVersion = cat_versao_episodios();
   if (!p6HistoryPair(ci, &histT, &histE)) goto fim;
   const int serie = histE > 0;
   int ia = cat_indice_por_imdb_tipo(ci->imdb, ci->tipo);
@@ -2903,10 +2904,14 @@ static int p6WatchMark(void) {
     if (!idbase_imdb_historico(ci->imdb)) dest &= ~(VISTO_TRAKT | VISTO_SIMKL);
     // Do not publish a guessed episode number to Trakt. Wait for the
     // already-established, generation-owned episode target to be proven.
-    if (serie && (dest & VISTO_TRAKT) && !alvoTrakt(ci)) goto fim;
+    const TraktScrobbleAlvo *track = serie && (dest & VISTO_TRAKT) ? alvoTrakt(ci) : NULL;
+    if (serie && (dest & VISTO_TRAKT) && !track) goto fim;
     if (serie) {
       VistoPar par = { (short)histT, (short)histE };
-      visto_episodios_item(ia, ci->imdb, "series", &par, 1, 1, dest);
+      if (par.temporada != histT || par.episodio != histE ||
+          cat_versao_episodios() != histVersion || p6WatchOverride(ci)) goto fim;
+      int exactTvdb = p6EpIdentidade.tvdb > 0 ? p6EpIdentidade.tvdb : (track ? track->tvdbEp : 0);
+      if (!visto_episodio_reproducao(ci->imdb, &par, exactTvdb, histVersion, dest)) goto fim;
     } else visto_titulo(ci->imdb, ci->tipo, NULL, 0, 1, dest);
     if (contapend_intencao(ci->imdb, ci->tipo, histT, histE, NULL) != 1) goto fim;
     if (serie) vistoep_definir(ci->imdb, histT, histE, 1);

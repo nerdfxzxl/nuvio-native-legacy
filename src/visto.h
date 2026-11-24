@@ -39,6 +39,10 @@ int visto_episodios(const char *imdb, const char *tipo, const VistoPar *pares,
                     int n, int visto, int destinos);
 int visto_episodios_item(int indice, const char *imdb, const char *tipo,
                         const VistoPar *pares, int n, int visto, int destinos);
+// Q45: exact playback target, already resolved against the captured catalog
+// revision. A stale revision is rejected before writing the history journal.
+int visto_episodio_reproducao(const char *imdb, const VistoPar *par, int tvdb,
+                             unsigned versao, int destinos);
 // Async actions freeze their original tracker authentication at enqueue;
 // late workers never use the destination profile's accounts.
 // O mesmo, SINCRONO — para o teste e para quem ja esta num fio.
