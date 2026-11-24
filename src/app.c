@@ -225,6 +225,7 @@ static int prefFolhaN = -1;
 // quando ela devolve 1.
 static const char *autoMotivo = "";
 static int escolhaDoNext(const char *base, char *prov, unsigned tam);
+static int nextAutorizado(void);
 static int autoParcialPronto(void) {
   char base[24];
   const FontePref *fp;
@@ -281,7 +282,7 @@ static int autoParcialPronto(void) {
                    lembrada < 0 && addons_pendente_nome(fp->provedor) && stream_addon_no_escopo(fp->provedor);
   }
   // Escolher a mao: a folha abre com o que ja chegou e continua enchendo.
-  if (ajustes_fonte_manual()) {
+  if (ajustes_fonte_manual() && !nextAutorizado()) {
     if (!prefPendente) autoMotivo = "escolha manual: a folha abre com o que chegou";
     return !prefPendente;
   }
@@ -2435,11 +2436,14 @@ static struct { int tem, titulo, t, e, apontar; unsigned geracao; uint64_t sessa
 static int p6AppHidden;
 // 1 quando a escolha em curso e a do Next com uma fonte tocando para seguir
 // (bingeGroup); *prov recebe o add-on dela.
-static int escolhaDoNext(const char *base, char *prov, unsigned tam) {
+static int nextAutorizado(void) {
   char alvo[64];
-  if (!buscaNextAlvo[0] || !base[0] || player_id_canal()[0]) return 0;
+  if (!buscaNextAlvo[0] || !player_aberto() || player_quer_sair() || player_id_canal()[0]) return 0;
   alvoPlayer(alvo, sizeof alvo);
-  return !strcmp(alvo, buscaNextAlvo) && fontepref_tocando_de(base, prov, tam, NULL, 0);
+  return !strcmp(alvo, buscaNextAlvo);
+}
+static int escolhaDoNext(const char *base, char *prov, unsigned tam) {
+  return nextAutorizado() && base[0] && fontepref_tocando_de(base, prov, tam, NULL, 0);
 }
 static void abrirProximoEpisodio(int t, int e, int apontar) {
   uint64_t sessaoEntrada = nv_perfil_sessao_ler();
@@ -2553,8 +2557,8 @@ static void abrirProximoEpisodio(int t, int e, int apontar) {
   } else {
     nv_perfil_sessao_destravar();
     marco("proximo episodio: buscando fontes");
+    buscarParaPlayer(); // clears the previous VOD/Next identity
     snprintf(buscaNextAlvo, sizeof buscaNextAlvo, "%s", alvo);
-    buscarParaPlayer();
     if (!tocarParteGuardada() && !(ajustes_link_reusar() && tocarFonteGuardada())) aguardandoFonte = 1;
   }
 }
@@ -6369,7 +6373,7 @@ void app_atualizar(float dt, Uint32 agora) {
       // #667: a remembered source sets the sheet's focus, never consent to play.
       // A late addon response must not resurrect the selector after the player was closed.
       if (player_aberto() && !player_quer_sair() &&
-          ((ajustes_fonte_manual() && !retomarDireto) || pedirFolhaNoPlay) && stream_n() > 0) {
+          ((ajustes_fonte_manual() && !retomarDireto && !nextAutorizado()) || pedirFolhaNoPlay) && stream_n() > 0) {
         pedirFolhaNoPlay = 0;
         aguardandoFonte = 0;
         folhaParaTocar = 1;
@@ -7088,7 +7092,7 @@ void app_atualizar(float dt, Uint32 agora) {
     }
   }
   { int t,e;
-    if (aguardandoFonte != 2 && player_pediu_proximo(&t,&e) && player_aberto())
+    if (!p6AppHidden && aguardandoFonte != 2 && player_pediu_proximo(&t,&e) && player_aberto())
       abrirProximoEpisodio(t,e,0);
   }
   episodios_atualizar(dt);
@@ -7226,7 +7230,7 @@ void app_atualizar(float dt, Uint32 agora) {
   // o titulo relacionado sai do player e abre o detalhe, que e onde o dono
   // escolhe se quer mesmo assistir.
   { int t = 0, e = 0;
-    if (aguardandoFonte != 2 && posplay_pediu_episodio(&t, &e) && player_aberto())
+    if (!p6AppHidden && aguardandoFonte != 2 && posplay_pediu_episodio(&t, &e) && player_aberto())
       abrirProximoEpisodio(t,e,1);
   }
   { int i = posplay_pediu_titulo();
