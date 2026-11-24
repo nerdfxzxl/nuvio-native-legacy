@@ -409,9 +409,9 @@ object NvPlayer {
     // transcode, downmix, reselect tracks or suppress network buffering.
     private var somLiberado = false
     private var volumeRequisitado = 1f
-    private fun aplicarVolume() { player?.volume = if (somLiberado) volumeRequisitado else 0f }
+    private fun aplicarVolume() { player?.volume = if (somLiberado && !videoOutputFailed) volumeRequisitado else 0f }
     private fun liberarSom() {
-        if (!somLiberado) { somLiberado = true; aplicarVolume() }
+        if (!videoOutputFailed && !somLiberado) { somLiberado = true; aplicarVolume() }
     }
     private fun aplicarGanho() {
         volumeRequisitado = GanhoMath.volumePlayer(ganhoPct)
@@ -461,7 +461,7 @@ object NvPlayer {
     }
 
     private fun applyAfr(minha: Int, format: Format?) {
-        if (!atual(minha) || player == null || afrEvaluated || afrSuspended || !nativeAfr()) return
+        if (!atual(minha) || videoOutputFailed || player == null || afrEvaluated || afrSuspended || !nativeAfr()) return
         val f = format ?: return
         if (!f.frameRate.isFinite() || f.frameRate <= 0f) return
         val act = activity ?: return
@@ -501,6 +501,19 @@ object NvPlayer {
                 Log.i(TAG, "AFR requested supported mode=$target fps=${f.frameRate}")
             }
         } catch (e: Exception) { Log.w(TAG, "AFR mode query/request: $e") }
+    }
+
+    // All video-terminal paths share the same one-shot latch. A READY,
+    // first-frame or delayed renderer callback cannot unmute after this.
+    private fun falhaVideo(minha: Int, motivo: Int, codigo: Int, geracao: Int) {
+        if (!atual(minha) || videoOutputFailed) return
+        videoOutputFailed = true
+        recuperacaoLive?.cancel()
+        principal.removeCallbacks(recriar)
+        recriaAgendada = false
+        invalidarQuadroSuperficie()
+        try { player?.pause() } catch (e: Exception) { Log.w(TAG, "pause after video failure: $e") }
+        ev(EV_VIDEO_FALHA, motivo, codigo, geracao)
     }
 
     private fun confirmarRetomada(geracao: Int, aceita: Boolean) {
@@ -1370,6 +1383,7 @@ object NvPlayer {
         // A queued pause from the previous source must not mutate a new player.
         principal.post {
             if (pedido != pedidos.get()) return@post
+            if (videoOutputFailed && p == 0) return@post
             pausaPedida = p != 0
             if (!pausaPedida && afrSuspended) {
                 afrSuspended = false
@@ -2320,7 +2334,7 @@ object NvPlayer {
     }
     private val recriar = Runnable {
         recriaAgendada = false
-        if (!atual(sessao)) return@Runnable
+        if (!atual(sessao) || videoOutputFailed) return@Runnable
         // O pedido nasce antes do decoder existir (abertura da fonte): se ele
         // virou DV nativo enquanto a recriacao esperava, desistir agora e mais
         // barato que desligar a saida do decoder e religar o DispLink da TCL
@@ -2401,7 +2415,7 @@ object NvPlayer {
         // gesto que o dono fazia na mao para o Dolby ligar — vetar aqui deixava
         // o plano preso na geometria de abertura e nenhum modo mudava (TCL,
         // 14/10). O veto do HDR sozinho ja cobre a transicao (hdrNaSuperficie).
-        if (!recriaTcl || semRecriar || (decoderDv && !estavelEmitido)) return
+        if (videoOutputFailed || !recriaTcl || semRecriar || (decoderDv && !estavelEmitido)) return
         principal.removeCallbacks(estavelRun)
         principal.removeCallbacks(recriar)
         recriaAgendada = true
@@ -2415,7 +2429,7 @@ object NvPlayer {
     private var hdrRecriadoPara = ""
     private var estavelEmitido = false
     private val estavelRun = Runnable {
-        if (atual(sessao) && player != null && quadroVisto && !estavelEmitido && !recriando && !recriaAgendada &&
+        if (atual(sessao) && !videoOutputFailed && player != null && quadroVisto && !estavelEmitido && !recriando && !recriaAgendada &&
             superficie?.holder?.surface?.isValid == true) {
             estavelEmitido = true
             Log.i(TAG, "[aspect] superficie estavel (hdr=$ultHdr) sessao=$sessao soltando=${soltando != null} holder=${System.identityHashCode(superficie?.holder)}")
@@ -2426,7 +2440,7 @@ object NvPlayer {
         }
     }
     private fun avaliarEstavel() {
-        if (!quadroVisto || estavelEmitido) return
+        if (videoOutputFailed || !quadroVisto || estavelEmitido) return
         principal.removeCallbacks(estavelRun)
         if (recriando || recriaAgendada) return
         principal.postDelayed(estavelRun, 150L)
@@ -2501,7 +2515,7 @@ object NvPlayer {
         )
         init { recuperacaoLive = live }
         override fun onPlaybackStateChanged(state: Int) {
-            if (!atual(minha)) return
+            if (!atual(minha) || videoOutputFailed) return
             val p = player ?: return
             Log.i(TAG, "[player] onPlaybackStateChanged state=$state renderer=audio(${p.audioFormat?.sampleMimeType}),video(${p.videoFormat?.sampleMimeType}) loadMs=${SystemClock.elapsedRealtime() - abriuEm}")
             when (state) {
@@ -2606,7 +2620,7 @@ object NvPlayer {
         }
 
         override fun onTracksChanged(tracks: Tracks) {
-            if (!atual(minha)) return
+            if (!atual(minha) || videoOutputFailed) return
             publicarFaixas(tracks)
             for (g in tracks.groups) if (g.type == C.TRACK_TYPE_VIDEO) {
                 for (i in 0 until g.length) if (g.isTrackSelected(i)) applyAfr(minha, g.getTrackFormat(i))
@@ -2634,7 +2648,7 @@ object NvPlayer {
         }
 
         override fun onPlayerError(error: PlaybackException) {
-            if (!atual(minha)) return
+            if (!atual(minha) || videoOutputFailed) return
             val exo = error as? ExoPlaybackException
             val p = player
             val status = generateSequence(error.cause) { it.cause }
@@ -2675,7 +2689,7 @@ object NvPlayer {
                     return
                 }
                 // A repeated detach failure is terminal, not an infinite wait.
-                ev(EV_VIDEO_FALHA, HdrPolicyP5.FAIL_SURFACE, error.errorCode)
+                falhaVideo(minha, HdrPolicyP5.FAIL_SURFACE, error.errorCode, geracaoDaAbertura)
                 return
             }
             val tipo = if (exo?.type == ExoPlaybackException.TYPE_RENDERER && p != null &&
@@ -2707,16 +2721,15 @@ object NvPlayer {
                     retentou = true
                     invalidarQuadroSuperficie()
                     principal.postDelayed({
-                        if (atual(minha) && player === p) {
+                        if (atual(minha) && !videoOutputFailed && player === p) {
                             try { p.prepare() } catch (_: Exception) {
-                                ev(EV_VIDEO_FALHA, videoFailure, error.errorCode)
+                                falhaVideo(minha, videoFailure, error.errorCode, geracaoDaAbertura)
                             }
                         }
                     }, 400)
                     return
                 }
-                p?.pause()
-                ev(EV_VIDEO_FALHA, videoFailure, error.errorCode)
+                falhaVideo(minha, videoFailure, error.errorCode, geracaoDaAbertura)
                 return
             }
             if (decoder && cedo && !retentou) {
@@ -2823,10 +2836,7 @@ object NvPlayer {
             val p = player ?: return
             val f = p.videoFormat
             if (f?.sampleMimeType == MimeTypes.VIDEO_DOLBY_VISION && !compatibleDolby(f)) {
-                videoOutputFailed = true
-                invalidarQuadroSuperficie()
-                p.pause()
-                ev(EV_VIDEO_FALHA, HdrPolicyP5.FAIL_OUTPUT, 0, geracaoDaAbertura)
+                falhaVideo(minha, HdrPolicyP5.FAIL_OUTPUT, 0, geracaoDaAbertura)
                 return
             }
             // The retained frame stays visible until the current surface is stable.
