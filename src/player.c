@@ -1212,7 +1212,7 @@ void player_definir_episodio(int t, int e) {
   retomarPct = 0;
   // !canalSessao: canal nao tem retomada, e se o indice ja foi remapeado o
   // "progresso" lido ali seria de outro titulo qualquer.
-  if (c && !canalSessao && !semRetomada && c->progresso > 0 && c->progresso < ajustes_cw_concluido() &&
+  if (c && !canalSessao && !semRetomada && cat_retomavel(c, ajustes_cw_concluido()) &&
       (strcmp(c->tipo,"series") || (t==c->temporada && e==c->episodio) ||
        (c->tvdbEp > 0 && cat_episodio_tvdb &&
         cat_episodio_tvdb(idxAtual(), c->imdb, t, e) == c->tvdbEp))) retomarPct=c->progresso;
@@ -1224,7 +1224,7 @@ void player_definir_episodio(int t, int e) {
     prog_chave(chave, sizeof chave, c->imdb, serie ? t : 0, serie ? e : 0);
     if (prog_por_chave(chave, &r))
       retomarSeg = player_regra_retomada_inicial(r.posSeg, r.durSeg,
-                                                retomarPct, ajustes_cw_concluido());
+                                                retomarPct, prog_q45_local(&r) ? 101 : ajustes_cw_concluido());
   }
 #endif
   if (t != baseT || e != baseE) {
@@ -2240,14 +2240,14 @@ static int preTituloCriar(int indiceCatalogo, int t, int e, const Stream *s, uns
   snprintf(preTitulo.audio, sizeof preTitulo.audio, "%s", ling_audio());
   preTitulo.buffer = cacheboost_buffer_mb(ajustes_buffer_preset(), memlog_livre_mb()); preTitulo.cacheMb = ajustes_cache_seek_mb();
   serie = !strcmp(c->tipo, "series");
-  if (c->progresso > 0 && c->progresso < ajustes_cw_concluido() &&
+  if (cat_retomavel(c, ajustes_cw_concluido()) &&
       (!serie || (t == c->temporada && e == c->episodio))) {
     char chave[48]; ProgRegistro r;
     preTitulo.pct = c->progresso;
     prog_chave(chave, sizeof chave, c->imdb, serie ? t : 0, serie ? e : 0);
     if (prog_por_chave(chave, &r))
       preTitulo.segundos = player_regra_retomada_inicial(r.posSeg, r.durSeg,
-          c->progresso, ajustes_cw_concluido());
+          c->progresso, prog_q45_local(&r) ? 101 : ajustes_cw_concluido());
   }
   // O contexto independente colhe a legenda enquanto o video aquece. O
   // proximo episodio nao troca o worker nem a legenda da reproducao atual.
@@ -2750,7 +2750,7 @@ static int p6WatchReached(void) {
   double p = video_pos();
   if (!isfinite(p) || fabs(p - posSeg) > 2.0 || p6WatchRawMarker() > duracaoSeg + 1.0) return 0;
   double base = 0.0;
-  if (baseTocou > 0 && baseDur > 0.0 && fabs(baseDur - duracaoSeg) <= fmax(5.0, duracaoSeg * 0.02))
+  if ((baseTocou == 1 || baseTocou == 2) && baseDur > 0.0 && fabs(baseDur - duracaoSeg) <= fmax(5.0, duracaoSeg * 0.02))
     base = basePos;
   return p6_watched_reached(p, duracaoSeg, p6WatchMarker(), ajustes_cw_concluido(), base, p6Played);
 }
@@ -2778,7 +2778,7 @@ static int p6WatchMark(void) {
   if (!p6WatchReached()) goto fim;
   // The existing history protocol is IMDb keyed. Personal-server playback
   // remains private, and other addon IDs must not be truncated into IMDb keys.
-  if (strncmp(ci->imdb, "tt", 2)) { marcado = 1; goto fim; }
+  if (strncmp(ci->imdb, "tt", 2)) { p6WatchState = 1; marcado = 1; goto fim; }
   const int serie = epT >= 0 && epE > 0;
   int ia = cat_indice_por_imdb_tipo(ci->imdb, ci->tipo);
   if (ia < 0) goto fim;
@@ -2923,7 +2923,7 @@ static void fecharSessao(int manter, int trocaFonte) {
   // retomado, e so quando o registro diz que ele foi alcancado tocando e a
   // duracao e a mesma (a de um trailer de 129 s nao empresta a base do filme).
   double base = baseDur > 0.0 ? basePos : duracaoSeg * basePct / 100.0;
-  if (baseTocou <= 0 || baseDur <= 0.0 || fabs(baseDur - duracaoSeg) > fmax(5.0, duracaoSeg * 0.02)) base = 0.0;
+  if ((baseTocou != 1 && baseTocou != 2) || baseDur <= 0.0 || fabs(baseDur - duracaoSeg) > fmax(5.0, duracaoSeg * 0.02)) base = 0.0;
   int chegou;
   (void)player_regra_visto(base, p6Played, posSeg, 0, &chegou);
   int duracaoContradita = p6WatchRawMarker() > duracaoSeg + 1.0;
@@ -3002,7 +3002,7 @@ static void fecharSessao(int manter, int trocaFonte) {
     }
     // A posicao gravada e sempre a REAL (ponto de retomada), com o como ela
     // foi alcancada: cat_visto e a proxima base leem `tocou`.
-    if (ia >= 0 && !p6Override) cat_salvar_progresso_ep(ia, pos, durG, epT, epE, chegou ? 2 : 0);
+    if (ia >= 0 && !p6Override) cat_salvar_progresso_ep(ia, pos, durG, epT, epE, chegou ? 2 : 3);
     // E tambem para o Trakt, que e de onde o "continue assistindo" vem: gravar
     // so aqui deixaria este app discordando dos outros aparelhos do dono.
     // Personal-server items stay private: no Trakt, friends feed or social
@@ -3124,8 +3124,8 @@ static int podeReter(void) {
          comVideo && !ehCanal() && c && c->imdb[0] && !erroFonte &&
          video_pronto() && video_ativo() && !video_falhou() && !video_terminou() &&
          !video_conflito_recurso() && !video_reconectando() && video_url_atual()[0] &&
-         duracaoSeg >= 120.0f && home_retorno_vale(idxAtual(), posSeg, duracaoSeg) &&
-         !concluiuAgora(credEfetivo());
+         duracaoSeg >= 120.0f && isfinite(posSeg) && posSeg >= 1.0 && posSeg < duracaoSeg - 1.0 &&
+         !p6WatchOverride(c);
 }
 
 void player_preparar_retencao(void) {
@@ -3166,13 +3166,13 @@ static void gravarProgressoParcial(int conta, const char *porque) {
     fflush(stdout); return;
   }
   base = baseDur > 0.0 ? basePos : duracaoSeg * basePct / 100.0;
-  if (baseTocou <= 0 || baseDur <= 0.0 || fabs(baseDur - duracaoSeg) > fmax(5.0, duracaoSeg * 0.02)) base = 0.0;
+  if ((baseTocou != 1 && baseTocou != 2) || baseDur <= 0.0 || fabs(baseDur - duracaoSeg) > fmax(5.0, duracaoSeg * 0.02)) base = 0.0;
   (void)player_regra_visto(base, p6Played, posSeg, 0, &chegou);
   // Contradictory credits also invalidate the catalogue's watched proof.
   if (p6WatchRawMarker() > duracaoSeg + 1.0) chegou = 0;
   { double vp = posSeg, vd = duracaoSeg;
     if (partesVirt(&vp, &vd, NULL)) chegou = 0;   // o visto e so da saida da ultima parte
-    if (!cat_salvar_progresso_ep(ia, vp, vd, epT, epE, chegou ? 2 : 0)) return; }
+    if (!cat_salvar_progresso_ep(ia, vp, vd, epT, epE, chegou ? 2 : 3)) return; }
   dados_sincronizar_logo();
   if (conta) {
     sync_sujar_progresso();
@@ -5219,6 +5219,7 @@ void player_atualizar(float dt, Uint32 agora) {
   }
   if (!posVisSolto) { posVis = posSeg; posVisV = 0.0f; }
 
+  if (p6WatchState >= 0 && identidadeValida()) p6WatchOverride(item());
   if (p6WatchState == 0 && !saindo && (tocando || video_terminou()) && p6WatchReached()) p6WatchMark();
 
   // TRAKT "NOW WATCHING" (#179). Ate a 1.5.3 o Trakt so ouvia pause/stop, ao
