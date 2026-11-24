@@ -423,7 +423,8 @@ static int bufferPreset, bufferEnviado;
 // so their BUFFERING is not counted as a rebuffer. State under travaStats.
 static int redeKbps, kbpsEnviado = -1;
 static volatile Uint32 acaoMs;
-static int cacheArmado = -1, cacheSessao, cacheEnviado, playerSessao;
+static int cacheArmado = -1, cacheSessao, cacheEnviado;
+static volatile int playerSessao; // full player opening, not a trailer
 // Warm resume (#492): id of the title the player armed for the next open, the
 // one of this open (empty for trailers/channels) and the one Kotlin has.
 static char tituloArmado[96], tituloSessao[96], tituloEnviado[96];
@@ -885,7 +886,9 @@ JNIEXPORT void JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativeCache(JNIEnv
 
 JNIEXPORT jboolean JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativeAfr(JNIEnv *env, jclass cls) {
   (void)env; (void)cls;
-  return ajustes_afr();
+  // Only an actual full-player session may change the display refresh mode.
+  // Home/detail trailers must not disturb the TV's current MEMC preference.
+  return ativo && playerSessao && ajustes_afr();
 }
 
 JNIEXPORT jboolean JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativeTunneling(JNIEnv *env, jclass cls) {
