@@ -1896,10 +1896,13 @@ int cat_id_stream(int indiceItem, int t, int e, char *dst, unsigned tam) {
     n = cat_n_episodios(indiceItem);
     for (i = 0; i < n; i++) {
       const CatEp *ep = cat_episodio(indiceItem, i);
-      if (ep && ep->temporada == t && ep->episodio == e && ep->vid[0]) {
-        if (strlen(ep->vid) >= tam) return 0;
-        memcpy(dst, ep->vid, strlen(ep->vid) + 1);
-        return 1;
+      if (ep && ep->temporada == t && ep->episodio == e) {
+        if (ep->vidInvalido || !memchr(ep->vid,0,sizeof ep->vid)) return 0;
+        if (ep->vid[0]) {
+          if (strlen(ep->vid) >= tam) return 0;
+          memcpy(dst, ep->vid, strlen(ep->vid) + 1);
+          return 1;
+        }
       }
     }
     // Sem id publicado nao se inventa o endereco de um especial do addon.
@@ -2038,7 +2041,7 @@ int cat_episodio_identidade(int indice, const char *id, int t, int e,
     estado=-1;
     for (int i=0;i<q;i++) {
       const CatEp *x=&v[i];
-      uint32_t nums[]={ (uint32_t)x->temporada, (uint32_t)x->episodio, (uint32_t)x->tvdbEp };
+      uint32_t nums[]={ (uint32_t)x->temporada, (uint32_t)x->episodio, (uint32_t)x->tvdbEp, (uint32_t)x->vidInvalido };
       for (unsigned j=0;j<3;j++) {
         hash ^= nums[j]; hash *= UINT64_C(1099511628211);
       }
@@ -2053,7 +2056,7 @@ int cat_episodio_identidade(int indice, const char *id, int t, int e,
     }
     if (achou>=0) {
       const CatEp *x=&v[achou];
-      int tv=x->tvdbEp, vidOk=x->vid[0] && memchr(x->vid,0,sizeof x->vid)!=NULL;
+      int tv=x->tvdbEp, vidOk=!x->vidInvalido && x->vid[0] && memchr(x->vid,0,sizeof x->vid)!=NULL;
       for (int i=0;i<q;i++) if (i!=achou) {
         if (tv>0 && v[i].tvdbEp==tv) tv=0;
         if (vidOk && !strncmp(v[i].vid,x->vid,sizeof x->vid)) vidOk=0;
@@ -2076,7 +2079,7 @@ int cat_episodio_por_video(int indice, const char *id, const char *vid, int *t, 
   if (vid && vid[0] && episodioFaixaValida(indice, id)) {
     const CatEp *v = eps + epIni[indice];
     int q = epQtd[indice];
-    for (int i = 0; i < q; i++) if (!strcmp(v[i].vid, vid)) {
+    for (int i = 0; i < q; i++) if (!v[i].vidInvalido && memchr(v[i].vid,0,sizeof v[i].vid) && !strcmp(v[i].vid, vid)) {
       if (!ok) { mt = v[i].temporada; me = v[i].episodio; ok = mt >= 0 && me > 0; }
       else if (mt != v[i].temporada || me != v[i].episodio) { ok = 0; break; }
     }

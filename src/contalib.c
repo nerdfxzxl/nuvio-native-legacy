@@ -12,6 +12,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <pthread.h>
+#include <limits.h>
+#include <math.h>
 
 extern void salvos_remover_remoto(const char *) NV_PERFIL_OPCIONAL;
 // Mach-O: weak_import indefinido nao resolve num link estatico (ver
@@ -307,11 +309,13 @@ int contalib_ler_vistos(const char *json) {
     ContaVisto *d = &novo[k];
     char t[24];
     memset(d, 0, sizeof *d);   // mesma razao da leitura de biblioteca
-    if (!js_texto(p, f, "content_id", d->id, sizeof d->id)) continue;
-    snprintf(d->tipo, sizeof d->tipo, "%s",
-             tipoBase(js_texto(p, f, "content_type", t, sizeof t) ? t : NULL));
-    d->temporada = (int)js_num(p, f, "season", 0.0);
-    d->episodio  = (int)js_num(p, f, "episode", 0.0);
+    if (js_id_raiz_em(p,f,"content_id",d->id,sizeof d->id)!=1) continue;
+    snprintf(d->tipo,sizeof d->tipo,"%s",tipoBase(js_texto(p,f,"content_type",t,sizeof t)?t:NULL));
+    double season=js_num(p,f,"season",0), episode=js_num(p,f,"episode",0);
+    if (!isfinite(season) || !isfinite(episode) || season<0 || season>SHRT_MAX ||
+        episode<0 || episode>SHRT_MAX || season!=(int)season || episode!=(int)episode ||
+        (season>0 && episode==0)) continue;
+    d->temporada=(int)season; d->episodio=(int)episode;
     d->vistoMs   = instante(p, f, "watched_at");
     k++;
   }
@@ -473,8 +477,11 @@ int contalib_aplicar_vistos(void) {
   for (i = 0; i < nVistos; i++) {
     if (!vistos[i].id[0]) continue;
     // DESMARCADO NESTA TV depois desta linha: ela nao re-marca (contapend.h).
-    if (vistoOculto && vistoOculto(vistos[i].id, vistos[i].temporada,
-                                   vistos[i].episodio, vistos[i].vistoMs)) {
+    if (vistoOculto && vistoOculto(vistos[i].id,vistos[i].temporada,
+                                   vistos[i].episodio,vistos[i].vistoMs)) {
+      if (vistos[i].episodio>0)
+        vistoep_fonte(vistos[i].id,vistos[i].temporada,vistos[i].episodio,0,vistos[i].vistoMs,NULL);
+      else cat_historico_definir_id(vistos[i].id,vistos[i].tipo,0);
       jornal++;
       continue;
     }
@@ -517,8 +524,10 @@ int contalib_aplicar_vistos(void) {
       ke++;
       continue;
     }
-    cat_historico_definir_id(vistos[i].id, vistos[i].tipo, 1);
-    k++;
+    int estado=contapend_estado ?
+      contapend_estado(vistos[i].id,vistos[i].tipo,0,0,vistos[i].vistoMs,1):1;
+    cat_historico_definir_id(vistos[i].id,vistos[i].tipo,estado==1);
+    if (estado==1) k++; else jornal++;
   }
   if (k) printf("[visto] marcado por conta-importacao pos=0 dur=0 assistido=0s n=%d titulos (sem reproducao local)\n", k);
   if (ke) printf("[visto] marcado por conta-importacao pos=0 dur=0 assistido=0s n=%d episodios (sem reproducao local)\n", ke);

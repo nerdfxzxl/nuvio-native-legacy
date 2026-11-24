@@ -368,3 +368,66 @@ int js_texto_raiz_em(const char *ini, const char *fim, const char *chave,
   }
   return 0;
 }
+
+// Strict ID decoder; unlike display text, never accept a truncated prefix.
+static int lerIdEm(const char *p,const char *fim,char *dst,size_t tam) {
+  size_t k=0;
+  if (fim-p>=4 && !memcmp(p,"null",4) &&
+      (fim-p==4 || strchr(",}] \t\r\n",p[4]))) return 0;
+  if (p>=fim || *p!='"') return -1;
+  const char *fecha=fimTextoEm(p,fim);
+  if (!fecha) return -1;
+  for (++p;p<fecha;) {
+    unsigned char c=(unsigned char)*p++;
+    if (c=='\\') {
+      if (p>=fecha) goto invalido;
+      c=(unsigned char)*p++;
+      if (c=='u') {
+        unsigned cp,lo; char b[5]; size_t n=0;
+        if (!hex4(p,fecha,&cp) || cp<=0x20 || cp==0x7f) goto invalido;
+        if (cp>=0xd800 && cp<=0xdbff) {
+          if (fecha-p<10 || p[4]!='\\' || p[5]!='u' ||
+              !hex4(p+6,fecha,&lo) || lo<0xdc00 || lo>0xdfff) goto invalido;
+        } else if (cp>=0xdc00 && cp<=0xdfff) goto invalido;
+        int u=escapeU(p,fecha,b,&n,sizeof b);
+        if (!u || !n || n>=tam-k) goto invalido;
+        memcpy(dst+k,b,n); k+=n; p+=u; continue;
+      }
+      if (c!='\\' && c!='/' && c!='"') goto invalido;
+    }
+    if (c<=0x20 || c==0x7f || k+1>=tam) goto invalido;
+    dst[k++]=(char)c;
+  }
+  dst[k]=0; return k?1:0;
+invalido:
+  dst[0]=0; return -1;
+}
+int js_id_raiz_em(const char *ini,const char *fim,const char *chave,char *dst,size_t tam) {
+  if (!dst || !tam) return -1;
+  dst[0]=0;
+  if (!ini || !chave) return -1;
+  if (!fim) fim=ini+strlen(ini);
+  if (fim<=ini) return -1;
+  const char *p=memchr(ini,'{',(size_t)(fim-ini));
+  if (!p) return -1;
+  int prof=0, achou=0,r=0; size_t n=strlen(chave);
+  for (;p<fim && *p;p++) {
+    if (*p=='"') {
+      const char *q=fimTextoEm(p,fim);
+      if (!q) goto invalido;
+      if (prof==1 && (size_t)(q-p-1)==n && !strncmp(p+1,chave,n)) {
+        const char *v=pulaEm(q+1,fim);
+        if (v<fim && *v==':') {
+          if (achou++) goto invalido;
+          r=lerIdEm(pulaEm(v+1,fim),fim,dst,tam);
+          if (r<0) goto invalido;
+        }
+      }
+      p=q; continue;
+    }
+    if (*p=='{' || *p=='[') prof++;
+    else if (*p=='}' || *p==']') { if (--prof<=0) return r; }
+  }
+invalido:
+  dst[0]=0; return -1;
+}

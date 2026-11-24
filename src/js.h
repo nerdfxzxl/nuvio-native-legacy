@@ -102,6 +102,9 @@ int js_texto_raiz(const char *corpo, const char *chave, char *dst, size_t tam);
 int js_texto_raiz_em(const char *ini, const char *fim, const char *chave,
                      char *dst, size_t tam);
 
+// Exact root ID: 1 exact nonempty, 0 absent/null/empty, -1 invalid/oversized.
+int js_id_raiz_em(const char *ini,const char *fim,const char *chave,char *dst,size_t tam);
+
 // Count top-level objects without allocating or treating nested records as entries.
 static inline int js_contar_objetos(const char *p, int limite) {
   int n = 0;

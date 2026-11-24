@@ -189,6 +189,7 @@ typedef struct {
   // proprio por episodio, e montar "<titulo>:<T>:<E>" na mao so acerta no IMDb.
   // Vazio = o meta nao trouxe; ver cat_id_stream.
   char vid[64];
+  int vidInvalido; // published but unrepresentable: never invent fallback
   // O MESMO EPISODIO NO TMDB (2.0.3): id da serie e o par temporada/episodio
   // que casou em /tv/<id>/season/<n> (desc_tmdb_notas_temporada_ex). 0 = o
   // TMDB nao confirmou. Com ele o TheIntroDB e consultado por tmdb_id, sem o

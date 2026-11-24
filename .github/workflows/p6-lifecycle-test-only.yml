@@ -87,6 +87,8 @@ jobs:
           # Includes exact bounded stream/CW identity composition regressions.
           bash tests/catalog_episode_identity512.sh
           C_INCLUDE_PATH=/usr/include/SDL2 bash tests/cwfrente.sh
+          cc -std=gnu11 -O1 -Isrc src/js.c tests/p6_exact_id.c -lm -o /tmp/p6-exact-id && /tmp/p6-exact-id
+          bash tests/p6_account_pull.sh
           # Actual history dispatch/retry test uses mock HTTP, never external calls.
           C_INCLUDE_PATH=/usr/include/SDL2 bash tests/visto.sh
           bash tests/postplay_p6_integration.sh

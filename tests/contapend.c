@@ -7,6 +7,9 @@
 // no pull; pagina que falha nao vira push; lista remota vazia com copia nao
 // vira push; tirar o ultimo nao vira push vazio; perfis isolados; poda.
 #include "contapend.h"
+#ifdef NV_TEST_ACCOUNT_PULL
+#include "contalib.h"
+#endif
 #include "visto.h"
 #include "vistoep.h"
 #include "js.h"
@@ -201,6 +204,30 @@ int main(int argc, char **argv) {
       assert(contapend_reenviar() >= 0);
       assert(trackerProfile == 1 && contapend_pendentes() == 0);
       OK("retry never sends profile A's gesture with profile B's credentials");
+#ifdef NV_TEST_ACCOUNT_PULL
+    } else if (!strcmp(argv[1],"account")) {
+      const char *id="tt0903747";
+      VistoPar special={0,7};
+      long long unwatch=contapend_gesto(id,"series",&special,1,0,0,NULL,0);
+      long long movie=contapend_gesto("tt0111161","movie",NULL,0,0,0,NULL,0);
+      assert(unwatch>0 && movie>0);
+      char json[1024];
+      snprintf(json,sizeof json,"[{\"content_id\":\"%s\",\"content_type\":\"series\",\"season\":0,\"episode\":7,\"watched_at\":%lld},{\"content_id\":\"tt0111161\",\"content_type\":\"movie\",\"watched_at\":%lld}]",id,unwatch-1000,movie-1000);
+      assert(contalib_ler_vistos(json)==2); contalib_aplicar_vistos();
+      assert(vistoep_estado(id,0,7)==0 && histVisto==0);
+      snprintf(json,sizeof json,"[{\"content_id\":\"%s\",\"content_type\":\"series\",\"season\":0,\"episode\":7,\"watched_at\":%lld}]",id,movie+10000);
+      assert(contalib_ler_vistos(json)==1); contalib_aplicar_vistos();
+      assert(vistoep_estado(id,0,7)==1);
+      reabrir(); vistoep_esquecer();
+      assert(contapend_intencao(id,"series",0,7,NULL)==1);
+      assert(vistoep_ler_progresso(id,"{\"seasons\":[{\"number\":0,\"episodes\":[{\"number\":7,\"completed\":false}]}]}")==1);
+      assert(vistoep_estado(id,0,7)==1);
+      perfil=2; assert(contapend_intencao(id,"series",0,7,NULL)==-1); perfil=1;
+      char longid[100]; memset(longid,'x',sizeof longid-1); longid[sizeof longid-1]=0;
+      snprintf(json,sizeof json,"[{\"content_id\":\"%s\",\"content_type\":\"series\",\"season\":1,\"episode\":2,\"watched_at\":%lld}]",longid,movie+10000);
+      assert(contalib_ler_vistos(json)<=0);
+      OK("Q45 actual account pull, persisted unwatch, newer remote, stale Trakt and profile isolation");
+#endif
     } else if (!strcmp(argv[1], "q45")) {
       long long ms = 0;
       logada = 0;

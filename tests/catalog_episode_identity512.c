@@ -103,6 +103,11 @@ int main(void) {
   assert(cat_episodio_existe_final(0,longid,0,456));
   assert(cat_id_stream(0,c.temporada,c.episodio,cw,sizeof cw) && !strcmp(cw,"addon:exact-video"));
   assert(!cat_id_stream(0,0,457,cw,sizeof cw) && !cw[0]);
+  c=title(0); published=ep(1,2,0); published.vidInvalido=1;
+  cat_definir_tudo(&c,1,NULL,0); cat_definir_episodios(0,&published,1);
+  assert(!cat_id_stream(0,1,2,large,sizeof large) && !large[0]);
+  published.vidInvalido=0; cat_definir_episodios(0,&published,1);
+  assert(cat_id_stream(0,1,2,large,sizeof large) && !strcmp(large,"tt21975436:1:2"));
   puts("catalog_episode_identity512: PASS");
   return 0;
 }
