@@ -2314,7 +2314,7 @@ object NvPlayer {
         // (15 s no log do dono). O evento de superficie estavel segue normal.
         // Depois de estavel o pedido e do dono trocando o aspecto — recria
         // mesmo em DV, que e o unico gesto que muda a geometria do plano.
-        if (decoderDv && !estavelEmitido) { avaliarEstavel(); return@Runnable }
+        if (!recriaTcl || semRecriar || (decoderDv && !estavelEmitido)) { avaliarEstavel(); return@Runnable }
         val p = player
         val sv = superficie
         Log.i(TAG, "[dvtrace] recriar player=${System.identityHashCode(p)} holder=${System.identityHashCode(sv?.holder)} soltando=${soltando === p} vis=${sv?.visibility} valida=${sv?.holder?.surface?.isValid}")
@@ -2371,6 +2371,16 @@ object NvPlayer {
             f != null
         } catch (e: Throwable) { false }
     }
+    // Keep the existing MStar/Amlogic release policy separate from the
+    // proactive panel workaround. Unknown hardware must retain its Surface.
+    private val recriaTcl: Boolean by lazy {
+        try {
+            val nomes = android.media.MediaCodecList(android.media.MediaCodecList.REGULAR_CODECS).codecInfos
+                .filter { !it.isEncoder }.map { it.name }
+            RecriaHdr.needsTclWorkaround(android.os.Build.MANUFACTURER,
+                android.os.Build.BRAND, nomes)
+        } catch (e: Exception) { false }
+    }
     private fun recriarSuperficie(atrasoMs: Long) {
         Log.i(TAG, "[dvtrace] pedido sessao=$sessao holder=${System.identityHashCode(superficie?.holder)} atrasoMs=$atrasoMs hdr=$ultHdr quadro=$quadroVisto semRecriar=$semRecriar soltando=${soltando != null}")
         // DV nativo so dispensa a recriacao da ABERTURA (a que nasce antes de
@@ -2378,7 +2388,7 @@ object NvPlayer {
         // gesto que o dono fazia na mao para o Dolby ligar — vetar aqui deixava
         // o plano preso na geometria de abertura e nenhum modo mudava (TCL,
         // 14/10). O veto do HDR sozinho ja cobre a transicao (hdrNaSuperficie).
-        if (semRecriar || (decoderDv && !estavelEmitido)) return
+        if (!recriaTcl || semRecriar || (decoderDv && !estavelEmitido)) return
         principal.removeCallbacks(estavelRun)
         principal.removeCallbacks(recriar)
         recriaAgendada = true
@@ -2423,7 +2433,7 @@ object NvPlayer {
     }
     private fun hdrNaSuperficie() {
         // Native DV handles the panel transition without destroying its output.
-        if (semRecriar || decoderDv) return
+        if (!recriaTcl || semRecriar || decoderDv) return
         if (!quadroVisto || ultHdr.isEmpty() || ultHdr == "none" || ultHdr == hdrRecriadoPara) return
         hdrRecriadoPara = ultHdr
         Log.i(TAG, "HDR ($ultHdr): recria a superficie para a TV ligar o modo HDR")
