@@ -5,6 +5,7 @@ name: P5-B/C video fidelity verification (tests only - no APK)
 # Revision: validate Q39 one-shot Retry, Q47 device exception and Q38 HDR retention together.
 # Revision: actual Q37 HEVC CSD/IRAP replay, codec adapter compile, terminal latch and AFR lease.
 # Final follow-up input also includes generation-owned asynchronous video retry and watchdog handoff.
+# Surface detach transaction, AFR mode confirmation, TorBox scope and compatible decoder ordering.
 on:
   workflow_dispatch:
   push:
