@@ -160,6 +160,7 @@ object NvPlayer {
     private var decoderDv = false
     private var videoDecoderName: String? = null
     private var videoOutputFailed = false
+    private var baseLayerRendered: HdrCodecFallbackP5B.VideoConfig? = null
     private var ultHdr = ""
     private var ultDv = -1
     private var ultAtmos = -1
@@ -885,6 +886,7 @@ object NvPlayer {
         var bandaPreparo: DefaultBandwidthMeter? = null
         var liberado = false
         @Volatile var adotado = carga.adotada
+        @Volatile var videoConfig: HdrCodecFallbackP5B.VideoConfig? = null
         @Volatile var audioFormato = AudioSyncTap.FMT_NENHUM
         @Volatile var velocidadePcm = false
         @Volatile var ajustePcm = false // DSP requires decoded PCM, never lossy AC-3 transcoding
@@ -1054,7 +1056,7 @@ object NvPlayer {
                                                        initializedTimestampMs: Long, initializationDurationMs: Long) {
                     if (preparoAtual(s)) {
                         s.videoDecoderName = decoderName
-                        s.decoderDv = decoderDolby(decoderName)
+                        s.decoderDv = decoderDolby(decoderName, s.recursos)
                     }
                 }
             }
@@ -1605,33 +1607,45 @@ object NvPlayer {
         return item.build()
     }
 
-    private fun codecInfo(name: String): android.media.MediaCodecInfo? =
-        try {
-            android.media.MediaCodecList(android.media.MediaCodecList.ALL_CODECS).codecInfos
-                .firstOrNull { !it.isEncoder && it.name == name }
-        } catch (_: Exception) { null }
+    private fun decoderDolby(nome: String, recursos: RecursosPlayer?): Boolean =
+        recursos?.videoConfig?.info?.let {
+            it.name == nome && it.mimeType == MimeTypes.VIDEO_DOLBY_VISION
+        } == true
 
-    private fun decoderDolby(nome: String): Boolean =
-        codecInfo(nome)?.supportedTypes?.any { it.equals(MimeTypes.VIDEO_DOLBY_VISION, true) } == true
+    private fun displayHdr(act: Activity, type: Int): Boolean = try {
+        val display = act.windowManager.defaultDisplay
+        val types = if (android.os.Build.VERSION.SDK_INT >= 34) display.mode.supportedHdrTypes
+            else display.hdrCapabilities?.supportedHdrTypes ?: intArrayOf()
+        type in types
+    } catch (_: Exception) { false }
+
+    private fun verifiedBase(f: Format): HdrCodecFallbackP5B.VideoConfig? {
+        val config = recursosAtuais?.videoConfig ?: return null
+        val act = activity ?: return null
+        return config.takeIf {
+            it.matches(f, videoDecoderName) && it.info.mimeType == MimeTypes.VIDEO_H265 &&
+                it.base?.ready() == true &&
+                displayHdr(act, android.view.Display.HdrCapabilities.HDR_TYPE_HDR10)
+        }
+    }
 
     // Source metadata alone cannot establish DV/HDR10 playback. Check the
     // actual chosen decoder, exact parsed DV profile/level and output mode.
     private fun compatibleDolby(f: Format): Boolean {
-        val name = videoDecoderName ?: return false
-        val display = activity?.windowManager?.defaultDisplay ?: return false
+        val config = recursosAtuais?.videoConfig ?: return false
+        val act = activity ?: return false
+        if (!config.matches(f, videoDecoderName) || config.info.mimeType != MimeTypes.VIDEO_DOLBY_VISION) return false
         return try {
-            val types = if (android.os.Build.VERSION.SDK_INT >= 34) display.mode.supportedHdrTypes
-                else display.hdrCapabilities?.supportedHdrTypes ?: intArrayOf()
             val profile = androidx.media3.common.util.CodecSpecificDataUtil.getCodecProfileAndLevel(f)
                 ?: return false
-            val caps = codecInfo(name)?.getCapabilitiesForType(MimeTypes.VIDEO_DOLBY_VISION) ?: return false
+            val caps = config.info.capabilities ?: return false
             val exactProfile = caps.profileLevels.any { it.profile == profile.first && it.level >= profile.second }
             val vc = caps.videoCapabilities
             val size = f.width > 0 && f.height > 0 && vc != null &&
                 if (f.frameRate.isFinite() && f.frameRate > 0f)
                     vc.areSizeAndRateSupported(f.width, f.height, f.frameRate.toDouble())
                 else vc.isSizeSupported(f.width, f.height)
-            HdrPolicyP5.compatibleDolby(types.contains(android.view.Display.HdrCapabilities.HDR_TYPE_DOLBY_VISION),
+            HdrPolicyP5.compatibleDolby(displayHdr(act, android.view.Display.HdrCapabilities.HDR_TYPE_DOLBY_VISION),
                 exactProfile, size)
         } catch (_: Exception) { false }
     }
@@ -1736,6 +1750,10 @@ object NvPlayer {
             // ON: platform decoder/passthrough first, FFmpeg only as fallback.
             // F06 tap is at the sink input; F07 gain stays in its processors.
             r.renderizadores = object : androidx.media3.exoplayer.DefaultRenderersFactory(act) {
+                override fun getCodecAdapterFactory(): androidx.media3.exoplayer.mediacodec.MediaCodecAdapter.Factory =
+                    HdrCodecFallbackP5B.Factory(super.getCodecAdapterFactory(),
+                        { displayHdr(act, android.view.Display.HdrCapabilities.HDR_TYPE_HDR10) },
+                        { config -> r.videoConfig = config })
                 override fun buildAudioSink(context: Context, enableFloatOutput: Boolean,
                                             enableAudioTrackPlaybackParams: Boolean): AudioSink =
                     // Sonic needs integer PCM; float output bypasses audio processors.
@@ -1998,6 +2016,7 @@ object NvPlayer {
         decoderDv = false
         videoDecoderName = null
         videoOutputFailed = false
+        baseLayerRendered = null
         ultHdr = ""; ultDv = -1; ultAtmos = -1
         avisouSemAudio = false
         val sv = superficie
@@ -2300,6 +2319,7 @@ object NvPlayer {
     private var superficieInvalidadaEm = 0L
     private fun invalidarQuadroSuperficie() {
         superficieInvalidadaEm = SystemClock.elapsedRealtime()
+        baseLayerRendered = null
         quadroVisto = false
         estavelEmitido = false
         somLiberado = false
@@ -2839,9 +2859,18 @@ object NvPlayer {
             if (videoOutputFailed) return
             val p = player ?: return
             val f = p.videoFormat
-            if (f?.sampleMimeType == MimeTypes.VIDEO_DOLBY_VISION && !compatibleDolby(f)) {
-                falhaVideo(minha, HdrPolicyP5.FAIL_OUTPUT, 0, geracaoDaAbertura)
-                return
+            if (f?.sampleMimeType == MimeTypes.VIDEO_DOLBY_VISION) {
+                val nativeDv = compatibleDolby(f)
+                val base = if (nativeDv) null else verifiedBase(f)
+                if (!nativeDv && base == null) {
+                    falhaVideo(minha, HdrPolicyP5.FAIL_OUTPUT, 0, geracaoDaAbertura)
+                    return
+                }
+                // Actual first frame on the current Surface completes the
+                // independent same-source sample/decoder/output proof.
+                baseLayerRendered = base
+                decoderDv = nativeDv
+                publicarHdr(p.currentTracks)
             }
             // The retained frame stays visible until the current surface is stable.
             if (estavelEmitido) { esconderQuadro(); limparRetido() }
@@ -2862,7 +2891,8 @@ object NvPlayer {
             // painel engatou Dolby Vision e o selo dizia HDR10, 30/09/2026).
             Log.i(TAG, "[player] decoder de video: $decoderName")
             videoDecoderName = decoderName
-            decoderDv = decoderDolby(decoderName)
+            decoderDv = decoderDolby(decoderName, recursosAtuais)
+            baseLayerRendered = null
             player?.let { publicarHdr(it.currentTracks) }
         }
     }
@@ -2984,11 +3014,14 @@ object NvPlayer {
                     val t = f.colorInfo?.colorTransfer
                     // ST2084 is a transfer function, not proof of an HDR10 base
                     // layer in a Dolby Vision sample. Never silently rename DV as HDR10.
+                    val renderFormat = player?.videoFormat ?: f
+                    val baseConfirmed = baseLayerRendered?.let { it === verifiedBase(renderFormat) } == true
                     val decisao = HdrPolicyP5.decide(
                         dolbyVisionMime = f.sampleMimeType == MimeTypes.VIDEO_DOLBY_VISION,
-                        dolbyVisionDecoder = decoderDv && compatibleDolby(f),
-                        st2084 = t == C.COLOR_TRANSFER_ST2084,
-                        hlg = t == C.COLOR_TRANSFER_HLG)
+                        dolbyVisionDecoder = decoderDv && compatibleDolby(renderFormat),
+                        st2084 = baseConfirmed || t == C.COLOR_TRANSFER_ST2084,
+                        hlg = t == C.COLOR_TRANSFER_HLG,
+                        verifiedSameFileHdr10Base = baseConfirmed)
                     hdr = decisao.mode; dv = decisao.dolbyVision
                 } else if (g.type == C.TRACK_TYPE_AUDIO && f.sampleMimeType == MimeTypes.AUDIO_E_AC3_JOC) {
                     atmos = 1
