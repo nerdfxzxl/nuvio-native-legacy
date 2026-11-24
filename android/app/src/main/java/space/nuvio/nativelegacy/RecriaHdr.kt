@@ -17,6 +17,17 @@ object RecriaHdr {
     fun timeoutRecuperavel(codigo: Int, recriando: Boolean, operacao: Int): Boolean =
         codigo == 1003 && recriando && operacao == 3
 
+    fun ownsTransition(session: Int, activeSession: Int, request: Int, activeRequest: Int,
+                       samePlayer: Boolean, sameSurface: Boolean): Boolean =
+        session == activeSession && request == activeRequest && samePlayer && sameSurface
+
+    fun ownsRenderedFrame(sameOutput: Boolean, surfaceValid: Boolean,
+                          renderTimeMs: Long, invalidatedAtMs: Long): Boolean =
+        sameOutput && surfaceValid && renderTimeMs >= invalidatedAtMs
+
+    fun mayRecoverDetach(alreadyRetried: Boolean, hasSurface: Boolean): Boolean =
+        !alreadyRetried && hasSurface
+
     fun dispensa(decoders: List<String>): String? {
         if (decoders.any { it.startsWith("OMX.MS.") }) return "MStar"
         if (decoders.any { it.startsWith("OMX.amlogic.") || it.startsWith("c2.amlogic.") }) return "Amlogic"

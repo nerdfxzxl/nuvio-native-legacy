@@ -1728,6 +1728,7 @@ object NvPlayer {
         retidoView?.bringToFront()
         pedidoAtivo = pedido
         hdrRecriadoPara = ""; quadroVisto = false
+        superficieInvalidadaEm = SystemClock.elapsedRealtime()
         somLiberado = false
         recriando = false; recriaAgendada = false; recuperouSuperficie = false; estavelEmitido = false
         principal.removeCallbacks(recriar)
@@ -1848,6 +1849,9 @@ object NvPlayer {
         recuperacaoLive?.cancel()
         recuperacaoLive = null
         sessao++
+        principal.removeCallbacks(recriar)
+        principal.removeCallbacks(estavelRun)
+        recriaAgendada = false
         medidor.encerrar()
         val recursos = recursosAtuais
         val cacheParaLiberar = cacheMidia
@@ -1941,7 +1945,12 @@ object NvPlayer {
             Log.i(TAG, "[dvtrace] changed sessao=$sessao holder=${System.identityHashCode(h)} atual=${h === superficie?.holder} tamanho=${w}x$a formato=$f hdr=$ultHdr")
         }
         override fun surfaceDestroyed(h: SurfaceHolder) {
-            superficie?.let { if (h === it.holder) recuperarJanela(it) }
+            superficie?.let {
+                if (h === it.holder && player != null && atual(sessao)) {
+                    recuperarJanela(it)
+                    invalidarQuadroSuperficie()
+                }
+            }
             destruirIni = SystemClock.elapsedRealtime()
             Log.i(TAG, "[dvtrace] destroyed sessao=$sessao holder=${System.identityHashCode(h)} atual=${h === superficie?.holder} hdr=$ultHdr")
         }
@@ -2155,6 +2164,18 @@ object NvPlayer {
     private var recuperouSuperficie = false
     private var superficiePos = 0L
     private var quadroVisto = false
+    // Media3's analytics event includes the actual output and elapsed-realtime render time.
+    // An earlier surface incarnation must not authorize the next video/audio handoff.
+    private var superficieInvalidadaEm = 0L
+    private fun invalidarQuadroSuperficie() {
+        superficieInvalidadaEm = SystemClock.elapsedRealtime()
+        quadroVisto = false
+        estavelEmitido = false
+        somLiberado = false
+        aplicarVolume()
+        principal.removeCallbacks(estavelRun)
+        ev(EV_SUPERFICIE_INVALIDADA)
+    }
     // SOLTAR A SAIDA SEM ESPERAR (2.0.3). Destruir a Surface com o decoder
     // ainda ligado nela faz o Media3 esperar o fio de reproducao DENTRO do
     // surfaceDestroyed, no fio principal (setVideoOutputInternal: ate 2 s, e
@@ -2186,6 +2207,7 @@ object NvPlayer {
     }
     private val recriar = Runnable {
         recriaAgendada = false
+        if (!atual(sessao)) return@Runnable
         // O pedido nasce antes do decoder existir (abertura da fonte): se ele
         // virou DV nativo enquanto a recriacao esperava, desistir agora e mais
         // barato que desligar a saida do decoder e religar o DispLink da TCL
@@ -2202,28 +2224,29 @@ object NvPlayer {
             recuperouSuperficie = false
             superficiePos = p.currentPosition
             val pedido = pedidoAtivo
+            val origem = sessao
+            fun dono() = RecriaHdr.ownsTransition(origem, sessao, pedido, pedidos.get(),
+                player === p, superficie === sv)
             // Keep the existing hardware plane until a bounded best-effort
             // SDR snapshot is ready; HDR/DV go directly through the original
             // device-specific path, never through an 8-bit SDR approximation.
             capturarRetido(p, sv, pedido) {
-                if (player !== p || superficie !== sv || pedido != pedidos.get()) {
+                if (!dono()) {
                     if (soltando === p) { soltando = null; recriando = false }
                     return@capturarRetido
                 }
                 soltarSaida(p) {
-                    if (player !== p || superficie !== sv) return@soltarSaida
-                    quadroVisto = false
-                    estavelEmitido = false
-                    ev(EV_SUPERFICIE_INVALIDADA)
+                    if (!dono()) return@soltarSaida
+                    invalidarQuadroSuperficie()
                     val ini = SystemClock.elapsedRealtime()
                     sv.visibility = View.GONE
                     Log.i(TAG, "[player] superficie: destruir levou ${SystemClock.elapsedRealtime() - ini} ms no fio principal")
                     principal.post {
-                        if (player !== p || superficie !== sv) return@post
+                        if (!dono()) return@post
                         sv.visibility = View.VISIBLE
                         // Clear the association after attach events queued during destruction.
                         principal.post {
-                            if (player === p && superficie === sv) {
+                            if (dono()) {
                                 soltando = null
                                 recriando = false
                                 avaliarEstavel()
@@ -2268,7 +2291,7 @@ object NvPlayer {
     private var hdrRecriadoPara = ""
     private var estavelEmitido = false
     private val estavelRun = Runnable {
-        if (player != null && quadroVisto && !estavelEmitido && !recriando && !recriaAgendada &&
+        if (atual(sessao) && player != null && quadroVisto && !estavelEmitido && !recriando && !recriaAgendada &&
             superficie?.holder?.surface?.isValid == true) {
             estavelEmitido = true
             Log.i(TAG, "[aspect] superficie estavel (hdr=$ultHdr) sessao=$sessao soltando=${soltando != null} holder=${System.identityHashCode(superficie?.holder)}")
@@ -2449,18 +2472,6 @@ object NvPlayer {
             try { nativeAudioLog(linha) } catch (_: UnsatisfiedLinkError) { }
         }
 
-        override fun onRenderedFirstFrame() {
-            if (!atual(minha)) return
-            Log.i(TAG, "[player] onRenderedFirstFrame renderer=video loadMs=${SystemClock.elapsedRealtime() - abriuEm} sessao=$sessao hdr=$ultHdr holder=${System.identityHashCode(superficie?.holder)} soltando=${soltando != null}")
-            // Do not dismiss the retained previous frame before HDR/DV surface stability.
-            if (estavelEmitido) { esconderQuadro(); limparRetido() }
-            ev(EV_PRIMEIRO_QUADRO)
-            quadroVisto = true
-            logTaxaDeQuadros()
-            hdrNaSuperficie()
-            avaliarEstavel()
-        }
-
         override fun onVideoSizeChanged(v: VideoSize) {
             if (!atual(minha)) return
             // Pixel anamorfico entra na largura: e a proporcao que o zoom do C usa.
@@ -2522,15 +2533,22 @@ object NvPlayer {
             if (p != null && RecriaHdr.timeoutRecuperavel(error.errorCode,
                     recriando, timeout?.timeoutOperation ?: -1)) {
                 // Our detach timeout must never become a source-open error.
-                if (!recuperouSuperficie) {
+                val sv = superficie
+                val pedido = pedidoAtivo
+                if (RecriaHdr.mayRecoverDetach(recuperouSuperficie, sv != null)) {
                     recuperouSuperficie = true
                     principal.post {
-                        if (!atual(minha) || player !== p) return@post
-                        superficie?.let { p.setVideoSurfaceView(it) }
+                        if (sv == null || !RecriaHdr.ownsTransition(minha, sessao, pedido, pedidos.get(),
+                                player === p, superficie === sv)) return@post
+                        invalidarQuadroSuperficie()
+                        p.setVideoSurfaceView(sv)
                         p.seekTo(superficiePos)
                         p.prepare()
                     }
+                    return
                 }
+                // A repeated detach failure is terminal, not an infinite wait.
+                ev(EV_ERRO, error.errorCode, C.TRACK_TYPE_VIDEO)
                 return
             }
             val tipo = if (exo?.type == ExoPlaybackException.TYPE_RENDERER && p != null &&
@@ -2644,6 +2662,21 @@ object NvPlayer {
 
         override fun onDroppedVideoFrames(eventTime: AnalyticsListener.EventTime, droppedFrames: Int, elapsedMs: Long) {
             if (atual(minha)) quadrosPerdidos += droppedFrames
+        }
+
+        override fun onRenderedFirstFrame(eventTime: AnalyticsListener.EventTime, output: Any, renderTimeMs: Long) {
+            val sv = superficie ?: return
+            if (!atual(minha) || player == null ||
+                !RecriaHdr.ownsRenderedFrame(output === sv.holder.surface,
+                    sv.holder.surface.isValid, renderTimeMs, superficieInvalidadaEm)) return
+            Log.i(TAG, "[player] onRenderedFirstFrame renderer=video loadMs=${SystemClock.elapsedRealtime() - abriuEm} sessao=$sessao hdr=$ultHdr holder=${System.identityHashCode(sv.holder)} soltando=${soltando != null}")
+            // The retained frame stays visible until the current surface is stable.
+            if (estavelEmitido) { esconderQuadro(); limparRetido() }
+            ev(EV_PRIMEIRO_QUADRO, geracao = geracaoDaAbertura)
+            quadroVisto = true
+            logTaxaDeQuadros()
+            hdrNaSuperficie()
+            avaliarEstavel()
         }
 
         override fun onVideoDecoderInitialized(
