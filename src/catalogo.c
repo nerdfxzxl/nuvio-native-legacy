@@ -1885,15 +1885,20 @@ int cat_id_stream(int indiceItem, int t, int e, char *dst, unsigned tam) {
   if (!dst || !tam) return 0;
   dst[0] = 0;
   if (!c || !c->imdb[0]) return 0;
-  idbase_copiar(c->imdb, base, sizeof base);
-  if (t < 0 || e <= 0) { snprintf(dst, tam, "%s", c->imdb); return 1; }
+  if (!idbase_copiar_exato(c->imdb, base, sizeof base)) return 0;
+  if (t < 0 || e <= 0) {
+    if (strlen(c->imdb) >= tam) return 0;
+    memcpy(dst, c->imdb, strlen(c->imdb) + 1);
+    return 1;
+  }
   { // CW copies may have no episodes; reuse the loaded copy's published IDs.
     indiceItem = cat_indice_titulo(c->imdb, indiceItem);
     n = cat_n_episodios(indiceItem);
     for (i = 0; i < n; i++) {
       const CatEp *ep = cat_episodio(indiceItem, i);
       if (ep && ep->temporada == t && ep->episodio == e && ep->vid[0]) {
-        snprintf(dst, tam, "%s", ep->vid);
+        if (strlen(ep->vid) >= tam) return 0;
+        memcpy(dst, ep->vid, strlen(ep->vid) + 1);
         return 1;
       }
     }
@@ -1901,12 +1906,12 @@ int cat_id_stream(int indiceItem, int t, int e, char *dst, unsigned tam) {
     if (t == 0 && !idbase_e_imdb(c->imdb)) return 0;
     // Sem o video: a convencao dos addons de anime e "<id>:<episodio>".
     if (!idbase_e_imdb(c->imdb)) {
-      snprintf(dst, tam, "%s:%d", base, e);
+      int len = snprintf(dst, tam, "%s:%d", base, e);
+      if (len < 0 || (unsigned)len >= tam) { dst[0] = 0; return 0; }
       return 1;
     }
   }
-  snprintf(dst, tam, "%s:%d:%d", base, t, e);
-  return 1;
+  return idbase_compor_episodio(base, t, e, dst, tam);
 }
 
 static int episodioFaixaValidaEx(int indice, const char *id, int exigirFinal) {

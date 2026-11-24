@@ -84,6 +84,7 @@ jobs:
           sed 's@src/main.c src/home.c src/streams.c@src/proximopreparo.c src/posplay.c src/continuar.c src/atividade.c src/contapend.c src/capmkv.c src/mkv.c src/main.c src/home.c src/streams.c@' tools/android/preflight-c.sh > "$p6_preflight"
           bash "$p6_preflight"
           bash tests/contalib.sh
+          # Includes exact bounded stream/CW identity composition regressions.
           bash tests/catalog_episode_identity512.sh
           C_INCLUDE_PATH=/usr/include/SDL2 bash tests/visto.sh
 

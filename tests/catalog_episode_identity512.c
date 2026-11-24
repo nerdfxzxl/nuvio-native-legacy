@@ -1,4 +1,5 @@
 #include "catalogo.h"
+#include "idbase.h"
 #include "progresso.h"
 #include <assert.h>
 #include <stdio.h>
@@ -78,6 +79,21 @@ int main(void) {
   assert(cat_episodio_por_video(0,c.imdb,vid,&t,&e) && t==2 && e==1);
   assert(cat_episodio_identidade(0,c.imdb,2,1,&tv,vid,sizeof vid,&after)==2 && before!=after);
   assert(cat_episodio_identidade(0,c.imdb,1,5,&tv,vid,sizeof vid,&after)==-1);
+  // UI and stream IDs must fit exactly, never expose a truncated alias.
+  char small[8], cw[64], large[96], longid[64];
+  memset(longid,'x',63); memcpy(longid,"addon:",6); longid[63]=0;
+  assert(idbase_compor_episodio("kitsu:123",0,7,cw,sizeof cw));
+  assert(!strcmp(cw,"kitsu:123:0:7"));
+  assert(!idbase_compor_episodio(longid,123,456,cw,sizeof cw) && !cw[0]);
+  assert(idbase_compor_episodio(longid,123,456,large,sizeof large));
+  assert(strlen(large)==71);
+  assert(!cat_id_stream(0,2,1,small,sizeof small) && !small[0]);
+  assert(cat_id_stream(0,2,1,large,sizeof large) && !strcmp(large,"kitsu:123:5"));
+  c=title(0); memcpy(c.imdb,longid,sizeof c.imdb);
+  cat_definir_tudo(&c,1,NULL,0);
+  assert(!cat_id_stream(0,1,123,cw,sizeof cw) && !cw[0]);
+  assert(cat_id_stream(0,1,123,large,sizeof large) && strlen(large)==67);
+  assert(!cat_id_stream(0,-1,0,small,sizeof small) && !small[0]);
   puts("catalog_episode_identity512: PASS");
   return 0;
 }

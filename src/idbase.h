@@ -59,6 +59,21 @@ static inline int idbase_copiar_exato(const char *id, char *dst, size_t tam) {
   return 1;
 }
 
+// Exact episode composition for fixed-width UI/playback identity buffers.
+// A truncated or ambiguous composite is not a valid different episode.
+static inline int idbase_compor_episodio(const char *base, int t, int e,
+                                         char *dst, size_t tam) {
+  if (!dst || !tam) return 0;
+  dst[0] = 0;
+  if (!base || !*base || t < 0 || e <= 0 || idbase_len(base) != strlen(base)) return 0;
+  int n = snprintf(dst, tam, "%s:%d:%d", base, t, e);
+  if (n < 0 || (size_t)n >= tam || idbase_len(dst) != strlen(base)) {
+    dst[0] = 0;
+    return 0;
+  }
+  return 1;
+}
+
 // Only the current IMDb history writers support a proven numeric IMDb id.
 static inline int idbase_imdb_historico(const char *id) {
   size_t n = idbase_len(id);

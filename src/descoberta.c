@@ -3052,8 +3052,10 @@ static int continuarLocal(CatItem *saida, int max, int soP6) {
     if (r->episodio > 0) {
       d->temporada = r->temporada;
       d->episodio  = r->episodio;
-      snprintf(d->imdb, sizeof d->imdb, "%s:%d:%d", r->contentId,
-               r->temporada >= 0 ? r->temporada : 1, r->episodio);
+      // The persisted record remains intact if the legacy UI ID cannot
+      // represent it. Never render a truncated ID as a different episode.
+      if (!idbase_compor_episodio(r->contentId, r->temporada >= 0 ? r->temporada : 1,
+                                  r->episodio, d->imdb, sizeof d->imdb)) continue;
       snprintf(d->tipo, sizeof d->tipo, "series");
     } else {
       snprintf(d->imdb, sizeof d->imdb, "%s", r->contentId);
@@ -3331,8 +3333,10 @@ static int filtrarRemoto(CatItem *v, int n, int (*aSeguir)(const char *),
           printf("[desc] continuar assistindo: %s T%dE%d do remoto e mais velho que "
                  "T%dE%d visto aqui (%d%%); fica o daqui\n", r->contentId,
                  v[i].temporada, v[i].episodio, r->temporada, r->episodio, pct);
-          snprintf(v[i].imdb, sizeof v[i].imdb, "%s:%d:%d", r->contentId,
-                   r->temporada >= 0 ? r->temporada : 1, r->episodio);
+          if (!idbase_compor_episodio(r->contentId, r->temporada >= 0 ? r->temporada : 1,
+                                      r->episodio, v[i].imdb, sizeof v[i].imdb)) {
+            (*fora)++; continue;
+          }
           v[i].temporada = r->temporada;
           v[i].episodio = r->episodio;
           v[i].progresso = pct;
