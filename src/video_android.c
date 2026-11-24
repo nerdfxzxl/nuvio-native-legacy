@@ -46,6 +46,7 @@
 #include "velocidade.h"
 #include "loading_telemetry_p2.h"
 #include "loading_handoff_p2d.h"
+#include "videoerro_p5b.h"
 #include "vod_buffer.h"
 #include "redefit.h"
 #include <SDL2/SDL.h>
@@ -429,6 +430,9 @@ static char tituloArmado[96], tituloSessao[96], tituloEnviado[96];
 static int ganhoEnviado = CB_VOL_NORMAL;
 static int retomadaInicialEstado = -1;
 static pthread_mutex_t travaRetomada = PTHREAD_MUTEX_INITIALIZER;
+// Serialize playback event publication against opening/closing generation reset.
+// Lock order: travaEvento -> travaRetomada (and, transiently, travaStats).
+static pthread_mutex_t travaEvento = PTHREAD_MUTEX_INITIALIZER;
 
 // RECONEXAO (video_reconexao.h): igual ao .tpk. O evento 5 so ANOTA; a
 // decisao e o recarregar sao do video_bombear.
@@ -907,10 +911,12 @@ JNIEXPORT void JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativeEvento(JNIEn
   // Every Media3 playback event belongs to one opening, not just position
   // samples. A delayed READY/ERROR/PAUSE from the old player must never alter
   // the state or rescue/error the newly selected source.
+  pthread_mutex_lock(&travaEvento);
   pthread_mutex_lock(&travaRetomada);
-  int atual = ativo && geracao > 0 && (unsigned)geracao == sessao;
+  int atual = geracao > 0 && videoerro_p5b_evento_aceito(ativo, (unsigned)geracao,
+                                                       sessao, terminalVideoP5B);
   pthread_mutex_unlock(&travaRetomada);
-  if (!atual) return;
+  if (!atual) { pthread_mutex_unlock(&travaEvento); return; }
   switch (tipo) {
     case EV_PRONTO:  if (!prontoLoad) marco("video: pronto (android)"); durMs = a; prontoLoad = 1; break;
     case EV_TOCANDO: tocando = 1; bufferando = 0; pausaVista = 0; if (!tocandoDesde) tocandoDesde = SDL_GetTicks() | 1; break;
@@ -956,7 +962,11 @@ JNIEXPORT void JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativeEvento(JNIEn
       semDecoderAudio = 1; tocando = 0; break;
     case 17: /* EV_VIDEO_FALHA: terminal video capability/renderer error. */
       reconErroCod = b; reconErroVideo = 1; reconErroPend = 0;
-      terminalVideoP5B = a; tocando = 0; bufferando = 0; falhou = 1;
+      // A terminal video error cannot expose a previously rendered frame
+      // as proof of current playback readiness.
+      terminalVideoP5B = a > 0 ? a : 1;
+      tocando = bufferando = primeiroQuadro = quadroSuperficie = superficieEstavel = 0;
+      prontoLoad = somenteAudio = 0; falhou = 1;
       snprintf(erroTxt, sizeof erroTxt, "%d video playback error:%d", b, a);
       break;
     case EV_CARGA_FASE: if (a >= 0 && a <= 3) cargaFase = a; break;
@@ -978,6 +988,7 @@ JNIEXPORT void JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativeEvento(JNIEn
     default: break;
   }
   if (tipo != EV_BUFFER) { printf("[video] android evento %d (%d, %d)\n", tipo, a, b); fflush(stdout); }
+  pthread_mutex_unlock(&travaEvento);
 }
 
 // --- video.h (C -> Kotlin) -----------------------------------------------------
@@ -995,6 +1006,7 @@ static int abrirSessao(int inicioMs, int fracao, int mesmaFonte) {
   unsigned preparado = preparoAdotar;
   preparoAdotar = 0;
   JNIEnv *env;
+  pthread_mutex_lock(&travaEvento);
   ativo = 1; superficieEstavel = quadroSuperficie = 0; prontoLoad = primeiroQuadro = falhou = terminou = tocando = 0;
   cargaFase = somenteAudio = 0;
   velEnviada = 100;
@@ -1012,6 +1024,7 @@ static int abrirSessao(int inicioMs, int fracao, int mesmaFonte) {
   temEnv = 0;   // a SurfaceView nova ainda nao recebeu janela nenhuma
   if (!travaLeg) travaLeg = SDL_CreateMutex();
   unsigned geracao = novaRetomada(-1);
+  pthread_mutex_unlock(&travaEvento);
   memset(&reconBufferAvanco, 0, sizeof reconBufferAvanco);
   env = ambiente();
   if (!env) { falhou = 1; printf("[video] android: NvPlayer indisponivel\n"); fflush(stdout); return 0; }
@@ -1232,11 +1245,13 @@ int video_video_retry(void) {
   // abrirSessao resets the terminal reason before making the JNI call.
   // If that call fails synchronously, retain ownership of the explicit
   // video-error card rather than exposing a generic source watchdog.
+  pthread_mutex_lock(&travaEvento);
   terminalVideoP5B = motivo;
   reconErroCod = codigo; reconErroVideo = 1; reconErroPend = 0;
   posNativoMs = posicao; posMs = posVisivel; durMs = duracao;
   tocando = bufferando = 0; falhou = 1;
   snprintf(erroTxt, sizeof erroTxt, "%s", motivoTexto);
+  pthread_mutex_unlock(&travaEvento);
   return 0;
 }
 int video_erro_video_p5b(void) { return ativo ? terminalVideoP5B : 0; }
@@ -1360,7 +1375,10 @@ void video_bombear(void) {
 }
 void video_parar(void) {
   p1FaixasPendentes = p1AudioValido = p1LegValida = 0;
+  pthread_mutex_lock(&travaEvento);
   novaRetomada(-1);
+  terminalVideoP5B = 0;
+  pthread_mutex_unlock(&travaEvento);
   capmkv_zerar();   // fio de capitulos em voo nao alimenta o proximo titulo
   nv_recon_zerar(&recon);
   reconErroPend = 0; reconErroVideo = 0; terminalVideoP5B = 0; reconFaixasPend = 0; reconBuscarMs = -1; reconPausado = 0;
@@ -1520,7 +1538,7 @@ int  video_tocando(void) { return tocando; }
 // Media3 READY/playback clock alone never proves that a frame exists.
 // Audio-only is allowed solely after the selected track-type confirmation.
 int  video_pronto(void) {
-  return ativo && nv_p2d_media_ready(prontoLoad, primeiroQuadro, somenteAudio);
+  return ativo && !terminalVideoP5B && nv_p2d_media_ready(prontoLoad, primeiroQuadro, somenteAudio);
 }
 int  video_ativo(void) { return ativo; }
 int  video_superficie_estavel(void) { return superficieEstavel; }
