@@ -2858,7 +2858,7 @@ object NvPlayer {
             Log.i(TAG, "[player] onRenderedFirstFrame renderer=video loadMs=${SystemClock.elapsedRealtime() - abriuEm} sessao=$sessao hdr=$ultHdr holder=${System.identityHashCode(sv.holder)} soltando=${soltando != null}")
             if (videoOutputFailed) return
             val p = player ?: return
-            val f = p.videoFormat
+            val f = p.videoFormat ?: recursosAtuais?.videoConfig?.source
             if (f?.sampleMimeType == MimeTypes.VIDEO_DOLBY_VISION) {
                 val nativeDv = compatibleDolby(f)
                 val base = if (nativeDv) null else verifiedBase(f)
@@ -3011,13 +3011,13 @@ object NvPlayer {
                 if (!g.isTrackSelected(i)) continue
                 val f = g.getTrackFormat(i)
                 if (g.type == C.TRACK_TYPE_VIDEO) {
-                    val t = f.colorInfo?.colorTransfer
-                    // ST2084 is a transfer function, not proof of an HDR10 base
-                    // layer in a Dolby Vision sample. Never silently rename DV as HDR10.
-                    val renderFormat = player?.videoFormat ?: f
+                    val renderFormat = player?.videoFormat ?: recursosAtuais?.videoConfig?.source ?: f
+                    val t = renderFormat.colorInfo?.colorTransfer
+                    // Actual renderer format wins over an adaptive candidate.
+                    // PQ alone still does not prove a compatible DV base layer.
                     val baseConfirmed = baseLayerRendered?.let { it === verifiedBase(renderFormat) } == true
                     val decisao = HdrPolicyP5.decide(
-                        dolbyVisionMime = f.sampleMimeType == MimeTypes.VIDEO_DOLBY_VISION,
+                        dolbyVisionMime = renderFormat.sampleMimeType == MimeTypes.VIDEO_DOLBY_VISION,
                         dolbyVisionDecoder = decoderDv && compatibleDolby(renderFormat),
                         st2084 = baseConfirmed || t == C.COLOR_TRANSFER_ST2084,
                         hlg = t == C.COLOR_TRANSFER_HLG,
