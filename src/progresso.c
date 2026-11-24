@@ -123,7 +123,7 @@ static int lerLinhaNova(const char *linha, ProgRegistro *r) {
              &r->perfil, r->chave, r->contentId, r->tipo,
              &r->temporada, &r->episodio, &r->posSeg, &r->durSeg,
              &r->lastWatchedMs, &r->pendente, &r->tocou);
-  if (n != 11 || r->tocou < -1 || r->tocou > 2) r->tocou = -1;
+  if (n != 11 || r->tocou < -1 || r->tocou > 3) r->tocou = -1;
   if (n < 10 || !r->chave[0] || !r->contentId[0] ||
       !temposValidos(r->posSeg, r->durSeg)) return 0;
   if (r->posSeg < 0) r->posSeg = 0;
@@ -258,10 +258,8 @@ int prog_continuar_de_perfil_min(int perfil, int pctMinimo, int pctConcluido, Pr
   carregar();
   for (i = 0; i < nRegs; i++) {
     const ProgRegistro *r = &regs[i];
-    double p;
     if (r->perfil != perfil || r->durSeg < 60.0) continue;
-    p = r->posSeg / r->durSeg;
-    if (!prog_inicio_continuar(r, pctMinimo) || p * 100.0 >= pctConcluido) continue;
+    if (!prog_inicio_continuar(r, pctMinimo) || prog_fim_retomada(r, pctConcluido)) continue;
     if (removidoVenceDe(perfil, r->contentId, r->lastWatchedMs)) continue;
     if (melhor < 0 || maisNovoPrimeiro(r, &regs[melhor]) < 0) melhor = i;
   }
@@ -279,6 +277,16 @@ int prog_por_chave(const char *chave, ProgRegistro *saida) {
   if (i >= 0 && saida) *saida = regs[i];
   DESTRANCAR();
   return i >= 0;
+}
+
+int prog_q45_retomada(const char *id, int t, int e, int pct, long long ms) {
+  char chave[48]; ProgRegistro r;
+  if (!id || !*id || pct <= 0) return -1;
+  prog_chave(chave, sizeof chave, id, t, e);
+  if (!prog_por_chave(chave, &r) || !prog_q45_local(&r) || r.durSeg <= 1.0 ||
+      r.posSeg <= 0.0 || fabs(100.0 * r.posSeg / r.durSeg - pct) >= 1.0 ||
+      (ms > 0 && r.lastWatchedMs > 0 && ms > r.lastWatchedMs + 5000)) return -1;
+  return !prog_fim_retomada(&r, 100);
 }
 
 int prog_pendentes(ProgRegistro *saida, int max) {
