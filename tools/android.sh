@@ -28,7 +28,8 @@ if [ "${NUVIO_ANDROID_OFFLINE:-0}" = 1 ]; then
 fi
 RELEASE_ONLY=0
 DEBUG_ONLY=0
-case "${1:-}" in "") ;; --release-only) RELEASE_ONLY=1;; --debug-only) DEBUG_ONLY=1;; *) echo "opcao desconhecida: $1" >&2; exit 2;; esac
+LINK_ONLY=0
+case "${1:-}" in "") ;; --release-only) RELEASE_ONLY=1;; --debug-only) DEBUG_ONLY=1;; --verify-link) LINK_ONLY=1;; *) echo "opcao desconhecida: $1" >&2; exit 2;; esac
 CACHE="${NUVIO_ANDROID_CACHE:-$HOME/.cache/nuvio-android}"
 EST="$RAIZ/build/android"
 
@@ -53,15 +54,19 @@ for u in https://github.com/libsdl-org/SDL/releases/download/release-2.30.9/SDL2
   [ -d "$d" ] || curl -fsSL "$u" | tar xz -C "$CACHE/src"
 done
 
-echo "[2/5] arte e fontes -> $EST/assets"
-rm -rf "$EST/assets"; mkdir -p "$EST/assets"
-# Android keeps 192px badges (original webp artwork is about 194px tall).
-# Other TV packaging targets still stage compact 64px badges.
-NUVIO_BADGE_PNG_HEIGHT=192 NUVIO_ARTE_ESTAGIO="build/android/assets/art" bash tools/tizen-art.sh >/dev/null
-mkdir -p "$EST/assets/fonts"
-cp deploy/app/fonts/* "$EST/assets/fonts/"
-mkdir -p "$EST/assets/licencas"
-cp deploy/app/licencas/* "$EST/assets/licencas/"   # avisos do motor P2P (libtorrent, Boost, OpenSSL, nuvio-engine)
+mkdir -p "$EST"
+if [ "$LINK_ONLY" = 0 ]; then
+  echo "[2/5] arte e fontes -> $EST/assets"
+  rm -rf "$EST/assets"; mkdir -p "$EST/assets"
+  # Android keeps 192px badges (original webp artwork is about 194px tall).
+  # Other TV packaging targets still stage compact 64px badges.
+  NUVIO_BADGE_PNG_HEIGHT=192 NUVIO_ARTE_ESTAGIO="build/android/assets/art" bash tools/tizen-art.sh >/dev/null
+  mkdir -p "$EST/assets/fonts"
+  cp deploy/app/fonts/* "$EST/assets/fonts/"
+  mkdir -p "$EST/assets/licencas"
+  cp deploy/app/licencas/* "$EST/assets/licencas/"   # avisos do motor P2P (libtorrent, Boost, OpenSSL, nuvio-engine)
+
+fi
 
 echo "[3/5] chaves (-D) e libs nativas"
 ENVF="$(mktemp "${TMPDIR:-/tmp}/nuvio-android-env.XXXXXXXX")"; trap 'rm -f "$ENVF"' EXIT
@@ -114,6 +119,15 @@ if [ "${NUVIO_RUST_MKVCORE:-1}" = 1 ]; then
   NV_RUST_MKV_DIR="$EST/rust-mkvcore"
   tools/rust-mkvcore.sh --android "$NV_RUST_MKV_DIR" >&2
   GR+=(-Pnuvio.rustMkvcore="$NV_RUST_MKV_DIR")
+fi
+if [ "$LINK_ONLY" = 1 ]; then
+  [ -n "$NV_P2P_DIR" ] && [ -n "${NV_RUST_MKV_DIR:-}" ] || {
+    echo "Link verification requires the embedded engine and Rust MKV core" >&2
+    exit 1
+  }
+  "${GR[@]}" -Pnuvio.p2pMotor="$NV_P2P_DIR" --max-workers="${NUVIO_BUILD_JOBS:-2}" \
+    ':app:buildCMakeDebug[arm64-v8a]' :app:compileDebugJavaWithJavac
+  exit 0
 fi
 TAREFAS=()
 [ "$RELEASE_ONLY" = 1 ] || TAREFAS=(assembleDebug)
