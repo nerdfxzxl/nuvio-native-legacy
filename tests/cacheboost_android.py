@@ -70,6 +70,7 @@ with tempfile.TemporaryDirectory(prefix="nuvio-cacheboost-android-", dir=os.envi
                                 "CacheSessao.kt", "CacheProvaP4C.kt", "CacheSpanP4C.kt", "CacheMidia.kt",
                                 "GanhoMath.kt", "GanhoAudioProcessor.kt",
                                 "AudioFidelityP5A.kt", "AudioOutputProbeP5A.kt", "HdrPolicyP5.kt", "FrameRateP5C.kt",
+                                "HdrBaseLayerP5B.kt", "HdrCodecFallbackP5B.kt",
                                 "AudioSyncTap.kt", "AudioSyncSink.kt", "RecriaHdr.kt", "ArranqueVigia.kt",
                                 "TouchViewport.kt", "Tombstone.kt")]
     java_roots = []
@@ -288,3 +289,13 @@ fun main() {
     # android.jar is only stubs: at run time it must come AFTER the real jars
     # and nothing here may touch an Android class.
     subprocess.run([java, "-cp", os.pathsep.join((str(tmp / "replay"), rt)), "ReplayKt"], check=True)
+
+    # Q37: real Media3 NalUnitUtil on independently encoded HEVC data. Compile
+    # actual production parser/adapter with the fixture (no mock parser).
+    kotlinc([kt / "HdrBaseLayerP5B.kt", kt / "HdrCodecFallbackP5B.kt",
+             root / "tests/p5/HdrBaseLayerP5BTest.kt"], tmp / "hdr-replay",
+            os.pathsep.join(map(str, deps)))
+    hdr_rt = os.pathsep.join(map(str, (tmp / "hdr-replay", stdlib,
+        media3["media3-common"], media3["media3-container"], media3["media3-exoplayer"],
+        media3["media3-decoder"], guava, sdk)))
+    subprocess.run([java, "-cp", hdr_rt, "space.nuvio.nativelegacy.HdrBaseLayerP5BTestKt"], check=True)
