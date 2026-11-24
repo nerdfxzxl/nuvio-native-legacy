@@ -885,7 +885,6 @@ static double credAvisadoEm, credAvisadoDur;
 //                  com ela e decidir com numero inventado.
 //   durCurtaAvisado/durPassouAvisado   uma linha de log cada, por reproducao.
 static int duracaoReal, durCurtaAvisado, durPassouAvisado;
-static int concluiuAgora(double cred);
 static double duracaoCatalogo(void);
 static int introIdx=-1, introT=-1, introE=-1;
 // Com que id o TheIntroDB foi perguntado (0 = imdb). Muda quando o TMDB do
@@ -3222,21 +3221,34 @@ void player_descartar_retido(void) {
 }
 
 void player_ciclo_evento(Uint32 tipo) {
-  if (tipo == SDL_APP_WILLENTERBACKGROUND || tipo == SDL_APP_DIDENTERBACKGROUND ||
-      tipo == SDL_APP_LOWMEMORY || tipo == SDL_APP_TERMINATING) {
+  const int fundo = tipo == SDL_APP_WILLENTERBACKGROUND || tipo == SDL_APP_DIDENTERBACKGROUND;
+#ifdef NV_ANDROID
+  if (fundo && aberto) {
+    // A preview is not a committed seek. Discard it before saving the
+    // last backend-confirmed checkpoint, and revoke queued transport actions.
+    scrubbing = scrubToque = scrubTocava = retomandoSalto = 0;
+    scrubPassos = scrubDir = 0; scrubInicio = 0.0; posVisSolto = 0;
+    pedProxT = pedProxE = trocaEpisodio = pedRecarregar = 0;
+    seekr_ocioso(); pausao_fechar();
+  }
+#endif
+  if (fundo || tipo == SDL_WINDOWEVENT || tipo == SDL_APP_LOWMEMORY || tipo == SDL_APP_TERMINATING) {
     if (aberto && fontePrincipal() && !scrubbing) {
       double p = video_pos();
+#ifdef NV_ANDROID
+      if (fundo) p = video_pos_confirmada();
+#endif
       if (isfinite(p) && p >= 0) posSeg = (float)p;
+      posVis = posSeg; posVisV = 0;
       gravarProgressoParcial(1, "background");
       assistidoAmostra = 0;
       parcialSeek = 0; scrubAnterior = 0;
     }
-    player_descartar_retido(); retomamorna_cancelar();
+    if (tipo != SDL_WINDOWEVENT) { player_descartar_retido(); retomamorna_cancelar(); }
 #ifdef NV_ANDROID
     // Activity.onPause also pauses Media3; the native intent must agree so an
     // in-flight reconnect cannot silently start playback behind Android UI.
-    if ((tipo == SDL_APP_WILLENTERBACKGROUND || tipo == SDL_APP_DIDENTERBACKGROUND) &&
-        aberto) {
+    if (fundo && aberto) {
       p6PendingPause = 1; tocando = 0;
       // Do not let an interrupted D-pad seek restore its pre-Home play state.
       scrubTocava = retomandoSalto = 0;
@@ -3865,15 +3877,6 @@ static void durFonteAtualizar(double real, Uint32 agora) {
     durFonteAcaoAte = toastAte = agora + DUR_CONTAGEM_MS;
     printf("[fonte] duration: auto-play tries another source in %u s unless OK keeps this one\n", DUR_CONTAGEM_MS / 1000u);
   }
-}
-
-// player_regra_concluiu com o estado do player: e o que as saidas chamam.
-// Duracao suspeita e sem marcador, quem mede o fim e a minutagem do catalogo.
-static int concluiuAgora(double cred) {
-  double cat = duracaoCatalogo();
-  if (!(cred > 1.0) && player_duracao_suspeita(duracaoSeg, cat))
-    return posSeg >= cat * 0.9;
-  return player_regra_concluiu(posSeg, duracaoSeg, cred);
 }
 
 int player_janela_proximo(double antecedencia) {
@@ -5219,7 +5222,12 @@ void player_atualizar(float dt, Uint32 agora) {
   }
   if (!posVisSolto) { posVis = posSeg; posVisV = 0.0f; }
 
-  if (p6WatchState >= 0 && identidadeValida()) p6WatchOverride(item());
+  // Check an in-play unwatch at a bounded rate; mark/save/exit also check
+  // synchronously before writing history or progress.
+  { static Uint32 ultimaConsulta;
+    if (p6WatchState >= 0 && identidadeValida() && agora - ultimaConsulta >= 1000u) {
+      ultimaConsulta = agora; p6WatchOverride(item());
+    } }
   if (p6WatchState == 0 && !saindo && (tocando || video_terminou()) && p6WatchReached()) p6WatchMark();
 
   // TRAKT "NOW WATCHING" (#179). Ate a 1.5.3 o Trakt so ouvia pause/stop, ao
@@ -5367,7 +5375,8 @@ void player_atualizar(float dt, Uint32 agora) {
     // "o que achou"; a parte seguinte entra sozinha (app.c, vigiarPartes).
     int meio = partesMeio();
     if (meio && posplay_visivel()) posplay_fechar();
-    if (!ehCanal() && !meio) {
+    if (!ehCanal() && !meio && fontePrincipal() && duracaoReal && video_pronto() && video_ativo() &&
+        !esperandoFonte && !erroFonte && !video_falhou()) {
       posplay_atualizar(dt, agora, posSeg, duracaoSeg, eSerie, idxAtual(),
                         eSerie && player_janela_proximo(0));
     }
