@@ -926,3 +926,10 @@ Resume ONLY remaining P5-B and P5-C source implementation, focused on independen
 
 
 Detailed checkpoint: [P5-B/C source acceptance audit](PLAYBACK_50_P5BC_SOURCE_ACCEPTANCE.md).
+
+
+## P5-B/C follow-up checkpoint — 2026-11-24 (PARTIAL; NOT ACCEPTED)
+
+Actual starting HEAD 37aaa8afe06b71eaa13e697c4f3567698c404076; follow-up verification input c03512f3214dbb3230400b869f354003503a050c; detailed evidence checkpoint d6c39060c97cec350aa4c0fee22b829bc050b15f. See [P5-B/C source acceptance report, follow-up checkpoint](PLAYBACK_50_P5BC_SOURCE_ACCEPTANCE.md). Changes are limited to the existing feature branch and dedicated test-only workflow. Q47 device-evidence surface policy, Q39 bounded video-error action policy/synchronous terminal preservation/deadline rearm, Q38 HDR-capability-preserving AFR policy are source-implemented. Local exact-blob executable tests: 19/19 Kotlin surface policy, 11/11 C video action policy, 12/12 Kotlin AFR policy. Prior CI #45323442340 still in progress at last check, tests prior input b554e0c29299e486627a0c4227c03f3d8dc1f84c; latest dedicated workflow path update requests exact follow-up verification at c03512f3214dbb3230400b869f354003503a050c (new run identity/completion not yet verified).
+
+P5-B, P5-C and combined source acceptance remain NOT ACCEPTED: independently validated same-file HDR10 base-layer and actual compatible decoder selection, asynchronous retry/watchdog ownership, AFR restoration/persistence and first-frame/surface races, current native and Android/Media3 compilation and production regression CI are open. Do not repeat P5-A or already committed B/C changes. Resume these remaining B/C blockers and perform separate reviews, not P5-D. P5 overall PARTIAL, P5-D/P6 NOT AUTHORIZED. Q18 owner-deferred. No APK, release or master/main merge.
