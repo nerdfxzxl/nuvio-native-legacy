@@ -1,0 +1,170 @@
+name: P6 lifecycle and post-play verification (tests only - no APK)
+
+# Dedicated P6 test-only workflow, reusing the accepted P5 regression harness.
+# No APK assembly or existing workflow modifications.
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/official-stream-selector
+    paths:
+      - .github/workflows/p6-lifecycle-test-only.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: p6-lifecycle-test-only-feature-branch
+  cancel-in-progress: false # Preserve the prior verification while this revision queues.
+
+jobs:
+  verify:
+    name: Native playback regressions, API35 / Media3 compile and actual PCM replay
+    runs-on: ubuntu-24.04
+    timeout-minutes: 65
+    steps:
+      - name: Checkout exact feature branch
+        uses: actions/checkout@v4
+
+      - name: Verify exact CI input
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          echo "P6 exact CI input: $GITHUB_SHA"
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+
+      - name: Setup Gradle dependency cache
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: false
+
+      - name: Execute original-language, native audio/video error and first-frame C regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash tests/audioescolha.sh
+          bash tests/audioerro_p5a.sh
+          bash tests/audio_foco_android.sh
+          bash tests/videoerro_p5b.sh
+          bash tests/playback_p2_timing.sh
+          bash tests/playback_p2d_handoff.sh
+
+      - name: Install Android NDK and host SDL headers for syntax-only C/JNI source check
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager --install "ndk;27.2.12479018"
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends libsdl2-dev libsdl2-image-dev libsdl2-ttf-dev
+          export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/27.2.12479018"
+          bash tools/android/preflight-c.sh
+
+      - name: Install Android API 35 (no NDK build or APK)
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager --install "platforms;android-35" "build-tools;35.0.0"
+          test -f "$ANDROID_HOME/platforms/android-35/android.jar"
+
+      - name: Resolve existing app Kotlin and Media3 dependencies (no APK)
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash android/gradlew -p android :app:dependencies --configuration debugCompileClasspath --no-daemon > "$RUNNER_TEMP/p4-deps.log" 2>&1 || {
+            tail -n 110 "$RUNNER_TEMP/p4-deps.log"
+            exit 1
+          }
+          echo 'Gradle production dependencies resolved'
+          grep -E 'media3-(exoplayer|datasource):1\.8\.0' "$RUNNER_TEMP/p4-deps.log" | head -n 8 || true
+
+      - name: Resolve pinned AndroidX harness JARs absent from default app graph
+        shell: bash
+        run: |
+          set -euo pipefail
+          deps="$RUNNER_TEMP/p4-test-deps"
+          mkdir -p "$deps"
+          printf "rootProject.name='p4-test-deps'\n" > "$deps/settings.gradle"
+          cat > "$deps/build.gradle" <<'GRADLE'
+          repositories { google(); mavenCentral() }
+          configurations { p4TestOnly; p4KotlinTools }
+          configurations.p4KotlinTools.attributes.attribute(
+            org.gradle.api.attributes.java.TargetJvmEnvironment.TARGET_JVM_ENVIRONMENT_ATTRIBUTE,
+            objects.named(org.gradle.api.attributes.java.TargetJvmEnvironment, 'standard-jvm')
+          )
+          // Guava publishes Android and JRE variants; select Android explicitly.
+          configurations.p4TestOnly.attributes.attribute(
+            org.gradle.api.attributes.java.TargetJvmEnvironment.TARGET_JVM_ENVIRONMENT_ATTRIBUTE,
+            objects.named(org.gradle.api.attributes.java.TargetJvmEnvironment, 'android')
+          )
+          dependencies {
+            // The existing cacheboost_android.py requires all these exact 1.8.0 AARs.
+            p4TestOnly 'androidx.media3:media3-common:1.8.0'
+            p4TestOnly 'androidx.media3:media3-datasource:1.8.0'
+            p4TestOnly 'androidx.media3:media3-exoplayer:1.8.0'
+            p4TestOnly 'androidx.media3:media3-exoplayer-hls:1.8.0'
+            p4TestOnly 'androidx.media3:media3-decoder:1.8.0'
+            p4TestOnly 'androidx.media3:media3-extractor:1.8.0'
+            p4TestOnly 'androidx.media3:media3-container:1.8.0'
+            p4TestOnly 'androidx.media3:media3-database:1.8.0'
+            p4TestOnly 'androidx.core:core:1.13.1'
+            p4TestOnly 'androidx.annotation:annotation-jvm:1.6.0'
+            p4TestOnly 'androidx.annotation:annotation-experimental:1.4.0'
+            p4TestOnly 'com.google.guava:guava:33.3.1-android'
+            p4KotlinTools 'org.jetbrains.kotlin:kotlin-stdlib:2.0.21'
+            p4KotlinTools 'org.jetbrains.kotlin:kotlin-compiler-embeddable:2.0.21'
+            p4KotlinTools 'org.jetbrains.kotlin:kotlin-script-runtime:2.0.21'
+          }
+          tasks.register('resolveP4') {
+            doLast {
+              configurations.p4TestOnly.files.each { println "Android test dependency: " + it.name }
+              configurations.p4KotlinTools.files.each { println "Host compiler dependency: " + it.name }
+            }
+          }
+          GRADLE
+          bash android/gradlew -p "$deps" resolveP4 --no-daemon
+
+      - name: Compile real P5-A/B/C Android Media3 sources and run PCM plus HEVC fixture replays
+        shell: bash
+        env:
+          NUVIO_TEST_JAVA: java
+          NUVIO_CACHE_COMPILE_ONLY: '0'
+        run: |
+          set -euo pipefail
+          python3 tests/cacheboost_android.py
+
+      - name: Execute production audio, HDR, AFR and surface transition policies
+        shell: bash
+        run: |
+          set -euo pipefail
+          if command -v kotlinc >/dev/null 2>&1; then
+            bash tests/playback_p6.sh
+            bash tests/p5_audio_fidelity.sh
+            bash tests/p5_audio_route.sh
+            python3 tests/p5d_route_source_contract.py
+            bash tests/p5_hdr_policy.sh
+            bash tests/p5_afr.sh
+            bash tests/p5_surface_transition.sh
+            bash tests/playback_p2_frame_policy.sh
+          else
+            echo '::warning::kotlinc CLI not installed on this runner; actual full Kotlin+Media3 compile and PCM replay already executed above.'
+            exit 1
+          fi
+
+      - name: Test-only scope summary
+        if: always()
+        shell: bash
+        run: |
+          echo "### P6 lifecycle and post-play test-only source verification" >> "$GITHUB_STEP_SUMMARY"
+          echo "Commit: $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+          echo "Checks: P6 lifecycle and post-play policies; earlier audio and first-frame regressions, ARM64 C/JNI syntax, API35/Media3 Kotlin compile, actual PCM replay, HDR/error, AFR and surface policies." >> "$GITHUB_STEP_SUMMARY"
+          echo "NO APK assembled, packaged, signed, uploaded or published. No master merge, secrets or release." >> "$GITHUB_STEP_SUMMARY"
+          echo "Physical display modes, Dolby Vision and HDMI ARC/codec output are NOT proven by this source/test-only job." >> "$GITHUB_STEP_SUMMARY"
