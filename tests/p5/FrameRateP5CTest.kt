@@ -13,5 +13,12 @@ fun main() {
     check(FrameRateP5C.choose(true,24f,current,listOf(modes[3]),null,true) == null)
     check(FrameRateP5C.choose(true,Float.NaN,current,modes,null,true) == null)
     check(FrameRateP5C.choose(true,25f,current,modes,null,true) == null)
-    println("P5-C supported-mode AFR: 8 assertions passed")
+    val hdr10PlusCurrent = current.copy(hdrTypes = setOf(1,2,4))
+    val plainHdr = modes[1]
+    val dynamicHdr = plainHdr.copy(id = 5, hdrTypes = setOf(2,4))
+    check(FrameRateP5C.choose(true,24f,hdr10PlusCurrent,listOf(plainHdr),2,true,setOf(4)) == null)
+    check(FrameRateP5C.choose(true,24f,hdr10PlusCurrent,listOf(plainHdr,dynamicHdr),2,true,setOf(4)) == 5)
+    check(FrameRateP5C.choose(true,24f,hdr10PlusCurrent,listOf(dynamicHdr),null,true,setOf(1,2,4)) == null)
+    check(FrameRateP5C.choose(true,24f,hdr10PlusCurrent,listOf(dynamicHdr),2,false,setOf(4)) == null)
+    println("P5-C supported-mode AFR: 12 assertions passed")
 }
