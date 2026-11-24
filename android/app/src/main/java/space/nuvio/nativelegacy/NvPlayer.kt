@@ -49,6 +49,7 @@ import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.exoplayer.mediacodec.MediaCodecDecoderException
+import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.WrappingMediaSource
@@ -105,6 +106,12 @@ object NvPlayer {
     private const val FAIXAS_MAX = 64 // NV_FAIXA_MAX do C
     private const val TIQUE_MS = 250L
     private const val RETRY_DECODER_MS = 5000L
+
+    private val videoCodecSelector = MediaCodecSelector { mime, secure, tunneling ->
+        val codecs = MediaCodecSelector.DEFAULT.getDecoderInfos(mime, secure, tunneling)
+        if (MimeTypes.isVideo(mime)) HdrPolicyP5.hardwareFirst(codecs,
+            { it.hardwareAccelerated }, { it.softwareOnly }) else codecs
+    }
 
     private val principal = Handler(Looper.getMainLooper())
     private var activity: Activity? = null
@@ -1174,6 +1181,7 @@ object NvPlayer {
         r.seletorPreparo = seletor
         val descritores = androidx.media3.exoplayer.DefaultRenderersFactory(act)
             .setExtensionRendererMode(androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+            .setMediaCodecSelector(videoCodecSelector)
             .setEnableDecoderFallback(true)
         val lista = DefaultRendererCapabilitiesList.Factory(descritores).createRendererCapabilitiesList()
         r.capacidadesPreparo = lista
@@ -1829,6 +1837,7 @@ object NvPlayer {
                 override fun getCodecAdapterFactory(): androidx.media3.exoplayer.mediacodec.MediaCodecAdapter.Factory =
                     HdrCodecFallbackP5B.Factory(super.getCodecAdapterFactory(),
                         { displayHdr(act, android.view.Display.HdrCapabilities.HDR_TYPE_HDR10) },
+                        { displayHdr(act, android.view.Display.HdrCapabilities.HDR_TYPE_DOLBY_VISION) },
                         { config -> r.videoConfig = config })
                 override fun buildAudioSink(context: Context, enableFloatOutput: Boolean,
                                             enableAudioTrackPlaybackParams: Boolean): AudioSink =
@@ -1837,6 +1846,7 @@ object NvPlayer {
                         .setEnableAudioTrackPlaybackParams(false)
                         .setAudioProcessors(arrayOf(r.proc)).build(), r.tap, { r.velocidadePcm || r.ajustePcm })
             }.setExtensionRendererMode(androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+                .setMediaCodecSelector(videoCodecSelector)
                 .setEnableDecoderFallback(true)
             r.fabricaMidia = DefaultMediaSourceFactory(act)
                 // ParaleloDataSource faz as tres tentativas de transporte;
