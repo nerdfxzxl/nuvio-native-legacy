@@ -2410,6 +2410,7 @@ object NvPlayer {
                         // Media3 1.8 re-sends the output even for the same holder.
                         // Never force GONE/VISIBLE as the Activity is backgrounded.
                         try {
+                            ticket.attaching()
                             p.setVideoSurfaceView(sv)
                             terminarDetach(ticket, origem, p, sv)
                         } catch (e: Exception) {
@@ -2421,6 +2422,7 @@ object NvPlayer {
                     sv.visibility = View.GONE
                     principal.post visible@{
                         if (!detachDono(ticket, origem, p, sv)) return@visible
+                        ticket.attaching()
                         sv.visibility = View.VISIBLE
                         principal.post {
                             terminarDetach(ticket, origem, p, sv)
@@ -2909,7 +2911,7 @@ object NvPlayer {
 
         override fun onRenderedFirstFrame(eventTime: AnalyticsListener.EventTime, output: Any, renderTimeMs: Long) {
             val sv = superficie ?: return
-            if (!atual(minha) || player == null || recriando ||
+            if (!atual(minha) || player == null || detachTicket?.blocksFrames() == true ||
                 !RecriaHdr.ownsRenderedFrame(output === sv.holder.surface,
                     sv.holder.surface.isValid, renderTimeMs, superficieInvalidadaEm)) return
             Log.i(TAG, "[player] onRenderedFirstFrame renderer=video loadMs=${SystemClock.elapsedRealtime() - abriuEm} sessao=$sessao hdr=$ultHdr holder=${System.identityHashCode(sv.holder)} soltando=${soltando != null}")
