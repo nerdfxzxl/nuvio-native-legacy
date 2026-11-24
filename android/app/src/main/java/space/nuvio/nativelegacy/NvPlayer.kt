@@ -1422,6 +1422,7 @@ object NvPlayer {
         // Keep queued opens/stops owned by their original request. A system
         // pause parks a pending open instead of invalidating it and stranding
         // the native loading session.
+        ++p6LifecycleEpoch
         playbackIntentP6.onBackground(pedidos.get())
         pausaPedida = true
         afrSuspended = true
@@ -1439,6 +1440,7 @@ object NvPlayer {
 
     // Foreground does not resume playback; route validation is independent of AFR.
     fun retomarRotaPeloSistema() {
+        if (!routeForeground) ++p6LifecycleEpoch
         playbackIntentP6.onForeground(pedidos.get())
         routeForeground = true
         recursosAtuais?.let { audioRouteTick(sessao, it) }
@@ -1451,6 +1453,7 @@ object NvPlayer {
         soltarPreparo()
         pedidos.incrementAndGet()
         liberar()
+        ++p6LifecycleEpoch
         playbackIntentP6.reset()
         esquecerQuadro(); limparRetido(); CacheMidia.descartar("app exit")
         val sv = superficie
@@ -1510,12 +1513,15 @@ object NvPlayer {
         } }
     }
     private val playbackIntentP6 = PlaybackIntentP6()
+    @Volatile private var p6LifecycleEpoch = 0
     private var pausaPedida = false
     @JvmStatic fun pausar(p: Int) {
         val pedido = pedidos.get()
-        // A queued pause from the previous source must not mutate a new player.
+        val lifecycle = p6LifecycleEpoch
+        // Source and lifecycle ownership: a pre-Home queued Play must not
+        // override the system pause or a newer selected stream.
         principal.post {
-            if (pedido != pedidos.get()) return@post
+            if (pedido != pedidos.get() || lifecycle != p6LifecycleEpoch) return@post
             if ((videoOutputFailed || recursosAtuais?.routeFailed == true) && p == 0) return@post
             pausaPedida = playbackIntentP6.command(pedido, p != 0)
             if (!pausaPedida && afrSuspended) {
