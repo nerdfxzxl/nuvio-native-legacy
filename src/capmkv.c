@@ -18,6 +18,7 @@ int capmkv_espera_inicial_ms = 4000;
 void (*capmkv_teste_antes_de_publicar)(void);
 static pthread_mutex_t trava = PTHREAD_MUTEX_INITIALIZER;
 static unsigned ger;                       // reproducao corrente
+static double verificado;
 static double nomeado, ultimo;             // regra da LG: nome > ultimo no ultimo quarto
 
 // URL NO HEAP, do tamanho dela, e nao char[512]: o player guarda ate 4096
@@ -101,6 +102,7 @@ static int publicar(const MkvCap *caps, int n, int checa, unsigned g) {
   if (checa && g != ger) { pthread_mutex_unlock(&trava); return 0; }
   nomeado = a = n > 0 ? mkv_creditos_nomeados(caps, n) : 0.0;
   ultimo = b = n > 0 ? mkv_creditos_ultimo(caps, n) : 0.0;
+  verificado = checa && n > 0 ? mkv_creditos_verificados(caps, n) : 0.0;
   if (k > 0) intro_definir_capitulos(v, k);
   pthread_mutex_unlock(&trava);
   if (n > 0) {
@@ -111,6 +113,12 @@ static int publicar(const MkvCap *caps, int n, int checa, unsigned g) {
 }
 
 void capmkv_aplicar(const MkvCap *caps, int n) { publicar(caps, n, 0, 0); }
+
+double capmkv_creditos_verificados(void) {
+  double v;
+  pthread_mutex_lock(&trava); v = verificado; pthread_mutex_unlock(&trava);
+  return v;
+}
 
 double capmkv_creditos(double dur) {
   double a, b;
@@ -180,7 +188,7 @@ static void *fio(void *arg) {
 
 void capmkv_zerar(void) {
   pthread_mutex_lock(&trava);
-  ger++; nomeado = ultimo = 0.0;
+  ger++; nomeado = ultimo = verificado = 0.0;
   intro_definir_capitulos(NULL, 0);   // sob a trava: nenhum fio publica no meio
   pthread_mutex_unlock(&trava);
 }
