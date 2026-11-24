@@ -18,7 +18,25 @@
 #include <string.h>
 #include <unistd.h>
 #include <fcntl.h>
+// Backend EOF is a separate fixture signal, never inferred from the UI position.
+#include "video.h"
+static int ppFixtureEnded;
+static double ppFixturePos;
+static int ppFixtureActive(void) { return 1; }
+static int ppFixtureEOF(void) { return ppFixtureEnded; }
+static double ppFixturePosition(void) { return ppFixturePos; }
+#define video_ativo ppFixtureActive
+#define video_terminou ppFixtureEOF
+#define video_pos ppFixturePosition
 #include "../src/posplay.c"
+#undef video_ativo
+#undef video_terminou
+#undef video_pos
+static void quadroEOF(float dt, Uint32 now, double pos, double dur, int series, int index, int window) {
+  ppFixtureEnded = 1; ppFixturePos = pos;
+  posplay_atualizar(dt, now, pos, dur, series, index, window);
+  ppFixtureEnded = 0;
+}
 
 static Uint32 dedoAgora556 = 50000;
 static Uint32 relogioDedo556(void) { return dedoAgora556; }
@@ -159,7 +177,9 @@ int main(void) {
     aquecer(3600.0, 1);
     posplay_atualizar(0.016f, 1000, 3597.0, 3600.0, 1, 0, 1);
     assert(player_base_legenda(normal, posplay_sobre_video()) == 690.0f);
-    posplay_atualizar(0.016f, 1000 + 3100, 3600.0, 3600.0, 1, 0, 1);
+    quadroEOF(0.016f, 4100, 3600.0, 3600.0, 1, 0, 1);
+    assert(player_base_legenda(normal, posplay_sobre_video()) == 690.0f);
+    quadroEOF(0.016f, 9100, 3600.0, 3600.0, 1, 0, 1);
     assert(player_base_legenda(normal, posplay_sobre_video()) == normal);
     posplay_pediu_episodio(&t, &e);
     posplay_fechar();
@@ -174,7 +194,12 @@ int main(void) {
   aquecer(3600.0, 1);
   posplay_atualizar(0.016f, 1000, 3597.0, 3600.0, 1, 0, 1);   // faltam 3 s
   assert(posplay_visivel());
-  posplay_atualizar(0.016f, 1000 + 3100, 3600.0, 3600.0, 1, 0, 1);
+  posplay_atualizar(0.016f, 4100, 3600.0, 3600.0, 1, 0, 1);
+  assert(posplay_visivel() && !posplay_pediu_episodio(&t, &e));
+  quadroEOF(0.016f, 5000, 3600.0, 3600.0, 1, 0, 1);
+  quadroEOF(0.016f, 9999, 3600.0, 3600.0, 1, 0, 1);
+  assert(posplay_visivel() && !posplay_pediu_episodio(&t, &e));
+  quadroEOF(0.016f, 10000, 3600.0, 3600.0, 1, 0, 1);
   assert(!posplay_visivel());
   assert(posplay_pediu_episodio(&t, &e) && t == 5 && e == 4);
   puts("ok  a contagem final toca o proximo sozinha");
@@ -186,19 +211,22 @@ int main(void) {
   posplay_atualizar(0.016f, 1000, 3597.0, 3600.0, 1, 0, 1);
   posplay_recuar();
   posplay_atualizar(0.016f, 6000, 3596.0, 3600.0, 1, 0, 1);
-  posplay_atualizar(0.016f, 11000, 3600.0, 3600.0, 1, 0, 1);
+  quadroEOF(0.016f, 11000, 3600.0, 3600.0, 1, 0, 1);
+  quadroEOF(0.016f, 11500, 3600.0, 3600.0, 1, 0, 1);
   assert(posplay_visivel() && !posplay_pediu_episodio(&t, &e));
   puts("ok  recuo cancela a contagem e nao a rearma na mesma janela");
 
   // Sair da janela libera uma nova passagem pelo fim, e outro titulo tambem.
   posplay_atualizar(0.016f, 12000, 3000.0, 3600.0, 1, 0, 0);
   posplay_atualizar(0.016f, 13000, 3597.0, 3600.0, 1, 0, 1);
-  posplay_atualizar(0.016f, 16100, 3600.0, 3600.0, 1, 0, 1);
+  quadroEOF(0.016f, 16100, 3600.0, 3600.0, 1, 0, 1);
+  quadroEOF(0.016f, 21100, 3600.0, 3600.0, 1, 0, 1);
   assert(posplay_pediu_episodio(&t, &e) && t == 5 && e == 4);
   posplay_fechar();
   aquecer(3600.0, 1);
   posplay_atualizar(0.016f, 1000, 3597.0, 3600.0, 1, 0, 1);
-  posplay_atualizar(0.016f, 4100, 3600.0, 3600.0, 1, 0, 1);
+  quadroEOF(0.016f, 4100, 3600.0, 3600.0, 1, 0, 1);
+  quadroEOF(0.016f, 9100, 3600.0, 3600.0, 1, 0, 1);
   assert(!posplay_visivel());
 
   // O roteador pode ainda nao ter consumido o pedido automatico. Recuar
@@ -373,7 +401,7 @@ int main(void) {
     assert(!posplay_visivel() && posplay_pediu_titulo() < 0);
     posplay_atualizar(.016f, 2000, 7150, 7200, 0, 0, 0);
     assert(!posplay_visivel());
-    posplay_atualizar(.016f, 3000, 7200, 7200, 0, 0, 0);
+    quadroEOF(.016f, 3000, 7200, 7200, 0, 0, 0);
     assert(posplay_visivel() && !posplay_sobre_video());
     assert(tecla(SDLK_RETURN) == 1 && posplay_pediu_titulo() == 0);
     filme.posCreditos = 0;
@@ -557,7 +585,7 @@ int main(void) {
   }
   intro_shot_definir(NULL, 0);
   puts("ok  prefetch antecipa a janela real em 10 s, com e sem creditos");
-  // #470: a contagem comeca com o cartao, para toda fonte aceita pelo player.
+  // Countdown arithmetic only; the actual card arms it at backend EOF (Q50).
   assert(posplay_contagem(1000, 0, 120.0, 1, 5) == 6000);        // conta ao subir
   assert(posplay_contagem(4999, 0, 120.0, 1, 5) == 9999);        // sem atraso
   assert(posplay_contagem(5000, 0, 120.0, 1, 5) == 10000);       // marcador real: 5 s a partir de agora
@@ -574,7 +602,7 @@ int main(void) {
   puts("ok  contagem do proximo episodio: imediata, configuravel, autoplay desligado");
 
   // Cena apos os creditos: o cartao oferece continuar, mas nao troca o
-  // episodio enquanto a cena ainda roda. Sem sinal, a contagem antiga vale.
+  // episodio enquanto a cena ainda roda. Sem sinal, a contagem tambem espera EOF.
   { CatItem u = *cat_item(0);
     u.temporada = 5; u.episodio = 3;
     u.posCreditos = desc_tmdb_pos_creditos("{\"keywords\":{\"keywords\":[{\"id\":179431,\"name\":\"aftercreditsstinger\"}]}}");
@@ -597,9 +625,11 @@ int main(void) {
     assert(!posplay_visivel() && !posplay_pediu_episodio(&t, &e));
     posplay_atualizar(0.016f, 15000, 3480.0, 3600.0, 1, 0, 1);
     assert(!posplay_visivel());
-    posplay_atualizar(0.016f, 16000, 3598.8, 3600.0, 1, 0, 1);   // pipeline para antes de 3600
-    assert(posplay_visivel() && !posplay_pediu_episodio(&t, &e)); // volta inteiro, conta o que resta
-    posplay_atualizar(0.016f, 17300, 3600.0, 3600.0, 1, 0, 1);
+    posplay_atualizar(0.016f, 16000, 3598.8, 3600.0, 1, 0, 1);
+    assert(!posplay_visivel() && !posplay_pediu_episodio(&t, &e));
+    quadroEOF(0.016f, 17300, 3599.2, 3600.0, 1, 0, 1);
+    assert(posplay_visivel() && !posplay_pediu_episodio(&t, &e));
+    quadroEOF(0.016f, 22300, 3600.0, 3600.0, 1, 0, 1);
     assert(!posplay_visivel() && posplay_pediu_episodio(&t, &e) && e == 4);
     posplay_fechar();   // durante a cena a pessoa ainda pode ir ao proximo na mao
     aquecer(3600.0, 1);
@@ -625,10 +655,13 @@ int main(void) {
     posplay_atualizar(0.016f, 1000, 3450.0, 3600.0, 1, 0, 1);
     posplay_atualizar(0.016f, 12000, 3470.0, 3600.0, 1, 0, 1);
     posplay_atualizar(0.016f, 18000, 3490.0, 3600.0, 1, 0, 1);
+    assert(posplay_visivel() && !posplay_pediu_episodio(&t, &e));
+    quadroEOF(0.016f, 20000, 3600.0, 3600.0, 1, 0, 1);
+    quadroEOF(0.016f, 25000, 3600.0, 3600.0, 1, 0, 1);
     assert(!posplay_visivel() && posplay_pediu_episodio(&t, &e) && e == 4);
     assert(player_regra_concluiu(3450.0, 3600.0, 3450.0)); // visto segue nos creditos
   }
-  puts("ok  cena pos-creditos espera o fim; sem sinal avanca; visto permanece nos creditos");
+  puts("ok  cena pos-creditos espera o fim; sem sinal espera EOF; visto permanece nos creditos");
 
   // #556: zero e uma temporada real em todos os caminhos de Next.
   {
@@ -649,14 +682,16 @@ int main(void) {
 
     posplay_fechar(); aquecer(3600, 1);
     posplay_atualizar(.016f, 1000, 3597, 3600, 1, 0, 1);
-    posplay_atualizar(.016f, 4100, 3600, 3600, 1, 0, 1);
+    quadroEOF(.016f, 4100, 3600, 3600, 1, 0, 1);
+    quadroEOF(.016f, 9100, 3600, 3600, 1, 0, 1);
     assert(posplay_pediu_episodio(&t, &e) && t == 0 && e == 2);
     posplay_busca_usuario(); // um Next ja entregue tambem pode ser revogado
     assert(posplay_visivel());
 
     posplay_fechar(); aquecer(3600, 1);
     posplay_atualizar(.016f, 1000, 3597, 3600, 1, 0, 1);
-    posplay_atualizar(.016f, 4100, 3600, 3600, 1, 0, 1);
+    quadroEOF(.016f, 4100, 3600, 3600, 1, 0, 1);
+    quadroEOF(.016f, 9100, 3600, 3600, 1, 0, 1);
     posplay_recuar(); // revoga o pedido ainda nao consumido, mantendo o OK
     assert(posplay_visivel() && !posplay_pediu_episodio(NULL, NULL));
     assert(tecla(SDLK_RETURN) == 1);

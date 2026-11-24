@@ -77,7 +77,8 @@ int  posplay_indice(void);
 // proximo episodio (temporada/episodio) ou titulo relacionado (indice).
 int  posplay_pediu_episodio(int *temporada, int *episodio);
 int  posplay_pediu_titulo(void);
-// Contagem desde a abertura do cartao (#470). Instante de disparo, 0 = sem contagem.
+// Countdown arithmetic; Q50 arms it only at confirmed natural EOF.
+// Instante de disparo, 0 = sem contagem.
 Uint32 posplay_contagem(Uint32 agora, Uint32 fecharEm, double restaReal, int autoplay, int contagemSeg);
 #ifdef NV_SHOT_HOOKS
 void posplay_shot(int idxCatalogo, int ehSerie, int t, int e, Uint32 fecha);

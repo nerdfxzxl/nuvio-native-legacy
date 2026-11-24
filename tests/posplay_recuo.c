@@ -26,7 +26,7 @@ int main(void) {
   eps[0].episodio = 3; eps[1].episodio = 4;
   cat_definir(&c, 1); cat_definir_episodios(0, eps, 2);
   player_abrir(0, NULL); player_definir_episodio(5, 3);
-  // #470: accepted neighbour-episode credits must count from card opening,
+  // Q50: even accepted neighbour-episode credits cannot start autoplay
   // while 265 seconds of credits remain (Samsung reporter: 2309 / 2574).
   ajustes_shot_valor("proximoContagemLocal", 12);
   assert(posplay_contagem(1000, 0, 265, 1, 12) == 13000);
@@ -36,6 +36,11 @@ int main(void) {
   posplay_atualizar(.016f, 12999, 2320.999, 2574, 1, 0, 1);
   assert(posplay_visivel() && !pedir());
   posplay_atualizar(.016f, 13000, 2321, 2574, 1, 0, 1);
+  assert(posplay_visivel() && !pedir());
+  quadroEOF(.016f, 20000, 2574, 2574, 1, 0, 1);
+  quadroEOF(.016f, 31999, 2574, 2574, 1, 0, 1);
+  assert(posplay_visivel() && !pedir());
+  quadroEOF(.016f, 32000, 2574, 2574, 1, 0, 1);
   assert(!posplay_visivel() && pedir() && !pedir());
   // Dismiss cancels the running countdown for the rest of this window.
   posplay_fechar(); aquecer(2574, 1);
@@ -53,7 +58,7 @@ int main(void) {
   assert(tecla(SDLK_RETURN) == 1 && pedir());
   ajustes_shot_valor("proximoAutoLocal", 0);
   ajustes_shot_valor("proximoContagemLocal", 5);
-  puts("posplay #470: countdown starts with card, dismiss and autoplay off preserved");
+  puts("posplay #470: countdown starts at EOF, dismiss and autoplay off preserved");
   abrirContagem();
   posplay_recuar(); posplay_aguardar_busca(1);
   posplay_atualizar(.016f, 6000, 2000, 3600, 1, 0, 0);
@@ -63,11 +68,13 @@ int main(void) {
   assert(posplay_visivel() && !pedir()); // amostra antiga nao rearma Next
   posplay_atualizar(.016f, 9000, 2000, 3600, 1, 0, 0);
   posplay_atualizar(.016f, 10000, 3597, 3600, 1, 0, 1);
-  posplay_atualizar(.016f, 13100, 3600, 3600, 1, 0, 1);
+  quadroEOF(.016f, 13100, 3600, 3600, 1, 0, 1);
+  quadroEOF(.016f, 18100, 3600, 3600, 1, 0, 1);
   assert(pedir()); // so fora da janela depois do seek permite nova contagem
 
   abrirContagem();
-  posplay_atualizar(.016f, 4100, 3600, 3600, 1, 0, 1);
+  quadroEOF(.016f, 4100, 3600, 3600, 1, 0, 1);
+  quadroEOF(.016f, 9100, 3600, 3600, 1, 0, 1);
   assert(!posplay_visivel());
   posplay_recuar(); assert(posplay_visivel() && !pedir());
   assert(tecla(SDLK_RETURN) == 1);
@@ -76,10 +83,12 @@ int main(void) {
 
   abrirContagem();
   posplay_aguardar_busca(1);
-  posplay_atualizar(.016f, 6000, 3600, 3600, 1, 0, 1);
+  quadroEOF(.016f, 6000, 3600, 3600, 1, 0, 1);
   assert(!pedir());
   posplay_aguardar_busca(0);
-  posplay_atualizar(.016f, 6100, 3600, 3600, 1, 0, 1);
+  quadroEOF(.016f, 6100, 3600, 3600, 1, 0, 1);
+  assert(!pedir());
+  quadroEOF(.016f, 11100, 3600, 3600, 1, 0, 1);
   assert(pedir()); // fim real libera
   // O cancelamento tambem vale para a contagem antecipada e configuravel
   // da integracao, enquanto os creditos ainda estao rolando.
@@ -95,13 +104,15 @@ int main(void) {
   assert(tecla(SDLK_RETURN) == 1 && pedir());
   // Pedido ja consumido nao pode ressuscitar o cartao ao cancelar uma busca.
   abrirContagem();
-  posplay_atualizar(.016f, 4100, 3600, 3600, 1, 0, 1);
+  quadroEOF(.016f, 4100, 3600, 3600, 1, 0, 1);
+  quadroEOF(.016f, 9100, 3600, 3600, 1, 0, 1);
   assert(pedir());
   posplay_recuar(); posplay_aguardar_busca(1);
   assert(!posplay_visivel() && !pedir());
   // player_abrir fecha o pos-play e apaga o pedido do titulo anterior.
   abrirContagem();
-  posplay_atualizar(.016f, 4100, 3600, 3600, 1, 0, 1);
+  quadroEOF(.016f, 4100, 3600, 3600, 1, 0, 1);
+  quadroEOF(.016f, 9100, 3600, 3600, 1, 0, 1);
   player_abrir(0, NULL); player_definir_episodio(5, 4);
   posplay_recuar(); posplay_aguardar_busca(1);
   assert(!posplay_visivel() && !pedir());

@@ -47,7 +47,7 @@
 // "Fim real" do arquivo para a cena pos-creditos: o pipeline para a uma fracao
 // de segundo da duracao (video_pos nao chega exatamente nela), entao um >=
 // exato nunca voltaria a abrir o cartao.
-#define PP_FIM_TOL_S      1.5
+// The shared p6_postplay_eof policy owns the backend EOF tolerance.
 
 // Cartazes dos relacionados, no tamanho da grade de "Ver tudo".
 #define PP_CARD_W  212.0f
@@ -437,7 +437,9 @@ void posplay_atualizar(float dt, Uint32 agora, double posSeg, double durSeg,
                        int ehSerie, int idxCatalogo, int janelaSerie) {
   int deveAparecer = 0;
   if (p6Suspended) return;
-  const int fimReal = p6_postplay_eof(video_ativo(), video_terminou(), video_pos(), durSeg);
+  // A stale ended flag during an explicit seek cannot re-open the card or
+  // release a post-credit scene. The confirmed backend position must also be EOF.
+  const int fimReal = !aguardaBusca && p6_postplay_eof(video_ativo(), video_terminou(), video_pos(), durSeg);
   // DUAS FONTES DE MARCADOR, nesta ordem e por este motivo: o capitulo do
   // Matroska vem do PROPRIO arquivo que esta tocando, entao ele descreve esta
   // copia; o TheIntroDB descreve o LANCAMENTO, e uma copia com abertura
@@ -484,15 +486,15 @@ void posplay_atualizar(float dt, Uint32 agora, double posSeg, double durSeg,
     // a usa-la aqui foi o que permitiu apagar aquela caixa — havia DUAS
     // interfaces de proximo episodio na mesma tela, uma feia e uma nova.
     //
-    // A contagem comeca com o cartao se autoplay estiver ligado.
-    deveAparecer = janelaSerie && durEstavel >= PP_DUR_ESTAVEL_S;
+    // The card can appear during credits, but real EOF also permits it
+    // when the final window was not sampled. The countdown starts only at EOF.
+    deveAparecer = (janelaSerie || fimReal) && durEstavel >= PP_DUR_ESTAVEL_S;
   } else {
     // FILME: a regra inteira mora em posplay_regra_filme, logo acima, que o
     // teste chama sem player nem rede. Aqui entra so a DURACAO ESTAVEL — ver
     // durEstavel.
     deveAparecer = durEstavel >= PP_DUR_ESTAVEL_S &&
-                   (posplay_regra_filme(posSeg, durSeg, creditosSeg) ||
-                    (cat_item(idx) && cat_item(idx)->posCreditos && durSeg - posSeg <= PP_FIM_TOL_S));
+                   (fimReal || posplay_regra_filme(posSeg, durSeg, creditosSeg));
   }
 
   // Saiu da zona (o dono voltou o filme): a dispensa perde a validade e o
@@ -563,7 +565,7 @@ void posplay_atualizar(float dt, Uint32 agora, double posSeg, double durSeg,
 
 int posplay_evento(const SDL_Event *e) {
   int k;
-  if (!visivel || e->type != SDL_KEYDOWN) return 0;
+  if (p6Suspended || !visivel || e->type != SDL_KEYDOWN) return 0;
 #ifdef NV_TOUCH_UI
   if (toquerol_navegacao(e)) toquerol_limpar(&toquePP);
 #endif
