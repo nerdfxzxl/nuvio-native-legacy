@@ -3018,8 +3018,19 @@ static void vigiarPartes(void) {
     { int k = partes_sessao_indice(); if (k >= 0) parteAviso(k); }
     return;
   }
+#ifdef NV_ANDROID
+  // A terminal decoder/output failure for the actual selected file is not
+  // an expired CDN URL. Preserve the Q39 modal and the user-owned retry.
+  if ((parteFase == PF_ABRINDO || parteFase == PF_TOCANDO) &&
+      video_ativo() && !strcmp(video_url_atual(), parteUrl) &&
+      (video_erro_video_p5b() || video_video_retry_pending())) return;
+#endif
   if (parteFase == PF_ABRINDO) {
-    if (video_pronto() && video_pos() > 0.25 && !video_falhou()) {
+    int iniciou = video_pronto() && video_pos() > 0.25;
+#ifdef NV_ANDROID
+    iniciou |= video_pronto() && video_quadro_visto() && video_superficie_estavel();
+#endif
+    if (iniciou && !video_falhou()) {
       parteFase = PF_TOCANDO;
       printf("[partes] the file plays (%u ms)\n", (unsigned)(SDL_GetTicks() - parteDesde));
       fflush(stdout);
