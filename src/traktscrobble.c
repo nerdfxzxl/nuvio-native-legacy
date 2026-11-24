@@ -43,6 +43,10 @@ int scrobble_decidir(ScrobbleEstado *s, int evento, const char *id, double pct) 
     s->ativo = 0;
     return pausaAceita(pct) ? SCR_PAUSE : SCR_NADA;
   }
+  if (evento == SCR_EV_HISTORICO_JA_GRAVADO || evento == SCR_EV_SAIU_SEM_VISTO) {
+    s->ativo = 0;
+    return evento == SCR_EV_SAIU_SEM_VISTO && pausaAceita(pct) ? SCR_PAUSE : SCR_NADA;
+  }
   if (evento == SCR_EV_SAIU) {
     snprintf(s->id, sizeof s->id, "%s", id);
     s->ativo = 0;
