@@ -2018,6 +2018,52 @@ int cat_episodio_por_tvdb(int indice, const char *id, int tvdb, int *t, int *e) 
   return ok;
 }
 
+int cat_episodio_identidade(int indice, const char *id, int t, int e,
+                           int *tvdb, char *vid, unsigned tam, uint64_t *topologia) {
+  int estado = 0, achou = -1;
+  uint64_t hash = UINT64_C(14695981039346656037);
+  if (tvdb) *tvdb=0;
+  if (vid && tam) vid[0]=0;
+  if (topologia) *topologia=0;
+  catTravar();
+  pthread_mutex_lock(&epTrava);
+  if (episodioFaixaValidaEx(indice,id,0)) {
+    const CatEp *v=eps+epIni[indice];
+    int q=epQtd[indice];
+    estado=-1;
+    for (int i=0;i<q;i++) {
+      const CatEp *x=&v[i];
+      uint32_t nums[]={ (uint32_t)x->temporada, (uint32_t)x->episodio, (uint32_t)x->tvdbEp };
+      for (unsigned j=0;j<3;j++) {
+        hash ^= nums[j]; hash *= UINT64_C(1099511628211);
+      }
+      for (const unsigned char *s=(const unsigned char *)x->vid; s<(const unsigned char *)x->vid+sizeof x->vid && *s;s++) {
+        hash ^= *s; hash *= UINT64_C(1099511628211);
+      }
+      hash ^= 255; hash *= UINT64_C(1099511628211);
+      if (x->temporada==t && x->episodio==e) {
+        if (achou>=0) { achou=-2; break; }
+        achou=i;
+      }
+    }
+    if (achou>=0) {
+      const CatEp *x=&v[achou];
+      int tv=x->tvdbEp, vidOk=x->vid[0] && memchr(x->vid,0,sizeof x->vid)!=NULL;
+      for (int i=0;i<q;i++) if (i!=achou) {
+        if (tv>0 && v[i].tvdbEp==tv) tv=0;
+        if (vidOk && !strncmp(v[i].vid,x->vid,sizeof x->vid)) vidOk=0;
+      }
+      if (tvdb && tv>0) *tvdb=tv;
+      if (vid && tam && vidOk && strlen(x->vid)<tam) snprintf(vid,tam,"%s",x->vid);
+      if (topologia) *topologia=hash?hash:1;
+      estado=itens[indice].epsParciais?1:2;
+    }
+  }
+  pthread_mutex_unlock(&epTrava);
+  pthread_mutex_unlock(&pubTrava);
+  return estado;
+}
+
 int cat_episodio_por_video(int indice, const char *id, const char *vid, int *t, int *e) {
   int ok = 0, mt = 0, me = 0;
   catTravar();

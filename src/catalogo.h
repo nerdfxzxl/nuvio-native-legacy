@@ -594,6 +594,10 @@ int           cat_episodio_existe_final(int indiceItem, const char *id, int t, i
 int           cat_episodio_por_tvdb(int indiceItem, const char *id, int tvdb,
                                     int *t, int *e);
 // Exact published video ID, not a synthesized numeric pair; ambiguity fails closed.
+// Capture actual published video ID (never synthesized), exact TVDB ID and
+// title-local topology atomically. 0=no list, -1=invalid pair, 1=partial, 2=final.
+int cat_episodio_identidade(int indice, const char *id, int t, int e,
+                           int *tvdb, char *vid, unsigned tam, uint64_t *topologia);
 int           cat_episodio_por_video(int indiceItem, const char *id, const char *vid,
                                      int *t, int *e);
 

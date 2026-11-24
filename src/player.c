@@ -97,6 +97,7 @@ extern int cat_episodio_tvdb_qualquer(int, const char *, int, int) NV_PERFIL_OPC
 extern int cat_episodio_existe_final(int, const char *, int, int) NV_PERFIL_OPCIONAL;
 extern int cat_episodio_por_tvdb(int, const char *, int, int *, int *) NV_PERFIL_OPCIONAL;
 extern int cat_episodio_por_video(int, const char *, const char *, int *, int *) NV_PERFIL_OPCIONAL;
+extern int cat_episodio_identidade(int,const char *,int,int,int *,char *,unsigned,uint64_t *) NV_PERFIL_OPCIONAL;
 extern int trakt_scrobble_alvo(int, const TraktScrobbleAlvo *, double, double,
                               double, int) NV_PERFIL_OPCIONAL;
 #include "watchstate_envio.h"
@@ -857,25 +858,32 @@ static int scrobbleTvdbCapturado;
 // Snapshot the authorized pair and exact source video before catalog replacement.
 // Keep the request pair for playback; resolve canonical coordinates only for history.
 static struct {
-  int capturado, explicito, t, e, tvdb, provisoria;
+  int capturado, explicito, t, e, tvdb, provisoria, frozen;
   unsigned versao;
+  uint64_t topologia;
   char vid[64];
 } p6EpIdentidade;
 static void p6EpCapturar(const CatItem *c, int t, int e, int explicito) {
   if (!c || t < 0 || e <= 0 || !c->imdb[0]) return;
+  if (p6EpIdentidade.frozen) return;
   if (p6EpIdentidade.capturado && p6EpIdentidade.t == t && p6EpIdentidade.e == e &&
       (p6EpIdentidade.explicito || !explicito)) return;
   memset(&p6EpIdentidade, 0, sizeof p6EpIdentidade);
   p6EpIdentidade.capturado = 1;
   p6EpIdentidade.explicito = explicito;
   p6EpIdentidade.t = t; p6EpIdentidade.e = e;
-  int ix = idxAtual();
+  int ix = cat_indice_titulo(c->imdb, idxAtual());
   p6EpIdentidade.versao = cat_versao_episodios();
-  p6EpIdentidade.provisoria = cat_n_episodios(ix) > 0 && cat_episodios_finais &&
-                             !cat_episodios_finais(ix, c->imdb);
-  if (cat_episodio_tvdb_qualquer)
-    p6EpIdentidade.tvdb = cat_episodio_tvdb_qualquer(ix, c->imdb, t, e);
-  cat_id_stream(ix, t, e, p6EpIdentidade.vid, sizeof p6EpIdentidade.vid);
+  if (cat_episodio_identidade) {
+    int estado = cat_episodio_identidade(ix,c->imdb,t,e,&p6EpIdentidade.tvdb,
+                  p6EpIdentidade.vid,sizeof p6EpIdentidade.vid,&p6EpIdentidade.topologia);
+    p6EpIdentidade.provisoria = estado!=2 && estado!=0;
+  } else {
+    p6EpIdentidade.provisoria = cat_n_episodios(ix)>0 && cat_episodios_finais &&
+                               !cat_episodios_finais(ix,c->imdb);
+    if (cat_episodio_tvdb_qualquer)
+      p6EpIdentidade.tvdb=cat_episodio_tvdb_qualquer(ix,c->imdb,t,e);
+  }
   scrobbleTvdbCapturado = p6EpIdentidade.tvdb;
 }
 static int p6HistoryPair(const CatItem *c, int *t, int *e) {
@@ -884,18 +892,22 @@ static int p6HistoryPair(const CatItem *c, int *t, int *e) {
   if (strcmp(c->tipo, "series")) return !strcmp(c->tipo, "movie");
   if (jfid_e(c->imdb)) { *t = epT; *e = epE; return epT >= 0 && epE > 0; }
   if (!p6EpIdentidade.capturado) return 0;
-  int ix = idxAtual();
+  int ix = cat_indice_titulo(c->imdb, idxAtual());
   if (p6EpIdentidade.tvdb > 0 && cat_episodio_por_tvdb &&
-      cat_episodio_por_tvdb(ix, c->imdb, p6EpIdentidade.tvdb, t, e)) return 1;
-  if (p6EpIdentidade.versao == cat_versao_episodios() && !p6EpIdentidade.provisoria) {
-    *t = p6EpIdentidade.t; *e = p6EpIdentidade.e; return 1;
+      cat_episodio_por_tvdb(ix,c->imdb,p6EpIdentidade.tvdb,t,e)) return 1;
+  // A captured stable ID wins, including actual published numeric video IDs.
+  if (p6EpIdentidade.tvdb<=0 && p6EpIdentidade.vid[0] && cat_episodio_por_video &&
+      cat_episodio_por_video(ix,c->imdb,p6EpIdentidade.vid,t,e)) return 1;
+  if (!p6EpIdentidade.provisoria) {
+    int unchanged=p6EpIdentidade.versao==cat_versao_episodios();
+    if (!unchanged && p6EpIdentidade.topologia && cat_episodio_identidade) {
+      uint64_t atual=0;
+      int estado=cat_episodio_identidade(ix,c->imdb,p6EpIdentidade.t,p6EpIdentidade.e,NULL,NULL,0,&atual);
+      unchanged=estado==2 && atual==p6EpIdentidade.topologia;
+      if (unchanged) p6EpIdentidade.versao=cat_versao_episodios();
+    }
+    if (unchanged) { *t=p6EpIdentidade.t; *e=p6EpIdentidade.e; return 1; }
   }
-  // If a captured TVDB ID is missing/ambiguous, a coincident numeric pair
-  // cannot override it. With no TVDB, accept a uniquely published opaque
-  // video ID, never a synthetic season/episode suffix after topology change.
-  if (p6EpIdentidade.tvdb <= 0 && p6EpIdentidade.vid[0] &&
-      !idbase_tem_episodio(p6EpIdentidade.vid) && cat_episodio_por_video &&
-      cat_episodio_por_video(ix, c->imdb, p6EpIdentidade.vid, t, e)) return 1;
   return 0;
 }
 static int pedGuia, pedZap, pedGuiaCheio;   // pedidos de canal: overlay do guia / CH+/-
@@ -2212,6 +2224,7 @@ void player_abrir(int indiceCatalogo, const char *url) {
   abrindoSessao = 1;
   player_definir_episodio(c ? c->temporada : 0, c ? c->episodio : 0);
   abrindoSessao = 0;
+  if (comVideo && p6EpIdentidade.capturado) p6EpIdentidade.frozen=1;
   if (url && *url && !comVideo) erroSemVideo();
 }
 
@@ -2371,6 +2384,7 @@ static int preTituloLegendaUsar(const char *url) {
 
 static void tocarFonteInterno(const char *url);
 static void tocarFonteInterno(const char *url) {
+  if (p6EpIdentidade.capturado) p6EpIdentidade.frozen=1;
   marco("abrir: url ao pipeline");
   skipLiberado = 0;
   loadEm = SDL_GetTicks();   // #202: do pipeline ao primeiro quadro ("[player] load->1o quadro")

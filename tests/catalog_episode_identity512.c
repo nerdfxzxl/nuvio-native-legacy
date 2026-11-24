@@ -67,6 +67,17 @@ int main(void) {
   snprintf(opaque[1].vid, sizeof opaque[1].vid, "addon:episode-unique");
   cat_definir_episodios(0, opaque, 2);
   assert(!cat_episodio_por_video(0,c.imdb,"addon:episode-unique",&t,&e));
+  c=title(1); CatEp numeric[]={ep(1,5,0),ep(1,6,0)};
+  snprintf(numeric[0].vid,sizeof numeric[0].vid,"kitsu:123:5");
+  cat_definir_tudo(&c,1,NULL,0); cat_definir_episodios(0,numeric,2);
+  char vid[64]; uint64_t before=0,after=0; int tv=0;
+  assert(cat_episodio_identidade(0,c.imdb,1,5,&tv,vid,sizeof vid,&before)==1);
+  assert(!tv && !strcmp(vid,"kitsu:123:5") && before);
+  c=title(0); numeric[0].temporada=2; numeric[0].episodio=1;
+  cat_definir_tudo(&c,1,NULL,0); cat_definir_episodios(0,numeric,2);
+  assert(cat_episodio_por_video(0,c.imdb,vid,&t,&e) && t==2 && e==1);
+  assert(cat_episodio_identidade(0,c.imdb,2,1,&tv,vid,sizeof vid,&after)==2 && before!=after);
+  assert(cat_episodio_identidade(0,c.imdb,1,5,&tv,vid,sizeof vid,&after)==-1);
   puts("catalog_episode_identity512: PASS");
   return 0;
 }
