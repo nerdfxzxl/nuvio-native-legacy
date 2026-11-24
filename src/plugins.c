@@ -9,6 +9,7 @@
 #include "dados.h"
 #include "descoberta.h"
 #include "idbase.h"
+#include "plugin_target_p6.h"
 #include "js.h"
 #include "perfis.h"
 #include "sessao.h"
@@ -59,7 +60,7 @@ typedef struct {
 static pthread_mutex_t trava = PTHREAD_MUTEX_INITIALIZER;
 static Estado E;                       // sob `trava`
 static PlugResumo ultimoResumo;
-static char resumoId[64], resumoTipo[16];
+static char resumoId[NV_STREAM_ID_CAP], resumoTipo[16];
 static unsigned resumoGeracao;
 static char ctxUsuario[80];            // dono do estado carregado (sob trava)
 static int ctxPerfil = -1;
@@ -958,7 +959,7 @@ int plugins_consultar(const char *id, const char *tipo, int (*cancelado)(void *)
                       AvisoFn aviso, void *avisoU, Stream **saida) {
   unsigned long t0 = agoraMsPlug();
   Rodada r;
-  char base[64];
+  char base[24]; long tm;
   int serie, k, total = 0, fios, criados = 0, descartar;
   unsigned ger = gerAtual();
   pthread_t f[PLUG_PARALELOS];
@@ -970,19 +971,10 @@ int plugins_consultar(const char *id, const char *tipo, int (*cancelado)(void *)
   memset(&r, 0, sizeof r);
   r.job = rede_job_criar(grupoDe());
   if (!r.job) return 0;
-  if (!strncmp(id, "tmdb:", 5)) {
-    snprintf(r.tmdb, sizeof r.tmdb, "%ld", atol(id + 5));
-    { const char *q = strchr(id + 5, ':'); if (q) { r.t = atoi(q + 1); q = strchr(q + 1, ':'); if (q) r.e = atoi(q + 1); } }
-  } else if (idbase_e_imdb(id)) {
-    long tm;
-    idbase_copiar(id, base, sizeof base);
-    idbase_episodio(id, &r.t, &r.e);
-    tm = tmdbDe(base, serie, r.job);
-    if (!tm) { printf("[plugins] %s: sem id do TMDB, plugins fora\n", base); rede_job_soltar(r.job); return 0; }
-    snprintf(r.tmdb, sizeof r.tmdb, "%ld", tm);
-  } else { rede_job_soltar(r.job); return 0; }   // kitsu:, mal: ... ficam para depois
-  if (serie && (r.t <= 0 || r.e <= 0)) { r.t = r.t > 0 ? r.t : 1; r.e = r.e > 0 ? r.e : 1; }
-  if (!serie) r.t = r.e = 0;
+  if (!nv_plugin_target(id, serie, base, &tm, &r.t, &r.e)) { rede_job_soltar(r.job); return 0; }
+  if (!tm) tm = tmdbDe(base, serie, r.job);
+  if (tm <= 0) { rede_job_soltar(r.job); return 0; }
+  snprintf(r.tmdb, sizeof r.tmdb, "%ld", tm);
   r.tipo = serie ? "tv" : "movie";
 
   pthread_mutex_lock(&trava);
@@ -1103,20 +1095,12 @@ int plugins_consulta_consultar(const PluginsConsulta *c, const char *id, const c
   }
   ordenarScrapers(r.lista, r.n, tituloAnime(id, tipo));
   if (!r.n) { free(r.lista); return 0; }
-  char base[64]; int completo = 1;
-  if (!strncmp(id, "tmdb:", 5)) {
-    snprintf(r.tmdb, sizeof r.tmdb, "%ld", atol(id + 5));
-    const char *q = strchr(id + 5, ':');
-    if (q) { r.t = atoi(q + 1); q = strchr(q + 1, ':'); if (q) r.e = atoi(q + 1); }
-  } else if (idbase_e_imdb(id)) {
-    idbase_copiar(id, base, sizeof base); idbase_episodio(id, &r.t, &r.e);
-    long tm = tmdbDeCapturado(c, base, serie, &completo);
-    if (!tm) { free(r.lista); return completo && plugins_consulta_atual(c) &&
-        !(cancelado && cancelado(ctx)) ? 0 : -1; }
-    snprintf(r.tmdb, sizeof r.tmdb, "%ld", tm);
-  } else { free(r.lista); return 0; }
-  if (serie) { r.t = r.t > 0 ? r.t : 1; r.e = r.e > 0 ? r.e : 1; }
-  else r.t = r.e = 0;
+  char base[24]; int completo = 1; long tm;
+  if (!nv_plugin_target(id, serie, base, &tm, &r.t, &r.e)) { free(r.lista); return 0; }
+  if (!tm) tm = tmdbDeCapturado(c, base, serie, &completo);
+  if (tm <= 0) { free(r.lista); return completo && plugins_consulta_atual(c) &&
+      !(cancelado && cancelado(ctx)) ? 0 : -1; }
+  snprintf(r.tmdb, sizeof r.tmdb, "%ld", tm);
   r.debrid.temporada = r.t; r.debrid.episodio = r.e;
   r.tipo = serie ? "tv" : "movie";
   r.res = calloc((size_t)r.n, sizeof *r.res);

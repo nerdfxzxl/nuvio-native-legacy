@@ -1,5 +1,6 @@
 #include "js.h"
 #include "stream_id_p6.h"
+#include "plugin_target_p6.h"
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
@@ -34,5 +35,20 @@ int main(void) {
   assert(!nv_stream_id_valid("addon:\xc0\xaf"));
   assert(!nv_stream_id_valid("addon:\xed\xa0\x80"));
   assert(!nv_stream_id_valid("addon:\xe2"));
-  puts("P6 exact metadata/history identifier decode PASS");
+  char base[24]; long tm; int t,e;
+  assert(nv_plugin_target("tt123:0:7",1,base,&tm,&t,&e) && !strcmp(base,"tt123") && !tm && t==0 && e==7);
+  assert(nv_plugin_target("tmdb:t123:2:7",1,base,&tm,&t,&e) && tm==123 && t==2 && e==7);
+  assert(nv_plugin_target("tmdb:123",0,base,&tm,&t,&e) && tm==123 && !t && !e);
+  assert(!nv_plugin_target("tt123",1,base,&tm,&t,&e));
+  assert(!nv_plugin_target("tt123:1",1,base,&tm,&t,&e));
+  assert(!nv_plugin_target("tt123abc:1:2",1,base,&tm,&t,&e));
+  assert(!nv_plugin_target("tt123:2147483648:1",1,base,&tm,&t,&e));
+  assert(!nv_plugin_target("tmdb:123abc:1:2",1,base,&tm,&t,&e));
+  assert(!nv_plugin_target("tmdb:9999999999999999999999:1:2",1,base,&tm,&t,&e));
+  assert(!nv_plugin_target("tmdb:m123:1:2",1,base,&tm,&t,&e));
+  assert(!nv_plugin_target("tt123:1:2",0,base,&tm,&t,&e));
+  assert(!nv_plugin_target("addon:opaque:1:2",1,base,&tm,&t,&e));
+  assert(idbase_campos_episodio("tt123:2147483647:1",&t,&e)==2 && t==2147483647 && e==1);
+  assert(idbase_campos_episodio("tt123:2147483648:1",&t,&e)==-1);
+  puts("P6 exact metadata/history identifier decode and canonical plugin translation PASS");
 }

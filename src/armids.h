@@ -30,6 +30,7 @@
 #include <string.h>
 #include <time.h>
 #include "idbase.h"
+#include "stream_id_p6.h"
 #include "js.h"
 #include "rede.h"
 
@@ -146,13 +147,17 @@ static inline char *armCorpo(const char *id, int *via) {
   int v = armEntrada(&id, &fonte);
   if (v < 0) return NULL;
   if ((v == ARM_TMDB || v == ARM_TVDB) && (id[0] == 't' || id[0] == 'm') && id[1] >= '0' && id[1] <= '9') id++;
-  // Numerico; o slug do anime-planet e o IMDb ("tt...") aceitam letras.
-  while (k + 1 < sizeof num) {
+  // Validate the entire base. Do not query a numeric/slug prefix of an opaque ID.
+  if (v == ARM_IMDB) {
+    if (!idbase_imdb_historico(id) || idbase_len(id)!=strlen(id)) return NULL;
+  }
+  while (id[k]) {
     char ch = id[k];
     int ok = (ch >= '0' && ch <= '9') ||
-             ((v == ARM_IMDB || !strcmp(fonte, "anime-planet")) &&
-              ((ch >= 'a' && ch <= 'z') || ch == '-' || ch == '_'));
-    if (!ok) break;
+             ((v == ARM_IMDB && k < 2 && ch == 't') ||
+              (!strcmp(fonte, "anime-planet") &&
+               ((ch >= 'a' && ch <= 'z') || ch == '-' || ch == '_')));
+    if (!ok || k+1>=sizeof num) return NULL;
     num[k] = ch; k++;
   }
   num[k] = 0;
@@ -177,7 +182,7 @@ static inline int armTemporada(const char *p, const char *f) {
 static inline void armLerEntrada(const char *p, const char *f, ArmIds *fora) {
   char tt[32] = "";
   int i;
-  if (js_texto_raiz_em(p, f, "imdb", tt, sizeof tt) && !strncmp(tt, "tt", 2))
+  if (js_id_raiz_em(p, f, "imdb", tt, sizeof tt)==1 && idbase_imdb_historico(tt) && idbase_len(tt)==strlen(tt))
     snprintf(fora->imdb, sizeof fora->imdb, "%s", tt);
   for (i = 0; i < ARM_COLS; i++) {
     double v = js_num(p, f, armCampo(i), 0.0);
@@ -258,17 +263,17 @@ static inline int arm_ids_stream(const char *id, const char *tipo, char (*alt)[A
   char base[64];
   int t = 0, e = 0, n = 0, k, filme;
   ArmIds a;
-  if (!id || !tipo || max <= 0) return 0;
+  if (!nv_stream_id_valid(id) || !tipo || max <= 0) return 0;
   if (!strcmp(tipo, "movie")) filme = 1;
   else if (!strcmp(tipo, "series")) filme = 0;
   else return 0;
-  idbase_copiar(id, base, sizeof base);
-  idbase_episodio(id, &t, &e);
-  if (!filme && e <= 0) return 0;
+  if (!idbase_copiar_exato(id, base, sizeof base)) return 0;
+  int campos = idbase_campos_episodio(id, &t, &e);
+  if (filme ? campos != 0 : campos <= 0 || e <= 0) return 0;
   if (arm_id_anime(base)) {
     // "kitsu:X:E": o episodio e o da entrada. "kitsu:X:T:E" nao e convencao de
     // ninguem; nao se traduz.
-    if (!filme && t >= 0) return 0;
+    if (!filme && (campos != 1 || t != -1)) return 0;
     if (!arm_consultar(base, tipo, &a)) return 0;
     for (k = 0; k < ARM_COLS && n < max; k++) {
       char s[ARM_ALT_TAM];
@@ -285,7 +290,8 @@ static inline int arm_ids_stream(const char *id, const char *tipo, char (*alt)[A
     }
     return n;
   }
-  if (idbase_e_imdb(base)) {
+  if (idbase_imdb_historico(base)) {
+    if (!filme && (campos != 2 || t <= 0)) return 0;
     char *c = armCorpo(base, NULL);
     int achadas;
     if (!c) return 0;

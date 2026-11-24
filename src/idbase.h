@@ -20,6 +20,7 @@
 #ifndef NV_IDBASE_H
 #define NV_IDBASE_H
 #include <stddef.h>
+#include <limits.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -95,20 +96,40 @@ static inline void idbase_copiar(const char *id, char *dst, size_t tam) {
 //   "tt1:2:5"       -> t=2 e=5
 //   "kitsu:41370:5" -> t=-1 e=5  (absent season; explicit season 0 is Specials)
 //   "kitsu:1:2:5"   -> t=2 e=5
-static inline void idbase_episodio(const char *id, int *t, int *e) {
-  const char *p;
-  int a = -1, b = -1, n;
+// Bounded decimal parsing: no overflow or partial suffix accepted.
+static inline int idbase_decimal(const char **p, int *out) {
+  const char *s = *p;
+  int n = 0;
+  if (*s < '0' || *s > '9') return 0;
+  do {
+    int digit = *s++ - '0';
+    if (n > (INT_MAX - digit) / 10) return 0;
+    n = n * 10 + digit;
+  } while (*s >= '0' && *s <= '9');
+  *p = s; *out = n; return 1;
+}
+
+// 0 = no suffix, -1 = malformed/out of range, 1 or 2 = exact fields.
+static inline int idbase_campos_episodio(const char *id, int *t, int *e) {
+  int a = 0, b = 0;
   if (t) *t = 0;
   if (e) *e = 0;
-  if (!id) return;
-  p = id + idbase_len(id);
-  if (*p != ':') return;
-  n = sscanf(p + 1, "%d:%d", &a, &b);
-  if (n == 2) { if (t) *t = a; if (e) *e = b; }
-  else if (n == 1) {
-    if (idbase_e_imdb(id)) { if (t) *t = a; }     // como sempre foi para o IMDb
+  if (!id) return -1;
+  const char *p = id + idbase_len(id);
+  if (!*p) return 0;
+  if (*p++ != ':' || !idbase_decimal(&p, &a)) return -1;
+  if (!*p) {
+    if (idbase_e_imdb(id)) { if (t) *t = a; }
     else { if (t) *t = -1; if (e) *e = a; }
+    return 1;
   }
+  if (*p++ != ':' || !idbase_decimal(&p, &b) || *p) return -1;
+  if (t) *t = a;
+  if (e) *e = b;
+  return 2;
+}
+static inline void idbase_episodio(const char *id, int *t, int *e) {
+  (void)idbase_campos_episodio(id, t, e);
 }
 
 // O id ja carrega episodio?
