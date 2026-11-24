@@ -6,9 +6,12 @@ import androidx.media3.common.C
 import androidx.media3.common.ColorInfo
 import androidx.media3.common.Format
 import androidx.media3.common.MimeTypes
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.util.CodecSpecificDataUtil
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.decoder.CryptoInfo
+import androidx.media3.exoplayer.DecoderReuseEvaluation
+import androidx.media3.exoplayer.video.MediaCodecVideoRenderer
 import androidx.media3.exoplayer.mediacodec.MediaCodecAdapter
 import androidx.media3.exoplayer.mediacodec.MediaCodecInfo
 import java.io.IOException
@@ -30,6 +33,58 @@ internal object HdrCodecFallbackP5B {
             a.width == b.width && a.height == b.height &&
             a.drmInitData == b.drmInitData && a.colorInfo == b.colorInfo &&
             a.initializationDataEquals(b)
+
+    // Stock Media3 may reuse a codec even when Dolby profile/CSD changes.
+    // Require a fresh capability check for changed DV or software-decoded
+    // formats; ordinary hardware SDR/HDR adaptation stays stock.
+    fun needsRevalidation(old: Format, next: Format, software: Boolean): Boolean {
+        val guarded = software || old.sampleMimeType == MimeTypes.VIDEO_DOLBY_VISION ||
+            next.sampleMimeType == MimeTypes.VIDEO_DOLBY_VISION
+        return guarded && (!sameVideoFormat(old, next) ||
+            java.lang.Float.compare(old.frameRate, next.frameRate) != 0)
+    }
+
+    class OutputRejected : IOException("No verified compatible video output")
+
+    // Extend only the actual platform video renderer. Preserve Media3's
+    // format negotiation, clock, surface and extension renderer behavior.
+    class GuardedRenderer(builder: MediaCodecVideoRenderer.Builder,
+                          private val config: () -> VideoConfig?,
+                          private val recovery: () -> RuntimeRecovery?,
+                          private val displayDv: () -> Boolean,
+                          private val displayHdr10: () -> Boolean,
+                          private val positionReset: (Long) -> Unit) : MediaCodecVideoRenderer(builder) {
+        override fun canReuseCodec(codecInfo: MediaCodecInfo, oldFormat: Format,
+                                   newFormat: Format): DecoderReuseEvaluation {
+            if (needsRevalidation(oldFormat, newFormat, codecInfo.softwareOnly) ||
+                recovery()?.permits(codecInfo.name, newFormat) == false)
+                return DecoderReuseEvaluation(codecInfo.name, oldFormat, newFormat,
+                    DecoderReuseEvaluation.REUSE_RESULT_NO, DecoderReuseEvaluation.DISCARD_REASON_WORKAROUND)
+            return super.canReuseCodec(codecInfo, oldFormat, newFormat)
+        }
+
+        override fun onPositionReset(positionUs: Long, joining: Boolean) {
+            val at = android.os.SystemClock.elapsedRealtime()
+            super.onPositionReset(positionUs, joining)
+            positionReset(at)
+        }
+
+        override fun onOutputFormatChanged(format: Format, mediaFormat: MediaFormat?) {
+            // The format dequeued for this actual output buffer (rather than
+            // the latest adaptive selection) is the authority. A reused or
+            // reconfigured decoder must never bypass positive DV/base proof.
+            if (format.sampleMimeType == MimeTypes.VIDEO_DOLBY_VISION) {
+                val current = config()
+                val info = getCodecInfo()
+                val supported = current != null && info != null && current.matches(format, info.name) &&
+                    if (info.mimeType == MimeTypes.VIDEO_DOLBY_VISION) displayDv()
+                    else info.mimeType == MimeTypes.VIDEO_H265 && current.base?.ready() == true && displayHdr10()
+                if (!supported) throw createRendererException(OutputRejected(), format,
+                    PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED)
+            }
+            super.onOutputFormatChanged(format, mediaFormat)
+        }
+    }
 
     data class VideoConfig(val info: MediaCodecInfo, val source: Format, val base: Proof?) {
         fun matches(format: Format, name: String?): Boolean =

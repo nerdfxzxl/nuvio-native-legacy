@@ -74,5 +74,19 @@ fun main() {
     check(!recovery.permits("compatible.sw", original.buildUpon().setInitializationData(listOf(hlg)).build()))
     check(!recovery.handoff(null, original, "compatible.sw"))
     check(!recovery.completed)
-    println("P5-B actual HEVC CSD/IRAP, codec proof and runtime representation guard: PASS (38 assertions)")
+    // Actual format objects: unchanged metadata can reuse a decoder;
+    // changed DV or software-decoded formats must repeat the capability gate.
+    val sdrFormat = original.buildUpon().setSampleMimeType(MimeTypes.VIDEO_H265).setCodecs("hvc1.2.4.L93").build()
+    val changedSdr = sdrFormat.buildUpon().setWidth(128).build()
+    val changedDv = original.buildUpon().setCodecs("dvhe.05.06").build()
+    check(!HdrCodecFallbackP5B.needsRevalidation(original, original.buildUpon().build(), false))
+    check(HdrCodecFallbackP5B.needsRevalidation(original, changedDv, false))
+    check(HdrCodecFallbackP5B.needsRevalidation(original, original.buildUpon().setFrameRate(30f).build(), false))
+    check(HdrCodecFallbackP5B.needsRevalidation(original, original.buildUpon().setInitializationData(listOf(hlg)).build(), false))
+    check(HdrCodecFallbackP5B.needsRevalidation(original, sdrFormat, false))
+    check(HdrCodecFallbackP5B.needsRevalidation(sdrFormat, original, false))
+    check(!HdrCodecFallbackP5B.needsRevalidation(sdrFormat, changedSdr, false))
+    check(HdrCodecFallbackP5B.needsRevalidation(sdrFormat, changedSdr, true))
+    check(!HdrCodecFallbackP5B.needsRevalidation(sdrFormat, sdrFormat.buildUpon().build(), true))
+    println("P5-B actual HEVC CSD/IRAP, codec proof, runtime and reuse guards: PASS (47 assertions)")
 }

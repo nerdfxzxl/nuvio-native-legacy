@@ -50,6 +50,8 @@ import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.exoplayer.mediacodec.MediaCodecDecoderException
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
+import androidx.media3.exoplayer.video.MediaCodecVideoRenderer
+import androidx.media3.exoplayer.video.VideoRendererEventListener
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.WrappingMediaSource
@@ -590,6 +592,7 @@ object NvPlayer {
         principal.removeCallbacks(recriar)
         recriaAgendada = false
         cancelarDetach()
+        cancelarStartupSeek()
         invalidarQuadroSuperficie()
         restoreAfr()
         try { player?.pause() } catch (e: Exception) { Log.w(TAG, "pause after video failure: $e") }
@@ -1519,12 +1522,7 @@ object NvPlayer {
                 if (pedido != pedidos.get() || player !== p || busca != buscaSerial) return@applySeek
                 val commit = {
                     if (pedido == pedidos.get() && player === p && busca == buscaSerial && !videoOutputFailed) {
-                        // A startup seek must not authorize handoff with an
-                        // already queued frame from the superseded position.
-                        // An ordinary post-handoff seek retains the existing plane.
-                        if (!estavelEmitido && p.isCurrentMediaItemSeekable && p.currentPosition != alvo)
-                            invalidarQuadroSuperficie()
-                        p.seekTo(alvo)
+                        buscarComHandoff(p, alvo)
                         appliedSeekRevision = revision
                     }
                 }
@@ -1848,6 +1846,38 @@ object NvPlayer {
                         { displayHdr(act, android.view.Display.HdrCapabilities.HDR_TYPE_DOLBY_VISION) },
                         { r.runtimeVideoRecovery },
                         { config -> r.videoConfig = config })
+                override fun buildVideoRenderers(context: Context, extensionRendererMode: Int,
+                                                  mediaCodecSelector: MediaCodecSelector, enableDecoderFallback: Boolean,
+                                                  eventHandler: Handler, eventListener: VideoRendererEventListener,
+                                                  allowedVideoJoiningTimeMs: Long, out: ArrayList<Renderer>) {
+                    val start = out.size
+                    // Keep the stock extension enumeration and preference order.
+                    super.buildVideoRenderers(context, extensionRendererMode, mediaCodecSelector,
+                        enableDecoderFallback, eventHandler, eventListener, allowedVideoJoiningTimeMs, out)
+                    val slot = (start until out.size).firstOrNull {
+                        out[it].javaClass == MediaCodecVideoRenderer::class.java
+                    } ?: return
+                    // These are the unchanged pinned Media3 1.8 default video
+                    // builder settings used by this factory (no experimental toggles).
+                    val builder = MediaCodecVideoRenderer.Builder(context)
+                        .setCodecAdapterFactory(getCodecAdapterFactory())
+                        .setMediaCodecSelector(mediaCodecSelector)
+                        .setEnableDecoderFallback(enableDecoderFallback)
+                        .setAllowedJoiningTimeMs(allowedVideoJoiningTimeMs)
+                        .setEventHandler(eventHandler).setEventListener(eventListener)
+                        .setMaxDroppedFramesToNotify(50)
+                    out[slot] = HdrCodecFallbackP5B.GuardedRenderer(builder, { r.videoConfig },
+                        { r.runtimeVideoRecovery },
+                        { displayHdr(act, android.view.Display.HdrCapabilities.HDR_TYPE_DOLBY_VISION) },
+                        { displayHdr(act, android.view.Display.HdrCapabilities.HDR_TYPE_HDR10) },
+                        { at ->
+                            principal.post {
+                                if (recursosAtuais === r && atual(sessao) && !videoOutputFailed &&
+                                    !estavelEmitido && at >= superficieInvalidadaEm)
+                                    invalidarQuadroSuperficie(at)
+                            }
+                        })
+                }
                 override fun buildAudioSink(context: Context, enableFloatOutput: Boolean,
                                             enableAudioTrackPlaybackParams: Boolean): AudioSink =
                     // Sonic needs integer PCM; float output bypasses audio processors.
@@ -2123,6 +2153,7 @@ object NvPlayer {
         val ouv = ouvinteAtual; val ana = analiticoAtual
         ouvinteAtual = null; analiticoAtual = null
         cancelarDetach()
+        cancelarStartupSeek()
         if (p != null) {
             // Stop audible playback on the main looper before async release:
             // an old decoder must never overlap the newly chosen source.
@@ -2417,8 +2448,58 @@ object NvPlayer {
     // Media3's analytics event includes the actual output and elapsed-realtime render time.
     // An earlier surface incarnation must not authorize the next video/audio handoff.
     private var superficieInvalidadaEm = 0L
-    private fun invalidarQuadroSuperficie() {
-        superficieInvalidadaEm = SystemClock.elapsedRealtime()
+    private val startupSeekGate = RecriaHdr.StartupSeekGate()
+    private var startupSeekTimeout: Runnable? = null
+
+    private fun cancelarStartupSeek() {
+        startupSeekTimeout?.let { principal.removeCallbacks(it) }
+        startupSeekTimeout = null
+        startupSeekGate.cancel()
+    }
+
+    private fun buscarComHandoff(p: ExoPlayer, alvo: Long) {
+        if (estavelEmitido || !p.isCurrentMediaItemSeekable) {
+            p.seekTo(alvo)
+            return
+        }
+        // Media3 can adjust a seek to the current position and elide its
+        // renderer reset. Hold the startup gate until its playback thread
+        // processes the command; only an actual reset invalidates a frame.
+        val origem = sessao
+        val ticket = startupSeekGate.begin()
+        startupSeekTimeout?.let { principal.removeCallbacks(it) }
+        principal.removeCallbacks(estavelRun)
+        val timeout = Runnable {
+            if (atual(origem) && player === p && startupSeekGate.finish(ticket)) {
+                startupSeekTimeout = null
+                falhaVideo(origem, HdrPolicyP5.FAIL_SURFACE, 1003, geracaoNative)
+            }
+        }
+        startupSeekTimeout = timeout
+        principal.postDelayed(timeout, 10000L)
+        try {
+            p.seekTo(alvo)
+            p.createMessage { _, _ ->
+                principal.post {
+                    if (atual(origem) && player === p && startupSeekGate.finish(ticket)) {
+                        principal.removeCallbacks(timeout)
+                        startupSeekTimeout = null
+                        avaliarEstavel()
+                    }
+                }
+            }.send()
+        } catch (e: Exception) {
+            if (startupSeekGate.finish(ticket)) {
+                principal.removeCallbacks(timeout)
+                startupSeekTimeout = null
+                avaliarEstavel()
+            }
+            throw e
+        }
+    }
+
+    private fun invalidarQuadroSuperficie(at: Long = SystemClock.elapsedRealtime()) {
+        superficieInvalidadaEm = maxOf(superficieInvalidadaEm, at)
         baseLayerRendered = null
         quadroVisto = false
         estavelEmitido = false
@@ -2597,7 +2678,7 @@ object NvPlayer {
     private var hdrRecriadoPara = ""
     private var estavelEmitido = false
     private val estavelRun = Runnable {
-        if (atual(sessao) && !afrSuspended && afrGate == null && !videoOutputFailed && player != null && quadroVisto && !estavelEmitido && !recriando && !recriaAgendada &&
+        if (atual(sessao) && !afrSuspended && afrGate == null && !startupSeekGate.waiting() && !videoOutputFailed && player != null && quadroVisto && !estavelEmitido && !recriando && !recriaAgendada &&
             superficie?.holder?.surface?.isValid == true) {
             estavelEmitido = true
             Log.i(TAG, "[aspect] superficie estavel (hdr=$ultHdr) sessao=$sessao soltando=${soltando != null} holder=${System.identityHashCode(superficie?.holder)}")
@@ -2608,7 +2689,7 @@ object NvPlayer {
         }
     }
     private fun avaliarEstavel() {
-        if (videoOutputFailed || afrSuspended || afrGate != null || !quadroVisto || estavelEmitido) return
+        if (videoOutputFailed || afrSuspended || afrGate != null || startupSeekGate.waiting() || !quadroVisto || estavelEmitido) return
         principal.removeCallbacks(estavelRun)
         if (recriando || recriaAgendada) return
         principal.postDelayed(estavelRun, 150L)
@@ -2852,6 +2933,7 @@ object NvPlayer {
                 val sv = superficie
                 if (RecriaHdr.mayRecoverDetach(recuperouSuperficie, sv != null)) {
                     recuperouSuperficie = true
+                    ev(EV_VIDEO_RECOVERY, HdrPolicyP5.FAIL_SURFACE)
                     cancelarDetach()
                     principal.post {
                         if (sv == null || !atual(minha) || videoOutputFailed ||
@@ -2892,8 +2974,11 @@ object NvPlayer {
             val cedo = SystemClock.elapsedRealtime() - abriuEm < RETRY_DECODER_MS
             val decoder = error.errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED ||
                 error.errorCode == PlaybackException.ERROR_CODE_DECODING_FAILED
-            val videoFailure = HdrPolicyP5.failure(error.errorCode, tipo == C.TRACK_TYPE_VIDEO,
-                tipo == C.TRACK_TYPE_AUDIO)
+            val outputRejected = generateSequence(error.cause) { it.cause }
+                .any { it is HdrCodecFallbackP5B.OutputRejected }
+            val videoFailure = if (outputRejected && tipo == C.TRACK_TYPE_VIDEO) HdrPolicyP5.FAIL_OUTPUT
+                else HdrPolicyP5.failure(error.errorCode, tipo == C.TRACK_TYPE_VIDEO,
+                    tipo == C.TRACK_TYPE_AUDIO)
             if (videoFailure != 0) {
                 val r = recursosAtuais
                 // A real runtime codec failure is distinct from initialization
@@ -2931,6 +3016,7 @@ object NvPlayer {
                 // track-selection policy, cache identity, or source-quality choice.
                 if (videoFailure == HdrPolicyP5.FAIL_DECODER && decoder && cedo && !retentou && p != null) {
                     retentou = true
+                    ev(EV_VIDEO_RECOVERY, videoFailure)
                     invalidarQuadroSuperficie()
                     principal.postDelayed({
                         if (atual(minha) && !videoOutputFailed && player === p) {
@@ -3104,8 +3190,7 @@ object NvPlayer {
         val alvo = d * f / 10000L
         fracaoPendente = 0
         try {
-            if (!estavelEmitido && p.currentPosition != alvo) invalidarQuadroSuperficie()
-            p.seekTo(alvo)
+            buscarComHandoff(p, alvo)
             Log.i(TAG, "[player] retomada na preparacao: ${alvo} ms de ${d} ms (${f / 100}.${"%02d".format(f % 100)}%)")
             confirmarRetomada(geracaoNative, true)
         } catch (e: Exception) {

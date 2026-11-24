@@ -45,6 +45,22 @@ object RecriaHdr {
         fun cancel() { phase = Phase.FINISHED; framesBlocked = false }
     }
 
+    // Main-looper gate: wait for the seek command's playback-thread
+    // acknowledgment, not a presumed decoder flush. A real renderer reset
+    // invalidates the frame independently. An adjusted no-op keeps its frame.
+    class StartupSeekGate {
+        private var pending: Any? = null
+        fun begin(): Any = Any().also { pending = it }
+        fun owns(ticket: Any): Boolean = pending === ticket
+        fun waiting(): Boolean = pending != null
+        fun finish(ticket: Any): Boolean {
+            if (!owns(ticket)) return false
+            pending = null
+            return true
+        }
+        fun cancel() { pending = null }
+    }
+
     // Media3 ExoTimeoutException.OPERATION_DETACH_SURFACE = 3.
     fun timeoutRecuperavel(codigo: Int, recriando: Boolean, operacao: Int): Boolean =
         codigo == 1003 && recriando && operacao == 3
