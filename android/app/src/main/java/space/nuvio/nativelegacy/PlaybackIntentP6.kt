@@ -31,9 +31,10 @@ internal class PlaybackIntentP6 {
         return pause
     }
 
-    fun opening(request: Int, recovery: Boolean, reenter: Boolean, priorPaused: Boolean): Boolean {
+    fun opening(request: Int, recovery: Boolean, reenter: Boolean, priorPaused: Boolean, forcedPause: Boolean = false): Boolean {
         if (background) return true
         if (commandRequest == request) return commandedPause
+        if (forcedPause) { hold = true; parkedRequest = request; return true }
         if (hold && (parkedRequest == request || recovery || reenter)) return true
         if (!recovery && !reenter) hold = false
         return reenter && priorPaused
