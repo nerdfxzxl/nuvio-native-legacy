@@ -66,7 +66,6 @@ jobs:
           SANITIZE=0 bash tests/intro.sh
           bash tests/contapend.sh
           bash tests/progresso.sh
-          bash tests/contalib.sh
 
       - name: Install Android NDK and host SDL headers for syntax-only C/JNI source check
         shell: bash
@@ -83,6 +82,8 @@ jobs:
           trap 'rm -f "$p6_preflight"' EXIT
           sed 's@src/main.c src/home.c src/streams.c@src/proximopreparo.c src/posplay.c src/continuar.c src/atividade.c src/contapend.c src/capmkv.c src/mkv.c src/main.c src/home.c src/streams.c@' tools/android/preflight-c.sh > "$p6_preflight"
           bash "$p6_preflight"
+          bash tests/contalib.sh
+          bash tests/catalog_episode_identity512.sh
 
       - name: Install Android API 35 (no NDK build or APK)
         shell: bash

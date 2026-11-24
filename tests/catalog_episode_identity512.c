@@ -54,6 +54,19 @@ int main(void) {
   assert(cat_episodio_tvdb(0, c.imdb, 1, 13) == 0);
   assert(cat_episodio_tvdb(0, c.imdb, 2, 1) == 0);
   assert(!cat_episodio_por_tvdb(0, c.imdb, 10567809, &t, &e));
+  // Exact opaque video survives provisional renumbering; ambiguity is rejected.
+  CatEp opaque[] = {ep(1,13,10567809), ep(2,1,11209906)};
+  snprintf(opaque[0].vid, sizeof opaque[0].vid, "addon:episode-unique");
+  snprintf(opaque[1].vid, sizeof opaque[1].vid, "addon:episode-other");
+  c = title(1); cat_definir_tudo(&c, 1, NULL, 0); cat_definir_episodios(0, opaque, 2);
+  assert(!cat_episodio_por_video(0,c.imdb,"addon:episode-unique",&t,&e));
+  c = title(0); opaque[0].temporada = 2; opaque[0].episodio = 3;
+  cat_definir_tudo(&c, 1, NULL, 0); cat_definir_episodios(0, opaque, 2);
+  assert(cat_episodio_por_video(0,c.imdb,"addon:episode-unique",&t,&e) && t == 2 && e == 3);
+  assert(cat_episodio_por_tvdb(0,c.imdb,10567809,&t,&e) && t == 2 && e == 3);
+  snprintf(opaque[1].vid, sizeof opaque[1].vid, "addon:episode-unique");
+  cat_definir_episodios(0, opaque, 2);
+  assert(!cat_episodio_por_video(0,c.imdb,"addon:episode-unique",&t,&e));
   puts("catalog_episode_identity512: PASS");
   return 0;
 }

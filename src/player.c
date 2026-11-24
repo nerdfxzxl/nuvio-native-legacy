@@ -95,6 +95,8 @@ extern int cat_episodios_finais(int, const char *) NV_PERFIL_OPCIONAL;
 extern int cat_episodio_tvdb(int, const char *, int, int) NV_PERFIL_OPCIONAL;
 extern int cat_episodio_tvdb_qualquer(int, const char *, int, int) NV_PERFIL_OPCIONAL;
 extern int cat_episodio_existe_final(int, const char *, int, int) NV_PERFIL_OPCIONAL;
+extern int cat_episodio_por_tvdb(int, const char *, int, int *, int *) NV_PERFIL_OPCIONAL;
+extern int cat_episodio_por_video(int, const char *, const char *, int *, int *) NV_PERFIL_OPCIONAL;
 extern int trakt_scrobble_alvo(int, const TraktScrobbleAlvo *, double, double,
                               double, int) NV_PERFIL_OPCIONAL;
 #include "watchstate_envio.h"
@@ -844,6 +846,50 @@ static int abrindoSessao;
 static TraktScrobbleAlvo scrobbleAlvo;
 static int scrobbleAlvoPronto;
 static int scrobbleTvdbCapturado;
+// Snapshot the authorized pair and exact source video before catalog replacement.
+// Keep the request pair for playback; resolve canonical coordinates only for history.
+static struct {
+  int capturado, explicito, t, e, tvdb, provisoria;
+  unsigned versao;
+  char vid[64];
+} p6EpIdentidade;
+static void p6EpCapturar(const CatItem *c, int t, int e, int explicito) {
+  if (!c || t < 0 || e <= 0 || !c->imdb[0]) return;
+  if (p6EpIdentidade.capturado && p6EpIdentidade.t == t && p6EpIdentidade.e == e &&
+      (p6EpIdentidade.explicito || !explicito)) return;
+  memset(&p6EpIdentidade, 0, sizeof p6EpIdentidade);
+  p6EpIdentidade.capturado = 1;
+  p6EpIdentidade.explicito = explicito;
+  p6EpIdentidade.t = t; p6EpIdentidade.e = e;
+  int ix = idxAtual();
+  p6EpIdentidade.versao = cat_versao_episodios();
+  p6EpIdentidade.provisoria = cat_n_episodios(ix) > 0 && cat_episodios_finais &&
+                             !cat_episodios_finais(ix, c->imdb);
+  if (cat_episodio_tvdb_qualquer)
+    p6EpIdentidade.tvdb = cat_episodio_tvdb_qualquer(ix, c->imdb, t, e);
+  cat_id_stream(ix, t, e, p6EpIdentidade.vid, sizeof p6EpIdentidade.vid);
+  scrobbleTvdbCapturado = p6EpIdentidade.tvdb;
+}
+static int p6HistoryPair(const CatItem *c, int *t, int *e) {
+  if (!c) return 0;
+  *t = *e = 0;
+  if (strcmp(c->tipo, "series")) return !strcmp(c->tipo, "movie");
+  if (jfid_e(c->imdb)) { *t = epT; *e = epE; return epT >= 0 && epE > 0; }
+  if (!p6EpIdentidade.capturado) return 0;
+  int ix = idxAtual();
+  if (p6EpIdentidade.tvdb > 0 && cat_episodio_por_tvdb &&
+      cat_episodio_por_tvdb(ix, c->imdb, p6EpIdentidade.tvdb, t, e)) return 1;
+  if (p6EpIdentidade.versao == cat_versao_episodios() && !p6EpIdentidade.provisoria) {
+    *t = p6EpIdentidade.t; *e = p6EpIdentidade.e; return 1;
+  }
+  // If a captured TVDB ID is missing/ambiguous, a coincident numeric pair
+  // cannot override it. With no TVDB, accept a uniquely published opaque
+  // video ID, never a synthetic season/episode suffix after topology change.
+  if (p6EpIdentidade.tvdb <= 0 && p6EpIdentidade.vid[0] &&
+      !idbase_tem_episodio(p6EpIdentidade.vid) && cat_episodio_por_video &&
+      cat_episodio_por_video(ix, c->imdb, p6EpIdentidade.vid, t, e)) return 1;
+  return 0;
+}
 static int pedGuia, pedZap, pedGuiaCheio;   // pedidos de canal: overlay do guia / CH+/-
 // OSD PROPRIO DO CANAL AO VIVO (aovivo.h). O zapping acumula toques e so pede a
 // troca depois do debounce; `pedZap` passa a ser um DESLOCAMENTO (pode ser 3 ou
@@ -1209,9 +1255,8 @@ void player_definir_episodio(int t, int e) {
   // Capture exact identity while the pair still belongs to the provisional
   // list. A later final list may renumber this same episode and remove the old
   // pair; TVDB is the bridge that remains valid across that replacement.
-  if (!scrobbleTvdbCapturado && c && !strcmp(c->tipo, "series") && t >= 0 && e > 0 &&
-      cat_episodio_tvdb_qualquer)
-    scrobbleTvdbCapturado = cat_episodio_tvdb_qualquer(idxAtual(), c->imdb, t, e);
+  if (c && t >= 0 && e > 0 && strcmp(c->tipo, "movie"))
+    p6EpCapturar(c, t, e, !abrindoSessao);
   audioTitulo();
   retomarPct = 0;
   // !canalSessao: canal nao tem retomada, e se o indice ja foi remapeado o
@@ -1279,6 +1324,7 @@ void player_definir_episodio(int t, int e) {
   // O default antigo de uma serie JA conhecida continua valido. Tipo
   // incerto so chega aqui depois de um pedido positivo de T/E confirmado.
   epPedidoT = epT; epPedidoE = epE;
+  p6EpCapturar(c, epT, epE, !abrindoSessao);
   // AS FONTES SAO DESTE EPISODIO, E SO DELE — issue #101.
   //
   // A lista de streams.c e uma so, global, e nada a invalidava ao trocar de
@@ -2003,6 +2049,7 @@ void player_abrir(int indiceCatalogo, const char *url) {
   scrobbleTvdbCapturado = 0;
   quadroCapturado = 0;
   player_descartar_retido();
+  memset(&p6EpIdentidade, 0, sizeof p6EpIdentidade);
   p6WatchState = 0; p6WatchTry = 0; p6WatchStarted = contapend_agora_ms();
   p6PendingPause = 0;
   // O trailer usa o mesmo plano de video (LG) — solta antes de o player
@@ -2557,9 +2604,13 @@ float player_posicao_seg(void) { return posSeg; }
 // prefixo, entao o corte e no SEGUNDO ':' nesse caso.
 static void idTrakt(const CatItem *ci, char *dst, size_t n) {
   const char *base = ci->imdb;
-  size_t l = idbase_len(base);   // "tmdb:t123", "kitsu:41370" guardam o ':' do prefixo
-  if (epT >= 0 && epE > 0) snprintf(dst, n, "%.*s:%d:%d", (int)l, base, epT, epE);
-  else snprintf(dst, n, "%s", base);
+  int t, e;
+  dst[0] = 0;
+  if (!p6HistoryPair(ci, &t, &e)) return;
+  size_t l = idbase_len(base);
+  int k = e > 0 ? snprintf(dst, n, "%.*s:%d:%d", (int)l, base, t, e) :
+                  snprintf(dst, n, "%s", base);
+  if (k < 0 || (size_t)k >= n) dst[0] = 0;
 }
 
 static const TraktScrobbleAlvo *alvoTrakt(const CatItem *ci) {
@@ -2567,7 +2618,16 @@ static const TraktScrobbleAlvo *alvoTrakt(const CatItem *ci) {
   int tvdb = scrobbleTvdbCapturado, final, parFinal = 0;
   if (!ci || !ci->imdb[0] || (strcmp(ci->tipo, "movie") && strcmp(ci->tipo, "series")) ||
       (!strcmp(ci->tipo, "series") && (epT < 0 || epE <= 0))) return NULL;
+  int t = 0, e = 0;
+  int resolvido = p6HistoryPair(ci, &t, &e);
   idTrakt(ci, id, sizeof id);
+  if (!id[0]) {
+    // Trakt can address an exact frozen TVDB episode even before final numbering.
+    if (!tvdb || !p6EpIdentidade.capturado) return NULL;
+    int k = snprintf(id, sizeof id, "%.*s:%d:%d", (int)idbase_len(ci->imdb),
+        ci->imdb, p6EpIdentidade.t, p6EpIdentidade.e);
+    if (k < 0 || (size_t)k >= sizeof id) return NULL;
+  }
   // `ci` is the immutable snapshot captured when the player opened. Consult
   // the live catalog so a playback opened from a provisional episode list can
   // begin scrobbling once the canonical list replaces it.
@@ -2575,10 +2635,10 @@ static const TraktScrobbleAlvo *alvoTrakt(const CatItem *ci) {
           (cat_episodios_finais ? cat_episodios_finais(idxAtual(), ci->imdb)
                                 : !ci->epsParciais);
   if (!strcmp(ci->tipo, "series")) {
-    if (!tvdb && final && cat_episodio_tvdb)
-      tvdb = cat_episodio_tvdb(idxAtual(), ci->imdb, epT, epE);
-    if (final && cat_episodio_existe_final)
-      parFinal = cat_episodio_existe_final(idxAtual(), ci->imdb, epT, epE);
+    if (!tvdb && final && resolvido && cat_episodio_tvdb)
+      tvdb = cat_episodio_tvdb(idxAtual(), ci->imdb, t, e);
+    if (final && resolvido && cat_episodio_existe_final)
+      parFinal = cat_episodio_existe_final(idxAtual(), ci->imdb, t, e);
     // Without the helper, retain the old behavior for optional-link builds.
     else if (final && !cat_episodio_existe_final) parFinal = 1;
   } else parFinal = final;
@@ -2772,9 +2832,15 @@ static int p6WatchReached(void) {
 static int p6WatchOverride(const CatItem *ci) {
   long long ms = 0;
   if (p6WatchState < 0) return 1;
-  if (ci && !jfid_e(ci->imdb) &&
-      contapend_intencao(ci->imdb, ci->tipo, epE > 0 ? epT : 0, epE > 0 ? epE : 0, &ms) == 0 &&
-      ms >= p6WatchStarted) {
+  if (!ci || jfid_e(ci->imdb)) return 0;
+  int t, e;
+  if (!p6HistoryPair(ci, &t, &e)) return 1; // unresolved identity: no history/progress writes
+  int desmarcado = contapend_intencao(ci->imdb, ci->tipo, t, e, &ms) == 0 && ms >= p6WatchStarted;
+  if (!desmarcado && e > 0 && p6EpIdentidade.capturado &&
+      (t != p6EpIdentidade.t || e != p6EpIdentidade.e))
+    desmarcado = contapend_intencao(ci->imdb, ci->tipo, p6EpIdentidade.t,
+        p6EpIdentidade.e, &ms) == 0 && ms >= p6WatchStarted;
+  if (desmarcado) {
     p6WatchState = -1;
     return 1;
   }
@@ -2791,10 +2857,12 @@ static int p6WatchMark(void) {
   // Personal-server history stays with its own server; addon history uses
   // the exact namespace-aware local journal, never a guessed IMDb mapping.
   if (jfid_e(ci->imdb)) { p6WatchState = 1; marcado = 1; goto fim; }
-  const int serie = epT >= 0 && epE > 0;
+  int histT, histE;
+  if (!p6HistoryPair(ci, &histT, &histE)) goto fim;
+  const int serie = histE > 0;
   int ia = cat_indice_por_imdb_tipo(ci->imdb, ci->tipo);
   if (ia < 0) goto fim;
-  if ((serie ? vistoep_estado(ci->imdb, epT, epE) : cat_historico_estado_id(ci->imdb, ci->tipo)) != 1) {
+  if ((serie ? vistoep_estado(ci->imdb, histT, histE) : cat_historico_estado_id(ci->imdb, ci->tipo)) != 1) {
     Uint32 agora = SDL_GetTicks();
     if (p6WatchTry && (Uint32)(agora - p6WatchTry) < 1000u) goto fim;
     p6WatchTry = agora | 1u;
@@ -2804,11 +2872,11 @@ static int p6WatchMark(void) {
     // already-established, generation-owned episode target to be proven.
     if (serie && (dest & VISTO_TRAKT) && !alvoTrakt(ci)) goto fim;
     if (serie) {
-      VistoPar par = { (short)epT, (short)epE };
+      VistoPar par = { (short)histT, (short)histE };
       visto_episodios_item(ia, ci->imdb, "series", &par, 1, 1, dest);
     } else visto_titulo(ci->imdb, ci->tipo, NULL, 0, 1, dest);
-    if (contapend_intencao(ci->imdb, ci->tipo, serie ? epT : 0, serie ? epE : 0, NULL) != 1) goto fim;
-    if (serie) vistoep_definir(ci->imdb, epT, epE, 1);
+    if (contapend_intencao(ci->imdb, ci->tipo, histT, histE, NULL) != 1) goto fim;
+    if (serie) vistoep_definir(ci->imdb, histT, histE, 1);
     else cat_historico_definir_id(ci->imdb, ci->tipo, 1);
   }
   p6WatchState = 1;
@@ -2817,7 +2885,7 @@ static int p6WatchMark(void) {
   // history owns the watched badge; post-play and the decoder keep running.
   double vp = posSeg, vd = duracaoSeg;
   partesVirt(&vp, &vd, NULL);
-  cat_salvar_progresso_ep(ia, vp, vd, epT, epE, 2);
+  cat_salvar_progresso_ep(ia, vp, vd, histT, histE, 2);
   parcialPos = posSeg;
   sync_sujar_progresso();
   dados_sincronizar_logo();
@@ -3000,9 +3068,11 @@ static void fecharSessao(int manter, int trocaFonte) {
     // republicacao o guardado grava o progresso no titulo errado.
     const CatItem *ci = item();
     int ia = ci ? cat_indice_por_imdb_tipo(ci->imdb, ci->tipo) : -1;
+    int histT = 0, histE = 0;
+    if (!p6HistoryPair(ci, &histT, &histE)) p6Override = 1;
     if (ia >= 0 && !p6Override) {
       home_registrar_retorno(ia, pos, durG);
-      ilhacart_player_saiu(ia, pos, durG, epT, epE);
+      ilhacart_player_saiu(ia, pos, durG, histT, histE);
     } else {
       printf("[player] progresso local ignorado: sem copia do tipo %s para %s\n",
              ci ? ci->tipo : "", ci ? ci->imdb : "");
@@ -3015,7 +3085,7 @@ static void fecharSessao(int manter, int trocaFonte) {
     }
     // A posicao gravada e sempre a REAL (ponto de retomada), com o como ela
     // foi alcancada: cat_visto e a proxima base leem `tocou`.
-    if (ia >= 0 && !p6Override) cat_salvar_progresso_ep(ia, pos, durG, epT, epE, chegou ? 2 : 3);
+    if (ia >= 0 && !p6Override) cat_salvar_progresso_ep(ia, pos, durG, histT, histE, chegou ? 2 : 3);
     // E tambem para o Trakt, que e de onde o "continue assistindo" vem: gravar
     // so aqui deixaria este app discordando dos outros aparelhos do dono.
     // Personal-server items stay private: no Trakt, friends feed or social
@@ -3171,7 +3241,8 @@ static void gravarProgressoParcial(int conta, const char *porque) {
       assistidoSeg < PLR_PROVA_MIN_S ||
       (!partesAtiva() && player_duracao_suspeita((double)duracaoSeg, duracaoCatalogo())))
     return;
-  if (p6WatchOverride(ci)) return;
+  int histT, histE;
+  if (!p6HistoryPair(ci, &histT, &histE) || p6WatchOverride(ci)) return;
   if (parcialPos >= 0.0 && fabs(posSeg - parcialPos) < (conta ? 0.5 : PLR_PARCIAL_LIMIAR_S)) return;
   ia = cat_indice_por_imdb_tipo(ci->imdb, ci->tipo);
   if (ia < 0) {
@@ -3185,13 +3256,12 @@ static void gravarProgressoParcial(int conta, const char *porque) {
   if (p6WatchRawMarker() > duracaoSeg + 1.0) chegou = 0;
   { double vp = posSeg, vd = duracaoSeg;
     if (partesVirt(&vp, &vd, NULL)) chegou = 0;   // o visto e so da saida da ultima parte
-    if (!cat_salvar_progresso_ep(ia, vp, vd, epT, epE, chegou ? 2 : 3)) return; }
+    if (!cat_salvar_progresso_ep(ia, vp, vd, histT, histE, chegou ? 2 : 3)) return; }
   dados_sincronizar_logo();
   if (conta) {
     sync_sujar_progresso();
     char id[64];
-    if (epT >= 0 && epE > 0) snprintf(id, sizeof id, "%.*s:%d:%d", (int)strcspn(ci->imdb, ":"), ci->imdb, epT, epE);
-    else snprintf(id, sizeof id, "%s", ci->imdb);
+    idTrakt(ci, id, sizeof id);
     double sp = posSeg, sd = duracaoSeg;
     partesVirt(&sp, &sd, NULL);
     if (p6WatchState == 0) {
@@ -5174,8 +5244,10 @@ void player_atualizar(float dt, Uint32 agora) {
       // ATIVIDADE PARA O SOCIAL (atividade.h): inicio, progresso a cada 5 min
       // tocando e fim (90% ou creditos, pela MESMA regra da saida). Sem envio
       // permitido, atividade.c so acompanha o trecho e nada sai.
-      if (ci && ci->imdb[0] && video_pronto() && duracaoSeg >= 120.0f) {
-        atividade_player_passo(ci, epT, epE, posSeg, duracaoSeg, tocando && !scrubbing,
+      int histT = 0, histE = 0;
+      if (ci && ci->imdb[0] && video_pronto() && duracaoSeg >= 120.0f &&
+          p6HistoryPair(ci, &histT, &histE)) {
+        atividade_player_passo(ci, histT, histE, posSeg, duracaoSeg, tocando && !scrubbing,
                                p6WatchState > 0, dt);
       }
     }
@@ -5258,8 +5330,7 @@ void player_atualizar(float dt, Uint32 agora) {
     if (cs && (jfid_e(cs->imdb) || !identidadeValida())) cs = NULL;
     if (ok && cs && cs->imdb[0]) {
       char id[64];
-      if (epT >= 0 && epE > 0) snprintf(id, sizeof id, "%.*s:%d:%d", (int)strcspn(cs->imdb,":"), cs->imdb, epT, epE);
-      else snprintf(id, sizeof id, "%s", cs->imdb);
+      idTrakt(cs, id, sizeof id);
       tocouS += dt;
       if (tocouS >= PLR_SCR_TOCOU_S) {
         { double sp = posSeg, sd = duracaoSeg;
@@ -5284,8 +5355,7 @@ void player_atualizar(float dt, Uint32 agora) {
           duracaoSeg >= 120.0f && !scrubbing &&
           (partesAtiva() || !player_duracao_suspeita((double)duracaoSeg, duracaoCatalogo()))) {
         char id[64];
-        if (epT >= 0 && epE > 0) snprintf(id, sizeof id, "%.*s:%d:%d", (int)strcspn(cs->imdb,":"), cs->imdb, epT, epE);
-        else snprintf(id, sizeof id, "%s", cs->imdb);
+        idTrakt(cs, id, sizeof id);
         { double sp = posSeg, sd = duracaoSeg;
           partesVirt(&sp, &sd, NULL);
           if (p6WatchState == 0) {

@@ -2018,6 +2018,24 @@ int cat_episodio_por_tvdb(int indice, const char *id, int tvdb, int *t, int *e) 
   return ok;
 }
 
+int cat_episodio_por_video(int indice, const char *id, const char *vid, int *t, int *e) {
+  int ok = 0, mt = 0, me = 0;
+  catTravar();
+  pthread_mutex_lock(&epTrava);
+  if (vid && vid[0] && episodioFaixaValida(indice, id)) {
+    const CatEp *v = eps + epIni[indice];
+    int q = epQtd[indice];
+    for (int i = 0; i < q; i++) if (!strcmp(v[i].vid, vid)) {
+      if (!ok) { mt = v[i].temporada; me = v[i].episodio; ok = mt >= 0 && me > 0; }
+      else if (mt != v[i].temporada || me != v[i].episodio) { ok = 0; break; }
+    }
+  }
+  pthread_mutex_unlock(&epTrava);
+  pthread_mutex_unlock(&pubTrava);
+  if (ok) { if (t) *t = mt; if (e) *e = me; }
+  return ok;
+}
+
 int cat_copiar_por_id(const char *id, const char *tipo, CatItem *saida) {
   size_t tam;
   int i, melhor = -1;

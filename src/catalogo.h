@@ -593,5 +593,8 @@ int           cat_episodio_tvdb_qualquer(int indiceItem, const char *id, int t, 
 int           cat_episodio_existe_final(int indiceItem, const char *id, int t, int e);
 int           cat_episodio_por_tvdb(int indiceItem, const char *id, int tvdb,
                                     int *t, int *e);
+// Exact published video ID, not a synthesized numeric pair; ambiguity fails closed.
+int           cat_episodio_por_video(int indiceItem, const char *id, const char *vid,
+                                     int *t, int *e);
 
 #endif
