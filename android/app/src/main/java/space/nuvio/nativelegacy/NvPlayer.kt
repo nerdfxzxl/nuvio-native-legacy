@@ -1530,7 +1530,13 @@ object NvPlayer {
             md.update(bytes)
         }
         field(url); field(headers)
-        return md.digest().joinToString("") { "%02x".format(it.toInt() and 255) }
+        val hex = "0123456789abcdef"
+        return buildString(64) {
+            for (b in md.digest()) {
+                val x = b.toInt() and 255
+                append(hex[x ushr 4]); append(hex[x and 15])
+            }
+        }
     }
     private fun p6OpenRequest(): Int {
         val request = pedidos.incrementAndGet()

@@ -17,6 +17,7 @@
 void faixas_reiniciar(void);
 #ifdef NV_ANDROID
 void faixas_reiniciar_preparada(void);
+void faixas_p6_armar_restauro(int mode, unsigned long long key, const char *external);
 #endif
 
 void faixas_abrir(void);

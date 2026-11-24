@@ -12,6 +12,14 @@ int main(void) {
   char buf[640];
   assert(p6_restore_encode(&t, buf, sizeof buf));
   assert(p6_restore_decode(buf, &out));
+  t.audioTrack = 0x987654321abcULL; t.subtitleMode = 3;
+  strcpy(t.external, "a0123456789abcdef");
+  assert(p6_restore_encode(&t, buf, sizeof buf));
+  assert(p6_restore_decode(buf, &out));
+  assert(out.audioTrack == t.audioTrack && out.subtitleMode == 3 && !strcmp(out.external, t.external));
+  assert(p6_restore_duration(1500000, 1499900));
+  assert(!p6_restore_duration(1500000, 1400000));
+  assert(!p6_restore_duration(1500000, 30000));
   assert(out.posMs == t.posMs && out.durMs == t.durMs && !strcmp(out.target, t.target));
   assert(p6_restore_owner(&out, t.task, t.account, 2));
   assert(!p6_restore_owner(&out, "", t.account, 2));
@@ -38,5 +46,5 @@ int main(void) {
   assert(p6_restore_encode(&t, buf, sizeof buf));
   assert(p6_restore_decode(buf, &out));
   assert(!p6_restore_source(&out, "", "", "", -1, 0));
-  puts("P6 paused task ticket / exact source proof: 23 assertions PASS");
+  puts("P6 paused task ticket / exact source proof: 29 assertions PASS");
 }

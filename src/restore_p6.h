@@ -13,7 +13,9 @@ typedef struct {
   char fingerprint[65], addon[40], hash[41];
   int profile, season, episode, file;
   long long posMs, durMs;
-  unsigned long long bytes;
+  unsigned long long bytes, audioTrack, subtitleTrack;
+  int subtitleMode; // 0 unknown, 1 off, 2 embedded, 3 external
+  char external[24];
 } P6RestoreTicket;
 static inline int p6_restore_hex(const char *s, unsigned n) {
   if (!s || strlen(s) != n) return 0;
@@ -41,14 +43,20 @@ static inline int p6_restore_valid(const P6RestoreTicket *r) {
   if (r->file >= 0) {
     if (!p6_restore_hex(r->addon, 32) || !p6_restore_hex(r->hash, 40)) return 0;
   } else if (strcmp(r->addon, "-") || strcmp(r->hash, "-") || r->bytes || r->file != -1) return 0;
+  if (r->subtitleMode < 0 || r->subtitleMode > 3) return 0;
+  if (r->subtitleMode == 2 && !r->subtitleTrack) return 0;
+  if (r->subtitleMode == 3) {
+    if (r->external[0] != 'a' || !p6_restore_hex(r->external + 1, 16)) return 0;
+  } else if (r->external[0] && strcmp(r->external, "-")) return 0;
   if (!strcmp(r->type, "movie")) return r->season == 0 && r->episode == 0 && !strcmp(r->title, r->target);
   return !strcmp(r->type, "series") && r->season >= 0 && r->episode > 0;
 }
 static inline int p6_restore_encode(const P6RestoreTicket *r, char *buf, size_t cap) {
   if (!p6_restore_valid(r)) return 0;
-  int n = snprintf(buf, cap, "p6v1 %s %s %d %s %s %d %d %s %lld %lld %s %s %s %d %llu\n",
+  int n = snprintf(buf, cap, "p6v2 %s %s %d %s %s %d %d %s %lld %lld %s %s %s %d %llu %016llx %d %016llx %s\n",
       r->task, r->account, r->profile, r->title, r->type, r->season, r->episode,
-      r->target, r->posMs, r->durMs, r->fingerprint, r->addon, r->hash, r->file, r->bytes);
+      r->target, r->posMs, r->durMs, r->fingerprint, r->addon, r->hash, r->file, r->bytes,
+      r->audioTrack, r->subtitleMode, r->subtitleTrack, r->external[0] ? r->external : "-");
   return n > 0 && (size_t)n < cap;
 }
 static inline int p6_restore_decode(const char *s, P6RestoreTicket *r) {
@@ -56,16 +64,24 @@ static inline int p6_restore_decode(const char *s, P6RestoreTicket *r) {
   if (!s || !r || strlen(s) >= 640) return 0;
   memset(r, 0, sizeof *r);
   // Numeric bounds are checked below; width also bounds conversion input.
-  return sscanf(s, "p6v1 %36s %95s %9d %63s %7s %9d %9d %63s %10lld %10lld %64s %39s %40s %9d %20llu%n",
+  return sscanf(s, "p6v2 %36s %95s %9d %63s %7s %9d %9d %63s %10lld %10lld %64s %39s %40s %9d %19llu %16llx %1d %16llx %23s%n",
       r->task, r->account, &r->profile, r->title, r->type, &r->season,
       &r->episode, r->target, &r->posMs, &r->durMs, r->fingerprint, r->addon,
-      r->hash, &r->file, &r->bytes, &n) == 15 && n > 0 &&
+      r->hash, &r->file, &r->bytes, &r->audioTrack, &r->subtitleMode,
+      &r->subtitleTrack, r->external, &n) == 19 && n > 0 &&
       !strcmp(s + n, "\n") && p6_restore_valid(r);
 }
 static inline int p6_restore_owner(const P6RestoreTicket *r, const char *task,
                                    const char *account, int profile) {
   return p6_restore_valid(r) && task && account && !strcmp(r->task, task) &&
       !strcmp(r->account, account) && r->profile == profile;
+}
+// Reject an incompatible timeline before restoring transport intent.
+static inline int p6_restore_duration(long long expected, long long actual) {
+  if (expected < 120000 || actual < 120000) return 0;
+  long long tolerance = expected / 50;
+  if (tolerance < 5000) tolerance = 5000;
+  return actual >= expected - tolerance && actual <= expected + tolerance;
 }
 // Only the exact digest or a known torrent file in the same addon is proof.
 // A filename, group, resolution or approximate size is never proof.

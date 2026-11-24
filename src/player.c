@@ -313,6 +313,8 @@ static int   tocando = 1;
 static int p6PendingPause;
 #ifdef NV_ANDROID
 static int p6RestoreInternal;
+static long long p6RestoreDuration;
+static unsigned long long p6RestoreAudio;
 #endif
 static int   pausaPessoa;   // pausa pedida pela pessoa (player_pausa_pessoa, #302)
 static int retomandoSalto; // seek requested playback; buffering is not user pause
@@ -2059,7 +2061,7 @@ void player_abrir(int indiceCatalogo, const char *url) {
   p6WatchState = 0; p6WatchTry = 0; p6WatchStarted = contapend_agora_ms();
   p6PendingPause = 0;
 #ifdef NV_ANDROID
-  p6RestoreInternal = 0;
+  p6RestoreInternal = 0; p6RestoreDuration = 0; p6RestoreAudio = 0;
 #endif
   // O trailer usa o mesmo plano de video (LG) — solta antes de o player
   // carregar a fonte, senao o load novo pisa no mediaId do trailer.
@@ -2398,6 +2400,7 @@ static void tocarFonteInterno(const char *url) {
       else marco("abrir: ponto salvo vai na abertura (percentual)");
     }
     video_p6_armar_abertura_pausada(p6PendingPause);
+    video_p6_armar_audio(p6RestoreAudio); p6RestoreAudio = 0;
     comVideo = video_tocar_retomada(proxyts_resolver(url, px, sizeof px),
                                     retomadaNaPreparacao ? ponto : 0.0,
                                     retomadaNaPreparacao && retomarFonteSeg < 0.0 && ponto <= 0.0 ? retomarPct : 0.0);
@@ -2506,9 +2509,12 @@ static void dvTelaAtualizar(float dt, Uint32 agora) {
 // plano de hardware, e furar a superficie cedo trocava a arte por um retangulo
 // PRETO enquanto o fluxo abria — que era o "clica em reproduzir e fica preto".
 #ifdef NV_ANDROID
-void player_p6_armar_restauro(double segundos) {
+void player_p6_armar_restauro(double segundos, long long duration, unsigned long long audio,
+                             int subtitleMode, unsigned long long subtitle, const char *external) {
   if (!aberto || comVideo || ehCanal() || !isfinite(segundos) || segundos < 0.0) return;
   p6PendingPause = 1; p6RestoreInternal = 1;
+  p6RestoreDuration = duration; p6RestoreAudio = audio;
+  faixas_p6_armar_restauro(subtitleMode, subtitle, external);
   tocando = 0; pausaPessoa = 0; retomarFonteSeg = segundos;
 }
 #endif
@@ -3360,6 +3366,16 @@ static int p6_checkpoint_restauro(void) {
     if (ajustes_link_reusar())
       fontevolta_guardar(t.target, t.account, t.profile, s, stream_idade_ms(), SDL_GetTicks());
   }
+  t.audioTrack = video_p6_track_key(video_audio(video_audio_atual()));
+  const char *external = faixas_legenda_externa_id();
+  int leg = faixas_legenda_ativa();
+  if (external && external[0] == 'a' && p6_restore_hex(external + 1, 16)) {
+    t.subtitleMode = 3; snprintf(t.external, sizeof t.external, "%s", external);
+  } else if (leg < 0) t.subtitleMode = 1;
+  else if (leg < video_n_legenda()) {
+    t.subtitleTrack = video_p6_track_key(video_legenda(leg));
+    if (t.subtitleTrack) t.subtitleMode = 2;
+  }
   char ticket[640];
   return p6_restore_encode(&t, ticket, sizeof ticket) && dados_gravar(P6_RESTORE_FILE, ticket);
 }
@@ -4168,6 +4184,9 @@ static void alternarTocando(void) {
   if (ehCanal() && !avPodePausar()) return;
   retomandoSalto = 0;
 #ifdef NV_ANDROID
+  // A restored source has not yet proved its saved timeline. Never start
+  // it before that check, even if an early remote command arrives.
+  if (p6RestoreDuration > 0) return;
   // During automatic recovery the stopped renderer does not mean Pause.
   // A new toggle must cancel a scheduled Play, including the interval
   // between a Media3 error callback and the native recovery tick.
@@ -5214,6 +5233,17 @@ void player_atualizar(float dt, Uint32 agora) {
 #endif
   if (fontePrincipal() && video_ativo()) {
     double d = video_duracao();
+#ifdef NV_ANDROID
+    if (p6RestoreDuration > 0 && video_pronto() && isfinite(d) && d > 1.0) {
+      long long expected = p6RestoreDuration; p6RestoreDuration = 0;
+      if (d > INT_MAX / 1000.0 || !p6_restore_duration(expected, (long long)(d * 1000.0))) {
+        video_pausar(1); video_parar(); comVideo = 0;
+        player_erro_fonte_motivo(i18n("A fonte anterior mudou"),
+                                i18n("Escolha uma fonte para retomar."));
+        return;
+      }
+    }
+#endif
     // AVANCANDO, a posicao e a que o dono escolheu. Ler video_pos() aqui era o
     // que fazia a barra pular de volta a cada repeticao de tecla.
 #ifdef NV_TPK

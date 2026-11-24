@@ -438,6 +438,8 @@ int video_video_retry_pending(void); /* explicit retry owns opening until visual
 int video_erro_video_p5b(void); /* terminal Q37/Q39 failure reason, 0 if none */
 // Capture only compatible native tracks when explicitly switching source.
 void video_p1_guardar_faixas_manual(void);
+unsigned long long video_p6_track_key(const VideoFaixa *f);
+void video_p6_armar_audio(unsigned long long key);
 #endif
 
 void video_escolher_audio(int i);

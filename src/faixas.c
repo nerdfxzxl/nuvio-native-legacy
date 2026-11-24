@@ -160,6 +160,15 @@ static int legOverlayEsperando = -1;
 // `legAutoDesde` e o instante em que o video ficou pronto, base dos prazos.
 static int legAuto;
 static Uint32 legAutoDesde;
+#ifdef NV_ANDROID
+static int p6SubtitleMode;
+static unsigned long long p6SubtitleKey;
+static char p6SubtitleExternal[24];
+void faixas_p6_armar_restauro(int mode, unsigned long long key, const char *external) {
+  p6SubtitleMode = mode; p6SubtitleKey = key;
+  snprintf(p6SubtitleExternal, sizeof p6SubtitleExternal, "%s", external ? external : "");
+}
+#endif
 
 // NO-GO PASSAGEIRO x DEFINITIVO. Um Range que falhou (rede, timeout, 5xx,
 // freio do CDN, o servidor que devolveu o arquivo inteiro uma vez) nao e
@@ -466,6 +475,9 @@ static void reiniciarFaixas(int preservarPrebusca) {
   if (!preservarPrebusca) mkvass_parar();
   legenda_desligar(); legenda_pre_reiniciar();
   legAuto = 1; legAutoDesde = 0; pilZerar(); pil.espera = 0;
+#ifdef NV_ANDROID
+  faixas_p6_armar_restauro(0, 0, NULL);
+#endif
   legendasui_reiniciar();   // F04: the second subtitle belongs to the session too
   // #202: speed is per playback: a new title starts at 1x.
   velFoco = 0; velPedidaUi = VEL_NORMAL; video_velocidade(VEL_NORMAL);
@@ -1334,6 +1346,34 @@ static void legendaAutomatica(Uint32 agora) {
     addFechado = addons_legendas_prontas();
   }
   if (passou >= FX_AUTO_FIM_MS) embFechado = addFechado = 1;
+#ifdef NV_ANDROID
+  if (p6SubtitleMode) {
+    int match = -2;
+    if (p6SubtitleMode == 1) match = -1;
+    else if (p6SubtitleMode == 2) {
+      for (int j = 0; j < nEmb; j++) if (video_p6_track_key(video_legenda(j)) == p6SubtitleKey) {
+        if (match >= 0) { match = -2; break; }
+        match = j;
+      }
+      if (match == -2 && !embFechado) return;
+    } else if (p6SubtitleMode == 3) {
+      char id[24];
+      for (int j = 0; j < nAdd; j++) {
+        legendasui_id_addon(addons_legenda(j), id);
+        if (strcmp(id, p6SubtitleExternal)) continue;
+        if (match >= 0) { match = -2; break; }
+        match = nEmb + j;
+      }
+      if (match == -2 && !addFechado) return;
+    }
+    faixas_p6_armar_restauro(0, 0, NULL);
+    if (match >= -1) {
+      legAuto = 0;
+      escolherLegenda(match); // no manual-preference write
+      return;
+    }
+  }
+#endif
   // O MESMO TITULO: a faixa exata que a pessoa escolheu, se ainda existe. Ela
   // vale mais que "a primeira do idioma" (o arquivo pode ter pt e pt-BR, ou a
   // completa e a SDH). Ainda nao apareceu e a lista dela nao fechou: espera.

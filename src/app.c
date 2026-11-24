@@ -3982,7 +3982,8 @@ static void p6RestoreTry(void) {
     if (strcmp(alvo, t->target) || !nv_perfil_sessao_atual(p6RestoreProfile)) {
       p6RestorePending = 0; player_encerrar(); return;
     }
-    player_p6_armar_restauro(t->posMs / 1000.0);
+    player_p6_armar_restauro(t->posMs / 1000.0, t->durMs, t->audioTrack,
+                              t->subtitleMode, t->subtitleTrack, t->external);
     p6RestorePlayer = player_geracao_fonte();
     p6RestoreSince = SDL_GetTicks();
     p6RestorePending = 2;
@@ -5393,6 +5394,9 @@ void app_atualizar(float dt, Uint32 agora) {
   if (!player_aberto()) simkl_scrobble_retentar();
 
   if (tela == TELA_ESCOLHA_PERFIL) {
+#ifdef NV_ANDROID
+    if (p6RestorePending == 1) p6RestoreSince = agora;
+#endif
     sync_passo((unsigned)agora);
     // A HOME CONTINUA SE MONTANDO POR TRAS DA PERGUNTA.
     //

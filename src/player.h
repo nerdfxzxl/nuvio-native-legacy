@@ -176,7 +176,8 @@ void player_definir_fonte(const char *url);
 // Zero e um ponto valido (a pessoa voltou ao inicio), nao retomada ausente.
 void player_definir_retomada_fonte(double segundos);
 #ifdef NV_ANDROID
-void player_p6_armar_restauro(double segundos);
+void player_p6_armar_restauro(double segundos, long long duration, unsigned long long audio,
+                             int subtitleMode, unsigned long long subtitle, const char *external);
 #endif
 // Desfaz a fonte em curso SEM fechar a tela: o video para e a sessao volta a
 // "abrindo fonte", como logo depois de player_abrir. E o recuo da fonte

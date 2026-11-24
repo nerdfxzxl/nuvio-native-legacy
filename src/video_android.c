@@ -57,6 +57,7 @@
 #include <limits.h>
 #include <stdint.h>
 #include <pthread.h>
+#include <stdatomic.h>
 
 // --- ponte JNI ---------------------------------------------------------------
 #define NV_CLASSE "space/nuvio/nativelegacy/NvPlayer"
@@ -396,6 +397,20 @@ static volatile Uint32 audioRouteDeadline;
 // Ordinal indices are not transferable between unrelated releases.
 static VideoFaixa p1Audio, p1Leg;
 static int p1AudioValido, p1LegValida, p1FaixasPendentes;
+static unsigned long long p6NextAudio;
+static _Atomic unsigned long long p6AudioPending;
+// Metadata-only track identity, scoped to the independently proven release.
+unsigned long long video_p6_track_key(const VideoFaixa *f) {
+  if (!f) return 0;
+  char meta[320];
+  int n = snprintf(meta, sizeof meta, "%d:%d:%d:%d:%s:%s:%s", f->numero,
+      f->ordinalMkv, f->canais, f->tipoLeg, f->idioma, f->codec, f->nome);
+  if (n < 0 || (size_t)n >= sizeof meta) return 0;
+  uint64_t h = UINT64_C(14695981039346656037);
+  for (int i = 0; i < n; i++) h = (h ^ (unsigned char)meta[i]) * UINT64_C(1099511628211);
+  return h ? h : 1;
+}
+void video_p6_armar_audio(unsigned long long key) { p6NextAudio = key; }
 // PAUSA CONFIRMADA (player_suspender): o pedido daqui e o evento 3 do Kotlin
 // DEPOIS dele. O evento chega do fio principal ~3 ms depois (medido na TCL,
 // 02/10); um evento 2 (tocando) no meio desfaz a confirmacao.
@@ -656,6 +671,23 @@ JNIEXPORT void JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativeFaixasFim(JN
     fflush(stdout);
     validarAudioSelecionadoP5A();
     return;
+  }
+  // Q44: restoration only from an independently proven release; never use
+  // an ordinal alone. Missing/ambiguous track follows normal preference.
+  if (nAudio > 0) {
+    unsigned long long key = atomic_exchange(&p6AudioPending, 0);
+    if (key) {
+      int match = -1;
+      for (int i = 0; i < nAudio; i++) if (video_p6_track_key(&faixaAudio[i]) == key) {
+        if (match >= 0) { match = -1; break; }
+        match = i;
+      }
+      if (match >= 0) {
+        video_escolher_audio(match);
+        validarAudioSelecionadoP5A();
+        return;
+      }
+    }
   }
   // Explicit same-episode source replacement: restore only tracks with a
   // matching language + codec/channel (audio) or language + subtitle kind.
@@ -1226,6 +1258,7 @@ static int abrirSessao(int inicioMs, int fracao, int mesmaFonte) {
 int video_tocar_retomada(const char *u, double segundos, double pct) {
   static int limitedEnviado;
   int pausedOpen = p6NextPaused; p6NextPaused = 0;
+  atomic_store(&p6AudioPending, p6NextAudio); p6NextAudio = 0;
   int limited = xtream_url_limitada(u);
   if (mLimitedConnections && limited != limitedEnviado) {
     kInt(mLimitedConnections, limited); limitedEnviado = limited;
@@ -1538,6 +1571,7 @@ void video_bombear(void) {
   }
 }
 void video_parar(void) {
+  p6NextAudio = 0; atomic_store(&p6AudioPending, 0);
   p1FaixasPendentes = p1AudioValido = p1LegValida = 0;
   pthread_mutex_lock(&travaEvento);
   novaRetomada(-1);
