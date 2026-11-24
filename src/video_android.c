@@ -1651,6 +1651,9 @@ double video_pos(void) {
   return recon.tentativa && (!prontoLoad || reconBuscarMs >= 0 || recon.esgotou)
          ? recon.alvo : prontoLoad ? posMs / 1000.0 : 0;
 }
+double video_pos_confirmada(void) {
+  return prontoLoad ? posNativoMs / 1000.0 : recon.tentativa ? recon.alvo : 0.0;
+}
 double video_duracao(void) { return durMs / 1000.0; }
 // Capitulos do MKV lidos por um fio lateral (capmkv.c, 203-capitulos).
 double video_creditos(void) { return capmkv_creditos(video_duracao()); }
