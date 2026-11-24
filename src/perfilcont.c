@@ -14,7 +14,7 @@
 
 typedef struct {
   int  perfil, t, e;
-  char contentId[48];
+  char contentId[64];
   char titulo[160], poster[NV_ARTE_URL_MAX], epNome[96];
 } Snap;
 

@@ -101,8 +101,8 @@ int syncprog_puxar_sessao(int perfil, uint64_t sessao) {
     const char *f = js_fim(p);
     ProgRegistro *d = &novo[k];
     double pos, dur;
-    char id[64];
-    if (!js_texto(p, f, "content_id", id, sizeof id) || !id[0]) continue;
+    char id[96];
+    if (!js_texto(p, f, "content_id", id, sizeof id) || !id[0] || strlen(id)>=sizeof id-1) continue;
     // O web aceita position_ms/duration_ms e position/duration; os primeiros
     // ganham quando existem, porque os segundos ja vem em milissegundos nesta
     // RPC e misturar as duas unidades produz progresso de 100% em tudo.

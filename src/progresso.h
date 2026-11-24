@@ -33,8 +33,8 @@
 
 typedef struct {
   int  perfil;
-  char chave[48];       // progress_key, igual ao web: "tt123_s4e9" ou "tt123"
-  char contentId[48];   // titulo puro, sem ":temp:ep" ("tt...", "kitsu:41370", "tmdb:t1399")
+  char chave[96];       // progress_key, igual ao web: "tt123_s4e9" ou "tt123"
+  char contentId[64];   // titulo puro, sem ":temp:ep" ("tt...", "kitsu:41370", "tmdb:t1399")
   char tipo[8];         // "movie" | "series"
   int  temporada, episodio;   // 0 quando filme
   double posSeg, durSeg;
@@ -90,6 +90,7 @@ int  prog_continuar_de_perfil_min(int perfil, int pctMinimo, int pctConcluido, P
 // Copia, e nao ponteiro: dois fios leem aqui, e um ponteiro para o cache
 // interno valeria so ate a proxima escrita do outro.
 int  prog_por_chave(const char *chave, ProgRegistro *saida);
+int  prog_por_titulo(const char *id, int t, int e, ProgRegistro *saida);
 
 // Escrita LOCAL (player ao fechar, botao do olho, pos-play). `imdb` pode ser
 // composto; temporada/episodio explicitos ganham dos que vierem no id.

@@ -322,7 +322,16 @@ static void opaqueHistory(void) {
   prog_invalidar();
   assert(prog_por_chave(ka,&r) && r.posSeg == 120);
   assert(prog_por_chave(kb,&r) && r.posSeg == 220);
-  assert(!prog_gravar_local("addon:012345678901234567890123456789012345678901234567890",1,1,120,600,2));
+  char longid[64], tooLong[65]; memset(longid,'x',63); memcpy(longid,"addon:",6); longid[63]=0;
+  memset(tooLong,'y',64); memcpy(tooLong,"addon:",6); tooLong[64]=0;
+  assert(prog_gravar_local(longid,123,456,340,600,2));
+  assert(!prog_gravar_local(tooLong,1,1,120,600,2));
+  assert(prog_gravar_local("addon:example",1,1,120,600,2));
+  assert(!prog_gravar_local("addon:example_s1e1",0,0,220,600,2));
+  assert(!prog_por_titulo("addon:example_s1e1",0,0,&r));
+  prog_invalidar();
+  assert(prog_por_titulo(longid,123,456,&r) && r.posSeg==340 && !strcmp(r.contentId,longid));
+  assert(prog_por_titulo("addon:example",1,1,&r) && r.posSeg==120);
   puts("ok: opaque progress reload and collision rejection");
 }
 int main(void) {

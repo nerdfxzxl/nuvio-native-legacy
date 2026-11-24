@@ -3158,12 +3158,12 @@ static int emAndamento(const CatItem *c) {
 // pela ordem de resposta.
 static long long instanteDaConta(const CatItem *c) {
   ProgRegistro r;
-  char id[24], chave[48];
+  char id[64];
   int temp = c->temporada, ep = c->episodio;
   if (c->retomadoMs > 0) return c->retomadoMs;
   prog_content_id(id, sizeof id, c->imdb, &temp, &ep);
-  prog_chave(chave, sizeof chave, id, temp, ep);
-  if (!prog_por_chave(chave, &r)) return 0;
+  
+  if (!prog_por_titulo(id, temp, ep, &r)) return 0;
   return r.lastWatchedMs;
 }
 
@@ -3171,7 +3171,7 @@ static long long instanteDaConta(const CatItem *c) {
 // compara so a parte antes do ':', porque "tt123:4:9" e "tt123:1:2" sao dois
 // episodios da mesma serie e a fileira mostra a serie uma vez.
 static int mesmaObra(const CatItem *a, const CatItem *b) {
-  char ia[24], ib[24];
+  char ia[64], ib[64];
   prog_content_id(ia, sizeof ia, a->imdb, NULL, NULL);
   prog_content_id(ib, sizeof ib, b->imdb, NULL, NULL);
   return ia[0] && !strcmp(ia, ib);
@@ -3183,14 +3183,14 @@ static int candidatoVence(const CatItem *novo, const CatItem *velho) {
   int np = emAndamento(novo), vp = emAndamento(velho);
   if (!np && vp) {
     ProgRegistro r;
-    char id[24], chave[48];
+    char id[64];
     int t = velho->temporada, e = velho->episodio;
     prog_content_id(id, sizeof id, velho->imdb, &t, &e);
-    prog_chave(chave, sizeof chave, id, t, e);
+    
     // A Next seed is not proof that the remaining post-credit scenes were played.
     if (cat_p6_retomavel(velho) == 1) return 0;
     if (!trakt_cw_concluiu(velho->imdb, antes) &&
-        !(prog_por_chave(chave, &r) && r.durSeg > 1.0 &&
+        !(prog_por_titulo(id, t, e, &r) && r.durSeg > 1.0 &&
           r.tocou != 0 && r.tocou != 3 && prog_fim_retomada(&r, ajustes_cw_concluido()) &&
           r.lastWatchedMs > antes && r.lastWatchedMs <= ms)) return 0;
   }
@@ -3285,11 +3285,11 @@ static int filtrarRemoto(CatItem *v, int n, int (*aSeguir)(const char *),
     // aparecer como "em andamento" por alguns minutos. O desempate e por
     // instante — um registro local mais VELHO que o paused_at remoto nao
     // manda em nada.
-    { ProgRegistro r; char id[24], chave[48];
+    { ProgRegistro r; char id[64];
       int tt = v[i].temporada, ee = v[i].episodio;
       prog_content_id(id, sizeof id, v[i].imdb, &tt, &ee);
-      prog_chave(chave, sizeof chave, id, tt, ee);
-      if (prog_por_chave(chave, &r) && r.durSeg > 1.0 &&
+      
+      if (prog_por_titulo(id, tt, ee, &r) && r.durSeg > 1.0 &&
           r.lastWatchedMs > v[i].retomadoMs) {
         int pct = (int)(100.0 * r.posSeg / r.durSeg);
         // "A SEGUIR" ABERTO E LARGADO NO COMECO NAO SAI DA FILEIRA. Visto na

@@ -90,10 +90,10 @@ void prog_chave(char *dst, unsigned n, const char *contentId, int temporada, int
 // Linha do formato ANTIGO: "imdb pos dur [temp ep]" (separado por tab ou
 // espaco), escrita por catalogo.c. `imdb` podia ser composto ("tt123:4:9").
 static int lerLinhaAntiga(const char *linha, ProgRegistro *r) {
-  char id[40];
+  char id[96];
   double pos, dur;
   int temp = 0, ep = 0, n;
-  n = sscanf(linha, "%39s %lf %lf %d %d", id, &pos, &dur, &temp, &ep);
+  n = sscanf(linha, "%95s %lf %lf %d %d", id, &pos, &dur, &temp, &ep);
   if (n < 3 || !temposValidos(pos, dur)) return 0;
   memset(r, 0, sizeof *r);
   { int tI = 0, eI = 0;
@@ -120,7 +120,7 @@ static int lerLinhaAntiga(const char *linha, ProgRegistro *r) {
 static int lerLinhaNova(const char *linha, ProgRegistro *r) {
   int n;
   memset(r, 0, sizeof *r);
-  n = sscanf(linha, "%d\t%47s\t%47s\t%7s\t%d\t%d\t%lf\t%lf\t%lld\t%d\t%d",
+  n = sscanf(linha, "%d\t%95s\t%63s\t%7s\t%d\t%d\t%lf\t%lf\t%lld\t%d\t%d",
              &r->perfil, r->chave, r->contentId, r->tipo,
              &r->temporada, &r->episodio, &r->posSeg, &r->durSeg,
              &r->lastWatchedMs, &r->pendente, &r->tocou);
@@ -132,6 +132,9 @@ static int lerLinhaNova(const char *linha, ProgRegistro *r) {
 }
 
 static int gravar(void);
+static int mesmaIdentidade(const ProgRegistro *a, const ProgRegistro *b) {
+  return !strcmp(a->contentId,b->contentId) && a->temporada==b->temporada && a->episodio==b->episodio;
+}
 
 static void carregar(void) {
   char *buf, *linha, *ctx;
@@ -158,12 +161,15 @@ static void carregar(void) {
         r.pendente = 1;
         reparados++;
       }
-      // Duplicata (mesmo perfil e chave) fica com a mais nova.
+      char chave[96];
+      prog_chave(chave,sizeof chave,r.contentId,r.temporada,r.episodio);
+      if (!chave[0] || strcmp(chave,r.chave)) continue;
+      // Duplicata (mesmo perfil, chave e identidade) fica com a mais nova.
       int i, dup = -1;
       for (i = 0; i < nRegs; i++)
         if (regs[i].perfil == r.perfil && !strcmp(regs[i].chave, r.chave)) { dup = i; break; }
       if (dup >= 0) {
-        if (r.lastWatchedMs >= regs[dup].lastWatchedMs) regs[dup] = r;
+        if (mesmaIdentidade(&r,&regs[dup]) && r.lastWatchedMs >= regs[dup].lastWatchedMs) regs[dup] = r;
       } else {
         regs[nRegs++] = r;
       }
@@ -176,10 +182,10 @@ static void carregar(void) {
 
 static int gravar(void) {
   if (leituraFalhou) return 0;
-  // Ate os limites dos campos e dos inteiros cabem em 256 bytes por linha.
+  // Ate os limites dos campos e dos inteiros cabem em 384 bytes por linha.
   // Conferir snprintf tambem impede que uma mudanca futura desses limites
   // transforme um arquivo invalido em escrita alem do buffer.
-  size_t tam = (size_t)nRegs * 256 + 64;
+  size_t tam = (size_t)nRegs * 384 + 64;
   char *buf = malloc(tam), *p;
   int i, ok, escrito;
   if (!buf) return 0;
@@ -280,11 +286,21 @@ int prog_por_chave(const char *chave, ProgRegistro *saida) {
   return i >= 0;
 }
 
+int prog_por_titulo(const char *id, int t, int e, ProgRegistro *saida) {
+  ProgRegistro r; char chave[96], base[64];
+  prog_content_id(base,sizeof base,id,NULL,NULL);
+  if (!base[0]) return 0;
+  if (e<=0) t=e=0;
+  prog_chave(chave,sizeof chave,base,t,e);
+  if (!prog_por_chave(chave,&r) || strcmp(r.contentId,base) || r.temporada!=t || r.episodio!=e) return 0;
+  if (saida) *saida=r;
+  return 1;
+}
+
 int prog_q45_retomada(const char *id, int t, int e, int pct, long long ms) {
-  char chave[48]; ProgRegistro r;
+  ProgRegistro r;
   if (!id || !*id || pct <= 0) return -1;
-  prog_chave(chave, sizeof chave, id, t, e);
-  if (!prog_por_chave(chave, &r) || !prog_q45_local(&r) || r.durSeg <= 1.0 ||
+  if (!prog_por_titulo(id,t,e,&r) || !prog_q45_local(&r) || r.durSeg <= 1.0 ||
       r.posSeg <= 0.0 || fabs(100.0 * r.posSeg / r.durSeg - pct) >= 1.0 ||
       (ms > 0 && r.lastWatchedMs > 0 && ms > r.lastWatchedMs + 5000)) return -1;
   return !prog_fim_retomada(&r, 100);
@@ -328,6 +344,7 @@ int prog_gravar_local(const char *imdb, int temporada, int episodio,
   TRANCAR();
   carregar();
   i = achar(r.perfil, r.chave);
+  if (i>=0 && !mesmaIdentidade(&r,&regs[i])) { DESTRANCAR(); return 0; }
   if (i < 0) { i = abrirVaga(); if (i >= 0 && i == nRegs) nRegs++; }
   if (i < 0) { DESTRANCAR(); return 0; }
   regs[i] = r;
@@ -348,12 +365,15 @@ int prog_aplicar_remoto(const ProgRegistro *rem) {
   r.pendente = 0;
   if (r.posSeg < 0) r.posSeg = 0;
   if (jfid_e(r.contentId)) return 0;
-  if (!r.chave[0]) prog_chave(r.chave, sizeof r.chave, r.contentId, r.temporada, r.episodio);
-  if (!r.chave[0]) return 0;
+  char chave[96];
+  prog_chave(chave,sizeof chave,r.contentId,r.temporada,r.episodio);
+  if (!chave[0] || (r.chave[0] && strcmp(chave,r.chave))) return 0;
+  snprintf(r.chave,sizeof r.chave,"%s",chave);
   if (!r.tipo[0]) snprintf(r.tipo, sizeof r.tipo, "%s", r.episodio > 0 ? "series" : "movie");
   TRANCAR();
   carregar();
   i = achar(r.perfil, r.chave);
+  if (i>=0 && !mesmaIdentidade(&r,&regs[i])) { DESTRANCAR(); return 0; }
   // `tocou` nao viaja: posicao de outro aparelho e desconhecida (-1), salvo o
   // eco do proprio push (mesma posicao e duracao, updated_at mais novo).
   r.tocou = i >= 0 && fabs(r.posSeg - regs[i].posSeg) <= 5.0 &&
@@ -372,11 +392,9 @@ int prog_aplicar_remoto(const ProgRegistro *rem) {
 }
 
 int prog_tocou(const char *imdb) {
-  char chave[48];
   ProgRegistro r;
   if (!imdb || !*imdb) return -1;
-  prog_chave(chave, sizeof chave, imdb, 0, 0);
-  return prog_por_chave(chave, &r) ? r.tocou : -1;
+  return prog_por_titulo(imdb,0,0,&r) ? r.tocou : -1;
 }
 
 void prog_confirmar_empurrados(const ProgRegistro *enviados, int n) {

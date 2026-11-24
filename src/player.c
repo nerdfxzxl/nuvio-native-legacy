@@ -1276,22 +1276,19 @@ void player_definir_episodio(int t, int e) {
 #ifdef NV_ANDROID
   retomarSeg = 0.0;
   if (c && retomarPct > 0) {
-    char chave[48]; ProgRegistro r;
+    ProgRegistro r;
     int serie = !strcmp(c->tipo, "series");
-    prog_chave(chave, sizeof chave, c->imdb, serie ? t : 0, serie ? e : 0);
-    if (prog_por_chave(chave, &r))
+    if (prog_por_titulo(c->imdb, serie ? t : 0, serie ? e : 0, &r))
       retomarSeg = player_regra_retomada_inicial(r.posSeg, r.durSeg,
                                                 retomarPct, prog_q45_local(&r) ? 101 : ajustes_cw_concluido());
   }
 #endif
   if (t != baseT || e != baseE) {
     ProgRegistro r;
-    char chave[48];
     baseT = t; baseE = e; basePct = retomarPct; baseTocou = 0;
     if (c && retomarPct > 0) {
       int serie = !strcmp(c->tipo, "series");
-      prog_chave(chave, sizeof chave, c->imdb, serie ? t : 0, serie ? e : 0);
-      if (prog_por_chave(chave, &r)) { basePos = r.posSeg; baseDur = r.durSeg; baseTocou = r.tocou; }
+      if (prog_por_titulo(c->imdb, serie ? t : 0, serie ? e : 0, &r)) { basePos = r.posSeg; baseDur = r.durSeg; baseTocou = r.tocou; }
       else { basePos = baseDur = 0.0; baseTocou = -1; }
     }
   }
@@ -2304,10 +2301,9 @@ static int preTituloCriar(int indiceCatalogo, int t, int e, const Stream *s, uns
   serie = !strcmp(c->tipo, "series");
   if (cat_retomavel(c, ajustes_cw_concluido()) &&
       (!serie || (t == c->temporada && e == c->episodio))) {
-    char chave[48]; ProgRegistro r;
+    ProgRegistro r;
     preTitulo.pct = c->progresso;
-    prog_chave(chave, sizeof chave, c->imdb, serie ? t : 0, serie ? e : 0);
-    if (prog_por_chave(chave, &r))
+    if (prog_por_titulo(c->imdb, serie ? t : 0, serie ? e : 0, &r))
       preTitulo.segundos = player_regra_retomada_inicial(r.posSeg, r.durSeg,
           c->progresso, prog_q45_local(&r) ? 101 : ajustes_cw_concluido());
   }
