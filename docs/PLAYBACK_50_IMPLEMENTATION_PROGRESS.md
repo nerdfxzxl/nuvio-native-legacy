@@ -1,7 +1,7 @@
 # Nuvio Legacy — Q01–Q50 Implementation Progress
 
-**Last updated:** 2026-11-23
-**Status:** P0/P1 checkpointed; P2–P4 source accepted. **P5-A/Q36 SOURCE ACCEPTED following real API35/Media3 PCM Replay.kt, native C tests and ARM64 preflight; P5 overall PARTIAL; P5-B SOURCE AUTHORIZED; P5-C/D PENDING; P6 NOT AUTHORIZED.** Q18 owner-deferred. No APK/full native link; physical TV/ARC gate reserved for P7/P8.
+**Last updated:** 2026-11-24
+**Status:** P0–P5 source accepted; **P6 PARTIAL / NOT SOURCE ACCEPTED**. Q18 owner-deferred. P7/P8 NOT AUTHORIZED. No APK/full native link; physical TV/ARC gate reserved for P7/P8.
 **Branch:** `feature/official-stream-selector` (not `master`).
 **Prior feature baseline:** `6171645e05d2137d2a1e9ed1b113687246acd7ca` — docs: lock subtitle filename Format A and unbuilt wrapping/parser test handoff.
 **Latest planning commits:** master specification `7d3c81d81aee309843dd2f0b767c6ef3c2d59723`; work packages `b059a7a9a42ae2b91d87bff0a03bfeb314d0f647`; this progress tracker is an additional documentation-only commit. **Recheck actual HEAD at the beginning of every session.**
@@ -27,12 +27,12 @@
 | P2 | Cinematic/arc/status/speed | **SOURCE ACCEPTED (P2-D final review); Q18 explicitly deferred, runtime gates pending** | Original P2, P2-A/B/C plus 15 P2-D source/test commits; full register below | P2-D 41/41 host C11 GCC + Clang ASan/UBSan; P2-C 15/15; P2-B Kotlin 17/17; live source checks; **no NDK/Media3 build or TV tests** |
 | P3 | Selector/reload/recovery | SOURCE ACCEPTED | 17 source/test commits through `03acb8861d583ef7fec6c10d65673399bd3e7343` | Final review below, hardware pending |
 | P4 | Buffer/network/cache/seek | **SOURCE ACCEPTED — Q18 explicitly deferred; P7/P8 full integration/device gates** | P4-D/A/B, P4-C and test-only CI commits; exact SHAs below | Actual API35/Media3 Kotlin compile PASS; 18/18 P4-C contracts; 36 proof checks; disk integrity/session JVM PASS; **10/10 Robolectric real Media3 cache adapter regressions**; native VOD host PASS; no APK or TV verification |
-| P5 | Fidelity/HDR/surface/audio route | **PARTIAL — P5-A/Q36 SOURCE ACCEPTED; P5-B/C/D PENDING; P6 NOT AUTHORIZED** | P5-A code and tests through b04ee951; CI-only commits 7c4f746, d8e7fa46, 98b3c3e, df0e4f90; final acceptance checkpoint below | Final P5-A Actions #45225191077 SUCCESS: original-language C test; 10/10 audio-error C; ARM64 C syntax preflight; production Kotlin API35/Media3 1.8.0 compilation; actual PCM Replay.kt PASS; 17/17 audio policy JVM. Full app/native link and physical ARC remain untested. |
-| P6 | Background/credits/post-play | NOT STARTED | — | — |
+| P5 | Fidelity/HDR/surface/audio route | SOURCE ACCEPTED — P5-A/B/C/D | See final P5 acceptance report | Exact CI #45344027529 SUCCESS; full link and physical verification pending |
+| P6 | Background/credits/post-play | PARTIAL — NOT SOURCE ACCEPTED | 18 source/test/CI commits through b9ef36390c31e3c83ef453a3e426be907b5584ff | Exact local native 17/17 and Kotlin 26/26 PASS; dedicated CI outcome and remaining gates pending |
 | P7 | Integration/regression, post-#134 | NOT STARTED | — | — |
 | P8 | One cached APK + device tests | BLOCKED — NEEDS BUILD AUTHORIZATION | — | — |
 
-**Q01–Q50 coverage:** P1's ten source-decision IDs were checkpointed; P2's assigned scope has now passed its **source-only acceptance review**, with Q18 current-playhead embedded-P2P readiness percentage explicitly deferred. This is **not** 50/50 implementation, full Android compilation, APK integration, or TV verification. P3 passed its source checkpoint. See P4 below. P5–P8 remain pending. “Committed” ≠ “compiled” ≠ “APK built” ≠ “device tested”.
+**Q01–Q50 coverage:** P1's ten source-decision IDs were checkpointed; P2's assigned scope has now passed its **source-only acceptance review**, with Q18 current-playhead embedded-P2P readiness percentage explicitly deferred. This is **not** 50/50 implementation, full Android compilation, APK integration, or TV verification. P3 passed its source checkpoint. See P4 below. P5 source accepted; P6 partial; P7/P8 not authorized. “Committed” ≠ “compiled” ≠ “APK built” ≠ “device tested”.
 
 ## Change log
 
@@ -41,7 +41,7 @@
 
 ## Immediate next action
 
-Continue **P5-A** from the latest checkpoint below. Validate and complete original-language/maximum-quality supported-audio output, capability-aware passthrough/PCM and explicit Audio Playback Error. Re-run the previously failing GanhoAudioProcessor Kotlin replay against production Media3 before calling P5-A complete. Then proceed with P5-B/C/D and final P5 source review; **do not start P6 or build/trigger Actions**.
+Continue only remaining P6 source gates from the latest checkpoint below. Verify exact P6 CI logs and complete Q45, lifecycle/preload integration and cleanup acceptance. Do not start P7 or build an APK.
 
 - **2026-11-22 / P2 source checkpoint:** Added reusable native animated loading arc, source-scoped Media3 startup phase events, measured byte-rate and P2P engine telemetry, first-frame gated fades and native tests. This is NOT the complete P2 acceptance gate; see appended P2 checkpoint.
 - **2026-11-22 / P1 source implementation:** Completed 13 scoped source commits, identity harness compilation and 32/32 source assertions; see detailed checkpoint. No GitHub Actions, APK or workflow changes.
@@ -986,3 +986,10 @@ Verified exact production/test SHA bd31048dc133e886122f45badead8addef51741e and 
 Verified [CI #2 / #45344027529](https://github.com/nerdfxzxl/nuvio-native-legacy/actions/runs/45344027529), attempt 1, job 138278298592, COMPLETED SUCCESS on exact production/test input 5d1a10d055c7caadab05196286c526f1375798fb. Actual completed logs reviewed: real Android API35/Media3 1.8.0 Kotlin compile, NDK C/JNI preflight, PCM replay, actual HEVC/Format 47 assertions, native original-language/audio error/video error, HDMI audio-focus guard (2/2), Q49 46 assertions and source contracts, Q36 17 assertions, HDR 27, AFR 34, surface/startup seek 55, P2-B 17, cinematic handoff 41 and post-#134 guards all PASS. Pre-acceptance HEAD 35065510836b8f12edd07433af27038489f43200 differs from tested SHA only by the three reports. Final verdicts recorded in [P5-D dedicated source acceptance](PLAYBACK_50_P5D_SOURCE_ACCEPTANCE.md) and [overall P5 final source acceptance](PLAYBACK_50_P5_FINAL_SOURCE_ACCEPTANCE.md).
 
 **P5-D Q49 SOURCE ACCEPTED. P5 OVERALL SOURCE ACCEPTED. P6 AUTHORIZED as the next source package, NOT STARTED.** All Q29/Q36/Q37/Q38/Q39/Q47/Q49 source gates accepted; no further demonstrated source blocker from the bounded review. P0–P4 accepted, Q18 owner-deferred. No production edits or CI rerun in this acceptance-only continuation. No APK, release or default-branch merge. Full link and physical Xiaomi TV / ARC / Bluetooth / speaker / HDR / AFR / A-V / remote verification remain P7/P8.
+
+
+## P6 bounded implementation checkpoint — 2026-11-24 (PARTIAL)
+
+Verified starting HEAD e8b523c775c93cf2d89d71506d730f410bf64c0e. Production/test/CI input b9ef36390c31e3c83ef453a3e426be907b5584ff: 18 commits ahead, zero behind; 14 changed paths. Added request-owned system pause versus automatic recovery policy, lifecycle epoch, stale scrub protection, session progress timer reset, real EOF gate for automatic Next while retaining native posplay, and abandoned preload cancellation. Exact blob-matched local C test **17/17 PASS**, actual Kotlin JVM test **26/26 PASS**. Dedicated [P6 test-only CI](https://github.com/nerdfxzxl/nuvio-native-legacy/actions/workflows/p6-lifecycle-test-only.yml) committed; exact push run and completed logs not accessible through current PR-filtered workflow lookup, so CI is NOT VERIFIED. No APK or existing APK workflow modification.
+
+**P6 NOT SOURCE ACCEPTED.** Q20/Q22/Q44/Q48/Q50 partial; Q45 remaining source implementation blocker (verified credits, configured fallback and idempotent watched marking/sync without playback exit). See [P6 detailed checkpoint](PLAYBACK_50_P6_SOURCE_ACCEPTANCE.md) for remaining precise integration gates and test evidence. P0–P5 acceptance preserved, Q18 deferred. Next: verify actual CI, complete remaining P6 gates, and close P6 source acceptance before P7. P8 remains blocked pending explicit build authorization.
