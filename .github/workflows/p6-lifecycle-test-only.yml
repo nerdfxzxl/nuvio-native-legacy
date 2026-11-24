@@ -58,6 +58,14 @@ jobs:
           bash tests/playback_p2_timing.sh
           bash tests/playback_p2d_handoff.sh
 
+      - name: Q45 native chapter provenance, profile journal and resume proof regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          SANITIZE=0 bash tests/capmkv.sh
+          bash tests/contapend.sh
+          bash tests/progresso.sh
+
       - name: Install Android NDK and host SDL headers for syntax-only C/JNI source check
         shell: bash
         run: |
@@ -165,6 +173,6 @@ jobs:
         run: |
           echo "### P6 lifecycle and post-play test-only source verification" >> "$GITHUB_STEP_SUMMARY"
           echo "Commit: $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
-          echo "Checks: P6 lifecycle and post-play policies; earlier audio and first-frame regressions, ARM64 C/JNI syntax, API35/Media3 Kotlin compile, actual PCM replay, HDR/error, AFR and surface policies." >> "$GITHUB_STEP_SUMMARY"
+          echo "Checks: P6 lifecycle, watched and post-play policies; chapter provenance, profile journal and resume proof; earlier audio and first-frame regressions, ARM64 C/JNI syntax, API35/Media3 Kotlin compile, actual PCM replay, HDR/error, AFR and surface policies." >> "$GITHUB_STEP_SUMMARY"
           echo "NO APK assembled, packaged, signed, uploaded or published. No master merge, secrets or release." >> "$GITHUB_STEP_SUMMARY"
           echo "Physical display modes, Dolby Vision and HDMI ARC/codec output are NOT proven by this source/test-only job." >> "$GITHUB_STEP_SUMMARY"
