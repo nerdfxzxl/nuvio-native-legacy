@@ -2443,6 +2443,8 @@ static int p6RestorePending;
 static unsigned p6RestorePlayer, p6RestoreSource;
 static uint64_t p6RestoreProfile;
 static Uint32 p6RestoreSince;
+static unsigned p6RestoreListGen;
+static int p6RestoreCursor, p6RestoreCandidate, p6RestoreAmbiguous;
 #endif
 // 1 quando a escolha em curso e a do Next com uma fonte tocando para seguir
 // (bingeGroup); *prov recebe o add-on dela.
@@ -3987,6 +3989,8 @@ static void p6RestoreTry(void) {
     p6RestorePlayer = player_geracao_fonte();
     p6RestoreSince = SDL_GetTicks();
     p6RestorePending = 2;
+    p6RestoreCursor=0; p6RestoreCandidate=-1; p6RestoreAmbiguous=0;
+    p6RestoreListGen=stream_lista_geracao();
     // Existing opt-in only. A different or expired saved release cannot restore.
     Stream saved;
     if (ajustes_link_reusar() &&
@@ -4020,14 +4024,29 @@ static void p6RestoreTry(void) {
   int complete = addons_estado() != ADD_BUSCANDO && !stream_recarregar_retendo() &&
                  stream_lista_do_alvo(t->target);
   if (!complete && SDL_GetTicks() - p6RestoreSince < 30000u) return;
-  p6RestorePending = 0;
-  int match = -1;
-  if (complete) for (int j = 0; j < stream_n(); j++) {
-    const Stream *s = stream_item(j);
-    if (!s || !stream_filtro_permite(s) || !p6RestoreMatch(s)) continue;
-    if (match >= 0) { match = -1; break; }
-    match = j;
+  if (player_fontes_pendentes() || player_transporte_pedido_pendente()) {
+    p6RestorePending=0; return; // explicit transport/source action takes over
   }
+  // Fingerprinting is bounded per frame, even with hundreds of addon streams.
+  // A replaced list must never donate an index from the previous generation.
+  if (p6RestoreListGen != stream_lista_geracao()) {
+    p6RestoreListGen=stream_lista_geracao();
+    p6RestoreCursor=0; p6RestoreCandidate=-1; p6RestoreAmbiguous=0;
+  }
+  if (complete) {
+    for (int budget=0; budget<8 && p6RestoreCursor<stream_n(); budget++) {
+      int j=p6RestoreCursor++;
+      const Stream *s=stream_item(j);
+      if (!s || !stream_filtro_permite(s) || !p6RestoreMatch(s)) continue;
+      if (p6RestoreCandidate>=0) { p6RestoreAmbiguous=1; break; }
+      p6RestoreCandidate=j;
+    }
+    if (!p6RestoreAmbiguous && p6RestoreCursor<stream_n() &&
+        SDL_GetTicks()-p6RestoreSince<30000u) return;
+  }
+  int match=complete && !p6RestoreAmbiguous && p6RestoreCursor>=stream_n() &&
+      p6RestoreListGen==stream_lista_geracao() ? p6RestoreCandidate : -1;
+  p6RestorePending=0;
   const Stream *s = match >= 0 ? stream_item(match) : NULL;
   if (!nv_perfil_sessao_atual(p6RestoreProfile)) { player_encerrar(); return; }
   if (!s || fontesmortas_idade(s) >= 0 || (!s->url[0] && !s->infoHash[0])) {

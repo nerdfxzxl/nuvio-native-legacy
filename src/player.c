@@ -3338,6 +3338,8 @@ void player_descartar_retido(void) {
 }
 
 #ifdef NV_ANDROID
+static unsigned p6CheckpointGen;
+static uint64_t p6CheckpointProfile;
 static int p6_checkpoint_restauro(void) {
   const char *task = getenv("NUVIO_P6_TASK");
   const CatItem *c = item();
@@ -3393,7 +3395,10 @@ static int p6_checkpoint_restauro(void) {
 void player_ciclo_evento(Uint32 tipo) {
   const int fundo = tipo == SDL_APP_WILLENTERBACKGROUND || tipo == SDL_APP_DIDENTERBACKGROUND;
 #ifdef NV_ANDROID
-  if (tipo == SDL_APP_DIDENTERFOREGROUND) dados_apagar(P6_RESTORE_FILE);
+  if (tipo == SDL_APP_DIDENTERFOREGROUND) {
+    p6CheckpointGen=0; p6CheckpointProfile=0;
+    dados_apagar(P6_RESTORE_FILE);
+  }
   if (fundo && aberto) {
     // A preview is not a committed seek. Discard it before saving the
     // last backend-confirmed checkpoint, and revoke queued transport actions.
@@ -3426,7 +3431,20 @@ void player_ciclo_evento(Uint32 tipo) {
       assistidoAmostra = 0;
       if (comVideo) video_pausar_sistema();
     }
-    if (fundo && !p6_checkpoint_restauro()) dados_apagar(P6_RESTORE_FILE);
+    if (fundo) {
+      if (p6_checkpoint_restauro()) {
+        p6CheckpointGen=player_geracao_fonte();
+        p6CheckpointProfile=nv_perfil_sessao_ler();
+      } else if (!aberto || !comVideo || saindo || pediuSair || !identidadeValida() ||
+                 video_falhou() || video_terminou() || !p6CheckpointGen ||
+                 p6CheckpointGen!=player_geracao_fonte() ||
+                 !nv_perfil_sessao_atual(p6CheckpointProfile)) {
+        // A duplicate stop event may arrive after the surface disappears.
+        // Keep the prior confirmed checkpoint only for the exact same owner.
+        p6CheckpointGen=0; p6CheckpointProfile=0;
+        dados_apagar(P6_RESTORE_FILE);
+      }
+    }
 #endif
   }
 }
