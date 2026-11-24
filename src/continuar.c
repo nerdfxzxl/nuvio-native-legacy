@@ -62,7 +62,7 @@ void continuar_desenhar(const CatItem *ci, GfxRect r, float raio) {
   // nao ter lista, e a do detalhe aberto antes tem.
   idx = cat_indice_titulo(ci->imdb, cat_indice_por_imdb(ci->imdb));
   if (idx >= 0 && !strcmp(ci->tipo, "series") && ci->temporada > 0 &&
-      ci->episodio > 0 && ci->progresso >= ajustes_cw_concluido()) {
+      ci->episodio > 0 && !cat_retomavel(ci, ajustes_cw_concluido()) && ci->progresso >= ajustes_cw_concluido()) {
     if (cat_n_episodios(idx) <= 0) pedirEpisodios(idx, ci->imdb);
     else if (prox_seguinte(ci, cat_episodio(idx, 0), cat_n_episodios(idx),
                            ajustes_cw_concluido(),
