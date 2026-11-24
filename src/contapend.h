@@ -66,6 +66,8 @@ void contapend_confirmar_gesto(const char *id, const VistoPar *pares, int n,
 // Resolve against the latest local gesture (including whole-series intent).
 // Unknown/older remote timestamps cannot undo it; a strictly newer one wins.
 int contapend_estado(const char *id, const char *tipo, int t, int e, long long remotoMs, int remoto);
+// Read-only latest intent: protects an in-flight playback from a newer unwatch.
+int contapend_intencao(const char *id, const char *tipo, int t, int e, long long *ms);
 
 // ---- envio ------------------------------------------------------------------
 // SINCRONO. Manda tudo que esta pendente (todos os perfis do usuario logado).
