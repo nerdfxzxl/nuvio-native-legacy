@@ -449,6 +449,9 @@ static int reconAudio = -1, reconLeg = -1;
 static volatile int reconFaixasPend;
 static int reconBuscarMs = -1;
 static int reconPausado;
+// Q44: unlike a pre-existing ordinary pause, a system pause owns all
+// pending and later same-source recovery until explicit Play/new source.
+static int p6SystemPaused;
 static int recarregarPausa = -1, recarregarPosMs;
 static char erroTxt[64];
 
@@ -1228,6 +1231,7 @@ int video_tocar_retomada(const char *u, double segundos, double pct) {
   reconPermitida = reconProxima; reconProxima = 0;
   reconIniciou = 0; reconErroPend = 0;
   reconAudio = reconLeg = -1; reconFaixasPend = 0; reconBuscarMs = -1; reconPausado = 0;
+  p6SystemPaused = 0;
   recarregarPausa = -1;
   playerSessao = cacheArmado >= 0;
   cacheSessao = cacheArmado > 0 ? cacheArmado : 0;
@@ -1475,7 +1479,7 @@ void video_bombear(void) {
         // P1 Q22: automatic same-source recovery starts playing even if the
         // old session was paused. A NEW pause/Back/background during recovery
         // overrides this through video_pausar() or video_parar().
-        reconPausado = 0;
+        reconPausado = p6SystemPaused || reconPausado;
       }
       if (recon.tentativa != antes) {
         printf("[video] conexao caiu (%d): tentativa %d/%d, espera %us\n",
@@ -1521,6 +1525,7 @@ void video_parar(void) {
   capmkv_zerar();   // fio de capitulos em voo nao alimenta o proximo titulo
   nv_recon_zerar(&recon);
   reconErroPend = 0; reconErroVideo = 0; terminalVideoP5B = 0; reconFaixasPend = 0; reconBuscarMs = -1; reconPausado = 0;
+  p6SystemPaused = 0;
   recarregarPausa = -1;
   if (ativo) {
     // Troca de episodio: o consumidor ja destacou o proximo buffer. Soltar
@@ -1538,9 +1543,15 @@ void video_parar(void) {
 }
 void video_pausar(int p) {
   pausaVista = 0; pausaPedida = p ? 1 : 0;
-  if (nv_recon_ativa(&recon)) reconPausado = pausaPedida;
+  if (!pausaPedida) p6SystemPaused = 0;
+  if (nv_recon_ativa(&recon) || reconErroPend) reconPausado = pausaPedida;
   if (recarregarPausa >= 0) recarregarPausa = pausaPedida;
   kInt(mPausar, pausaPedida);
+}
+void video_pausar_sistema(void) {
+  p6SystemPaused = 1;
+  reconPausado = 1;
+  video_pausar(1);
 }
 int video_pausa_confirmada(void) {
   return pausaPedida && pausaVista && !tocando && ativo && prontoLoad && primeiroQuadro &&
