@@ -14,5 +14,12 @@ fun main() {
     check(p.mayRecoverDetach(false, true))
     check(!p.mayRecoverDetach(true, true))
     check(!p.mayRecoverDetach(false, false))
-    println("P5-C surface transition: PASS (12 production Kotlin assertions)")
+    check(p.needsTclWorkaround("TCL", "TCL", listOf("c2.mtk.dvhe.decoder")))
+    check(p.needsTclWorkaround("unknown", "tcl", listOf("OMX.MTK.VIDEO.DECODER.HEVC")))
+    check(!p.needsTclWorkaround("Xiaomi", "Xiaomi", listOf("c2.mtk.hevc.decoder")))
+    check(!p.needsTclWorkaround("TCL", "TCL", listOf("c2.android.hevc.decoder")))
+    check(!p.needsTclWorkaround("TCL", "TCL", listOf("c2.mtk.hevc.decoder", "OMX.MS.HEVC")))
+    check(!p.needsTclWorkaround("TCL", "TCL", listOf("c2.mtk.hevc.decoder", "c2.amlogic.hevc.decoder")))
+    check(!p.needsTclWorkaround("", "", emptyList()))
+    println("P5-C surface transition: PASS (19 production Kotlin assertions)")
 }
