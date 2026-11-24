@@ -803,6 +803,7 @@ int addons_tem_catalogo(int i) {
 }
 AddEstado addons_estado(void) {
   AddEstado e = atomic_load(&estado);
+  if (jfAlvo && !stream_pedido_do_alvo(alvoId)) { jfAlvo=0; estado=ADD_PARADO; e=ADD_PARADO; }
   if (jfAlvo) {
     Stream *l = NULL;
     int n = 0, r = servidores_fontes_colher(alvoId, &l, &n), i;
@@ -840,8 +841,8 @@ AddEstado addons_estado(void) {
       // A cancelled profile/addon search must terminate any staged same-title
       // reload even when NO addon published a result; otherwise frozen old
       // cards could remain on screen indefinitely after cancellation.
-      if (!pendId[0]) stream_recarregar_concluir();
-      if (progPublicou && !pendId[0]) stream_invalidar("account or profile changed during the search");
+      if (!pendId[0] && stream_pedido_do_alvo(alvoId)) stream_recarregar_concluir();
+      if (progPublicou && !pendId[0] && stream_pedido_do_alvo(alvoId)) stream_invalidar("account or profile changed during the search");
     } else {
       if (alvoVod() && resultadoCacheavel)
         fontecache_vod_guardar(alvoId, alvoTipo, fioBase, &fioEscopo,
@@ -849,13 +850,13 @@ AddEstado addons_estado(void) {
       // PUBLICADA AOS POUCOS, a lista da tela ja e a inteira: substitui-la
       // agora zeraria o foco da folha, a fonte tocando e a verificacao em
       // curso — exatamente o que a publicacao por addon existe para preservar.
-      if (!pendId[0] && !progPublicou) {
+      if (!pendId[0] && !progPublicou && stream_pedido_do_alvo(alvoId)) {
         stream_recarregar_primeira();
         if (alvoVod())
           stream_definir_lista_idade(resultado, nResultado, SDL_GetTicks() - resultadoQuando);
         else stream_definir_lista(resultado, nResultado);
       }
-      if (!pendId[0]) stream_recarregar_concluir();
+      if (!pendId[0] && stream_pedido_do_alvo(alvoId)) stream_recarregar_concluir();
       if (progPublicou)
         printf("[addons] busca %s em %u ms\n", addons_busca_incompleta() ? "parcial encerrada" : "completa",
                (unsigned)(SDL_GetTicks() - progInicio));
@@ -872,6 +873,7 @@ AddEstado addons_estado(void) {
       pendRenovar = 0;
       snprintf(alvoBase, sizeof alvoBase, "%s", pendBase);
       pendBase[0] = 0;
+      if (!stream_pedido_do_alvo(id)) { estado=ADD_PARADO; return ADD_PARADO; }
       if (renovar) addons_buscar_renovar(id, tipo);
       else addons_buscar(id, tipo);
       return ADD_BUSCANDO;
@@ -881,6 +883,7 @@ AddEstado addons_estado(void) {
   // O alvo esta a caminho pelo prefetch: colhe quando chegar. Se o prefetch
   // cedeu ou nao trouxe nada, a busca real sai daqui — o pedido nunca fica
   // pendurado em "buscando" por causa de um atalho que nao deu certo.
+  if (adotado && !stream_pedido_do_alvo(alvoId)) { adotado=0; estado=ADD_PARADO; e=ADD_PARADO; }
   if (adotado && !fioVivo) {
     Stream *l; int n;
     int r = fontecache_pegar(alvoId, alvoTipo, &l, &n);
@@ -915,7 +918,7 @@ static void progDrenar(void) {
   progN = 0;
   pthread_mutex_unlock(&progTrava);
   for (q = 0; q < k; q++) {
-    if (!atomic_load(&buscaAlvoRecusado) && !pendId[0] && escopoAindaAtual(&fioEscopo)) {
+    if (!atomic_load(&buscaAlvoRecusado) && !pendId[0] && stream_pedido_do_alvo(alvoId) && escopoAindaAtual(&fioEscopo)) {
       if (!progPublicou)
         printf("[addons] primeira resposta em %u ms: %s\n",
                (unsigned)(SDL_GetTicks() - progInicio),
@@ -942,7 +945,7 @@ static void progDrenar(void) {
 // ser desta busca, com tudo o que ja chegou — add-on e plugin juntos, na ordem
 // em que chegaram — e o resto continua entrando aos poucos.
 static void progRepublicar(void) {
-  if (atomic_load(&buscaAlvoRecusado)) return;
+  if (atomic_load(&buscaAlvoRecusado) || !stream_pedido_do_alvo(alvoId)) return;
   int q, k = 0;
   stream_definir_lista(NULL, 0);
   for (q = 0; q < progPubN; q++) {

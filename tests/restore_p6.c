@@ -15,6 +15,12 @@ int main(void) {
   memset(t.target,'x',sizeof t.target-1); t.target[sizeof t.target-1]=0;
   assert(p6_restore_encode(&t,buf,sizeof buf) && p6_restore_decode(buf,&out));
   assert(!strcmp(t.target,out.target));
+  char bad[P6_RESTORE_TEXT_CAP+1];
+  char *target=strstr(buf,t.target);
+  assert(target);
+  size_t off=(size_t)(target-buf)+strlen(t.target);
+  memcpy(bad,buf,off); bad[off]='9'; strcpy(bad+off+1,buf+off);
+  assert(!p6_restore_decode(bad,&out));
   t.audioTrack = 0x987654321abcULL; t.subtitleMode = 3;
   strcpy(t.external, "a0123456789abcdef");
   assert(p6_restore_encode(&t, buf, sizeof buf));
@@ -49,5 +55,5 @@ int main(void) {
   assert(p6_restore_encode(&t, buf, sizeof buf));
   assert(p6_restore_decode(buf, &out));
   assert(!p6_restore_source(&out, "", "", "", -1, 0));
-  puts("P6 paused task ticket / exact source proof: 29 assertions PASS");
+  puts("P6 paused task ticket / exact source proof: boundary and source-proof assertions PASS");
 }

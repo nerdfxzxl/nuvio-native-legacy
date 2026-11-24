@@ -7,9 +7,18 @@
 static inline int nv_stream_id_valid(const char *id) {
   if (!id) return 0;
   size_t i=0;
-  for (; i<NV_STREAM_ID_CAP && id[i]; ++i) {
+  while (i<NV_STREAM_ID_CAP && id[i]) {
     unsigned char c=(unsigned char)id[i];
     if(c<=0x20 || c==0x7f) return 0;
+    if(c<0x80) { ++i; continue; }
+    unsigned n=c>=0xc2 && c<=0xdf ? 2 : c>=0xe0 && c<=0xef ? 3 : c>=0xf0 && c<=0xf4 ? 4 : 0;
+    if(!n || i+n>=NV_STREAM_ID_CAP) return 0;
+    for(unsigned j=1;j<n;j++) {
+      unsigned char b=(unsigned char)id[i+j];
+      if(b<0x80 || b>0xbf) return 0;
+      if(j==1 && ((c==0xe0 && b<0xa0)||(c==0xed && b>0x9f)||(c==0xf0 && b<0x90)||(c==0xf4 && b>0x8f))) return 0;
+    }
+    i+=n;
   }
   return i>0 && i<NV_STREAM_ID_CAP;
 }

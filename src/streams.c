@@ -377,6 +377,9 @@ void stream_definir_alvo(const char *id) {
   if (strcmp(alvoPedido,id)) p3ReloadAbort();
   nv_stream_id_copy(alvoPedido,sizeof alvoPedido,id);
 }
+int stream_pedido_do_alvo(const char *id) {
+  return !streamAlvoRecusado && nv_stream_id_valid(id) && !strcmp(alvoPedido,id);
+}
 int stream_lista_do_alvo(const char *id) {
   if (!id || !*id || !alvoLista[0] || n < 1) return 0;
   return !strcmp(alvoLista, id);
@@ -5522,15 +5525,10 @@ static int ptTocando(void) {
       for (int i = 0; i < ptL.n; i++) if (ptL.arq[i].id == sl->arq[k].id) return i;
   }
   if (player_aberto()) {
-    const CatItem *c = cat_item(player_indice());
     char alvo[NV_STREAM_ID_CAP];
-    int t, e;
     PartesPonto p;
-    player_episodio_atual(&t, &e);
-    if (player_id_canal()[0]) snprintf(alvo, sizeof alvo, "%s", player_id_canal());
-    else if (!c) alvo[0] = 0;
-    else if (t >= 0 && e > 0) cat_id_stream(player_indice(), t, e, alvo, sizeof alvo);
-    else snprintf(alvo, sizeof alvo, "%s", c->imdb);
+    if (player_id_canal()[0]) nv_stream_id_copy(alvo,sizeof alvo,player_id_canal());
+    else player_id_stream(alvo,sizeof alvo);
     if (partes_arquivo_de(alvo, &p)) {
       if (p.item == ptL.item && p.usenet == ptL.usenet)
         for (int i = 0; i < ptL.n; i++) if (ptL.arq[i].id == p.arquivo) return i;

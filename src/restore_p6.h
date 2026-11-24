@@ -42,7 +42,7 @@ static inline int p6_restore_field(const char *s, size_t cap) {
 }
 static inline int p6_restore_valid(const P6RestoreTicket *r) {
   if (!r || !p6_restore_token(r->task) || !p6_restore_field(r->account, sizeof r->account) ||
-      !p6_restore_field(r->title, sizeof r->title) || !p6_restore_field(r->target, sizeof r->target) ||
+      !p6_restore_field(r->title, sizeof r->title) || !nv_stream_id_valid(r->target) ||
       !p6_restore_hex(r->fingerprint, 64) || r->profile < 0 ||
       r->posMs < 0 || r->durMs < 120000 || r->durMs > INT_MAX || r->posMs >= r->durMs - 1000) return 0;
   if (r->file >= 0) {
@@ -68,16 +68,17 @@ static inline int p6_restore_decode(const char *s, P6RestoreTicket *r) {
   int n = 0;
   if (!s || !r || strlen(s) >= P6_RESTORE_TEXT_CAP) return 0;
   memset(r, 0, sizeof *r);
-  // scanf widths alone permit adjacent tokens without a separator. Validate
-  // the complete wire target token before decoding the numeric fields.
-  const char *target=s;
-  for (int i=0;i<7;i++) {
-    target+=strcspn(target," \t\r\n");
-    target+=strspn(target," \t\r\n");
-    if (!*target) return 0;
+  // A field wider than scanf's limit could otherwise split into two
+  // adjacent fields. Check every complete token before converting.
+  static const unsigned caps[]={4,36,95,9,63,7,9,9,127,10,10,64,39,40,9,19,16,1,16,23};
+  const char *p=s;
+  for (unsigned i=0;i<sizeof caps/sizeof caps[0];i++) {
+    size_t len=strcspn(p," \t\r\n");
+    if (!len || len>caps[i]) return 0;
+    p+=len;
+    if (i+1<sizeof caps/sizeof caps[0]) { if (*p!=' ') return 0; ++p; }
   }
-  size_t targetLen=strcspn(target," \t\r\n");
-  if (!targetLen || targetLen>=NV_STREAM_ID_CAP) return 0;
+  if (strcmp(p,"\n")) return 0;
   // Numeric bounds are checked below; width also bounds conversion input.
   return sscanf(s, "p6v2 %36s %95s %9d %63s %7s %9d %9d %127s %10lld %10lld %64s %39s %40s %9d %19llu %16llx %1d %16llx %23s%n",
       r->task, r->account, &r->profile, r->title, r->type, &r->season,

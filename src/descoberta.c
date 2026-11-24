@@ -7629,7 +7629,8 @@ static int parsearEpisodios(const char *corpo, CatEp *eps, int max) {
       // O id do video (cat_id_stream): e ele que se manda aos addons de fonte
       // quando o titulo nao e do IMDb. Addon que usa "title" no lugar de "name"
       // (o Kitsu) tambem tem o nome lido.
-      e->vidInvalido = js_id_raiz_em(p, f, "id", e->vid, sizeof e->vid) < 0;
+      int vidEstado = js_id_raiz_em(p, f, "id", e->vid, sizeof e->vid);
+      e->vidInvalido = vidEstado < 0 || (vidEstado > 0 && !nv_stream_id_valid(e->vid));
       if (!e->nome[0]) js_texto(p, f, "title", e->nome, sizeof e->nome);
       js_texto(p, f, "overview", e->sinopse, sizeof e->sinopse);
       if (!e->sinopse[0]) js_texto(p, f, "description", e->sinopse, sizeof e->sinopse);

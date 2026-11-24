@@ -30,5 +30,9 @@ int main(void) {
   snprintf(json,sizeof json,"{\"id\":\"%s\"}",over);
   assert(js_id_raiz_em(json,NULL,"id",decoded,sizeof decoded)==-1 && !decoded[0]);
   assert(js_id_raiz_em("{\"id\":\"\"}",NULL,"id",decoded,sizeof decoded)==-1 && !decoded[0]);
+  assert(nv_stream_id_valid("addon:\xc3\xa9"));
+  assert(!nv_stream_id_valid("addon:\xc0\xaf"));
+  assert(!nv_stream_id_valid("addon:\xed\xa0\x80"));
+  assert(!nv_stream_id_valid("addon:\xe2"));
   puts("P6 exact metadata/history identifier decode PASS");
 }

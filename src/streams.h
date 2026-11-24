@@ -241,6 +241,7 @@ int  stream_n_candidatas(void);
 // carimbo: em duvida a resposta e "nao e sua", e o custo de errar para este
 // lado e uma busca a mais.
 void stream_definir_alvo(const char *id);
+int stream_pedido_do_alvo(const char *id);
 int  stream_lista_do_alvo(const char *id);
 // Descarta a lista porque ela e de outro alvo. `porque` so entra no log.
 void stream_invalidar(const char *porque);

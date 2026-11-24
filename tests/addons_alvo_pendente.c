@@ -37,6 +37,12 @@ int main(void) {
   assert(stream_n() == 1 && stream_lista_do_alvo(alvoId));
   assert(!strcmp(stream_item(0)->url, old.url));
 
+  // Even a direct selector stamp, before the next addon request, must not
+  // let the previous worker label its results as the new target.
+  stream_definir_alvo("tt90000415");
+  stream_invalidar("fixture target change");
+  progMarcar(0,&old,1,2); addons_drenar();
+  assert(stream_n()==0 && !stream_lista_do_alvo("tt90000415"));
   // The personal-server path also queues behind an addon worker.
   stream_definir_alvo("jf:fixture:item");
   addons_buscar("jf:fixture:item", "movie");
