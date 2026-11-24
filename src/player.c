@@ -2923,7 +2923,7 @@ static void fecharSessao(int manter, int trocaFonte) {
   // retomado, e so quando o registro diz que ele foi alcancado tocando e a
   // duracao e a mesma (a de um trailer de 129 s nao empresta a base do filme).
   double base = baseDur > 0.0 ? basePos : duracaoSeg * basePct / 100.0;
-  if (!baseTocou || (baseDur > 0.0 && fabs(baseDur - duracaoSeg) > fmax(5.0, duracaoSeg * 0.02))) base = 0.0;
+  if (baseTocou <= 0 || baseDur <= 0.0 || fabs(baseDur - duracaoSeg) > fmax(5.0, duracaoSeg * 0.02)) base = 0.0;
   int chegou;
   (void)player_regra_visto(base, p6Played, posSeg, 0, &chegou);
   int duracaoContradita = p6WatchRawMarker() > duracaoSeg + 1.0;
@@ -2950,7 +2950,7 @@ static void fecharSessao(int manter, int trocaFonte) {
   { PartesPonto pt; char alvoA[64];
     alvoStream(alvoA, sizeof alvoA);
     if (!jaRetido && comVideo && !ehCanal() && partes_arquivo_de(alvoA, &pt)) {
-      if (assistiu) partes_ponto_esquecer(alvoA, sessao_usuario(), perfis_ativo());
+      if (assistiu && video_terminou()) partes_ponto_esquecer(alvoA, sessao_usuario(), perfis_ativo());
       else if (video_pronto() && posSeg > 1.0f) {
         pt.pos = posSeg;
         partes_ponto_guardar(alvoA, sessao_usuario(), perfis_ativo(), &pt);
@@ -3166,7 +3166,7 @@ static void gravarProgressoParcial(int conta, const char *porque) {
     fflush(stdout); return;
   }
   base = baseDur > 0.0 ? basePos : duracaoSeg * basePct / 100.0;
-  if (!baseTocou || (baseDur > 0.0 && fabs(baseDur - duracaoSeg) > fmax(5.0, duracaoSeg * 0.02))) base = 0.0;
+  if (baseTocou <= 0 || baseDur <= 0.0 || fabs(baseDur - duracaoSeg) > fmax(5.0, duracaoSeg * 0.02)) base = 0.0;
   (void)player_regra_visto(base, p6Played, posSeg, 0, &chegou);
   // Contradictory credits also invalidate the catalogue's watched proof.
   if (p6WatchRawMarker() > duracaoSeg + 1.0) chegou = 0;
