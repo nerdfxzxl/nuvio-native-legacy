@@ -513,6 +513,24 @@ double mkv_creditos_nomeados(const MkvCap *caps, int n) {
   return 0.0;
 }
 
+double mkv_creditos_verificados(const MkvCap *caps, int n) {
+  static const char *const nomes[] = {
+    "credits", "end credits", "ending credits", "closing credits", "final credits",
+    "end titles", "end title", "ending", "ed", "créditos finais", "creditos finais",
+    "créditos", "creditos"
+  };
+  double inicio = 0.0;
+  if (!caps || n <= 0) return 0.0;
+  for (int i = 0; i < n; i++) {
+    char m[64];
+    nomeMinusculo(caps[i].nome, m, sizeof m);
+    for (unsigned k = 0; k < sizeof nomes / sizeof nomes[0]; k++)
+      if (!strcmp(m, nomes[k]) && caps[i].inicio > 1.0 &&
+          (!inicio || caps[i].inicio < inicio)) inicio = caps[i].inicio;
+  }
+  return inicio;
+}
+
 double mkv_creditos_ultimo(const MkvCap *caps, int n) {
   int i;
   if (!caps || n < 2) return 0.0;
