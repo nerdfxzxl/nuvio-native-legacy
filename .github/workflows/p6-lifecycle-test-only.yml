@@ -63,6 +63,7 @@ jobs:
         run: |
           set -euo pipefail
           SANITIZE=0 bash tests/capmkv.sh
+          SANITIZE=0 bash tests/intro.sh
           bash tests/contapend.sh
           bash tests/progresso.sh
 

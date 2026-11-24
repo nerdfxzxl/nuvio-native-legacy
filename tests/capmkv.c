@@ -108,9 +108,15 @@ int mkvass_cabecalho(const char *url, unsigned char **buf, long *n) {
   return 1;
 }
 static IntroTrecho gravado[8]; static _Atomic int nGravado, chamadas;   // escritos pelo fio lateral
+static _Atomic int provaIntervalo;
 void intro_definir_capitulos(const IntroTrecho *v, int n) {
+  provaIntervalo = 0;
   chamadas++; nGravado = n;
   if (n > 0) memcpy(gravado, v, (size_t)n * sizeof *v);
+}
+void intro_definir_capitulos_provados(const IntroTrecho *v, int n,double inicio,double fim) {
+  intro_definir_capitulos(v,n);
+  provaIntervalo = inicio==1260 && fim==1350;
 }
 
 static int falhas;
@@ -204,12 +210,14 @@ int main(void) {
   usleep(50000);
   ok(nGravado == 3, "fio entregou os trechos ao modulo de intro");
   ok(capmkv_creditos_verificados() == 1260, "Q45 current-generation direct Range proof");
+  ok(provaIntervalo, "Q50 direct Range and adjacent chapter verify exact interval");
   antes = pedidos;
   capmkv_iniciar("https://x.test/d.mkv");
   usleep(100000);
   ok(pedidos == antes, "mesma URL de novo: cache, nenhum pedido");
   ok(perto(capmkv_creditos(1400), 1260), "e os creditos continuam la");
   ok(capmkv_creditos_verificados() == 0.0, "Q45 URL-only cache not proof");
+  ok(!provaIntervalo, "Q50 cached chapter cannot authorize skipping");
   pedidos = 0;
   capmkv_iniciar("https://x.test/filme.mp4");
   usleep(100000);

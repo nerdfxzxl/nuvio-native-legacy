@@ -104,7 +104,23 @@ static int publicar(const MkvCap *caps, int n, int checa, unsigned g, int prova)
   nomeado = a = n > 0 ? mkv_creditos_nomeados(caps, n) : 0.0;
   ultimo = b = n > 0 ? mkv_creditos_ultimo(caps, n) : 0.0;
   verificado = checa && prova && n > 0 ? mkv_creditos_verificados(caps, n) : 0.0;
-  if (k > 0) intro_definir_capitulos(v, k);
+  // A preview timestamp alone cannot prove the whole interval is credits.
+  // Require fresh current-generation proof, exact strict closing-credit start,
+  // and the first following chapter boundary; never jump across another scene.
+  double limite = 0.0;
+  if (verificado > 1.0) {
+    double proximo = 0.0;
+    for (int i = 0; i < n; i++)
+      if (caps[i].inicio > verificado && (!proximo || caps[i].inicio < proximo))
+        proximo = caps[i].inicio;
+    for (int i = 0; i < k; i++)
+      if (v[i].tipo == INTRO_CREDITOS && v[i].inicio == verificado &&
+          proximo > verificado && v[i].fim == proximo) limite = proximo;
+  }
+  if (k > 0 && limite > verificado)
+    intro_definir_capitulos_provados(v, k, verificado, limite);
+  else
+    intro_definir_capitulos(v, k);
   pthread_mutex_unlock(&trava);
   if (n > 0) {
     printf("[mkv] %d capitulos; creditos nomeados em %.0fs, ultimo em %.0fs\n", n, a, b);

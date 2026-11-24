@@ -62,6 +62,8 @@ long intro_kitsu_mal(const char *json);
 // tipo, o que o TheIntroDB/AniSkip trouxe, tenha chegado antes ou depois. n=0
 // limpa. Zerados por intro_desligar.
 void intro_definir_capitulos(const IntroTrecho *v,int n);
+// Exact bounded current-file interval only; 0/0 means recommendation/manual hint.
+void intro_definir_capitulos_provados(const IntroTrecho *v,int n,double inicio,double fim);
 void intro_desligar(void);
 int  intro_ativo(double posSeg,double *fim,int *tipo);
 // Segundo em que os creditos comecam, ou 0 quando nao ha marcador. Serve ao
@@ -140,7 +142,7 @@ void intro_botao_esconder(double agora);
 // fim conhecido. Creditos: ajuste proprio, fim EXPLICITO do marcador e a pelo menos 5 s do fim
 // da midia `dur` (creditos ate o fim ficam com o proximo episodio, nunca um seek para alem do fim).
 int  intro_auto_pular(int tipo,double fim,double dur,int pularAbertura,int pularResumo,int pularCreditos);
-// Mesmo trecho ativo; creditos exigem limites explicitos da resposta atual.
+// Mesmo trecho ativo; automatic credits require a verified current-file interval.
 int  intro_auto_ativo(double pos,double *fim,int *tipo);
 // Pulou sozinho este trecho nesta reproducao? (uma vez so; voltar nao repete). Zera a cada pedido.
 int  intro_auto_ja(int tipo,double fim);

@@ -222,8 +222,8 @@ static void testarBackup(void){
   pthread_mutex_lock(&fakeTrava);assert(backupPedidos==antes);pthread_mutex_unlock(&fakeTrava);
   assert(intro_creditos_limitados(v,8)==1&&v[0].fim==2960);
   double fim;int tipo;
-  assert(intro_auto_ativo(2910,&fim,&tipo)&&tipo==INTRO_CREDITOS&&fim==2960);
-  assert(intro_auto_pular(tipo,fim,3000,0,0,1));
+  assert(intro_ativo(2910,&fim,&tipo)&&tipo==INTRO_CREDITOS&&fim==2960);
+  assert(!intro_auto_ativo(2910,&fim,&tipo)); // Q50: backup duration match is not release proof
   IntroTrecho cap={30,90,INTRO_ABERTURA,0};intro_definir_capitulos(&cap,1);
   n=intro_trechos(v,8);assert(achar(v,n,INTRO_ABERTURA)->inicio==30);
 
@@ -812,6 +812,25 @@ int main(int argc,char **argv) {
     assert(intro_ativo(2950.0,&fim,&tp)&&tp==INTRO_CREDITOS&&fim==0.0);
     assert(!intro_auto_pular(tp,fim,3000.0,1,1,1));
     puts("ok  creditos sem end_ms nao pulam");
+  }
+  // Q50: exercise the actual production selection, not just the skip policy.
+  {
+    IntroTrecho t[]={{2900.0,2960.0,INTRO_CREDITOS,0}};
+    double fim=-1;int tp=0;
+    intro_desligar();intro_definir_duracao(3000.0,0);
+    intro_definir_capitulos(t,1);
+    assert(intro_ativo(2910,&fim,&tp)&&tp==INTRO_CREDITOS);
+    assert(!intro_auto_ativo(2910,&fim,&tp)); // cached chapter is a hint
+    intro_definir_capitulos_provados(t,1,2900,2970);
+    assert(!intro_auto_ativo(2910,&fim,&tp)); // mismatched bound
+    intro_definir_capitulos_provados(t,1,2900,2960);
+    assert(intro_auto_ativo(2910,&fim,&tp)&&tp==INTRO_CREDITOS&&fim==2960);
+    assert(intro_auto_pular(tp,fim,3000,0,0,1));
+    assert(!intro_auto_ativo(2965,&fim,&tp)); // content after credits stays
+    intro_definir_capitulos(NULL,0);
+    assert(!intro_auto_ativo(2910,&fim,&tp)); // replacement invalidates proof
+    intro_desligar();
+    puts("ok  Q50: bounded fresh-file credits only; cache/network/replacement cannot authorize skip");
   }
   // Uma vez por trecho, e voltar (para dentro ou para antes) nao pula de novo
   {

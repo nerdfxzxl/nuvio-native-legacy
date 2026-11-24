@@ -25,6 +25,8 @@ static int botaoVis;static double botaoFim;static int botaoTipo;
 // sobreviver a uma resposta da rede que chegue depois (baixar) e sao fundidos
 // por tipo: um tipo que o arquivo declara substitui o da rede.
 static IntroTrecho capTr[4];static int nCapTr;
+// Q50: exact current-file chapter interval; cached or network hints never grant auto-skip.
+static double capCredInicio,capCredFim;
 static void fundirCapitulos(void);   // chamar COM a trava
 static unsigned verGer;
 // Memoria unica do automatico, inclusive recuo antes de uma resposta tardia.
@@ -615,7 +617,7 @@ static void disparar(const Pedido *base,double dur,int novo){
   p=malloc(sizeof*p);if(!p)return;
   *p=*base;p->dur=dur;
   pthread_mutex_lock(&trava);
-  if(novo){nTrechos=0;nCreditosLimitados=0;nCapTr=0;refeitos=0;tentativas=0;}
+  if(novo){nTrechos=0;nCreditosLimitados=0;nCapTr=0;capCredInicio=capCredFim=0;refeitos=0;tentativas=0;}
   falhou=0;
   p->anime=animeDe(p->id,p->tmdb);
   p->g=++geracao;ultimo=*p;temUltimo=1;enviadoDur=dur;
@@ -664,16 +666,21 @@ static void fundirCapitulos(void){
   for(k=0;k<nCapTr&&nTrechos<8;k++)trechos[nTrechos++]=capTr[k];
   verGer=geracao+1;   // forca valido() a reavaliar os vereditos por indice
 }
-void intro_definir_capitulos(const IntroTrecho *v,int n){
+void intro_definir_capitulos_provados(const IntroTrecho *v,int n,double inicio,double fim){
   pthread_mutex_lock(&trava);
-  nCapTr=0;
-  for(int i=0;v&&i<n&&nCapTr<4;i++)capTr[nCapTr++]=v[i];
+  nCapTr=0;capCredInicio=capCredFim=0;
+  for(int i=0;v&&i<n&&nCapTr<4;i++){
+    capTr[nCapTr++]=v[i];
+    if(v[i].tipo==INTRO_CREDITOS&&inicio>1.0&&fim>inicio&&
+       v[i].inicio==inicio&&v[i].fim==fim){capCredInicio=inicio;capCredFim=fim;}
+  }
   fundirCapitulos();
   if(nCapTr>0&&temUltimo){printf("[intro] %s S%02dE%02d: fonte=capitulos, %d marcadores\n",
       ultimo.id,ultimo.t,ultimo.e,nTrechos);fflush(stdout);}
   pthread_mutex_unlock(&trava);
 }
-void intro_desligar(void){pthread_mutex_lock(&trava);geracao++;nTrechos=nCreditosLimitados=0;nCapTr=0;botaoVis=0;botaoIdx=-1;temUltimo=0;falhou=0;pthread_mutex_unlock(&trava);}
+void intro_definir_capitulos(const IntroTrecho *v,int n){intro_definir_capitulos_provados(v,n,0,0);}
+void intro_desligar(void){pthread_mutex_lock(&trava);geracao++;nTrechos=nCreditosLimitados=0;nCapTr=0;capCredInicio=capCredFim=0;botaoVis=0;botaoIdx=-1;temUltimo=0;falhou=0;pthread_mutex_unlock(&trava);}
 
 // DURACAO DA MIDIA E O TIPO (filme/serie), para recusar janelas absurdas.
 static double durMidia;static int ehFilme;
@@ -810,18 +817,12 @@ static int ativoInterno(double pos,double*fim,int*tipo,int automatico){
     if(dentro&&valido(i)){
       double f=fimEmendado(i);
       if(automatico&&trechos[i].tipo==INTRO_CREDITOS){
-        int explicito=0;
         autoSincronizar();
         if(autoRecuou&&autoDe>=trechos[i].inicio&&autoAte<trechos[i].fim)continue;
-        // Capitulos do proprio arquivo continuam tendo prioridade (#329).
-        // Rede: inicio e fim numericos deste titulo, nunca vizinho/estimativa.
-        for(int k=0;k<nCapTr;k++)
-          if(capTr[k].tipo==INTRO_CREDITOS&&capTr[k].inicio==trechos[i].inicio&&
-             capTr[k].fim==trechos[i].fim&&capTr[k].fim>capTr[k].inicio)explicito=1;
-        for(int k=0;k<nCreditosLimitados;k++)
-          if(creditosLimitados[k].inicio==trechos[i].inicio&&
-             creditosLimitados[k].fim==trechos[i].fim)explicito=1;
-        if(!explicito)continue;
+        // Q50: numerical third-party limits and URL-cache chapters are hints,
+        // not selected-release proof. Only an exact current-file interval may seek.
+        if(!(capCredInicio>1.0&&capCredFim>capCredInicio&&
+             trechos[i].inicio==capCredInicio&&trechos[i].fim==capCredFim))continue;
         f=trechos[i].fim; // nao pula a previa/cena depois dos creditos
       }
       if(fim)*fim=f;if(tipo)*tipo=trechos[i].tipo;ok=1;break;
@@ -919,7 +920,7 @@ int intro_creditos_limitados(IntroTrecho *saida,int max){
 #ifdef NV_SHOT_HOOKS
 void intro_shot_definir(const IntroTrecho *v,int n){
   pthread_mutex_lock(&trava);geracao++;
-  nCreditosLimitados=0;
+  nCreditosLimitados=0;nCapTr=0;capCredInicio=capCredFim=0;
   nTrechos=n<8?n:8;if(nTrechos>0)memcpy(trechos,v,(size_t)nTrechos*sizeof *v);
   pthread_mutex_unlock(&trava);
 }
