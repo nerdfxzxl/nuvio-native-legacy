@@ -6,6 +6,7 @@ name: P5-B/C video fidelity verification (tests only - no APK)
 # Revision: actual Q37 HEVC CSD/IRAP replay, codec adapter compile, terminal latch and AFR lease.
 # Final follow-up input also includes generation-owned asynchronous video retry and watchdog handoff.
 # Surface detach transaction, AFR mode confirmation, TorBox scope and compatible decoder ordering.
+# Final integration follow-up: same-representation runtime decoder recovery, seek ownership and HDR generation.
 on:
   workflow_dispatch:
   push:
