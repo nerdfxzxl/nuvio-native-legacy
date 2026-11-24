@@ -9,7 +9,8 @@
 #include <stddef.h>
 
 enum { SCR_NADA = 0, SCR_START, SCR_PAUSE, SCR_STOP };
-enum { SCR_EV_TOCANDO = 1, SCR_EV_PAUSOU, SCR_EV_SAIU, SCR_EV_PONTO };
+enum { SCR_EV_TOCANDO = 1, SCR_EV_PAUSOU, SCR_EV_SAIU, SCR_EV_PONTO,
+       SCR_EV_SAIU_SEM_VISTO, SCR_EV_HISTORICO_JA_GRAVADO };
 
 typedef struct { char id[64]; int ativo; } ScrobbleEstado;
 typedef struct { char id[64]; int tvdbEp; } TraktScrobbleAlvo;
