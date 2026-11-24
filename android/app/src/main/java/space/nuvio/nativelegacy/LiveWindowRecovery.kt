@@ -77,6 +77,8 @@ internal class LiveWindowRecovery(
         return true
     }
 
+    fun recovering(): Boolean = pending != null
+
     fun ready(): Boolean {
         val recovering = pending != null
         cancel()

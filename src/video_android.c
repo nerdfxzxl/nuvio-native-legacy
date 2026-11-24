@@ -387,6 +387,7 @@ static volatile int superficieEstavel, quadroSuperficie;
 static volatile int ativo, prontoLoad, primeiroQuadro, falhou, terminou, tocando, largura, altura;
 static volatile int cargaFase, somenteAudio;
 static volatile int conflito, semDecoderAudio;
+static volatile Uint32 audioRouteDeadline;
 // Native track identities to carry over one explicit same-episode source switch.
 // Ordinal indices are not transferable between unrelated releases.
 static VideoFaixa p1Audio, p1Leg;
@@ -574,6 +575,27 @@ JNIEXPORT void JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativeAudioCapacid
   f->passthroughSaida = pas == 1;
   f->saidaFiel = fiel == 1;
   f->saidaIncerta = incerto == 1;
+}
+
+/* Q49 refreshes capabilities only; never republish track selection/subtitles. */
+JNIEXPORT void JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativeAudioRouteCapacidade(JNIEnv *env, jclass cls,
+    jint geracao, jint idx, jint hz, jint bits, jint bitrate, jint dec, jint pcm, jint pas, jint fiel, jint incerto) {
+  VideoFaixa *f;
+  (void)env; (void)cls;
+  pthread_mutex_lock(&travaEvento);
+  if (!ativo || geracao <= 0 || (unsigned)geracao != sessao || idx < 0 || idx >= nAudio || faixaAudio[idx].numero != idx) {
+    pthread_mutex_unlock(&travaEvento); return;
+  }
+  f = &faixaAudio[idx];
+  f->amostraHz = hz > 0 ? hz : 0;
+  f->bits = bits > 0 ? bits : 0;
+  f->bitrate = bitrate > 0 ? bitrate : 0;
+  f->decodifica = dec == 1;
+  f->pcmSaida = pcm == 1;
+  f->passthroughSaida = pas == 1;
+  f->saidaFiel = fiel == 1;
+  f->saidaIncerta = incerto == 1;
+  pthread_mutex_unlock(&travaEvento);
 }
 
 static void validarAudioSelecionadoP5A(void) {
@@ -923,6 +945,7 @@ static void terminalVideo(int reason, int code) {
   videoerro_p5b_retry_clear(&retryVideoP5B);
   reconErroCod = code; reconErroVideo = 1; reconErroPend = 0;
   terminalVideoP5B = reason > 0 ? reason : 1;
+  audioRouteDeadline = 0;
   tocando = bufferando = primeiroQuadro = quadroSuperficie = superficieEstavel = 0;
   prontoLoad = somenteAudio = 0; falhou = 1;
   snprintf(erroTxt, sizeof erroTxt, "%d video playback error:%d", code, terminalVideoP5B);
@@ -950,7 +973,8 @@ JNIEXPORT void JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativeEvento(JNIEn
       else { terminou = 1; tocando = 0; }
       break;
     // Sem `falhou` aqui: o video_bombear decide entre reconectar e desistir.
-    case EV_ERRO:    if (b == 1) { /* Media3 audio renderer: do not retry as a network stall. */
+    case EV_ERRO:    audioRouteDeadline = 0;
+                     if (b == 1) { /* Media3 audio renderer: do not retry as a network stall. */
                        videoerro_p5b_retry_clear(&retryVideoP5B);
                        semDecoderAudio = 1; reconErroPend = 0; tocando = 0;
                        printf("[video] android: erro terminal de audio %d\n", a);
@@ -994,15 +1018,27 @@ JNIEXPORT void JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativeEvento(JNIEn
     case EV_SUPERFICIE_INVALIDADA: superficieEstavel = 0; quadroSuperficie = 0; break; // old surface frame cannot authorize new handoff
     case EV_AUDIO_SEM_DECODER: videoerro_p5b_retry_clear(&retryVideoP5B); semDecoderAudio = 1; break;
     case 16: /* EV_AUDIO_SAIDA_INCOMPATIVEL: current route or actual sink rejected. */
+      audioRouteDeadline = 0;
       videoerro_p5b_retry_clear(&retryVideoP5B);
       semDecoderAudio = 1; tocando = 0; break;
     case 17: /* EV_VIDEO_FALHA: terminal video capability/renderer error. */
       terminalVideo(a, b);
       break;
     case 18: /* EV_VIDEO_RECOVERY: one same-generation decoder recovery. */
+      audioRouteDeadline = 0;
       videoerro_p5b_retry_begin_current(&retryVideoP5B, sessao, SDL_GetTicks(), a > 0 ? a : 1);
       reconErroPend = 0; tocando = 0;
       quadroSuperficie = superficieEstavel = 0;
+      break;
+    case 19: /* Q49: audio-only owner never invalidates the video plane. */
+      if (a && !audioRouteDeadline) {
+        audioRouteDeadline = (SDL_GetTicks() + 15000u) | 1u;
+        acaoMs = SDL_GetTicks();
+      } else if (!a) {
+        audioRouteDeadline = 0;
+        acaoMs = SDL_GetTicks();
+        if (bufferando) bufferDesde = acaoMs;
+      }
       break;
     case EV_CARGA_FASE: if (a >= 0 && a <= 3) cargaFase = a; break;
     case EV_SO_AUDIO:
@@ -1050,6 +1086,7 @@ static int abrirSessao(int inicioMs, int fracao, int mesmaFonte) {
   cargaFase = somenteAudio = 0;
   velEnviada = 100;
   largura = altura = durMs = posMs = posNativoMs = 0; bufferando = 1; bufferDesde = SDL_GetTicks();
+  audioRouteDeadline = 0;
   tocandoDesde = 0; semDecoderAudio = 0; erroTxt[0] = 0; reconErroVideo = 0; terminalVideoP5B = 0;
   pausaPedida = pausaVista = 0;
   hdrAtual = "none"; dvAtual = atmosAtual = 0;
@@ -1301,6 +1338,7 @@ int video_video_retry(void) {
   return 0;
 }
 int video_erro_video_p5b(void) { return ativo ? terminalVideoP5B : 0; }
+int video_audio_route_pending(void) { return ativo && audioRouteDeadline != 0; }
 int video_video_retry_pending(void) {
   pthread_mutex_lock(&travaEvento);
   int pending = ativo && videoerro_p5b_retry_owned(&retryVideoP5B, sessao);
@@ -1364,6 +1402,17 @@ void video_bombear(void) {
     vel_log(velEnviada, "enviado ao ExoPlayer");
   }
   if (bombearRetryVideo(pos)) return;
+  if (audioRouteDeadline) {
+    if ((Sint32)(SDL_GetTicks() - audioRouteDeadline) >= 0) {
+      pthread_mutex_lock(&travaEvento);
+      if (audioRouteDeadline && (Sint32)(SDL_GetTicks() - audioRouteDeadline) >= 0) {
+        audioRouteDeadline = 0; semDecoderAudio = 1; reconErroPend = 0;
+      }
+      pthread_mutex_unlock(&travaEvento);
+      if (semDecoderAudio) video_pausar(1);
+    }
+    return;
+  }
   int eraRecarga = recarregarPausa >= 0;
   if (recarregarPausa >= 0) {
     if (falhou || terminou || !ativo) recarregarPausa = -1;
@@ -1481,6 +1530,7 @@ void video_parar(void) {
       kInt(mPararMantendoPreparo, (int)preparoAdotar);
     else { preparoAdotar = 0; kSemArg(mParar); }
   }
+  audioRouteDeadline = 0;
   ativo = prontoLoad = primeiroQuadro = tocando = 0; superficieEstavel = quadroSuperficie = 0;
   cargaFase = somenteAudio = 0;
   pausaPedida = pausaVista = 0;

@@ -742,6 +742,7 @@ class NuvioActivity : SDLActivity() {
     override fun onResume() {
         trimResumida = true
         super.onResume()
+        NvPlayer.retomarRotaPeloSistema()
         aplicarOrientacaoTouch()
         telaCheiaTouch()
         vigia?.frente(true)

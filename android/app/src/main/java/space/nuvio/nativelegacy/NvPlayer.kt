@@ -103,6 +103,7 @@ object NvPlayer {
     private const val EV_AUDIO_SAIDA_INCOMPATIVEL = 16 // P5-A: route cannot faithfully carry selected audio
     private const val EV_VIDEO_FALHA = 17 // P5-B: user-owned terminal video error
     private const val EV_VIDEO_RECOVERY = 18 // bounded same-source decoder recovery
+    private const val EV_AUDIO_ROUTE_RECOVERY = 19 // generation-owned Q49, not a video handoff
 
     private const val TELA_W = 1920   // coordenadas de layout do app
     private const val TELA_H = 1080
@@ -193,6 +194,8 @@ object NvPlayer {
     @JvmStatic external fun nativeFaixa(tipo: Int, idx: Int, lingua: String, flags: Int, nome: String, mime: String, canais: Int)
     @JvmStatic external fun nativeAudioCapacidade(idx: Int, hz: Int, bits: Int, bitrate: Int,
                                                  decoder: Int, pcm: Int, pass: Int, fiel: Int, incerto: Int)
+    @JvmStatic external fun nativeAudioRouteCapacidade(geracao: Int, idx: Int, hz: Int, bits: Int, bitrate: Int,
+                                                       decoder: Int, pcm: Int, pass: Int, fiel: Int, incerto: Int)
     @JvmStatic external fun nativeFaixasFim(selAudio: Int, selLeg: Int)
     @JvmStatic external fun nativeLegenda(texto: String, durMs: Int)
     @JvmStatic external fun nativePos(ms: Long, bufferFimMs: Long, live: Boolean,
@@ -420,7 +423,10 @@ object NvPlayer {
     // transcode, downmix, reselect tracks or suppress network buffering.
     private var somLiberado = false
     private var volumeRequisitado = 1f
-    private fun aplicarVolume() { player?.volume = if (somLiberado && !videoOutputFailed && afrGate == null) volumeRequisitado else 0f }
+    private fun aplicarVolume() {
+        player?.volume = if (somLiberado && !videoOutputFailed && afrGate == null &&
+            recursosAtuais?.routeMuted != true && recursosAtuais?.routeFailed != true) volumeRequisitado else 0f
+    }
     private fun liberarSom() {
         if (!videoOutputFailed && !somLiberado) { somLiberado = true; aplicarVolume() }
     }
@@ -588,6 +594,7 @@ object NvPlayer {
     private fun falhaVideo(minha: Int, motivo: Int, codigo: Int, geracao: Int) {
         if (!atual(minha) || videoOutputFailed) return
         videoOutputFailed = true
+        recursosAtuais?.let { cancelAudioRoute(it, restore = false) }
         recuperacaoLive?.cancel()
         principal.removeCallbacks(recriar)
         recriaAgendada = false
@@ -808,7 +815,9 @@ object NvPlayer {
         ): Array<androidx.media3.exoplayer.trackselection.ExoTrackSelection.Definition?> {
             val definicoes = super.selectAllTracks(mappedTrackInfo, rendererFormatSupports,
                 rendererMixedMimeTypeAdaptationSupports, params)
-            if (preferencia.isEmpty()) return definicoes
+            // Explicit Q49/user override and temporary audio disable own selection.
+            if (preferencia.isEmpty() || params.disabledTrackTypes.contains(C.TRACK_TYPE_AUDIO) ||
+                params.overrides.keys.any { it.type == C.TRACK_TYPE_AUDIO }) return definicoes
 
             // TrackSelectionUtil.buildTracks and publicarFaixas use this exact
             // renderer/group/track order. C receives only FORMAT_HANDLED audio,
@@ -969,6 +978,22 @@ object NvPlayer {
         @Volatile var audioFormato = AudioSyncTap.FMT_NENHUM
         @Volatile var velocidadePcm = false
         @Volatile var ajustePcm = false // DSP requires decoded PCM, never lossy AC-3 transcoding
+        @Volatile var routePcm = false
+        lateinit var routeObserver: AudioRouteObserverP5D
+        val routeDebounce = AudioRouteP5D.Debounce()
+        val routeTx = AudioRouteP5D.Transaction()
+        var routeMuted = false
+        var routeFailed = false
+        var routeNativeOwned = false
+        var routeChanged = false
+        var routeCheck = true
+        var routeFatal = false
+        var routePhase = 0 // 1 = disable acknowledged asynchronously; 2 = wait for new output
+        var routeDisabled = false
+        var routeOutputBefore = 0L
+        var routeSelected: Pair<Tracks.Group, Int>? = null
+        var routeTarget: Pair<Tracks.Group, Int>? = null
+        var routeAwaitSince = 0L
         val proc = GanhoAudioProcessor()
         val tap = AudioSyncTap(
             { pcm, n, pts -> if (adotado) try { nativeAudioPcm(pcm, n, pts) } catch (_: UnsatisfiedLinkError) {} },
@@ -1395,6 +1420,8 @@ object NvPlayer {
         val pedido = pedidos.incrementAndGet()
         if (aindaAtual) pedidoAtivo = pedido
         afrSuspended = true
+        routeForeground = false
+        recursosAtuais?.let { cancelAudioRoute(it, restore = true); it.routeCheck = true }
         // Do not destroy a SurfaceView as the Activity is leaving foreground.
         // An already sent detach must still acknowledge and reattach safely.
         detachTicket?.pause()
@@ -1403,6 +1430,12 @@ object NvPlayer {
         recriaAgendada = false
         restoreAfr()
         try { player?.pause() } catch (e: Exception) { Log.w(TAG, "pausarPeloSistema: $e") }
+    }
+
+    // Foreground does not resume playback; route validation is independent of AFR.
+    fun retomarRotaPeloSistema() {
+        routeForeground = true
+        recursosAtuais?.let { audioRouteTick(sessao, it) }
     }
 
     // onDestroy: solta player e superficie.
@@ -1475,7 +1508,7 @@ object NvPlayer {
         // A queued pause from the previous source must not mutate a new player.
         principal.post {
             if (pedido != pedidos.get()) return@post
-            if (videoOutputFailed && p == 0) return@post
+            if ((videoOutputFailed || recursosAtuais?.routeFailed == true) && p == 0) return@post
             pausaPedida = p != 0
             if (!pausaPedida && afrSuspended) {
                 afrSuspended = false
@@ -1485,6 +1518,7 @@ object NvPlayer {
                 avaliarEstavel()
             }
             player?.playWhenReady = !pausaPedida
+            recursosAtuais?.let { audioRouteTick(sessao, it) }
         }
     }
     // Episode handoff arms this token before the old visible session closes.
@@ -1594,6 +1628,8 @@ object NvPlayer {
             val r = recursosAtuais ?: return@post
             val p = player ?: return@post
             if (r.ajustePcm != requirePcm) {
+                cancelAudioRoute(r, restore = true)
+                r.routeCheck = true
                 val pos = p.currentPosition
                 val resume = p.playWhenReady
                 r.ajustePcm = requirePcm
@@ -1615,6 +1651,8 @@ object NvPlayer {
             val r = recursosAtuais ?: return@post
             val pcm = v != 1f
             if (r.velocidadePcm != pcm) {
+                cancelAudioRoute(r, restore = true)
+                r.routeCheck = true
                 val pos = p.currentPosition
                 r.velocidadePcm = pcm
                 // Re-select the audio decoder against the new sink capabilities.
@@ -1685,7 +1723,10 @@ object NvPlayer {
             confirmarJanela(sv, pedido)
         }
     }
-    @JvmStatic fun escolher(tipo: Int, idx: Int) { principal.post { escolherMain(tipo, idx) } }
+    @JvmStatic fun escolher(tipo: Int, idx: Int) {
+        val pedido = pedidos.get()
+        principal.post { if (pedido == pedidos.get()) escolherMain(tipo, idx) }
+    }
 
     // --- abrir / liberar ------------------------------------------------------
 
@@ -1774,6 +1815,7 @@ object NvPlayer {
                     else minOf(autoBytes.toLong(), tetoAlto).toInt()
         val r = RecursosPlayer(CargaPlayer(minMs, maxMs, bytes, preparando, profile), maxMs,
             if (preparando) idiomaAudio else "")
+        r.routeObserver = AudioRouteObserverP5D(act, principal)
         try {
             val http = DefaultHttpDataSource.Factory().setAllowCrossProtocolRedirects(true)
                 .setConnectTimeoutMs(15000).setReadTimeoutMs(20000)
@@ -1883,7 +1925,9 @@ object NvPlayer {
                     // Sonic needs integer PCM; float output bypasses audio processors.
                     AudioSyncSink(DefaultAudioSink.Builder(context).setEnableFloatOutput(false)
                         .setEnableAudioTrackPlaybackParams(false)
-                        .setAudioProcessors(arrayOf(r.proc)).build(), r.tap, { r.velocidadePcm || r.ajustePcm })
+                        .setAudioTrackProvider(r.routeObserver)
+                        .setAudioProcessors(arrayOf(r.proc)).build(), r.tap,
+                        { r.velocidadePcm || r.ajustePcm || r.routePcm })
             }.setExtensionRendererMode(androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
                 .setMediaCodecSelector(MediaCodecSelector { mime, secure, tunneling ->
                     val candidates = videoCodecSelector.getDecoderInfos(mime, secure, tunneling)
@@ -2029,6 +2073,8 @@ object NvPlayer {
             val p = r.p
             recursosAtuais = r
             player = p
+            r.routeDebounce.seed(r.routeObserver.key(r.routeObserver.route()))
+            r.routeObserver.start { audioRouteTick(minha, r) }
             processador = r.proc
             r.tap.ligado = tap.ligado
             tap = r.tap
@@ -2128,6 +2174,11 @@ object NvPlayer {
         recriaAgendada = false
         medidor.encerrar()
         val recursos = recursosAtuais
+        recursos?.let {
+            // Session was invalidated above. Do not send stale ownership events.
+            it.routeObserver.stop()
+            it.routeTx.cancel()
+        }
         val cacheParaLiberar = cacheMidia
         cacheMidia = null
         recursos?.adotado = false
@@ -2269,6 +2320,7 @@ object NvPlayer {
         override fun run() {
             if (!atual(minha)) return
             val p = player ?: return
+            recursosAtuais?.let { audioRouteTick(minha, it) }
             // Keep the signed live-window clock for stall detection. Only the
             // native UI position is clamped; a moving negative position is valid.
             val live = p.isCurrentMediaItemLive
@@ -2716,6 +2768,265 @@ object NvPlayer {
         recriarSuperficie(200)
     }
 
+
+    // --- Q49 audio-route ownership; main looper, visible session only --------
+    private var routeForeground = true
+
+    private fun audioDsp(r: RecursosPlayer?) = amplificacaoDb != 0 || baixoDb != 0 ||
+        centroDb != 0 || noiteNivel != 0 || r?.velocidadePcm == true
+
+    private fun selectedAudio(p: ExoPlayer?): Pair<Tracks.Group, Int>? {
+        p ?: return null
+        val format = p.audioFormat
+        var first: Pair<Tracks.Group, Int>? = null
+        for (g in p.currentTracks.groups) if (g.type == C.TRACK_TYPE_AUDIO) {
+            for (i in 0 until g.length) if (g.isTrackSelected(i)) {
+                if (first == null) first = g to i
+                if (format != null && format == g.getTrackFormat(i)) return g to i
+            }
+        }
+        return first
+    }
+
+    private fun publishRouteCaps(caps: List<AudioOutputProbeP5A.Observation>) {
+        if (!atual(sessao)) return
+        for ((i, cap) in caps.withIndex()) {
+            val d = cap.result
+            try {
+                nativeAudioRouteCapacidade(geracaoNative, i, cap.sampleRate, cap.bitDepth, cap.sourceBitrate,
+                    if (d.decoder) 1 else 0, if (d.pcmCompatible) 1 else 0,
+                    if (d.encodedPassthrough) 1 else 0, if (d.outputFaithfulCandidate) 1 else 0,
+                    if (d.unknown) 1 else 0)
+            } catch (_: UnsatisfiedLinkError) { }
+        }
+    }
+
+    private fun routeOwner(r: RecursosPlayer, active: Boolean) {
+        if (r.routeNativeOwned == active) return
+        r.routeNativeOwned = active
+        if (recursosAtuais === r && atual(sessao))
+            ev(EV_AUDIO_ROUTE_RECOVERY, if (active) 1 else 0)
+    }
+
+    private fun cancelAudioRoute(r: RecursosPlayer, restore: Boolean) {
+        r.routeTx.cancel()
+        r.routePhase = 0
+        r.routeTarget = null
+        r.routeFatal = false
+        r.routeChanged = false
+        r.routeAwaitSince = 0L
+        if (restore && r.routeDisabled && recursosAtuais === r && atual(sessao)) {
+            try {
+                r.p.trackSelectionParameters = r.p.trackSelectionParameters.buildUpon()
+                    .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false).build()
+            } catch (_: RuntimeException) { }
+        }
+        r.routeDisabled = false
+        routeOwner(r, false)
+        r.routeMuted = false
+        if (recursosAtuais === r) aplicarVolume()
+    }
+
+    private fun failAudioRoute(minha: Int, r: RecursosPlayer, reason: String) {
+        if (!atual(minha) || recursosAtuais !== r || r.routeFailed || videoOutputFailed) return
+        r.routeFailed = true
+        cancelAudioRoute(r, restore = false)
+        r.routeMuted = true
+        aplicarVolume()
+        try { r.p.pause() } catch (_: RuntimeException) {}
+        relatarAudio(minha, "Q49 terminal: " + reason)
+        ev(EV_AUDIO_SAIDA_INCOMPATIVEL)
+    }
+
+    private fun pcmOutput(enc: Int) = enc == android.media.AudioFormat.ENCODING_PCM_16BIT ||
+        enc == android.media.AudioFormat.ENCODING_PCM_8BIT ||
+        enc == android.media.AudioFormat.ENCODING_PCM_24BIT_PACKED ||
+        enc == android.media.AudioFormat.ENCODING_PCM_32BIT ||
+        enc == android.media.AudioFormat.ENCODING_PCM_FLOAT
+
+    private fun faithfulOutput(fmt: Format, sink: AudioSink.AudioTrackConfig,
+                               c: AudioFidelityDecisionP5A): Boolean =
+        if (pcmOutput(sink.encoding)) c.pcmCompatible && c.outputFaithfulCandidate &&
+            sink.sampleRate == fmt.sampleRate && fmt.channelCount > 0 &&
+            Integer.bitCount(sink.channelConfig) == fmt.channelCount
+        else c.encodedPassthrough && sink.encoding == AudioOutputProbeP5A.encoding(fmt.sampleMimeType.orEmpty())
+
+    private fun routeBlocked(r: RecursosPlayer) = recriando || recriaAgendada || afrGate != null ||
+        startupSeekGate.waiting() || r.runtimeVideoRecovery?.completed == false ||
+        (retentou && !estavelEmitido) || recuperacaoLive?.recovering() == true
+
+    private fun routeSelection(p: ExoPlayer, target: Pair<Tracks.Group, Int>, disabled: Boolean) {
+        p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
+            .setOverrideForType(TrackSelectionOverride(target.first.mediaTrackGroup, target.second))
+            .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, disabled).build()
+    }
+
+    private fun startAudioRoute(minha: Int, r: RecursosPlayer, target: Pair<Tracks.Group, Int>,
+                                forcePcm: Boolean, fatal: Boolean, now: Long) {
+        if (!atual(minha) || recursosAtuais !== r || r.routeTx.active) return
+        val p = r.p
+        val ticket = r.routeTx.begin(now)
+        r.routeTarget = target
+        r.routePcm = forcePcm
+        r.routeMuted = true
+        r.routeOutputBefore = r.routeObserver.output?.serial ?: 0L
+        routeOwner(r, true)
+        aplicarVolume()
+        try {
+            if (fatal) {
+                // Media3 has already stopped on a fatal audio renderer error.
+                // One same-player prepare; never stop, seek, change item or URL.
+                if (!r.routeTx.allowPrepare(ticket)) { failAudioRoute(minha, r, "retry exhausted"); return }
+                r.routePhase = 2
+                r.routeFatal = false
+                routeSelection(p, target, false)
+                if (p.videoFormat != null || p.currentTracks.groups.any { it.type == C.TRACK_TYPE_VIDEO })
+                    invalidarQuadroSuperficie()
+                p.prepare()
+                return
+            }
+            // Stock Media3 track selection resets only the audio renderer.
+            // A playback-looper barrier prevents disable/enable conflation.
+            // The existing video surface, media item, position and playWhenReady
+            // are untouched. No automatic audio focus or artificial volume event.
+            r.routePhase = 1
+            r.routeDisabled = true
+            routeSelection(p, target, true)
+            p.createMessage { _, _ ->
+                principal.post {
+                    if (!atual(minha) || recursosAtuais !== r || player !== p ||
+                        !r.routeTx.owns(ticket) || r.routeFailed || videoOutputFailed) return@post
+                    try {
+                        r.routeDisabled = false
+                        r.routePhase = 2
+                        routeSelection(p, target, false)
+                        audioRouteTick(minha, r)
+                    } catch (_: RuntimeException) { failAudioRoute(minha, r, "audio renderer re-enable failed") }
+                }
+            }.send()
+        } catch (_: RuntimeException) { failAudioRoute(minha, r, "audio renderer recovery failed") }
+    }
+
+    private fun audioRouteTick(minha: Int, r: RecursosPlayer) {
+        if (!atual(minha) || recursosAtuais !== r || player !== r.p || !routeForeground ||
+            videoOutputFailed || r.routeFailed) return
+        val p = r.p
+        if (p.playbackState == Player.STATE_ENDED) { cancelAudioRoute(r, restore = false); return }
+        val now = SystemClock.elapsedRealtime()
+        val selected = selectedAudio(p)
+        if (selected != null && !r.routeTx.active && !r.routeFatal) r.routeSelected = selected
+        val target = r.routeTarget ?: selected ?: r.routeSelected
+        val route = r.routeObserver.route()
+        val observed = r.routeDebounce.observe(r.routeObserver.key(route), now)
+        if (observed == AudioRouteP5D.Debounce.Result.WAIT) {
+            if (target != null) {
+                r.routeChanged = true
+                r.routeMuted = true
+                aplicarVolume()
+                if (!routeBlocked(r)) routeOwner(r, true)
+            }
+            return
+        }
+        if (observed == AudioRouteP5D.Debounce.Result.UNSTABLE) {
+            if (target != null && !routeBlocked(r)) failAudioRoute(minha, r, "route did not stabilize")
+            return
+        }
+        if (observed == AudioRouteP5D.Debounce.Result.CHANGED) {
+            r.routeChanged = true
+            r.routeCheck = true
+        }
+        if (target == null) return
+        if (routeBlocked(r)) {
+            // Video, startup seek, display or live recovery has priority.
+            if (r.routeChanged || r.routeTx.active) { r.routeMuted = true; aplicarVolume() }
+            return
+        }
+        if (!r.routeCheck && !r.routeChanged && !r.routeTx.active && !r.routeFatal) return
+        val fmt = target.first.getTrackFormat(target.second)
+        val decision = AudioOutputProbeP5A.inspect(activity, fmt, true, audioDsp(r), route, true).result
+        val output = r.routeObserver.output?.takeIf {
+            try { it.track.state == android.media.AudioTrack.STATE_INITIALIZED }
+            catch (_: RuntimeException) { false }
+        }
+        val compatible = output != null && faithfulOutput(fmt, output.config, decision)
+        if (r.routeTx.active) {
+            val ticket = r.routeTx.ticket
+            if (r.routeFatal && r.routeTx.allowPrepare(ticket) && decision.outputFaithfulCandidate) {
+                // Fatal during the audio-only transaction: same player, one
+                // prepare, no source replacement. Keep the existing deadline.
+                r.routeFatal = false
+                r.routePhase = 2
+                r.routeDisabled = false
+                r.routeOutputBefore = output?.serial ?: r.routeOutputBefore
+                try {
+                    routeSelection(p, target, false)
+                    invalidarQuadroSuperficie()
+                    p.prepare()
+                } catch (_: RuntimeException) { failAudioRoute(minha, r, "same-player prepare failed") }
+                return
+            }
+            if (r.routeFatal) { failAudioRoute(minha, r, "audio renderer failed after bounded retry"); return }
+            val selectedSame = selected?.let {
+                it.first.mediaTrackGroup == target.first.mediaTrackGroup && it.second == target.second
+            } == true
+            if (r.routePhase == 2 && compatible && selectedSame &&
+                output!!.serial > r.routeOutputBefore && !r.routeDebounce.pending) {
+                cancelAudioRoute(r, restore = false)
+                r.routeCheck = false
+                publicarFaixas(p.currentTracks)
+                relatarAudio(minha, "Q49 verified replacement AudioTrack route=" + route?.type)
+                return
+            }
+            // Paused renderers may not create a new AudioTrack until Play.
+            // Finish ownership without auto-resuming; validate before unmute.
+            if (r.routePhase == 2 && selectedSame && !p.playWhenReady && decision.outputFaithfulCandidate) {
+                cancelAudioRoute(r, restore = false)
+                r.routeMuted = true
+                r.routeCheck = true
+                aplicarVolume()
+                return
+            }
+            if (r.routeTx.expired(now)) failAudioRoute(minha, r, "audio route recovery timeout")
+            return
+        }
+        if (output == null && !r.routeFatal) {
+            if (r.routeChanged) {
+                r.routeMuted = true
+                aplicarVolume()
+                if (p.playWhenReady) {
+                    routeOwner(r, true)
+                    if (r.routeAwaitSince == 0L) r.routeAwaitSince = now
+                    if (now - r.routeAwaitSince >= AudioRouteP5D.RECOVERY_LIMIT_MS)
+                        failAudioRoute(minha, r, "no new AudioTrack")
+                } else { routeOwner(r, false); r.routeAwaitSince = 0L }
+            }
+            return
+        }
+        if (!r.routeChanged && !r.routeFatal) {
+            // Initial and ordinary audio-format validation remains Q36; a
+            // stable compatible route is not an excuse to restart playback.
+            if (!compatible) failAudioRoute(minha, r, "incompatible AudioTrack configuration")
+            else {
+                r.routeCheck = false
+                r.routeMuted = false
+                aplicarVolume()
+            }
+            return
+        }
+        val action = AudioRouteP5D.plan(decision.outputFaithfulCandidate, decision.pcmCompatible,
+            decision.encodedPassthrough, compatible && !r.routeFatal, output?.let { pcmOutput(it.config.encoding) } == true)
+        when (action) {
+            AudioRouteP5D.Action.ERROR -> failAudioRoute(minha, r, "no faithful path on current route")
+            AudioRouteP5D.Action.KEEP -> {
+                cancelAudioRoute(r, restore = false)
+                r.routeCheck = false
+                publicarFaixas(p.currentTracks)
+                relatarAudio(minha, "Q49 retained compatible AudioTrack route=" + route?.type)
+            }
+            else -> startAudioRoute(minha, r, target, action == AudioRouteP5D.Action.RESELECT_PCM, r.routeFatal, now)
+        }
+    }
+
     // --- escolha de faixa ----------------------------------------------------
 
     private fun escolherMain(tipo: Int, idx: Int) {
@@ -2723,6 +3034,10 @@ object NvPlayer {
         if (tipo == 3) { tap.ligado = idx != 0; return }   // F06: escuta de PCM liga/desliga
         val p = player ?: return
         try {
+            if (tipo == 0) recursosAtuais?.let {
+                cancelAudioRoute(it, restore = true)
+                it.routeCheck = true
+            }
             val par = p.trackSelectionParameters.buildUpon()
             if (tipo == 0) {
                 val (g, i) = audios.getOrNull(idx) ?: return
@@ -2732,6 +3047,7 @@ object NvPlayer {
                     return
                 }
                 relatarAudio(sessao, "escolha indice=$idx grupoIndice=$i mime=${g.getTrackFormat(i).sampleMimeType}")
+                recursosAtuais?.routeSelected = g to i
                 par.setOverrideForType(TrackSelectionOverride(g.mediaTrackGroup, i))
             } else if (tipo == 1) {
                 if (idx < 0) {
@@ -2877,6 +3193,12 @@ object NvPlayer {
 
         override fun onTracksChanged(tracks: Tracks) {
             if (!atual(minha) || videoOutputFailed) return
+            val r = recursosAtuais
+            if (r?.routeTx?.active == true) {
+                audioRouteTick(minha, r)
+                return
+            }
+            r?.let { selectedAudio(player)?.let { selected -> it.routeSelected = selected } }
             publicarFaixas(tracks)
             for (g in tracks.groups) if (g.type == C.TRACK_TYPE_VIDEO) {
                 for (i in 0 until g.length) if (g.isTrackSelected(i)) applyAfr(minha, g.getTrackFormat(i))
@@ -2907,6 +3229,26 @@ object NvPlayer {
             if (!atual(minha) || videoOutputFailed) return
             val exo = error as? ExoPlaybackException
             val p = player
+            val rRoute = recursosAtuais
+            val audioRenderer = exo?.type == ExoPlaybackException.TYPE_RENDERER && p != null &&
+                exo.rendererIndex in 0 until p.rendererCount &&
+                p.getRendererType(exo.rendererIndex) == C.TRACK_TYPE_AUDIO
+            if (rRoute != null) {
+                // Only a route-correlated audio failure can acquire Q49 recovery.
+                // Other errors retain the existing network/video owner.
+                if (audioRenderer && !rRoute.routeFailed) {
+                    audioRouteTick(minha, rRoute)
+                    if (rRoute.routeChanged || rRoute.routeTx.active || rRoute.routeDebounce.pending) {
+                        rRoute.routeFatal = true
+                        rRoute.routeCheck = true
+                        audioRouteTick(minha, rRoute)
+                        return
+                    }
+                }
+                if (rRoute.routeFailed) return
+                cancelAudioRoute(rRoute, restore = true)
+                rRoute.routeCheck = true
+            }
             val status = generateSequence(error.cause) { it.cause }
                 .filterIsInstance<HttpDataSource.InvalidResponseCodeException>().firstOrNull()?.responseCode
             if (limitedSession && status in listOf(403, 458, 509)) {
@@ -3079,32 +3421,11 @@ object NvPlayer {
         override fun onAudioTrackInitialized(eventTime: AnalyticsListener.EventTime, audioTrackConfig: AudioSink.AudioTrackConfig) {
             if (!atual(minha)) return
             relatarAudio(minha, "AudioTrack encoding=${audioTrackConfig.encoding} hz=${audioTrackConfig.sampleRate} canaisMask=${audioTrackConfig.channelConfig} offload=${audioTrackConfig.offload} tunneling=${audioTrackConfig.tunneling}")
-            // Compare the REAL Media3 AudioTrack configuration, not only the
-            // source codec / renderer / route's advertised capabilities.
-            val src = ultimoFormatoEntrada ?: player?.audioFormat ?: return
-            val sink = audioTrackConfig
-            val enc = sink.encoding
-            val pcm = enc == android.media.AudioFormat.ENCODING_PCM_16BIT ||
-                enc == android.media.AudioFormat.ENCODING_PCM_8BIT ||
-                enc == android.media.AudioFormat.ENCODING_PCM_24BIT_PACKED ||
-                enc == android.media.AudioFormat.ENCODING_PCM_32BIT ||
-                enc == android.media.AudioFormat.ENCODING_PCM_FLOAT
-            val cap = AudioOutputProbeP5A.inspect(activity, src, true,
-                amplificacaoDb != 0 || baixoDb != 0 || centroDb != 0 || noiteNivel != 0)
-            val c = cap.result
-            val maskChannels = Integer.bitCount(sink.channelConfig)
-            val failed = if (pcm) {
-                !c.pcmCompatible || sink.sampleRate != src.sampleRate ||
-                    src.channelCount <= 0 || maskChannels != src.channelCount ||
-                    !c.outputFaithfulCandidate
-            } else {
-                !c.encodedPassthrough || enc != AudioOutputProbeP5A.encoding(src.sampleMimeType.orEmpty())
-            }
-            if (failed) {
-                relatarAudio(minha, "Q36 sink incompatible: route=${cap.routeType} encoded=${!pcm} " +
-                    "in=${src.channelCount}ch/${src.sampleRate}Hz out=${maskChannels}ch/${sink.sampleRate}Hz " +
-                    "outputEncoding=$enc; blocking silent downmix or lossy replacement")
-                ev(EV_AUDIO_SAIDA_INCOMPATIVEL, 0, 0, geracaoDaAbertura)
+            // P5-D validates the actual AudioTrack configuration against the
+            // debounced current route; no error from an intermediate handshake.
+            recursosAtuais?.let { r ->
+                r.routeCheck = true
+                audioRouteTick(minha, r)
             }
         }
 
@@ -3211,7 +3532,9 @@ object NvPlayer {
         val a = ArrayList<Pair<Tracks.Group, Int>>()
         val caps = ArrayList<AudioOutputProbeP5A.Observation>()
         val l = ArrayList<Pair<Tracks.Group, Int>>()
-        val dsp = amplificacaoDb != 0 || baixoDb != 0 || centroDb != 0 || noiteNivel != 0
+        val r = recursosAtuais
+        val dsp = audioDsp(r)
+        val route = r?.routeObserver?.route()
         var temAudio = false
         for (g in tracks.groups) {
             for (i in 0 until g.length) {
@@ -3219,7 +3542,8 @@ object NvPlayer {
                     temAudio = true
                     if (g.isTrackSupported(i) && a.size < FAIXAS_MAX) {
                         a.add(g to i)
-                        caps.add(AudioOutputProbeP5A.inspect(activity, g.getTrackFormat(i), true, dsp))
+                        caps.add(AudioOutputProbeP5A.inspect(activity, g.getTrackFormat(i), true, dsp,
+                            route, r != null))
                     }
                 } else if (g.type == C.TRACK_TYPE_TEXT && g.isTrackSupported(i) && l.size < FAIXAS_MAX) {
                     l.add(g to i)
@@ -3232,15 +3556,21 @@ object NvPlayer {
         val sig = StringBuilder()
         for ((n, par) in a.withIndex()) {
             val f = par.first.getTrackFormat(par.second)
-            val cap = caps[n]
             sig.append('a').append(f.id).append(f.language).append(':')
                 .append(f.channelCount).append(':').append(f.sampleRate).append(':')
-                .append(f.bitrate).append(':').append(cap.routeType).append(':')
-                .append(cap.result.outputFaithfulCandidate).append(':').append(dsp).append(';')
+                .append(f.bitrate).append(';')
         }
         for ((g, i) in l) sig.append('l').append(g.getTrackFormat(i).id).append(g.getTrackFormat(i).language).append(';')
         val nova = sig.toString()
-        if (nova == assinatura) return
+        if (nova == assinatura) {
+            // A route-only capability update must not republish the list or
+            // make native original-audio selection/subtitle reset run again.
+            audios = a
+            capacidadesAudio = caps
+            legendas = l
+            publishRouteCaps(caps)
+            return
+        }
         val tinhaLegenda = legendas.isNotEmpty()
         assinatura = nova
         audios = a

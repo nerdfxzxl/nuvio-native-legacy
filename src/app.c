@@ -2642,7 +2642,7 @@ static void desfazerAntecipada(const char *porque) {
 static void vigiarAntecipada(void) {
 #ifdef NV_ANDROID
   /* Q39: terminal video failures belong to the native Retry/Change Stream/Back card. */
-  if (!player_id_canal()[0] && (video_erro_video_p5b() || video_video_retry_pending())) return;
+  if (!player_id_canal()[0] && (video_erro_video_p5b() || video_video_retry_pending() || video_audio_route_pending() || video_audio_nao_suportado())) return;
 #endif
   int est = FA_NADA, i;
   if (fonteFalha) return;
@@ -3023,7 +3023,7 @@ static void vigiarPartes(void) {
   // an expired CDN URL. Preserve the Q39 modal and the user-owned retry.
   if ((parteFase == PF_ABRINDO || parteFase == PF_TOCANDO) &&
       video_ativo() && !strcmp(video_url_atual(), parteUrl) &&
-      (video_erro_video_p5b() || video_video_retry_pending())) return;
+      (video_erro_video_p5b() || video_video_retry_pending() || video_audio_route_pending() || video_audio_nao_suportado())) return;
 #endif
   if (parteFase == PF_ABRINDO) {
     int iniciou = video_pronto() && video_pos() > 0.25;
@@ -3143,7 +3143,7 @@ static void vigiarPartes(void) {
 static void vigiarAberturaManual(void) {
 #ifdef NV_ANDROID
   /* Q39: terminal video failures belong to the native Retry/Change Stream/Back card. */
-  if (!player_id_canal()[0] && (video_erro_video_p5b() || video_video_retry_pending())) return;
+  if (!player_id_canal()[0] && (video_erro_video_p5b() || video_video_retry_pending() || video_audio_route_pending() || video_audio_nao_suportado())) return;
 #endif
   FontevoltaSinais g;
   Uint32 desde;
@@ -3390,7 +3390,7 @@ static void guardarPosicaoFonteFalha(void) {
 static void renovarVodInterrompido(void) {
 #ifdef NV_ANDROID
   /* Q39: terminal video failures belong to the native Retry/Change Stream/Back card. */
-  if (!player_id_canal()[0] && (video_erro_video_p5b() || video_video_retry_pending())) return;
+  if (!player_id_canal()[0] && (video_erro_video_p5b() || video_video_retry_pending() || video_audio_route_pending() || video_audio_nao_suportado())) return;
 #endif
   if (vodRenovandoDesde) {
     if ((Sint32)(SDL_GetTicks() - vodRenovandoDesde) >= 30000) {
@@ -3499,7 +3499,7 @@ static void abrirFonteManualDireta(const Stream *s) {
 static void tentarProximaFonteVOD(void) {
 #ifdef NV_ANDROID
   /* Q39: terminal video failures belong to the native Retry/Change Stream/Back card. */
-  if (!player_id_canal()[0] && (video_erro_video_p5b() || video_video_retry_pending())) return;
+  if (!player_id_canal()[0] && (video_erro_video_p5b() || video_video_retry_pending() || video_audio_route_pending() || video_audio_nao_suportado())) return;
 #endif
   Uint32 desde;
   if (!fonteVODAutomatica || player_id_canal()[0] || !player_aberto() ||
