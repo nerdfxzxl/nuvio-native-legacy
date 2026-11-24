@@ -69,7 +69,7 @@ with tempfile.TemporaryDirectory(prefix="nuvio-cacheboost-android-", dir=os.envi
                                 "LimitedDataSource.kt", "LivePlaylistDataSource.kt",
                                 "CacheSessao.kt", "CacheProvaP4C.kt", "CacheSpanP4C.kt", "CacheMidia.kt",
                                 "GanhoMath.kt", "GanhoAudioProcessor.kt",
-                                "AudioFidelityP5A.kt", "AudioOutputProbeP5A.kt", "AudioRouteP5D.kt", "AudioRouteObserverP5D.kt", "HdrPolicyP5.kt", "FrameRateP5C.kt",
+                                "AudioFidelityP5A.kt", "AudioOutputProbeP5A.kt", "AudioRouteP5D.kt", "AudioRouteObserverP5D.kt", "PlaybackIntentP6.kt", "HdrPolicyP5.kt", "FrameRateP5C.kt",
                                 "HdrBaseLayerP5B.kt", "HdrCodecFallbackP5B.kt",
                                 "AudioSyncTap.kt", "AudioSyncSink.kt", "RecriaHdr.kt", "ArranqueVigia.kt",
                                 "TouchViewport.kt", "Tombstone.kt")]
