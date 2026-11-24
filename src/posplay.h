@@ -55,6 +55,8 @@ float posplay_topo(float baseY);
 int  posplay_teste_foco(void);
 // Fecha e zera. Chamado quando o player abre outra coisa.
 void posplay_fechar(void);
+// Scoped synchronous old/new player reset after an authorized worker transfer.
+void posplay_preservar_preparo(int preservar);
 void posplay_ciclo_evento(Uint32 tipo);
 // Recuo manual: cancela contagem e pedido automatico, mantendo o OK manual.
 // A contagem volta a valer ao sair da janela final ou abrir outro titulo.

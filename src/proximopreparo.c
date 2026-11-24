@@ -23,6 +23,7 @@ typedef struct {
   Stream *metadados;
   int n, indice, resultado, renovou, bufferTentou, continuar;
   int catalogo, temporada, episodio;
+  int transferido; // UI only: the authorized next player now owns this worker
   char atual[64], alvo[64];
   Stream escolhida;
   FonteFalhaSessao *politica;
@@ -199,10 +200,17 @@ static int continuarEscolha(ProximoJob *j) {
   }
   return 0;
 }
+int proximopreparo_transferir(const char *atual, const char *alvo) {
+  ProximoJob *j = proximo;
+  if (!j || j->transferido || !atual || !alvo || strcmp(j->atual, atual) ||
+      strcmp(j->alvo, alvo) || !contextoAtual(j)) return 0;
+  j->transferido = 1;
+  return 1;
+}
 void proximopreparo_passo(const char *atual) {
   ProximoJob *j = proximo;
   if (!j) return;
-  if (!atual || strcmp(j->atual, atual) || !contextoAtual(j)) {
+  if (!atual || strcmp(j->transferido ? j->alvo : j->atual, atual) || !contextoAtual(j)) {
     proximopreparo_cancelar(); return;
   }
   int estado = atomic_load_explicit(&j->estado, memory_order_acquire);
@@ -241,7 +249,9 @@ void proximopreparo_passo(const char *atual) {
       }
     }
 #endif
-    prepararVideo(j);
+    // After Next is authorized, the new main player opens the resolved
+    // source once. Do not create another speculative decoder behind it.
+    if (!j->transferido) prepararVideo(j);
   }
 }
 int proximopreparo_em_curso(const char *alvo) {
@@ -254,7 +264,7 @@ int proximopreparo_em_curso(const char *alvo) {
 // posplay a pede perto da contagem final; trabalho ainda utilizavel fica intacto.
 int proximopreparo_renovar(const char *atual, const char *alvo) {
   ProximoJob *j = proximo;
-  if (!j || !atual || !alvo || strcmp(j->atual, atual) || strcmp(j->alvo, alvo) ||
+  if (!j || j->transferido || !atual || !alvo || strcmp(j->atual, atual) || strcmp(j->alvo, alvo) ||
       !contextoAtual(j)) return 0;
   // Recolher uma falha nativa antes de renovar: ela continua a politica gasta,
   // em vez de repetir a mesma candidata. passo pode soltar ou despachar o job.
@@ -303,7 +313,7 @@ int proximopreparo_consumir(const char *alvo, ProximoPreparoResultado *saida) {
   }
   // A falha pode chegar no mesmo quadro do OK. Recolher o estado nativo antes
   // de consumir impede entregar novamente a URL cujo aquecimento falhou.
-  proximopreparo_passo(j->atual);
+  proximopreparo_passo(j->transferido ? j->alvo : j->atual);
   j = proximo;
   if (!j) return 0;
   if (atomic_load_explicit(&j->estado, memory_order_acquire) != PP_RESOLVIDO) return 0;

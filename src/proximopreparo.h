@@ -28,6 +28,8 @@ int proximopreparo_agendar(int catalogo, int temporada, int episodio,
 // do proximo. O episodio atual continua sendo o dono do player/legendas.
 void proximopreparo_passo(const char *atual);
 int proximopreparo_em_curso(const char *alvo);
+// Transfer UI ownership of the existing job to the exact authorized new episode.
+int proximopreparo_transferir(const char *atual, const char *alvo);
 // Perto do fim: conserva buffer pronto/carregando ainda valido. 1 = aceitou
 // a unica renovacao/tentativa nativa; 0 = preservou, adiou ou recusou. A mesma
 // politica/limites continuam; uma falha real segue a proxima candidata.

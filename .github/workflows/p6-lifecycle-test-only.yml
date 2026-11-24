@@ -80,7 +80,7 @@ jobs:
           # and every APK workflow unchanged.
           p6_preflight="$(mktemp tools/android/p6-preflight.XXXXXX.sh)"
           trap 'rm -f "$p6_preflight"' EXIT
-          sed 's@src/main.c src/home.c src/streams.c@src/posplay.c src/continuar.c src/atividade.c src/contapend.c src/capmkv.c src/mkv.c src/main.c src/home.c src/streams.c@' tools/android/preflight-c.sh > "$p6_preflight"
+          sed 's@src/main.c src/home.c src/streams.c@src/proximopreparo.c src/posplay.c src/continuar.c src/atividade.c src/contapend.c src/capmkv.c src/mkv.c src/main.c src/home.c src/streams.c@' tools/android/preflight-c.sh > "$p6_preflight"
           bash "$p6_preflight"
 
       - name: Install Android API 35 (no NDK build or APK)

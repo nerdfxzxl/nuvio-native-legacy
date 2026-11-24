@@ -299,6 +299,7 @@ static int   idx = 0;
 // UI-thread ownership of this exact player source/session.
 static unsigned fonteAcaoGeracao;
 static void fonteAcaoInvalidar(void) { if (!++fonteAcaoGeracao) ++fonteAcaoGeracao; }
+unsigned player_geracao_fonte(void) { return fonteAcaoGeracao; }
 #define PLR_SCR_TOCOU_S 5.0f   // #179: reproducao continua antes do /scrobble/start
 // Reproducao real minima para a SAIDA gravar o ponto (ver `prova`). Nao e o
 // limiar do start: um seek logo depois de abrir nao pode custar o ponto.
@@ -5418,7 +5419,8 @@ void player_atualizar(float dt, Uint32 agora) {
     else {
       if (eofDesde < 0.0) eofDesde = agoraEof;
       if ((!eSerie || !desc_episodios_carregando(idxAtual()) || agoraEof - eofDesde >= 8.0) &&
-          (!player_proximo_episodio() || !posplay_aguarda_escolha())) { saindo = 1; pediuSair = 1; }
+          (eSerie ? (!player_proximo_episodio() || !posplay_aguarda_escolha()) :
+                    !posplay_visivel())) { saindo = 1; pediuSair = 1; }
     }
   }
   // Com o painel no ar os controles nao somem: eles sao a saida do dono.

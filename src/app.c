@@ -42,6 +42,7 @@
 #include "fonteantecipa.h"
 #include "fonteregra.h"
 #include "proximopreparo.h"
+#include "next_p6.h"
 #include "aquecer.h"
 #include "addonstats.h"
 #include "inicio.h"
@@ -2429,10 +2430,9 @@ static void prepararAoAbrir(void) {
   preparoRodando = 1;
   marco("fonte: preparando ao abrir o titulo");
 }
-// Next e uma intencao explicita (botao ou contagem que ja disparou). Enquanto
-// o worker independente termina, o episodio atual continua sendo o dono do
-// video/progresso; nunca resolve a mesma escolha outra vez no caminho frio.
-static struct { int tem, titulo, t, e, apontar; unsigned geracao; uint64_t sessaoPerfil; char atual[64], alvo[64]; } proximoIntento;
+// The authorized Next owns its own cinematic immediately. The ticket only
+// authorizes adoption into that exact new player/source generation.
+static P6NextIntent proximoIntento;
 static int p6AppHidden;
 // 1 quando a escolha em curso e a do Next com uma fonte tocando para seguir
 // (bingeGroup); *prov recebe o add-on dela.
@@ -2445,7 +2445,8 @@ static int nextAutorizado(void) {
 static int escolhaDoNext(const char *base, char *prov, unsigned tam) {
   return nextAutorizado() && base[0] && fontepref_tocando_de(base, prov, tam, NULL, 0);
 }
-static void abrirProximoEpisodio(int t, int e, int apontar) {
+static void abrirProximoEpisodio(int t, int e, int apontar, int continuando) {
+  if (!continuando && proximoIntento.tem) return; // duplicate Next while loading
   uint64_t sessaoEntrada = nv_perfil_sessao_ler();
   int titulo = player_indice();
   char atual[64], alvo[64], imdb[64];
@@ -2455,8 +2456,12 @@ static void abrirProximoEpisodio(int t, int e, int apontar) {
   if (!cat_id_stream(titulo, t, e, alvo, sizeof alvo) || !alvo[0]) {
     player_episodio_pedido_liberar(); return;
   }
-  uint64_t sessaoPerfil = proximoIntento.tem && !strcmp(proximoIntento.alvo, alvo)
-      ? proximoIntento.sessaoPerfil : sessaoEntrada;
+  if (continuando && !p6_next_player_matches(&proximoIntento, atual,
+        player_geracao_fonte(), sessaoEntrada)) return;
+  if (!continuando && (!atual[0] || !strcmp(atual, alvo))) {
+    player_episodio_pedido_liberar(); return;
+  }
+  uint64_t sessaoPerfil = continuando ? proximoIntento.sessaoPerfil : sessaoEntrada;
   ProximoPreparoResultado preparada = {0};
   int pronta = proximopreparo_consumir(alvo, &preparada);
   if (!nv_perfil_sessao_atual(sessaoPerfil) || (pronta && preparada.sessaoPerfil != sessaoPerfil)) {
@@ -2465,18 +2470,15 @@ static void abrirProximoEpisodio(int t, int e, int apontar) {
     player_episodio_pedido_liberar();
     return;
   }
-  if (!pronta && proximopreparo_em_curso(alvo)) {
-    if (!proximoIntento.tem || strcmp(proximoIntento.alvo, alvo))
-      player_toast(i18n("Abrindo fonte"), 1500);
-    proximoIntento.tem = 1; proximoIntento.titulo = titulo;
-    proximoIntento.t = t; proximoIntento.e = e; proximoIntento.apontar = apontar;
-    proximoIntento.geracao = proximopreparo_geracao();
-    proximoIntento.sessaoPerfil = sessaoPerfil;
-    snprintf(proximoIntento.atual, sizeof proximoIntento.atual, "%s", atual);
-    snprintf(proximoIntento.alvo, sizeof proximoIntento.alvo, "%s", alvo);
-    return;
+  if (continuando && !pronta && proximopreparo_em_curso(alvo)) return;
+  if (continuando && proximoIntento.geracao != proximopreparo_geracao()) {
+    p6_next_clear(&proximoIntento); proximopreparo_liberar_resultado(&preparada);
+    proximopreparo_cancelar(); player_erro_fonte(); return;
   }
-  memset(&proximoIntento, 0, sizeof proximoIntento);
+  int pendente = !continuando && !pronta && proximopreparo_em_curso(alvo) &&
+                 proximopreparo_transferir(atual, alvo);
+  unsigned geracaoPreparo = proximopreparo_geracao();
+  p6_next_clear(&proximoIntento);
   // A conta pode mudar num worker depois de consumir. So adotar os bytes
   // sob o mesmo ator; nao segurar esta trava ao salvar/fechar o player.
   if (!nv_perfil_sessao_travar(sessaoPerfil)) {
@@ -2493,18 +2495,35 @@ static void abrirProximoEpisodio(int t, int e, int apontar) {
   nv_perfil_sessao_destravar();
   // Consumir/adotar vem antes do encerramento: posplay_fechar e video_parar
   // so podem cancelar os trabalhos que ainda pertencem ao episodio antigo.
-  diagnostico_cancelar_vazao();
-  player_encerrar();
-  limparFonteVOD();
-  if (!nv_perfil_sessao_atual(sessaoPerfil)) {
+  if (!continuando) {
+    diagnostico_cancelar_vazao();
+    // Only these synchronous old/new player resets may preserve the
+    // explicitly transferred worker. Home/Back/replacement still cancel it.
+    if (pendente) posplay_preservar_preparo(1);
+    player_encerrar();
+    novaGeracaoFonte(); limparFontePendente(); limparFonteVOD();
+    aguardandoFonte = 0; fonteEscolhida = -1; preparoEspera = 0;
+    retomarDiretoPendente = 0;
+    if (!nv_perfil_sessao_atual(sessaoPerfil)) {
+      posplay_preservar_preparo(0);
+#ifdef NV_ANDROID
+      if (tokenAdotado) player_precarregar_cancelar(tokenAdotado);
+#endif
+      proximopreparo_liberar_resultado(&preparada); proximopreparo_cancelar();
+      return;
+    }
+    player_abrir(cat_indice_vivo(titulo, imdb), NULL);
+    player_definir_episodio(t, e);
+    posplay_preservar_preparo(0);
+  }
+  char dono[64]; alvoPlayer(dono, sizeof dono);
+  if (strcmp(dono, alvo)) {
 #ifdef NV_ANDROID
     if (tokenAdotado) player_precarregar_cancelar(tokenAdotado);
 #endif
     proximopreparo_liberar_resultado(&preparada); proximopreparo_cancelar();
-    return;
+    player_erro_fonte(); return;
   }
-  player_abrir(cat_indice_vivo(titulo, imdb), NULL);
-  player_definir_episodio(t, e);
   // Abrir/fechar nao seguram a trava de identidade. Conferir outra vez antes
   // de publicar a lista e seu orcamento como uma unica transferencia curta.
   if (!nv_perfil_sessao_travar(sessaoPerfil)) {
@@ -2520,7 +2539,20 @@ static void abrirProximoEpisodio(int t, int e, int apontar) {
   debrid_definir_episodio(t, e);
   // A ordem conserva o progresso do episodio anterior e nao transfere seu
   // percentual para o proximo. O painel precisa apontar o novo episodio.
-  if (apontar) cat_apontar_episodio(titulo, t, e);
+  if (!continuando && apontar) cat_apontar_episodio(player_indice(), t, e);
+  if (pendente) {
+    stream_definir_alvo(alvo);
+    if (!stream_lista_do_alvo(alvo)) stream_invalidar("Next cinematic target");
+    if (geracaoPreparo == proximopreparo_geracao() &&
+        p6_next_begin(&proximoIntento, alvo, t, e, geracaoPreparo,
+                      player_geracao_fonte(), sessaoPerfil)) {
+      nv_perfil_sessao_destravar();
+      marco("proximo episodio: cinema aguardando preparo");
+      return;
+    }
+    nv_perfil_sessao_destravar();
+    proximopreparo_cancelar(); player_erro_fonte(); return;
+  }
   if (pronta) {
     unsigned listaAntes = stream_lista_geracao();
     stream_definir_alvo(alvo);
@@ -2550,7 +2582,7 @@ static void abrirProximoEpisodio(int t, int e, int apontar) {
     if (fonteEscolhida == -2 && fonteFalha &&
         pedirFonteJob(FJOB_FALHA, fontePedidoGeracao, NULL, 0) < 0) fonteEscolhida = -1;
     nv_perfil_sessao_destravar();
-    const CatItem *ci = cat_item(titulo);
+    const CatItem *ci = cat_item(player_indice());
     if (ci) addons_buscar_legendas(alvo, ci->tipo);
     proximopreparo_liberar_resultado(&preparada);
     marco("proximo episodio: fonte preparada");
@@ -2564,23 +2596,31 @@ static void abrirProximoEpisodio(int t, int e, int apontar) {
 }
 static void proximoPreparoPasso(void) {
   if (p6AppHidden) return;
-  // O gesto novo tem prioridade sobre uma contagem ja entregue. O worker
-  // fica para o roteador consumir se for o mesmo Next, ou cancelar no Anterior.
-  if (player_transporte_pedido_pendente()) {
-    memset(&proximoIntento, 0, sizeof proximoIntento);
-    return;
-  }
   char atual[64] = "";
   if (player_aberto() && !player_quer_sair() && !player_id_canal()[0]) alvoPlayer(atual, sizeof atual);
-  proximopreparo_passo(atual);
-  if (!proximoIntento.tem) return;
-  if (!atual[0] || strcmp(atual, proximoIntento.atual) || player_indice() != proximoIntento.titulo ||
-      proximoIntento.geracao != proximopreparo_geracao() ||
-      !nv_perfil_sessao_atual(proximoIntento.sessaoPerfil)) {
-    memset(&proximoIntento, 0, sizeof proximoIntento); proximopreparo_cancelar();
+  if (!proximoIntento.tem) {
+    // Let the explicit transport request consume the correct warm job first.
+    if (!player_transporte_pedido_pendente()) proximopreparo_passo(atual);
+    return;
+  }
+  unsigned playerGen = player_geracao_fonte();
+  uint64_t perfil = nv_perfil_sessao_ler();
+  int gesto = player_fontes_pendentes() || player_transporte_pedido_pendente();
+  int decisao = p6_next_decide(&proximoIntento, atual, proximopreparo_geracao(),
+                               playerGen, perfil, gesto, 1);
+  if (decisao != P6_NEXT_CANCEL) {
+    proximopreparo_passo(atual);
+    decisao = p6_next_decide(&proximoIntento, atual, proximopreparo_geracao(),
+        playerGen, perfil, gesto, proximopreparo_em_curso(proximoIntento.alvo));
+  }
+  if (decisao == P6_NEXT_CANCEL) {
+    int dono = p6_next_player_matches(&proximoIntento, atual, playerGen, perfil);
+    p6_next_clear(&proximoIntento); proximopreparo_cancelar();
     player_episodio_pedido_liberar();
-  } else if (!proximopreparo_em_curso(proximoIntento.alvo))
-    abrirProximoEpisodio(proximoIntento.t, proximoIntento.e, proximoIntento.apontar);
+    if (dono && !gesto) player_erro_fonte(); // no infinite orphaned cinematic
+  } else if (decisao == P6_NEXT_CONSUME) {
+    abrirProximoEpisodio(proximoIntento.t, proximoIntento.e, 0, 1);
+  }
 }
 // AQUECER CONEXOES (aquecer.h). Sem efeito no .wgt (o navegador cuida das dele).
 // Na pagina do titulo: a API do debrid; quando a lista de fontes chega ou cresce:
@@ -4396,8 +4436,16 @@ void app_evento(const SDL_Event *e) {
   if (e->type == SDL_APP_WILLENTERBACKGROUND || e->type == SDL_APP_DIDENTERBACKGROUND ||
       e->type == SDL_APP_TERMINATING) {
     p6AppHidden = 1;
-    memset(&proximoIntento, 0, sizeof proximoIntento);
+    char alvo[64] = "";
+    if (player_aberto()) alvoPlayer(alvo, sizeof alvo);
+    int cancelarCinema = p6_next_player_matches(&proximoIntento, alvo,
+        player_geracao_fonte(), nv_perfil_sessao_ler());
+    p6_next_clear(&proximoIntento);
     proximopreparo_cancelar();
+    if (cancelarCinema) { // Home revokes uncommitted Next, not a delayed autoplay.
+      novaGeracaoFonte(); limparFontePendente(); limparFonteVOD();
+      aguardandoFonte = 0; player_encerrar();
+    }
     player_episodio_pedido_liberar();
   } else if (e->type == SDL_APP_DIDENTERFOREGROUND) p6AppHidden = 0;
 #endif
@@ -4800,6 +4848,7 @@ void app_evento(const SDL_Event *e) {
     int saindoAntes = player_quer_sair();
     player_evento(e);
     if (carga && !saindoAntes && player_quer_sair()) {
+      if (proximoIntento.tem) { p6_next_clear(&proximoIntento); proximopreparo_cancelar(); }
       novaGeracaoFonte();
       limparFontePendente();
       aguardandoFonte = 0;
@@ -6960,6 +7009,10 @@ void app_atualizar(float dt, Uint32 agora) {
       p2pmotor_cancelar();
       diagnostico_cancelar_vazao();
       limparFonteVOD(); player_voltar_a_esperar();
+      // Pending Next has not published a source list yet. Fetch for the exact
+      // current episode for manual selection, without arming automatic Play.
+      char alvoManual[64]; alvoPlayer(alvoManual, sizeof alvoManual);
+      if (alvoManual[0] && !stream_lista_do_alvo(alvoManual)) buscarParaPlayer();
       folhaParaTocar = 1; folhaCancelarTocar = 0;
     }
     char base[24];
@@ -7093,7 +7146,7 @@ void app_atualizar(float dt, Uint32 agora) {
   }
   { int t,e;
     if (!p6AppHidden && aguardandoFonte != 2 && player_pediu_proximo(&t,&e) && player_aberto())
-      abrirProximoEpisodio(t,e,0);
+      abrirProximoEpisodio(t,e,0,0);
   }
   episodios_atualizar(dt);
   // O player devolve 1 para a coluna de audio e 2 para a de legenda.
@@ -7231,7 +7284,7 @@ void app_atualizar(float dt, Uint32 agora) {
   // escolhe se quer mesmo assistir.
   { int t = 0, e = 0;
     if (!p6AppHidden && aguardandoFonte != 2 && posplay_pediu_episodio(&t, &e) && player_aberto())
-      abrirProximoEpisodio(t,e,1);
+      abrirProximoEpisodio(t,e,1,0);
   }
   { int i = posplay_pediu_titulo();
     if (i >= 0) {

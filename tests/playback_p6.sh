@@ -5,6 +5,8 @@ tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 cc -std=c11 -Wall -Wextra -Werror tests/postplay_p6.c -lm -o "$tmp/postplay"
 "$tmp/postplay"
+cc -std=c11 -Wall -Wextra -Werror tests/next_p6.c -o "$tmp/next"
+"$tmp/next"
 cc -std=c11 -Wall -Wextra -Werror tests/watched_p6.c -lm -o "$tmp/watched"
 "$tmp/watched"
 kt=android/app/src/main/java/space/nuvio/nativelegacy

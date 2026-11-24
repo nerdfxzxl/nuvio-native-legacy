@@ -155,11 +155,13 @@ static void esconder(void) {
   visivel = 0; fecharEm = 0; foco = 0; dispensado = 1;
 }
 
+static int p6PreservarPreparo;
+void posplay_preservar_preparo(int preservar) { p6PreservarPreparo = preservar != 0; }
 void posplay_fechar(void) {
   // Uma lista JA completa continua disponivel ao buscarParaPlayer do proximo.
   // O fio em voo e cancelado sem esperar HTTP na UI; nunca publica depois daqui.
   cancelarPreparo(0);
-  proximopreparo_cancelar();
+  if (!p6PreservarPreparo) proximopreparo_cancelar();
   preTentou = 0; preEpisodio[0] = preAlvo[0] = 0;
   preVideoTentou = preVideoRenovou = 0;
   visivel = 0; fecharEm = 0; foco = 0;
