@@ -101,7 +101,7 @@ int syncprog_puxar_sessao(int perfil, uint64_t sessao) {
     const char *f = js_fim(p);
     ProgRegistro *d = &novo[k];
     double pos, dur;
-    char id[40];
+    char id[64];
     if (!js_texto(p, f, "content_id", id, sizeof id) || !id[0]) continue;
     // O web aceita position_ms/duration_ms e position/duration; os primeiros
     // ganham quando existem, porque os segundos ja vem em milissegundos nesta
@@ -130,6 +130,7 @@ int syncprog_puxar_sessao(int perfil, uint64_t sessao) {
     // escrita por este mesmo app trazia "tt123:4:9" em progress_key, e adotar
     // isso perpetuaria a duplicata que estamos consertando.
     prog_chave(d->chave, sizeof d->chave, d->contentId, d->temporada, d->episodio);
+    if (!d->chave[0]) continue;
     d->posSeg = pos < 0 ? 0 : pos;
     d->durSeg = dur;
     d->lastWatchedMs = lerInstanteMs(p, f);

@@ -1,3 +1,5 @@
+#include "jfid.h"
+#include "idbase.h"
 #include "arteurl.h"
 #include "contapend.h"
 #include "contacache.h"
@@ -43,7 +45,7 @@ typedef struct {
   char op;             // '+' marca/salva, '-' desmarca/tira
   char conf;           // 1 = a conta ja respondeu 2xx (fica ate a poda)
   int  perfil;
-  char id[24];
+  char id[64];
   char tipo[8];
   int  temp, ep;       // 0/0 = titulo inteiro (season/episode nulos)
   int  tvdbEp;         // exact Trakt episode target; 0 = use numeric pair
@@ -78,11 +80,7 @@ static int ok2xx(const char *r, int st) { return r && st >= 200 && st < 300; }
 // vistoep.c). Lista: so o sufixo ":<temp>:<ep>" em digitos sai — "tmdb:55" e
 // um id inteiro (a regra de salvos_id_titulo).
 static void idVisto(const char *s, char *d, size_t tam) {
-  size_t k = 0;
-  d[0] = 0;
-  if (!s) return;
-  while (s[k] && s[k] != ':' && k + 1 < tam) { d[k] = s[k]; k++; }
-  d[k] = 0;
+  idbase_copiar_exato(s, d, tam);
 }
 static void idLista(const char *s, char *d, size_t tam) {
   const char *a, *b;
@@ -100,6 +98,7 @@ static void idLista(const char *s, char *d, size_t tam) {
       if (*a == ':' && a < b - 1) n = (size_t)(a - s);
     }
   }
+  if (tam > 24) tam = 24; // library format unchanged
   if (n + 1 > tam) n = tam - 1;
   memcpy(d, s, n);
   d[n] = 0;
@@ -180,7 +179,7 @@ static void lerArquivo(void) {
     { char *q;
       for (q = linha; *q && k < 14; q++) if (*q == '\t') { *q = 0; c[k++] = q + 1; } }
     if (k >= 10 && (c[0][0] == 'V' || c[0][0] == 'L') &&
-        (c[1][0] == '+' || c[1][0] == '-') && c[4][0] && caber(nEnt + 1)) {
+        (c[1][0] == '+' || c[1][0] == '-') && c[4][0] && strlen(c[4]) < sizeof ents[0].id && caber(nEnt + 1)) {
       Ent *e = &ents[nEnt];
       memset(e, 0, sizeof *e);
       e->sup = c[0][0];
@@ -290,7 +289,7 @@ static int registrar(char sup, int perfil, const char *id, const char *tipo,
 
 int contapend_episodios(const char *imdb, const char *tipo,
                         const VistoPar *pares, int n, int visto) {
-  char id[24];
+  char id[64];
   int i, k = 0, perfil = perfis_ativo();
   long long ms = contapend_agora_ms();
   idVisto(imdb, id, sizeof id);
@@ -309,7 +308,7 @@ int contapend_episodios(const char *imdb, const char *tipo,
 }
 
 int contapend_titulo(const char *imdb, const char *tipo, int visto) {
-  char id[24];
+  char id[64];
   int k = 0, perfil = perfis_ativo();
   idVisto(imdb, id, sizeof id);
   if (!id[0] || perfil < 1 || !sessao_logada()) return 0;
@@ -325,7 +324,7 @@ int contapend_titulo(const char *imdb, const char *tipo, int visto) {
 
 int contapend_lista(const char *imdb, const char *tipo, const char *nome,
                     const char *poster, int salvo) {
-  char id[24];
+  char id[64];
   int k = 0, perfil = perfis_ativo();
   idLista(imdb, id, sizeof id);
   if (!id[0] || perfil < 1 || !sessao_logada()) return 0;
@@ -342,17 +341,16 @@ int contapend_lista(const char *imdb, const char *tipo, const char *nome,
 long long contapend_gesto_alvos(const char *imdb, const char *tipo,
                     const VistoPar *pares, const int *tvdbEps, int n,
                     int visto, int destinos, const int *temporadas, int nt) {
-  char id[24], temps[160] = "";
+  char id[64], temps[160] = "";
   int i, k = 0, perfil = perfis_ativo();
   long long ms = contapend_agora_ms();
   idVisto(imdb, id, sizeof id);
   if (!id[0] || perfil < 1 || n < 0 || (n && !pares)) return 0;
   // Local-only manual and playback history must remain durable in the anon
   // journal too; no account or tracker means no remote destinations.
-  if (!sessao_logada()) {
-    destinos &= ~VISTO_CONTA;
-    if (!(destinos & (VISTO_TRAKT | VISTO_SIMKL)) && strncmp(id, "tt", 2)) return 0;
-  }
+  if (jfid_e(id)) return 0; // personal server owns its history
+  if (!sessao_logada()) destinos &= ~VISTO_CONTA;
+  if (!idbase_imdb_historico(id)) destinos &= ~(VISTO_TRAKT | VISTO_SIMKL);
   for (i = 0; temporadas && i < nt; i++) {
     size_t u = strlen(temps);
     if (u + 12 >= sizeof temps) return 0;
@@ -390,7 +388,7 @@ long long contapend_gesto(const char *imdb, const char *tipo,
 }
 
 int contapend_intencao(const char *imdb, const char *tipo, int t, int e, long long *ms) {
-  char id[24];
+  char id[64];
   int estado = -1, perfil = perfis_ativo();
   long long ultimo = 0;
   idVisto(imdb, id, sizeof id);
@@ -409,7 +407,7 @@ int contapend_intencao(const char *imdb, const char *tipo, int t, int e, long lo
 }
 
 int contapend_estado(const char *imdb, const char *tipo, int t, int e, long long remotoMs, int remoto) {
-  char id[24];
+  char id[64];
   int i, melhor = -1, perfil = perfis_ativo();
   idVisto(imdb, id, sizeof id);
   pthread_mutex_lock(&trava);
@@ -477,7 +475,7 @@ static void confirmar(const char *usu, const Ent *env, int n, int destino) {
 }
 
 int contapend_gesto_atual(const char *imdb, int t, int e, long long ms) {
-  char id[24];
+  char id[64];
   int atual = 0, perfil = perfis_ativo();
   idVisto(imdb, id, sizeof id);
   pthread_mutex_lock(&trava);
@@ -491,7 +489,7 @@ int contapend_gesto_atual(const char *imdb, int t, int e, long long ms) {
 
 void contapend_confirmar_gesto(const char *imdb, const VistoPar *pares, int n,
                               long long ms, int destinos) {
-  char id[24];
+  char id[64];
   int i, perfil = perfis_ativo();
   idVisto(imdb, id, sizeof id);
   pthread_mutex_lock(&trava);
@@ -967,7 +965,7 @@ static int reenviar(const char *id, long long ms) {
 
 int contapend_reenviar(void) { return reenviar(NULL, 0); }
 int contapend_reenviar_overrides(const char *imdb, long long ms) {
-  char id[24];
+  char id[64];
   idVisto(imdb, id, sizeof id);
   return reenviar(id, ms);
 }
@@ -1025,7 +1023,7 @@ static int oculto(char sup, const char *id, int t, int e, long long remotoMs) {
 
 int contapend_visto_oculto(const char *imdb, int temporada, int episodio,
                            long long remotoMs) {
-  char id[24];
+  char id[64];
   idVisto(imdb, id, sizeof id);
   if (!id[0]) return 0;
   if (episodio <= 0) temporada = episodio = 0;
@@ -1033,7 +1031,7 @@ int contapend_visto_oculto(const char *imdb, int temporada, int episodio,
 }
 
 int contapend_lista_pendente(const char *imdb) {
-  char id[24];
+  char id[64];
   int res = 0, perfil = perfis_ativo();
   idLista(imdb, id, sizeof id);
   if (!id[0]) return 0;
@@ -1047,7 +1045,7 @@ int contapend_lista_pendente(const char *imdb) {
 }
 
 int contapend_lista_oculta(const char *imdb, long long remotoMs) {
-  char id[24];
+  char id[64];
   idLista(imdb, id, sizeof id);
   if (!id[0]) return 0;
   return oculto('L', id, 0, 0, remotoMs);

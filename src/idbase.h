@@ -12,9 +12,8 @@
 // outro id e "<prefixo>:<id>" e corta no SEGUNDO ':' ("tmdb:t1399", "kitsu:41370").
 // Mesma regra que arteesc_chave (arteescolha.c) ja usava sozinha.
 //
-// LIMITE, dito: um id com mais de dois segmentos que NAO seja episodio
-// ("cs:channel:hash") seria cortado em "cs:channel". Canal nao passa por aqui
-// (ehCanal), e nenhum addon de catalogo conhecido usa id de titulo assim.
+// A suffix is stripped only when it is a complete numeric episode suffix.
+// Other opaque colon-separated components remain part of the title identity.
 //
 // So funcoes estaticas no cabecalho: quem precisa da regra nao precisa linkar
 // mais um modulo (alguns testes compilam pedacos do app sem o resto).
@@ -35,7 +34,37 @@ static inline size_t idbase_len(const char *id) {
   if (!id) return 0;
   n = strcspn(id, ":");
   if (!idbase_e_imdb(id) && id[n] == ':') n += 1 + strcspn(id + n + 1, ":");
+  if (id[n] == ':') {
+    const char *p = id + n + 1;
+    int partes = 0;
+    while (*p) {
+      if (*p < '0' || *p > '9') return strlen(id);
+      do { p++; } while (*p >= '0' && *p <= '9');
+      partes++;
+      if (!*p) break;
+      if (*p++ != ':' || !*p || partes >= 2) return strlen(id);
+    }
+    if (!partes) return strlen(id);
+  }
   return n;
+}
+
+// Exact persisted identity: reject unrepresentable values, never silently alias.
+static inline int idbase_copiar_exato(const char *id, char *dst, size_t tam) {
+  if (!dst || !tam) return 0;
+  dst[0] = 0;
+  size_t n = idbase_len(id);
+  if (!n || n >= tam || strpbrk(id, " \t\r\n")) return 0;
+  memcpy(dst, id, n); dst[n] = 0;
+  return 1;
+}
+
+// Only the current IMDb history writers support a proven numeric IMDb id.
+static inline int idbase_imdb_historico(const char *id) {
+  size_t n = idbase_len(id);
+  if (!idbase_e_imdb(id) || n < 3 || n >= 24) return 0;
+  for (size_t i = 2; i < n; i++) if (id[i] < '0' || id[i] > '9') return 0;
+  return 1;
 }
 
 // O id base copiado para `dst`.

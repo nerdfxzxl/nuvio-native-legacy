@@ -66,6 +66,7 @@ jobs:
           SANITIZE=0 bash tests/intro.sh
           bash tests/contapend.sh
           bash tests/progresso.sh
+          bash tests/contalib.sh
 
       - name: Install Android NDK and host SDL headers for syntax-only C/JNI source check
         shell: bash

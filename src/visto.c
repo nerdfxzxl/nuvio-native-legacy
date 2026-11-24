@@ -1,3 +1,5 @@
+#include "jfid.h"
+#include "idbase.h"
 #include "visto.h"
 #include "perfisessao.h"
 #include "trakt.h"
@@ -38,6 +40,7 @@ int visto_reenviar(const char *imdb, const char *tipo, const VistoPar *pares, in
                    int visto, int destinos, const int *temps, int nt,
                    const int *tvdbEps) {
   int ok = 0;
+  if (!idbase_imdb_historico(imdb) || jfid_e(imdb)) return 0;
   if (destinos & VISTO_TRAKT) {
     TraktDestino d;
     if (trakt_destino_capturar && trakt_destino_capturar(&d)) {
@@ -76,7 +79,8 @@ void visto_iniciar(void) { contapend_reenviar_com(visto_reenviar); }
 int visto_episodios_ja(const char *imdb, const char *tipo, const VistoPar *pares,
                        int n, int visto, int destinos) {
   int ok = 1;
-  if (!imdb || !imdb[0] || !pares || n < 1) return 0;
+  if (!imdb || !imdb[0] || jfid_e(imdb) || !pares || n < 1) return 0;
+  if (!idbase_imdb_historico(imdb)) destinos &= ~(VISTO_TRAKT | VISTO_SIMKL);
   if (n > VT_LOTE) n = VT_LOTE;
   NvPerfilSessao sessao = nv_perfil_sessao_ler();
   if (!nv_perfil_sessao_travar(sessao)) return 0;
@@ -100,7 +104,8 @@ int visto_episodios_ja(const char *imdb, const char *tipo, const VistoPar *pares
 int visto_titulo_ja(const char *imdb, const char *tipo, const int *temporadas,
                     int nt, int visto, int destinos) {
   int ok = 1;
-  if (!imdb || !imdb[0]) return 0;
+  if (!imdb || !imdb[0] || jfid_e(imdb)) return 0;
+  if (!idbase_imdb_historico(imdb)) destinos &= ~(VISTO_TRAKT | VISTO_SIMKL);
   NvPerfilSessao sessao = nv_perfil_sessao_ler();
   if (!nv_perfil_sessao_travar(sessao)) return 0;
   long long ms = contapend_gesto(imdb, tipo, NULL, 0, visto, destinos, temporadas, nt);
@@ -120,7 +125,7 @@ int visto_titulo_ja(const char *imdb, const char *tipo, const int *temporadas,
 // A COPIA E DO FIO: quem chamou pode ter o CatItem trocado de bloco pela
 // descoberta antes de o fio ler (mesma razao do Envio de episodios.c).
 typedef struct {
-  char imdb[24], tipo[12];
+  char imdb[64], tipo[12];
   VistoPar pares[VT_LOTE];
   TraktEpisodioAlvo alvosTrakt[VT_LOTE];
   int temps[VT_TEMPS];
@@ -195,7 +200,8 @@ static void capturarDestinos(Envio *e) { // caller holds the profile opening gat
 }
 static int episodiosEnviar(int indice, const char *imdb, const char *tipo,
                            const VistoPar *pares, int n, int visto, int destinos) {
-  if (!imdb || !imdb[0] || !pares || n < 1) return 0;
+  if (!imdb || !imdb[0] || jfid_e(imdb) || !pares || n < 1) return 0;
+  if (!idbase_imdb_historico(imdb)) destinos &= ~(VISTO_TRAKT | VISTO_SIMKL);
   if (n > VT_LOTE) n = VT_LOTE;
   NvPerfilSessao sessao = nv_perfil_sessao_ler();
   if (!nv_perfil_sessao_travar(sessao)) return 0;
@@ -248,7 +254,8 @@ int visto_episodios_item(int indice, const char *imdb, const char *tipo,
 }
 int visto_titulo(const char *imdb, const char *tipo, const int *temporadas,
                  int nt, int visto, int destinos) {
-  if (!imdb || !imdb[0]) return 0;
+  if (!imdb || !imdb[0] || jfid_e(imdb)) return 0;
+  if (!idbase_imdb_historico(imdb)) destinos &= ~(VISTO_TRAKT | VISTO_SIMKL);
   NvPerfilSessao sessao = nv_perfil_sessao_ler();
   if (!nv_perfil_sessao_travar(sessao)) return 0;
   vistoep_titulo_gesto(imdb, visto);

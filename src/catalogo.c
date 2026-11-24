@@ -280,7 +280,7 @@ static void mudou(void) { __atomic_add_fetch(&catMudancas, 1u, __ATOMIC_RELEASE)
 // estavel, para que uma troca do catalogo nao transforme indice em identidade
 // e para que um progresso alto nao masque um historico real conhecido.
 typedef struct {
-  char imdb[32];
+  char imdb[64];
   char tipo[8];
   int conhecido;
   int visto;
@@ -329,13 +329,7 @@ unsigned long long cat_historico_geracao(void) {
 }
 
 static void id_base(const char *origem, char *destino, size_t tam) {
-  size_t n = 0;
-  if (!destino || tam == 0) return;
-  if (origem) {
-    while (origem[n] && origem[n] != ':' && n + 1 < tam) n++;
-    memcpy(destino, origem, n);
-  }
-  destino[n] = 0;
+  idbase_copiar_exato(origem, destino, tam);
 }
 
 static const char *tipo_base(const char *tipo) {
@@ -358,7 +352,7 @@ static unsigned hist_hash(const char *id, const char *tipo) {
 }
 
 static int historico_pos(const char *imdb, const char *tipo, int criar) {
-  char id[32];
+  char id[64];
   const char *tb = tipo_base(tipo);
   unsigned b;
   int k;
@@ -1777,7 +1771,7 @@ static int podarContinuar(int (*quer)(const CatItem *, const void *), const void
 }
 
 static int mesmaObraQue(const CatItem *c, const void *u) {
-  char a[32], b[32];
+  char a[64], b[64];
   id_base(c->imdb, a, sizeof a);
   id_base((const char *)u, b, sizeof b);
   return a[0] && !strcmp(a, b);

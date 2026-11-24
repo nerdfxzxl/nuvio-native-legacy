@@ -309,6 +309,22 @@ static void longHistory(void) {
   puts("PASS: 620 distinct titles retained through reload in watch-history order");
 }
 
+static void opaqueHistory(void) {
+  const char *a = "addon:0123456789012345678901234567-A";
+  const char *b = "addon:0123456789012345678901234567-B";
+  char ka[48], kb[48]; ProgRegistro r;
+  zerar(NULL);
+  prog_chave(ka, sizeof ka, a, 1, 1);
+  prog_chave(kb, sizeof kb, b, 1, 1);
+  assert(ka[0] && kb[0] && strcmp(ka,kb));
+  assert(prog_gravar_local(a,1,1,120,600,2));
+  assert(prog_gravar_local(b,1,1,220,600,2));
+  prog_invalidar();
+  assert(prog_por_chave(ka,&r) && r.posSeg == 120);
+  assert(prog_por_chave(kb,&r) && r.posSeg == 220);
+  assert(!prog_gravar_local("addon:012345678901234567890123456789012345678901234567890",1,1,120,600,2));
+  puts("ok: opaque progress reload and collision rejection");
+}
 int main(void) {
   prog_definir_relogio(relogio);
   chaveIgualAoWeb();
@@ -322,6 +338,7 @@ int main(void) {
   temposInvalidosNaoEntram();
   limiteEscolheOsMaisNovos();
   longHistory();
+  opaqueHistory();
   puts("progresso: tudo ok");
   return 0;
 }

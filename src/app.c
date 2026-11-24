@@ -2453,11 +2453,15 @@ static void abrirProximoEpisodio(int t, int e, int apontar, int continuando) {
   const CatItem *ci = cat_item(titulo);
   snprintf(imdb, sizeof imdb, "%s", ci ? ci->imdb : "");
   alvoPlayer(atual, sizeof atual);
-  if (!cat_id_stream(titulo, t, e, alvo, sizeof alvo) || !alvo[0]) {
-    player_episodio_pedido_liberar(); return;
-  }
   if (continuando && !p6_next_player_matches(&proximoIntento, atual,
         player_geracao_fonte(), sessaoEntrada)) return;
+  if (!cat_id_stream(titulo, t, e, alvo, sizeof alvo) || !alvo[0] ||
+      (continuando && strcmp(alvo, atual))) {
+    if (continuando) {
+      p6_next_clear(&proximoIntento); proximopreparo_cancelar(); player_erro_fonte();
+    }
+    player_episodio_pedido_liberar(); return;
+  }
   if (!continuando && (!atual[0] || !strcmp(atual, alvo))) {
     player_episodio_pedido_liberar(); return;
   }

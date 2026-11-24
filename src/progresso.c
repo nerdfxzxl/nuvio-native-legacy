@@ -66,9 +66,7 @@ void prog_content_id(char *dst, unsigned n, const char *imdb, int *temporada, in
   // idbase_len, e nao o corte no primeiro ':': "kitsu:41370" virava "kitsu", a
   // mesma chave de progresso para todo anime do addon (idbase.h).
   L = idbase_len(imdb);
-  if (L >= n) L = n - 1;
-  memcpy(dst, imdb, L);
-  dst[L] = 0;
+  if (!L || !idbase_copiar_exato(imdb, dst, n)) return;
   if (temporada && episodio && imdb[idbase_len(imdb)] == ':') {
     int t = 0, e = 0;
     if (sscanf(imdb + idbase_len(imdb) + 1, "%d:%d", &t, &e) == 2 && t >= 0 && e > 0) { *temporada = t; *episodio = e; }
@@ -79,10 +77,12 @@ void prog_chave(char *dst, unsigned n, const char *contentId, int temporada, int
   char id[64];
   if (!dst || !n) return;
   prog_content_id(id, sizeof id, contentId, NULL, NULL);
+  int k;
   if (id[0] && temporada >= 0 && episodio > 0)
-    snprintf(dst, n, "%s_s%de%d", id, temporada, episodio);
+    k = snprintf(dst, n, "%s_s%de%d", id, temporada, episodio);
   else
-    snprintf(dst, n, "%s", id);
+    k = snprintf(dst, n, "%s", id);
+  if (k < 0 || (unsigned)k >= n) dst[0] = 0;
 }
 
 // ------------------------------------------------------------ disco (mutex tomado)
@@ -105,6 +105,7 @@ static int lerLinhaAntiga(const char *linha, ProgRegistro *r) {
   r->episodio  = ep > 0 ? ep : 0;
   snprintf(r->tipo, sizeof r->tipo, "%s", ep > 0 ? "series" : "movie");
   prog_chave(r->chave, sizeof r->chave, r->contentId, r->temporada, r->episodio);
+  if (!r->chave[0]) return 0;
   r->posSeg = pos < 0 ? 0 : pos;
   r->durSeg = dur;
   r->lastWatchedMs = 0;
@@ -119,7 +120,7 @@ static int lerLinhaAntiga(const char *linha, ProgRegistro *r) {
 static int lerLinhaNova(const char *linha, ProgRegistro *r) {
   int n;
   memset(r, 0, sizeof *r);
-  n = sscanf(linha, "%d\t%47s\t%23s\t%7s\t%d\t%d\t%lf\t%lf\t%lld\t%d\t%d",
+  n = sscanf(linha, "%d\t%47s\t%47s\t%7s\t%d\t%d\t%lf\t%lf\t%lld\t%d\t%d",
              &r->perfil, r->chave, r->contentId, r->tipo,
              &r->temporada, &r->episodio, &r->posSeg, &r->durSeg,
              &r->lastWatchedMs, &r->pendente, &r->tocou);
@@ -318,6 +319,7 @@ int prog_gravar_local(const char *imdb, int temporada, int episodio,
   r.episodio  = episodio > 0 ? episodio : 0;
   snprintf(r.tipo, sizeof r.tipo, "%s", episodio > 0 ? "series" : "movie");
   prog_chave(r.chave, sizeof r.chave, r.contentId, r.temporada, r.episodio);
+  if (!r.chave[0]) return 0;
   r.posSeg = posSeg < 0 ? 0 : posSeg;
   r.durSeg = durSeg;
   r.lastWatchedMs = prog_agora_ms();
@@ -345,7 +347,9 @@ int prog_aplicar_remoto(const ProgRegistro *rem) {
   r.perfil = perfis_ativo();
   r.pendente = 0;
   if (r.posSeg < 0) r.posSeg = 0;
+  if (jfid_e(r.contentId)) return 0;
   if (!r.chave[0]) prog_chave(r.chave, sizeof r.chave, r.contentId, r.temporada, r.episodio);
+  if (!r.chave[0]) return 0;
   if (!r.tipo[0]) snprintf(r.tipo, sizeof r.tipo, "%s", r.episodio > 0 ? "series" : "movie");
   TRANCAR();
   carregar();
@@ -433,11 +437,11 @@ void prog_remover(const char *chave) {
 // sessao. Cheio, a vaga mais velha e reaproveitada — e a que o servidor ja
 // teve mais tempo de refletir.
 #define PROG_REMOVIDOS_MAX 32
-static struct { int perfil; char obra[24]; long long ms; } removidos[PROG_REMOVIDOS_MAX];
+static struct { int perfil; char obra[64]; long long ms; } removidos[PROG_REMOVIDOS_MAX];
 static int nRemovidos;
 
 void prog_marcar_removido(const char *imdb) {
-  char obra[24];
+  char obra[64];
   int i, alvo = -1, perfil = perfis_ativo();
   long long agora = prog_agora_ms();
   prog_content_id(obra, sizeof obra, imdb, NULL, NULL);
@@ -468,7 +472,7 @@ int prog_removido_vence(const char *imdb, long long instanteMs) {
 }
 
 static int removidoVenceDe(int perfil, const char *imdb, long long instanteMs) {
-  char obra[24];
+  char obra[64];
   int i;
   long long ms = 0;
   prog_content_id(obra, sizeof obra, imdb, NULL, NULL);
@@ -504,7 +508,7 @@ static int removidoVenceDe(int perfil, const char *imdb, long long instanteMs) {
 // ficaria presa fora da fileira para sempre.
 #define ARQ_OCULTO "cwoculto.txt"
 #define OCULTOS_MAX 64
-static struct { int perfil; char obra[24]; long long ms; } ocultos[OCULTOS_MAX];
+static struct { int perfil; char obra[64]; long long ms; } ocultos[OCULTOS_MAX];
 static int nOcultos, ocultosCarregado;
 
 static void ocultosCarregar(void) {
@@ -516,8 +520,8 @@ static void ocultosCarregar(void) {
   if (!buf) return;
   for (linha = strtok_r(buf, "\n", &ctx); linha && nOcultos < OCULTOS_MAX;
        linha = strtok_r(NULL, "\n", &ctx)) {
-    int perfil = 0, n = 0; long long ms = 0; char obra[24];
-    if (sscanf(linha, "%d\t%23[^\t]\t%lld%n", &perfil, obra, &ms, &n) < 3) continue;
+    int perfil = 0, n = 0; long long ms = 0; char obra[64];
+    if (sscanf(linha, "%d\t%63[^\t]\t%lld%n", &perfil, obra, &ms, &n) < 3) continue;
     ocultos[nOcultos].perfil = perfil;
     snprintf(ocultos[nOcultos].obra, sizeof ocultos[nOcultos].obra, "%s", obra);
     ocultos[nOcultos].ms = ms;
@@ -527,7 +531,7 @@ static void ocultosCarregar(void) {
 }
 
 static void ocultosGravar(void) {
-  char *buf = (char *)malloc((size_t)nOcultos * 64 + 8), *p;
+  char *buf = (char *)malloc((size_t)nOcultos * 128 + 8), *p;
   int i;
   if (!buf) return;
   p = buf; *p = 0;
@@ -545,7 +549,7 @@ static int ocultoIndice(int perfil, const char *obra) {
 }
 
 void prog_ocultar_continuar(const char *imdb) {
-  char obra[24];
+  char obra[64];
   int i, perfil = perfis_ativo();
   long long agora = prog_agora_ms();
   prog_content_id(obra, sizeof obra, imdb, NULL, NULL);
@@ -578,7 +582,7 @@ static int ocultoVence(int perfil, const char *obra, long long instanteMs) {
 }
 
 int prog_oculto_vence(const char *imdb, long long instanteMs) {
-  char obra[24];
+  char obra[64];
   int r;
   prog_content_id(obra, sizeof obra, imdb, NULL, NULL);
   if (!obra[0]) return 0;
@@ -590,7 +594,7 @@ int prog_oculto_vence(const char *imdb, long long instanteMs) {
 }
 
 int prog_oculto_soltar(const char *imdb, long long instanteMs) {
-  char obra[24];
+  char obra[64];
   int i, r = 0, perfil = perfis_ativo();
   prog_content_id(obra, sizeof obra, imdb, NULL, NULL);
   if (!obra[0]) return 0;

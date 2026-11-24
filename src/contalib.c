@@ -466,7 +466,7 @@ int contalib_vistos_do_titulo(const char *id, int *desmarcados) {
 #define CL_BARRADOS_LOG 6
 
 int contalib_aplicar_vistos(void) {
-  struct { char id[24]; VistoFonte f; } barrado[CL_BARRADOS_LOG];
+  struct { char id[64]; VistoFonte f; } barrado[CL_BARRADOS_LOG];
   VistoFonte total;
   int i, j, k = 0, ke = 0, nBarrado = 0, jornal = 0;
   memset(&total, 0, sizeof total);

@@ -17,6 +17,7 @@ else
   "$tmp/contapend" identity || rc=1
   "$tmp/contapend" progress || rc=1
   "$tmp/contapend" q45 || rc=1
+  "$tmp/contapend" opaque || rc=1
   "$tmp/contapend" || rc=1
   exit "$rc"
 fi

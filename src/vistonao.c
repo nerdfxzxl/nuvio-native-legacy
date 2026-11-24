@@ -1,3 +1,4 @@
+#include "idbase.h"
 #include "vistonao.h"
 #include "sessao.h"
 #include "perfis.h"
@@ -23,7 +24,7 @@
 
 typedef struct {
   int   perfil;
-  char  id[16];        // a mesma chave de vistoep.c: o id ate o ':'
+  char  id[64];        // a mesma chave de vistoep.c: o id ate o ':'
   short temp, ep;
   long long ms;        // quando a pessoa desmarcou
 } Ent;
@@ -43,11 +44,7 @@ static long long agoraMs(void) {
 void vistonao_relogio(long long (*f)(void)) { relogio = f; }
 
 static void idBase(const char *s, char *d, size_t tam) {
-  size_t k = 0;
-  d[0] = 0;
-  if (!s) return;
-  while (s[k] && s[k] != ':' && k + 1 < tam) { d[k] = s[k]; k++; }
-  d[k] = 0;
+  idbase_copiar_exato(s, d, tam);
 }
 
 static void nomeArquivo(char *d, size_t tam) {
@@ -64,7 +61,7 @@ static void nomeArquivo(char *d, size_t tam) {
 // So com a trava.
 static void gravar(void) {
   char arq[128], *buf, *p;
-  size_t tam = (size_t)nEnt * 64 + 16;
+  size_t tam = (size_t)nEnt * 128 + 16;
   int i;
   nomeArquivo(arq, sizeof arq);
   if (!nEnt) { dados_apagar(arq); return; }
@@ -103,13 +100,13 @@ static void lerArquivo(void) {
   b = dados_ler(arq);
   if (!b) return;
   for (linha = b; linha && *linha;) {
-    char *fim = strchr(linha, '\n'), id[16];
+    char *fim = strchr(linha, '\n'), id[64];
     int perfil = 0, t = -1, e = 0;
     long long ms = 0;
     if (fim) *fim = 0;
     // Linha que nao fecha os cinco campos e ignorada: arquivo cortado no meio
     // de uma gravacao perde a ultima entrada, nao o arquivo.
-    if (sscanf(linha, "%d\t%15[^\t]\t%d\t%d\t%lld", &perfil, id, &t, &e, &ms) == 5 &&
+    if (sscanf(linha, "%d\t%63[^\t]\t%d\t%d\t%lld", &perfil, id, &t, &e, &ms) == 5 &&
         perfil > 0 && id[0] && t >= 0 && t <= 32767 && e >= 1 && e <= 32767 &&
         caber(nEnt + 1)) {
       Ent *x = &ents[nEnt++];
@@ -189,7 +186,7 @@ static int registrar(int perfil, const char *id, int t, int e, long long ms) {
 }
 
 void vistonao_gesto(const char *imdb, const VistoPar *pares, int n, int visto) {
-  char id[16];
+  char id[64];
   int i, mudou = 0, perfil = perfis_ativo();
   long long ms = agoraMs();
   idBase(imdb, id, sizeof id);
@@ -227,7 +224,7 @@ void vistonao_gesto(const char *imdb, const VistoPar *pares, int n, int visto) {
 }
 
 int vistonao_barra(const char *imdb, int temporada, int episodio, long long remotoMs) {
-  char id[16];
+  char id[64];
   int k, res = 0, perfil = perfis_ativo();
   idBase(imdb, id, sizeof id);
   if (!id[0] || episodio < 1) return 0;
@@ -255,7 +252,7 @@ int vistonao_barra(const char *imdb, int temporada, int episodio, long long remo
 
 int vistonao_primeira(const char *imdb, int temporada, int episodio, long long remotoMs,
                       int *pt, int *pe) {
-  char id[16];
+  char id[64];
   int i, achou = 0, bt = 0, be = 0, perfil = perfis_ativo();
   idBase(imdb, id, sizeof id);
   if (!id[0] || episodio < 1 || !pt || !pe) return 0;

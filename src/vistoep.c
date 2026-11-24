@@ -1,3 +1,4 @@
+#include "idbase.h"
 #include "vistoep.h"
 #define NV_DUBLE_SESSAO
 #define NV_DUBLE_CONTAPEND
@@ -20,7 +21,7 @@
 // continua valendo, porque meio mapa e melhor que nenhum.
 #define VE_LOTE VE_LOTE_MAX
 
-typedef struct { char id[16]; short temp, ep; unsigned char visto; } Marca;
+typedef struct { char id[64]; short temp, ep; unsigned char visto; } Marca;
 static Marca *mapa;
 static int n, cap, avisouTeto;
 // Sobe a cada mudanca de estado no mapa (vistoep_revisao).
@@ -38,12 +39,7 @@ static pthread_mutex_t trava = PTHREAD_MUTEX_INITIALIZER;
 // que CatItem.imdb carrega num item de "Continuar assistindo", e quem chama
 // daqui nem sempre sabe qual dos dois tem na mao.
 static void base(const char *origem, char *dst, size_t tam) {
-  size_t k = 0;
-  if (!dst || !tam) return;
-  dst[0] = 0;
-  if (!origem) return;
-  while (origem[k] && origem[k] != ':' && k + 1 < tam) { dst[k] = origem[k]; k++; }
-  dst[k] = 0;
+  idbase_copiar_exato(origem, dst, tam);
 }
 
 static int achar(const char *id, int t, int e) {
@@ -54,7 +50,7 @@ static int achar(const char *id, int t, int e) {
 }
 
 static int definir(const char *imdb, int temporada, int episodio, int visto) {
-  char id[16];
+  char id[64];
   int i;
   base(imdb, id, sizeof id);
   if (!id[0] || temporada < 0 || temporada > SHRT_MAX ||
@@ -123,7 +119,7 @@ void vistoep_definir(const char *imdb, int temporada, int episodio, int visto) {
 }
 
 static int estado(const char *imdb, int temporada, int episodio) {
-  char id[16];
+  char id[64];
   int i;
   base(imdb, id, sizeof id);
   if (!id[0]) return -1;
@@ -195,7 +191,7 @@ void vistoep_fonte_log(const char *imdb, const char *fonte, const VistoFonte *c)
 }
 
 int vistoep_contar(const char *imdb) {
-  char id[16];
+  char id[64];
   int i, k = 0;
   base(imdb, id, sizeof id);
   if (!id[0]) return 0;
@@ -206,7 +202,7 @@ int vistoep_contar(const char *imdb) {
 }
 
 int vistoep_total(const char *imdb) {
-  char id[16];
+  char id[64];
   int i, k = 0;
   base(imdb, id, sizeof id);
   if (!id[0]) return 0;
@@ -217,7 +213,7 @@ int vistoep_total(const char *imdb) {
 }
 
 int vistoep_conhecido(const char *imdb) {
-  char id[16];
+  char id[64];
   int i;
   base(imdb, id, sizeof id);
   if (!id[0]) return 0;
@@ -251,7 +247,7 @@ int vistoep_ajustar_vistos(int baseTrakt, int contarBase, int contarAgora, int e
 }
 
 int vistoep_primeiro_nao_visto(const char *imdb, int *temporada, int *episodio) {
-  char id[16];
+  char id[64];
   int i, bt = 0, be = 0;
   base(imdb, id, sizeof id);
   if (!id[0]) return 0;
@@ -298,7 +294,7 @@ int vistoep_aplicar(const char *imdb, const VistoPar *lote, int n, int visto,
 // a desmarcacao de cada episodio que o mapa tem como visto (senao a fonte que
 // nao aplicar o remove traz a serie inteira de volta).
 void vistoep_titulo_gesto(const char *imdb, int visto) {
-  char id[16];
+  char id[64];
   VistoPar *pares;
   int i, k = 0;
   if (!lapGesto) return;
@@ -332,7 +328,7 @@ static int antesOuIgual(int t, int e, int tAlvo, int eAlvo) {
 
 static int intervalo(const char *imdb, int temporada, int episodio, int frente,
                      int agT, int agE, VistoPar *saida, int max) {
-  char id[16];
+  char id[64];
   int i, k = 0;
   base(imdb, id, sizeof id);
   if (!id[0]) return 0;
@@ -364,7 +360,7 @@ int vistoep_ate_aqui(const char *imdb, int temporada, int episodio,
 }
 
 int vistoep_temporada(const char *imdb, int temporada, VistoPar *saida, int max) {
-  char id[16];
+  char id[64];
   int i, k = 0;
   base(imdb, id, sizeof id);
   if (!id[0]) return 0;

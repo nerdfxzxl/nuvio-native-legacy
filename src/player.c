@@ -2772,7 +2772,7 @@ static int p6WatchReached(void) {
 static int p6WatchOverride(const CatItem *ci) {
   long long ms = 0;
   if (p6WatchState < 0) return 1;
-  if (ci && !strncmp(ci->imdb, "tt", 2) &&
+  if (ci && !jfid_e(ci->imdb) &&
       contapend_intencao(ci->imdb, ci->tipo, epE > 0 ? epT : 0, epE > 0 ? epE : 0, &ms) == 0 &&
       ms >= p6WatchStarted) {
     p6WatchState = -1;
@@ -2788,9 +2788,9 @@ static int p6WatchMark(void) {
   if (p6WatchOverride(ci)) goto fim;
   if (p6WatchState > 0) { marcado = 1; goto fim; }
   if (!p6WatchReached()) goto fim;
-  // The existing history protocol is IMDb keyed. Personal-server playback
-  // remains private, and other addon IDs must not be truncated into IMDb keys.
-  if (strncmp(ci->imdb, "tt", 2)) { p6WatchState = 1; marcado = 1; goto fim; }
+  // Personal-server history stays with its own server; addon history uses
+  // the exact namespace-aware local journal, never a guessed IMDb mapping.
+  if (jfid_e(ci->imdb)) { p6WatchState = 1; marcado = 1; goto fim; }
   const int serie = epT >= 0 && epE > 0;
   int ia = cat_indice_por_imdb_tipo(ci->imdb, ci->tipo);
   if (ia < 0) goto fim;
@@ -2799,6 +2799,7 @@ static int p6WatchMark(void) {
     if (p6WatchTry && (Uint32)(agora - p6WatchTry) < 1000u) goto fim;
     p6WatchTry = agora | 1u;
     int dest = visto_destinos();
+    if (!idbase_imdb_historico(ci->imdb)) dest &= ~(VISTO_TRAKT | VISTO_SIMKL);
     // Do not publish a guessed episode number to Trakt. Wait for the
     // already-established, generation-owned episode target to be proven.
     if (serie && (dest & VISTO_TRAKT) && !alvoTrakt(ci)) goto fim;

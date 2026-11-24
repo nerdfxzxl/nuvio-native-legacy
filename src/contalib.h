@@ -87,7 +87,7 @@ typedef struct {
 } ContaLibItem;
 
 typedef struct {
-  char id[24];
+  char id[64];
   char tipo[8];
   int  temporada, episodio;   // 0 quando a linha e do TITULO inteiro
   long long vistoMs;
@@ -172,7 +172,7 @@ void contalib_esquecer(void);
 // Pode ser chamada de QUALQUER fio: copia sob a trava que contalib_ler_vistos
 // e contalib_esquecer tambem tomam para trocar o vetor.
 typedef struct {
-  char id[24];
+  char id[64];
   int  temporada, episodio;   // o episodio SUGERIDO, nao o visto
   long long vistoMs;          // quando o episodio-ancora foi visto
 } ContaSemente;

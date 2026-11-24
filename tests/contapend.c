@@ -218,6 +218,28 @@ int main(int argc, char **argv) {
       reabrir();
       assert(contapend_intencao("tt0903747", "series", 1, 1, &ms) == 0);
       OK("Q45 local-only journal, newer unwatch, profile isolation");
+    } else if (!strcmp(argv[1], "opaque")) {
+      const char *a = "addon:shared-prefix-012345678901234567-A";
+      const char *b = "addon:shared-prefix-012345678901234567-B";
+      logada = 0;
+      long long old = contapend_gesto(a, "series", &pair, 1, 1, 0, NULL, 0);
+      assert(old > 0);
+      assert(contapend_gesto(b, "series", &pair, 1, 1, 0, NULL, 0) > 0);
+      assert(contapend_gesto(a, "series", &pair, 1, 0, 0, NULL, 0) > old);
+      assert(contapend_gesto("kitsu:123", "series", &pair, 1, 1, 0, NULL, 0));
+      assert(contapend_gesto("kitsu:456", "series", &pair, 1, 0, 0, NULL, 0));
+      assert(!contapend_gesto("jf:abcd1234.1234", "movie", NULL, 0, 1, VISTO_CONTA, NULL, 0));
+      reabrir();
+      assert(contapend_intencao(a, "series", 1, 1, NULL) == 0);
+      assert(contapend_intencao(b, "series", 1, 1, NULL) == 1);
+      assert(contapend_estado(a, "series", 1, 1, old, 1) == 0);
+      assert(contapend_intencao("kitsu:123:1:1", "series", 1, 1, NULL) == 1);
+      assert(contapend_intencao("kitsu:456", "series", 1, 1, NULL) == 0);
+      contapend_aplicar_local();
+      assert(vistoep_estado(a, 1, 1) == 0 && vistoep_estado(b, 1, 1) == 1);
+      perfil = 2;
+      assert(contapend_intencao(a, "series", 1, 1, NULL) == -1);
+      OK("opaque IDs survive journal reload without collision or stale unwatch revival");
     } else if (!strcmp(argv[1], "identity")) {
       int tvdb = 11209906;
       contapend_reenviar_com(retry);
