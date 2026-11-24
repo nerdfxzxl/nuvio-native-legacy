@@ -103,6 +103,9 @@
 #include "descoberta.h"
 #include "trakt.h"
 #include "player.h"
+#ifdef NV_ANDROID
+#include "posplay.h"
+#endif
 #include "retomamorna.h"
 #include "ilha.h"
 #include "resolucao.h"
@@ -2090,6 +2093,11 @@ int main(int argc, char **argv) {
         fflush(stdout);
       }
       player_ciclo_evento(e.type);
+#ifdef NV_ANDROID
+      // Only real app lifecycle events own the post-play suspension; synthetic
+      // window focus-loss checkpoints do not necessarily have an app resume.
+      posplay_ciclo_evento(e.type);
+#endif
       if (e.type == SDL_APP_DIDENTERFOREGROUND) { atualizacao_retomou(); quadroc_suspendeu(&quadroRel); }
       // PONTEIRO (Magic Remote, issue #99): mouse, rodinha e os avisos 484/485
       // de cursor do webOS ficam la; o que ele traduz em tecla chega a
