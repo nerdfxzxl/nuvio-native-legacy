@@ -445,7 +445,7 @@ static double monoSeg(void) {
 // Prova de reproducao da fonte principal, independente de posicao/seek.
 static char fonteSessao[NV_MEDIA_URL_MAX];
 static double assistidoSeg, assistidoMono, assistidoPos;
-static double p6Played; // actual progressing media, excluding explicit skip credit
+static P6Viewed p6Viewed; // unique actual media, excluding skips/repeated segments
 static int p6WatchState; // 0 not emitted, 1 history owned, -1 newer manual unwatch
 static long long p6WatchStarted;
 static Uint32 p6WatchTry;
@@ -462,7 +462,8 @@ static int scrubAnterior;
 static void identidadeFonteAberta(void);
 static void zerarAssistido(void) {
   eofDesde = -1.0;
-  assistidoSeg = p6Played = 0; assistidoAmostra = 0; trailerSessao = trailer_geracao();
+  assistidoSeg = 0; memset(&p6Viewed, 0, sizeof p6Viewed);
+  assistidoAmostra = 0; trailerSessao = trailer_geracao();
   parcialPos = -1.0; parcialPausa = 0;
   parcialRelogio = parcialConta = 0;
   tocouS = parcialSeek = 0; scrubAnterior = 0;
@@ -825,7 +826,7 @@ static void medirAssistido(void) {
     // quem viu assim viu tudo. O teto e a maior velocidade que o app oferece.
     if (dp > 0 && dp <= dm * 4.0 + 0.5) {
       double visto = fmin(dm * VEL_LISTA[VEL_N - 1] / 100.0, dp);
-      assistidoSeg += visto; p6Played += visto;
+      assistidoSeg += visto; p6_view_add(&p6Viewed, p - visto, p);
     }
   }
   assistidoMono = m; assistidoPos = p; assistidoAmostra = ok;
@@ -2747,11 +2748,15 @@ static int p6WatchReached(void) {
       video_reconectando() || video_bufferando_ms() || ehCanal() || partesMeio() ||
       (!partesAtiva() && player_duracao_suspeita(duracaoSeg, duracaoCatalogo()))) return 0;
   double p = video_pos();
+#ifdef NV_ANDROID
+  p = video_pos_confirmada();
+  if (capmkv_creditos_pendentes()) return 0;
+#endif
   if (!isfinite(p) || fabs(p - posSeg) > 2.0 || p6WatchRawMarker() > duracaoSeg + 1.0) return 0;
   double base = 0.0;
   if ((baseTocou == 1 || baseTocou == 2) && baseDur > 0.0 && fabs(baseDur - duracaoSeg) <= fmax(5.0, duracaoSeg * 0.02))
     base = basePos;
-  return p6_watched_reached(p, duracaoSeg, p6WatchMarker(), ajustes_cw_concluido(), base, p6Played);
+  return p6_watched_reached(p, duracaoSeg, p6WatchMarker(), ajustes_cw_concluido(), base, p6_view_after(&p6Viewed, base, p));
 }
 
 // Use the existing durable, per-profile history journal and asynchronous
@@ -2924,7 +2929,7 @@ static void fecharSessao(int manter, int trocaFonte) {
   double base = baseDur > 0.0 ? basePos : duracaoSeg * basePct / 100.0;
   if ((baseTocou != 1 && baseTocou != 2) || baseDur <= 0.0 || fabs(baseDur - duracaoSeg) > fmax(5.0, duracaoSeg * 0.02)) base = 0.0;
   int chegou;
-  (void)player_regra_visto(base, p6Played, posSeg, 0, &chegou);
+  (void)player_regra_visto(base, p6_view_after(&p6Viewed, base, posSeg), posSeg, 0, &chegou);
   int duracaoContradita = p6WatchRawMarker() > duracaoSeg + 1.0;
   int assistiu = !jaRetido && !trocaFonte && prova && !duracaoErrada && !duracaoContradita && p6WatchMark();
   // FILME EM PARTES: so a ULTIMA parte conclui, pela regra do proprio
@@ -3166,7 +3171,7 @@ static void gravarProgressoParcial(int conta, const char *porque) {
   }
   base = baseDur > 0.0 ? basePos : duracaoSeg * basePct / 100.0;
   if ((baseTocou != 1 && baseTocou != 2) || baseDur <= 0.0 || fabs(baseDur - duracaoSeg) > fmax(5.0, duracaoSeg * 0.02)) base = 0.0;
-  (void)player_regra_visto(base, p6Played, posSeg, 0, &chegou);
+  (void)player_regra_visto(base, p6_view_after(&p6Viewed, base, posSeg), posSeg, 0, &chegou);
   // Contradictory credits also invalidate the catalogue's watched proof.
   if (p6WatchRawMarker() > duracaoSeg + 1.0) chegou = 0;
   { double vp = posSeg, vd = duracaoSeg;
