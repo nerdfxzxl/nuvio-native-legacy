@@ -123,7 +123,7 @@ static int lerLinhaNova(const char *linha, ProgRegistro *r) {
              &r->perfil, r->chave, r->contentId, r->tipo,
              &r->temporada, &r->episodio, &r->posSeg, &r->durSeg,
              &r->lastWatchedMs, &r->pendente, &r->tocou);
-  if (n != 11 || r->tocou < -1 || r->tocou > 1) r->tocou = -1;
+  if (n != 11 || r->tocou < -1 || r->tocou > 2) r->tocou = -1;
   if (n < 10 || !r->chave[0] || !r->contentId[0] ||
       !temposValidos(r->posSeg, r->durSeg)) return 0;
   if (r->posSeg < 0) r->posSeg = 0;
