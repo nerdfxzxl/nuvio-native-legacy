@@ -1419,10 +1419,11 @@ object NvPlayer {
     @JvmStatic
     fun pausarPeloSistema() {
         cancelarPreparo(0)
-        // Cancel queued opens but retain callbacks of the current paused session.
-        val aindaAtual = pedidoAtivo == pedidos.get()
-        val pedido = pedidos.incrementAndGet()
-        if (aindaAtual) pedidoAtivo = pedido
+        // Keep queued opens/stops owned by their original request. A system
+        // pause parks a pending open instead of invalidating it and stranding
+        // the native loading session.
+        playbackIntentP6.onBackground(pedidos.get())
+        pausaPedida = true
         afrSuspended = true
         routeForeground = false
         recursosAtuais?.let { cancelAudioRoute(it, restore = true, recheck = true) }
@@ -1438,6 +1439,7 @@ object NvPlayer {
 
     // Foreground does not resume playback; route validation is independent of AFR.
     fun retomarRotaPeloSistema() {
+        playbackIntentP6.onForeground(pedidos.get())
         routeForeground = true
         recursosAtuais?.let { audioRouteTick(sessao, it) }
     }
@@ -1449,6 +1451,7 @@ object NvPlayer {
         soltarPreparo()
         pedidos.incrementAndGet()
         liberar()
+        playbackIntentP6.reset()
         esquecerQuadro(); limparRetido(); CacheMidia.descartar("app exit")
         val sv = superficie
         if (sv != null) (sv.parent as? FrameLayout)?.removeView(sv)
@@ -1506,6 +1509,7 @@ object NvPlayer {
             liberar(guardarCache = true)
         } }
     }
+    private val playbackIntentP6 = PlaybackIntentP6()
     private var pausaPedida = false
     @JvmStatic fun pausar(p: Int) {
         val pedido = pedidos.get()
@@ -1513,7 +1517,7 @@ object NvPlayer {
         principal.post {
             if (pedido != pedidos.get()) return@post
             if ((videoOutputFailed || recursosAtuais?.routeFailed == true) && p == 0) return@post
-            pausaPedida = p != 0
+            pausaPedida = playbackIntentP6.command(pedido, p != 0)
             if (!pausaPedida && afrSuspended) {
                 afrSuspended = false
                 applyAfr(sessao, player?.videoFormat, resumed = true)
@@ -2022,7 +2026,8 @@ object NvPlayer {
             liberar(preservarRetido = mesmaFonte)
             // O C envia ganho/pausa depois de abrir; a espera nao pode apaga-los.
             ganhoPct = 100
-            if (!reabrindo) pausaPedida = false
+            pausaPedida = playbackIntentP6.opening(pedido, mesmaFonte, reabrindo, pausaPedida)
+            afrSuspended = playbackIntentP6.systemPaused
         }
         // MStar/Amlogic: o overlay e o decoder antigos precisam sair antes do novo.
         // Poll no Handler deixa Back/parar funcionar enquanto o release corre em fundo.
@@ -2135,7 +2140,8 @@ object NvPlayer {
                 fracaoPendente = preparada.fracaoPendente
                 p.setMediaSource(r.fontePrecarregada!!, preparada.posicaoFonteMs)
                 if (fracaoPendente <= 0) confirmarRetomada(geracao, inicioMs > 0 || preparada.inicioAceito)
-                p.playWhenReady = true
+                p.playWhenReady = !pausaPedida
+                if (pausaPedida) ev(EV_PAUSADO)
                 ev(EV_CARGA_FASE, 2, geracao = geracao) // warmed next-episode prepare
                 p.prepare()
                 Log.i(TAG, "[preparo] proximo adotado token=${preparada.token} pos=${preparada.posicaoFonteMs}")
@@ -2148,7 +2154,8 @@ object NvPlayer {
                 ouv.onTracksChanged(p.currentTracks)
                 ouv.onVideoSizeChanged(p.videoSize)
                 ouv.onPlaybackStateChanged(p.playbackState)
-                p.playWhenReady = true
+                p.playWhenReady = !pausaPedida
+                if (pausaPedida) ev(EV_PAUSADO)
                 Log.i(TAG, "[preparo] adotado token=${preparada.token} estado=${p.playbackState}")
             }
             principal.postDelayed(tique(minha), TIQUE_MS)
