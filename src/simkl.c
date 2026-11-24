@@ -1404,7 +1404,7 @@ static void *fioScrobble(void *u) {
 // Na SAIDA a sessao acabou mesmo sem chamada: com o start "em pe" a proxima
 // abertura do mesmo titulo nao mandaria /scrobble/start.
 static int scrobbleRecusar(int evento) {
-  if (evento == SCR_EV_SAIU) {
+  if (evento == SCR_EV_SAIU || evento == SCR_EV_SAIU_SEM_VISTO || evento == SCR_EV_HISTORICO_JA_GRAVADO) {
     pthread_mutex_lock(&travaScr); scrEstado.ativo = 0; pthread_mutex_unlock(&travaScr);
   }
   return SCR_NADA;
@@ -1425,6 +1425,10 @@ static int scrobbleDecidir(int evento, const char *id, double pct) {
     scrEstado.ativo = 0;
     return pct >= 1.0 ? SCR_PAUSE : SCR_NADA;
   }
+  if (evento == SCR_EV_SAIU_SEM_VISTO || evento == SCR_EV_HISTORICO_JA_GRAVADO) {
+    scrEstado.ativo = 0;
+    return evento == SCR_EV_SAIU_SEM_VISTO && pct >= 1.0 && pct < 80.0 ? SCR_PAUSE : SCR_NADA;
+  }
   if (evento == SCR_EV_SAIU) {
     snprintf(scrEstado.id, sizeof scrEstado.id, "%s", id);
     scrEstado.ativo = 0;
@@ -1441,13 +1445,15 @@ int simkl_scrobble(int evento, const char *id, double posSeg, double durSeg, dou
   ScrPedido pedido = {0};
   double pct;
   pthread_t th;
+  if (evento == SCR_EV_HISTORICO_JA_GRAVADO) return scrobbleRecusar(evento);
+  if (evento == SCR_EV_SAIU && !assistiu) evento = SCR_EV_SAIU_SEM_VISTO;
   if (!simkl_ativo() || !nuvem_simkl_cliente()[0] || !id || !idScrobble(id, &t, &e) ||
       !isfinite(posSeg) || !isfinite(durSeg) || !isfinite(assistidoSeg) ||
       durSeg < 120.0 || assistidoSeg < 5.0)
     return scrobbleRecusar(evento);
   pct = 100.0 * posSeg / durSeg;
   // Valida ANTES da vaga: nem um stop sem reproducao entra na fila.
-  if (evento == SCR_EV_SAIU && pct >= 90.0 && !assistiu) return scrobbleRecusar(evento);
+  if (evento == SCR_EV_SAIU_SEM_VISTO && pct >= 80.0) return scrobbleRecusar(evento);
   pthread_mutex_lock(&travaScr);
   // Um stop pendente nunca e trocado: perder o stop e perder o visto. Quem
   // chama recebe NADA e segue pelo historico.
