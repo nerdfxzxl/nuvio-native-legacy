@@ -3,6 +3,7 @@ name: P5-B/C video fidelity verification (tests only - no APK)
 # Dedicated P5-B/C test-only workflow; no APK or existing workflow changes.
 # Reuse the accepted P5-A dependency resolution, JNI preflight and PCM replay.
 # Revision: validate Q39 one-shot Retry, Q47 device exception and Q38 HDR retention together.
+# Revision: actual Q37 HEVC CSD/IRAP replay, codec adapter compile, terminal latch and AFR lease.
 on:
   workflow_dispatch:
   push:
@@ -127,7 +128,7 @@ jobs:
           GRADLE
           bash android/gradlew -p "$deps" resolveP4 --no-daemon
 
-      - name: Compile real P5-A/B/C Android Media3 sources and RUN full production PCM replay
+      - name: Compile real P5-A/B/C Android Media3 sources and run PCM plus HEVC fixture replays
         shell: bash
         env:
           NUVIO_TEST_JAVA: java
