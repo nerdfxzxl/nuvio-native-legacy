@@ -13,6 +13,33 @@ internal object FrameRateP5C {
                 previous != requested) previous else null
     }
 
+    enum class SwitchStatus { WAITING, CONFIRMED, TIMED_OUT }
+
+    // A window preference is not evidence that the panel has switched.
+    // Require a continuously observed target before releasing startup.
+    class SwitchGate(private val target: Int, private val startedMs: Long) {
+        private var observedAt: Long? = null
+        private var terminal: SwitchStatus? = null
+
+        fun observe(activeMode: Int?, nowMs: Long): SwitchStatus {
+            terminal?.let { return it }
+            if (nowMs < startedMs) return SwitchStatus.WAITING
+            if (activeMode == target) {
+                val first = observedAt
+                if (first == null || nowMs < first) observedAt = nowMs
+                else if (nowMs - first >= 150L && nowMs - startedMs <= 2500L) {
+                    terminal = SwitchStatus.CONFIRMED
+                    return SwitchStatus.CONFIRMED
+                }
+            } else observedAt = null
+            if (nowMs - startedMs >= 2500L) {
+                terminal = SwitchStatus.TIMED_OUT
+                return SwitchStatus.TIMED_OUT
+            }
+            return SwitchStatus.WAITING
+        }
+    }
+
     data class Mode(val id: Int, val width: Int, val height: Int, val hz: Float,
                     val hdrTypes: Set<Int> = emptySet())
     fun choose(enabled: Boolean, fps: Float, current: Mode, supported: List<Mode>,
