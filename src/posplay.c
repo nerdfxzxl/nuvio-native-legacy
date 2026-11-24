@@ -223,6 +223,7 @@ void posplay_ciclo_evento(Uint32 tipo) {
   if (tipo == SDL_APP_WILLENTERBACKGROUND || tipo == SDL_APP_DIDENTERBACKGROUND ||
       tipo == SDL_APP_TERMINATING) {
     p6Suspended = 1;
+    if (visivel || pedAutomatico || automaticoEntregue) recuou = 1;
     cancelarAutomatico();
     cancelarPreparo(0);
     proximopreparo_cancelar();
