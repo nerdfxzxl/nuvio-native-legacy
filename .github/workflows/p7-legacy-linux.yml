@@ -1,0 +1,59 @@
+name: P7 Linux legacy regressions (tests only - no APK)
+on:
+  workflow_dispatch:
+  push:
+    branches: [feature/official-stream-selector]
+    paths: [.github/workflows/p7-legacy-linux.yml]
+permissions:
+  contents: read
+jobs:
+  legacy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 100
+    strategy:
+      fail-fast: false
+      matrix:
+        suites:
+          - addons_alvo_pendente addons_stream_pending fonte_manual_resume playback_p3_reload
+          - posplay posplay_recuo proxprefetch postplay_p6_integration proximo
+          - player_eof_episodios player_visto_trailer player_scrobble_trailer
+          - player player_republica player_retido player_back
+          - catalog_episode_identity512 episode_identity512 player_identity524 cw_stats_identity524 visto_identidade512
+          - addons_legendas legendasui stream_parser fileiras
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install native Linux desktop test dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends clang pkg-config libsdl2-dev libsdl2-image-dev libsdl2-ttf-dev libgles-dev libegl-dev zlib1g-dev ripgrep
+          pkg-config --exists sdl2 SDL2_image SDL2_ttf glesv2 egl zlib
+      - name: Set up test-only compiler adapter
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          mkdir -p "$RUNNER_TEMP/p7-bin"
+          ln -s "$GITHUB_WORKSPACE/tests/p7_linux_cc.py" "$RUNNER_TEMP/p7-bin/cc"
+          echo "P7_REAL_CC=$(command -v clang)" >> "$GITHUB_ENV"
+          echo "$RUNNER_TEMP/p7-bin" >> "$GITHUB_PATH"
+      - name: Run original legacy suites without changing assertions
+        env:
+          SUITES: ${{ matrix.suites }}
+        run: |
+          failed=0
+          for suite in $SUITES; do
+            echo "::group::$suite"
+            export P7_FULL_APP=0
+            case "$suite" in
+              addons_alvo_pendente|fonte_manual_resume|posplay|posplay_recuo|player_eof_episodios|player_visto_trailer|player_scrobble_trailer|player|player_republica|player_retido|player_back|player_identity524) export P7_FULL_APP=1 ;;
+            esac
+            export NUVIO_DADOS="$RUNNER_TEMP/p7-data-$suite"
+            mkdir -p "$NUVIO_DADOS"
+            if bash "tests/$suite.sh"; then
+              echo "$suite PASS" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "::error::$suite failed"
+              echo "$suite FAIL" >> "$GITHUB_STEP_SUMMARY"
+              failed=1
+            fi
+            echo "::endgroup::"
+          done
+          exit "$failed"
