@@ -185,6 +185,7 @@ extern int trakt_scrobble_alvo(int, const TraktScrobbleAlvo *, double, double,
 #include "salto.h"
 #include "seekgesto.h"    // .tpk: seek gesture (owner-tuned values, SEEKG_PADRAO)
 #include "audioerro_p5a.h" // Q36: production native focus + bounded Retry decisions
+#include "videoerro_p5b.h" // Q39: independent one-shot video action policy
 #include "video_seekretry.h"
 // Sem tecla por este tempo, o avanco termina: manda a posicao ao pipeline e
 // retoma. 420 ms e maior que o intervalo de repeticao do controle (que na C9
@@ -1007,21 +1008,33 @@ static int cinemaEscapeDisponivel(Uint32 agora) {
 }
 // Q36 and Q39 share only layout/navigation; retry ownership remains independent.
 static int erroBotao, erroAudioP5A, erroAudioRetentou, erroVideoP5B, erroVideoRetentou;
+static int erroVideoRetryRearm;
+int player_video_retry_rearm(void) { int v = erroVideoRetryRearm; erroVideoRetryRearm = 0; return v; }
 static int erroTresAcoes(void) { return erroAudioP5A || erroVideoP5B; }
 static int avisouAudio; // also rearmed by the Audio Playback Error Retry path
 static void erroEscolher(int i) {
 #ifdef NV_ANDROID
   if (erroVideoP5B) {
-    if (i == 0) {
-      if (!audioerro_p5a_pode_repetir(erroVideoRetentou) || !video_video_retry()) {
+    int acao = videoerro_p5b_acao(i, &erroVideoRetentou);
+    if (acao == VIDEOERRO_P5B_RETRY) {
+      if (!video_video_retry()) {
         snprintf(erroDica, sizeof erroDica, "%s", "Video retry unavailable. Choose Change Stream or Back.");
         return;
       }
-      erroVideoRetentou = 1; erroFonte = erroVideoP5B = 0; esperandoFonte = 0;
+      erroFonte = erroVideoP5B = 0; esperandoFonte = 0;
+      // New generation of the same source, not a continuation of the old
+      // startup deadline. App consumes this before the VOD watchdogs.
+      erroVideoRetryRearm = 1;
+      loadEm = SDL_GetTicks();
+      memset(&cine, 0, sizeof cine); cine.calado = 1;
+      cinemaEscapeFoco = 0;
       return;
     }
-    if (i == 1) { player_voltar_a_esperar(); pedFontes = 1; return; }
-    saindo = 1; pediuSair = 1; return;
+    if (acao == VIDEOERRO_P5B_CHANGE) { player_voltar_a_esperar(); pedFontes = 1; return; }
+    if (acao == VIDEOERRO_P5B_BACK) { saindo = 1; pediuSair = 1; return; }
+    if (i == VIDEOERRO_P5B_RETRY)
+      snprintf(erroDica, sizeof erroDica, "%s", "Video retry exhausted. Choose Change Stream or Back.");
+    return;
   }
   if (erroAudioP5A) {
     if (i == 0) { // Retry this SAME source once, with new JNI generation.
@@ -2039,7 +2052,7 @@ void player_abrir(int indiceCatalogo, const char *url) {
     if (canalSessao) { guia_carregar(); epg_iniciar(); } }
   tocando = 1; pausaPessoa = 0; retomandoSalto = 0; visivel = 1; anim = 0.0f; entrada = 0.0f; soBarra = 0; cheio = 1.0f; fileira = 1.0f;
   barraBufferMem=0.0f;
-  pedFontes = erroFonte = erroAudioP5A = erroAudioRetentou = erroVideoP5B = erroVideoRetentou = pedFaixas = pedProxT = pedProxE = trocaEpisodio = 0; inicioImagem = 0;
+  pedFontes = erroFonte = erroAudioP5A = erroAudioRetentou = erroVideoP5B = erroVideoRetentou = erroVideoRetryRearm = pedFaixas = pedProxT = pedProxE = trocaEpisodio = 0; inicioImagem = 0;
   durFonteAvisada = durFontePulou = pedProximaFonte = durFonteCurta = durFonteForaCache = 0;
   durFonteAcaoAte = 0; durFonteSkipEm = 0; durFonteManter = 0;
   abrindoExp = 0; abrindoT = 0.0f; abrindoDesde = 0;
@@ -2434,7 +2447,7 @@ void player_definir_fonte(const char *url) {
   durFonteAcaoAte = 0;
   duracaoReal = durCurtaAvisado = durPassouAvisado = 0;
   esperandoFonte = 0;
-  erroFonte = erroAudioP5A = erroAudioRetentou = erroVideoP5B = erroVideoRetentou = 0;
+  erroFonte = erroAudioP5A = erroAudioRetentou = erroVideoP5B = erroVideoRetentou = erroVideoRetryRearm = 0;
   cinemaEscapeFoco = 0; /* A newly accepted source never inherits old focus. */
   /* Re-arm the source-owned 15s clock and visual handoff: changing sources
    * while the prior cinema is still visible must never inherit its age. */
@@ -2453,6 +2466,7 @@ void player_definir_fonte(const char *url) {
 }
 
 void player_voltar_a_esperar(void) {
+  erroVideoRetryRearm = 0;
   if (!aberto) return;
   barraBufferMem=0.0f;
   fonteAcaoInvalidar();
