@@ -25,23 +25,55 @@ internal object HdrCodecFallbackP5B {
         fun ready() = valid && sample && hdrOutput
     }
 
+    private fun sameVideoFormat(a: Format, b: Format): Boolean =
+        a.sampleMimeType == b.sampleMimeType && a.codecs == b.codecs &&
+            a.width == b.width && a.height == b.height &&
+            a.drmInitData == b.drmInitData && a.colorInfo == b.colorInfo &&
+            a.initializationDataEquals(b)
+
     data class VideoConfig(val info: MediaCodecInfo, val source: Format, val base: Proof?) {
         fun matches(format: Format, name: String?): Boolean =
-            name == info.name && source.sampleMimeType == format.sampleMimeType &&
-                source.codecs == format.codecs && source.width == format.width &&
-                source.height == format.height && source.drmInitData == format.drmInitData &&
-                source.initializationDataEquals(format)
+            name == info.name && sameVideoFormat(source, format)
+    }
+
+    /** A single actual failed decoder per player opening. During recovery
+     * the new decoder must accept the same video representation, not a lower
+     * resolution, color mode or bitrate silently selected by the track selector. */
+    class RuntimeRecovery(val failed: String, private val source: Format) {
+        @Volatile var completed = false
+            private set
+
+        fun sameRepresentation(f: Format): Boolean =
+            sameVideoFormat(source, f) && source.id == f.id &&
+                source.averageBitrate == f.averageBitrate && source.peakBitrate == f.peakBitrate &&
+                java.lang.Float.compare(source.frameRate, f.frameRate) == 0 &&
+                source.rotationDegrees == f.rotationDegrees &&
+                java.lang.Float.compare(source.pixelWidthHeightRatio, f.pixelWidthHeightRatio) == 0
+
+        fun permits(name: String, f: Format): Boolean =
+            name != failed && (completed || sameRepresentation(f))
+
+        fun handoff(config: VideoConfig?, f: Format?, name: String?): Boolean {
+            if (completed) return true
+            if (config == null || f == null || name == null ||
+                !config.matches(f, name) || !permits(name, f)) return false
+            completed = true
+            return true
+        }
     }
 
     class Factory(private val delegate: MediaCodecAdapter.Factory,
                   private val displayHdr10: () -> Boolean,
                   private val displayDv: () -> Boolean,
+                  private val runtimeRecovery: () -> RuntimeRecovery?,
                   private val report: (VideoConfig?) -> Unit) : MediaCodecAdapter.Factory {
         override fun createAdapter(configuration: MediaCodecAdapter.Configuration): MediaCodecAdapter {
             val f = configuration.format
             if (!MimeTypes.isVideo(f.sampleMimeType)) return delegate.createAdapter(configuration)
             report(null)
             val info = configuration.codecInfo
+            if (runtimeRecovery()?.permits(info.name, f) == false)
+                throw IOException("Runtime video fallback cannot preserve the failed representation")
             val alternate = f.sampleMimeType == MimeTypes.VIDEO_DOLBY_VISION &&
                 info.mimeType != MimeTypes.VIDEO_DOLBY_VISION
             val proof = if (alternate) {
