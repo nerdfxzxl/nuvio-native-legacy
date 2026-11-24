@@ -43,13 +43,14 @@ typedef struct {
   // COMO ESTA POSICAO FOI ALCANCADA (#205), so deste aparelho e nao
   // sincronizado: 1 tocando, 0 por seek, -1 desconhecido (linha antiga ou vinda
   // do servidor) — vale como 1, como antes da #205. Descreve ESTA posSeg.
+  // 2 = Q45 actual viewing proof; watched is independently owned by history.
   int  tocou;
 } ProgRegistro;
 
 // A confirmed local checkpoint remains resumable even early in a long movie.
 static inline int prog_inicio_continuar(const ProgRegistro *r, int pctMinimo) {
   return r->posSeg * 100.0 >= r->durSeg * pctMinimo ||
-         (pctMinimo == 1 && r->tocou == 1 && r->posSeg >= 30.0);
+         (pctMinimo == 1 && r->tocou > 0 && r->posSeg >= 30.0);
 }
 
 // Chave no formato do web (toProgressKey): "%s_s%de%d" quando temporada >= 0 e
