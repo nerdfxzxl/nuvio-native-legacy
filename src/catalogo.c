@@ -454,7 +454,10 @@ int cat_visto(const CatItem *c) {
   // extras.c escreve com os contadores de /shows/<id>/progress/watched.
   if (!strcmp(tipo_base(c->tipo), "series")) return 0;
   // Posicao alcancada por seek (#205) nao e visto: o registro local diz.
-  return c->progresso >= 90 && prog_tocou(c->imdb) != 0;
+  int prova = prog_tocou(c->imdb);
+  // Q45 checkpoints preserve viewing proof without inferring watched from a
+  // percentage. Explicit history above owns the badge; old records migrate unchanged.
+  return c->progresso >= 90 && prova != 0 && prova != 2;
 }
 
 // Compatibilidade para chamadores antigos que so conhecem o IMDb. A serie e
