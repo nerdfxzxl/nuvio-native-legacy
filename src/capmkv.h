@@ -28,6 +28,8 @@ void capmkv_zerar(void);
 // 0 = ainda desconhecida): o capitulo NOMEADO vale sempre; o ultimo capitulo so
 // vale se comecar no ultimo quarto (mesma regra da LG).
 double capmkv_creditos(double dur);
+// Current-generation freshly read explicit chapter only; URL-cache hints are not proof.
+double capmkv_creditos_verificados(void);
 // Entrega capitulos ja lidos (LG/.wgt): guarda para capmkv_creditos e alimenta
 // o modulo de intro (abertura/creditos/previa).
 void capmkv_aplicar(const MkvCap *caps, int n);
