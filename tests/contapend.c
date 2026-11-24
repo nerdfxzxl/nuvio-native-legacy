@@ -201,6 +201,23 @@ int main(int argc, char **argv) {
       assert(contapend_reenviar() >= 0);
       assert(trackerProfile == 1 && contapend_pendentes() == 0);
       OK("retry never sends profile A's gesture with profile B's credentials");
+    } else if (!strcmp(argv[1], "q45")) {
+      long long ms = 0;
+      logada = 0;
+      long long marcado = contapend_gesto("tt0903747", "series", &pair, 1, 1, 0, NULL, 0);
+      assert(marcado > 0 && contapend_intencao("tt0903747", "series", 1, 1, &ms) == 1);
+      assert(ms == marcado && contapend_pendentes() == 0);
+      reabrir();
+      assert(contapend_intencao("tt0903747", "series", 1, 1, &ms) == 1);
+      assert(contapend_gesto("tt0903747", "series", &pair, 1, 0, 0, NULL, 0) > marcado);
+      assert(contapend_intencao("tt0903747", "series", 1, 1, &ms) == 0 && ms > marcado);
+      assert(!contapend_gesto_atual("tt0903747", 1, 1, marcado));
+      perfil = 2;
+      assert(contapend_intencao("tt0903747", "series", 1, 1, &ms) == -1);
+      perfil = 1;
+      reabrir();
+      assert(contapend_intencao("tt0903747", "series", 1, 1, &ms) == 0);
+      OK("Q45 local-only journal, newer unwatch, profile isolation");
     } else if (!strcmp(argv[1], "identity")) {
       int tvdb = 11209906;
       contapend_reenviar_com(retry);
