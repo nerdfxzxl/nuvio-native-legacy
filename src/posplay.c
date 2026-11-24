@@ -223,8 +223,13 @@ void posplay_ciclo_evento(Uint32 tipo) {
   if (tipo == SDL_APP_WILLENTERBACKGROUND || tipo == SDL_APP_DIDENTERBACKGROUND ||
       tipo == SDL_APP_TERMINATING) {
     p6Suspended = 1;
-    if (visivel || pedAutomatico || automaticoEntregue) recuou = 1;
+    if (visivel || temPedidoEpisodio() || automaticoEntregue) recuou = 1;
     cancelarAutomatico();
+    if (temPedidoEpisodio() || automaticoEntregue) {
+      if (temProximo()) { visivel = 1; dispensado = 0; }
+      pedT = pedE = pedAutomatico = automaticoEntregue = 0;
+    }
+    pedTitulo = -1;
     cancelarPreparo(0);
     proximopreparo_cancelar();
     preTentou = preVideoTentou = preVideoRenovou = 0;
