@@ -20,7 +20,7 @@ import androidx.media3.exoplayer.audio.DefaultAudioSink
 internal class AudioRouteObserverP5D(context: Context, private val main: Handler) :
     DefaultAudioSink.AudioTrackProvider {
     private val manager = context.applicationContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-    data class Output(val track: AudioTrack, val config: AudioSink.AudioTrackConfig, val serial: Long)
+    data class Output(val track: AudioTrack, val config: AudioSink.AudioTrackConfig, val serial: Long, val createdAt: Long)
     private val serial = java.util.concurrent.atomic.AtomicLong()
     @Volatile var output: Output? = null
         private set
@@ -38,7 +38,7 @@ internal class AudioRouteObserverP5D(context: Context, private val main: Handler
     override fun getAudioTrack(config: AudioSink.AudioTrackConfig, attributes: AudioAttributes,
                                audioSessionId: Int, context: Context?): AudioTrack {
         val track = DefaultAudioSink.AudioTrackProvider.DEFAULT.getAudioTrack(config, attributes, audioSessionId, context)
-        output = Output(track, config, serial.incrementAndGet())
+        output = Output(track, config, serial.incrementAndGet(), android.os.SystemClock.elapsedRealtime())
         main.post { if (changed != null) { attach(); changed?.invoke() } }
         return track
     }
@@ -79,9 +79,23 @@ internal class AudioRouteObserverP5D(context: Context, private val main: Handler
         } catch (_: RuntimeException) { null } else null
         return actual ?: AudioOutputProbeP5A.mediaRoute(manager)
     }
+    private var directAt = Long.MIN_VALUE
+    private var directDevice = -1
+    private var directProfiles = emptyList<String>()
     fun key(route: AudioDeviceInfo?): AudioRouteP5D.Key? = route?.let {
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (Build.VERSION.SDK_INT >= 33 && (directDevice != it.id || directAt == Long.MIN_VALUE || now - directAt >= 750L)) {
+            directDevice = it.id
+            directAt = now
+            directProfiles = try {
+                if (AudioOutputProbeP5A.mediaRoute(manager)?.id != it.id) emptyList()
+                else manager.getDirectProfilesForAttributes(AudioOutputProbeP5A.mediaAttributes()).map { profile ->
+                    "${profile.format}:${profile.sampleRates.sorted()}:${profile.channelMasks.sorted()}:${profile.channelIndexMasks.sorted()}"
+                }.distinct().sorted()
+            } catch (_: RuntimeException) { emptyList() }
+        }
         AudioRouteP5D.Key(it.id, it.type, it.encodings.distinct().sorted(),
             it.sampleRates.distinct().sorted(), it.channelCounts.distinct().sorted(),
-            it.channelMasks.distinct().sorted())
+            it.channelMasks.distinct().sorted(), directProfiles)
     }
 }

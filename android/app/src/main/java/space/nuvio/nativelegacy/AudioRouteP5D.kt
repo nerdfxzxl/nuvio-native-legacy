@@ -6,7 +6,8 @@ internal object AudioRouteP5D {
     const val FLAP_LIMIT_MS = 5000L
     const val RECOVERY_LIMIT_MS = 8000L
     data class Key(val id: Int, val type: Int, val encodings: List<Int>,
-                   val rates: List<Int>, val channels: List<Int>, val masks: List<Int>)
+                   val rates: List<Int>, val channels: List<Int>, val masks: List<Int>,
+                   val directProfiles: List<String> = emptyList())
     enum class Action { KEEP, RESELECT_PCM, RESELECT_ENCODED, ERROR }
     fun plan(faithful: Boolean, pcmCompatible: Boolean, encodedCompatible: Boolean,
              currentCompatible: Boolean, currentPcm: Boolean): Action {
@@ -70,7 +71,8 @@ internal object AudioRouteP5D {
         }
     }
 
-    /** Exactly one audio-only reselect and, only following a fatal renderer
+    /** At most two audio-only reselects (second only for a newly stable route)
+     * and, only following a fatal renderer
      * error, one same-player prepare. Never a new media item or source. */
     class Transaction {
         private var serial = 0L
@@ -78,6 +80,7 @@ internal object AudioRouteP5D {
             private set
         var deadline = 0L
             private set
+        private var reselections = 0
         var attemptedPrepare = false
             private set
         val active get() = ticket != 0L
@@ -86,10 +89,16 @@ internal object AudioRouteP5D {
             ticket = ++serial
             deadline = now + RECOVERY_LIMIT_MS
             attemptedPrepare = false
+            reselections = 0
             return ticket
         }
         fun owns(t: Long) = active && ticket == t
         fun expired(now: Long) = active && now >= deadline
+        fun allowReselect(t: Long): Boolean {
+            if (!owns(t) || reselections >= 2) return false
+            reselections++
+            return true
+        }
         fun allowPrepare(t: Long): Boolean {
             if (!owns(t) || attemptedPrepare) return false
             attemptedPrepare = true

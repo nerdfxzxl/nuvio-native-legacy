@@ -71,7 +71,7 @@ internal object AudioOutputProbeP5A {
             (counts.isEmpty() || channels in counts)
     }
 
-    private fun mediaAttributes() = android.media.AudioAttributes.Builder()
+    fun mediaAttributes() = android.media.AudioAttributes.Builder()
         .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
         .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MOVIE).build()
 

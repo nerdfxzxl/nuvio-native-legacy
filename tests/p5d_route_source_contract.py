@@ -10,6 +10,11 @@ assert "p.createMessage" in route and "r.routeTx.owns(ticket)" in route
 assert "p.stop()" not in route and "p.seekTo(" not in route and "setMediaItem(" not in route
 assert "p.playWhenReady =" not in route
 assert "routeBlocked(r)" in route and "r.routeTx.expired(now)" in route
+assert "r.routeTx.allowReselect(ticket)" in route and "r.routePhase != 1" in route
+assert "eventTime.realtimeMs >= output.createdAt" in p
+assert "getDirectProfilesForAttributes" in o
+assert "refreshRouteCaps(r, route)" in route
+assert "r.routeAwaitingPlay" in route
 assert "nativeAudioRouteCapacidade" in p and "nativeAudioRouteCapacidade" in c
 assert "EV_AUDIO_SAIDA_INCOMPATIVEL" in p and "audioRouteDeadline" in c
 assert "routeObserver.stop()" in p and "routeForeground = false" in p
