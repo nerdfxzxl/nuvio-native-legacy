@@ -2073,8 +2073,8 @@ static int episodioPadrao(int *temp, int *epis, int *origem) {
   const CatEp *ep;
   if (origem) *origem = 0;
   // Em andamento: o item do "Continuar assistindo" traz temporada e episodio.
-  if (ci && ci->progresso > 0 && ci->progresso < ajustes_cw_concluido() && ci->temporada >= 0 && ci->episodio > 0 &&
-      !extras_ep_visto(ci->temporada, ci->episodio)) {
+  if (ci && cat_retomavel(ci, ajustes_cw_concluido()) && ci->temporada >= 0 && ci->episodio > 0 &&
+      (cat_p6_retomavel(ci) == 1 || !extras_ep_visto(ci->temporada, ci->episodio))) {
     if (temp) *temp = ci->temporada;
     if (epis) *epis = ci->episodio;
     if (origem) *origem = 2;
@@ -2118,7 +2118,7 @@ static int episodioAlvo(int *temp, int *epis, int *origem) {
   if (!ep) return episodioPadrao(temp, epis, origem);
   if (temp) *temp = ep->temporada;
   if (epis) *epis = ep->episodio;
-  if (origem) *origem = (ci && ci->progresso > 0 && ci->progresso < ajustes_cw_concluido() &&
+  if (origem) *origem = (ci && cat_retomavel(ci, ajustes_cw_concluido()) &&
                          ci->temporada == ep->temporada && ci->episodio == ep->episodio) ? 2 : 1;
   return 1;
 }
@@ -2771,7 +2771,7 @@ static int temInicio(void) {
   // abaixo do Percentual assistido (ajustes_cw_concluido, 90 de fabrica). Em serie, so quando o episodio-alvo e o "Retomar" — com um
   // episodio em foco na fileira (origem 1) o primario toca AQUELE episodio e
   // nao ha retomada a desfazer.
-  if (!ehSerie()) return ci->progresso > 0 && ci->progresso < ajustes_cw_concluido();
+  if (!ehSerie()) return cat_retomavel(ci, ajustes_cw_concluido());
   { int t0 = 0, e0 = 0, de = 0;
     return episodioAlvo(&t0, &e0, &de) && de == 2; }
 }
@@ -5223,8 +5223,7 @@ static void heroWeb(float a, float desloc) {
       // The native Netflix-style primary action uses its own English labels,
       // independent of a Portuguese account/TV automatic locale. The exact
       // checkpoint state still decides whether this is Resume or Play.
-      int inProgress = ci && ci->progresso > 0 &&
-                       ci->progresso < ajustes_cw_concluido();
+      int inProgress = ci && cat_retomavel(ci, ajustes_cw_concluido());
       snprintf(rot, sizeof rot, "%s", inProgress ? "Resume" : "Play");
       retomando = !ehSerie() && inProgress;
     } }
