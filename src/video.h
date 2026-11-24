@@ -65,6 +65,8 @@ void video_pausar(int pausado);
 #ifdef NV_ANDROID
 void video_pausar_sistema(void);
 void video_p6_armar_abertura_pausada(int pausada);
+// -1: normal transport; 0: parked recovery; 1: recovery scheduled to play.
+int video_p6_recovery_play_intent(void);
 #endif
 // Volume do pipeline, 0..100 (uMS setVolume). Existe para o trailer mudo no
 // fundo da pagina de titulo (trailer.h); a reproducao normal nao mexe nisto.

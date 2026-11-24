@@ -92,6 +92,14 @@ static inline int nv_recon_ativa(const NvReconexao *r) {
   return r->tentativa > 0 && !r->esgotou;
 }
 
+// P6 Q22: the pending restart owns the transport intent, not the stopped
+// renderer. -1 means ordinary playback owns the control.
+static inline int nv_recon_play_intent(const NvReconexao *r, int ready,
+                                       int incomingRecovery, int parked) {
+  if (!incomingRecovery && !(nv_recon_ativa(r) && (r->pendente || !ready))) return -1;
+  return !parked;
+}
+
 // --- classe do erro, por alvo -------------------------------------------------
 
 static inline int nv_recon_tem(const char *t, const char *agulha) {

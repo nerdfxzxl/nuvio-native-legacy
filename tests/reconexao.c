@@ -63,6 +63,21 @@ int main(void) {
   assert(!nv_recon_vencida(&r, 0xFFFFFFFFu));
   assert(nv_recon_vencida(&r, 0xFFFFFFF0u + 3000u));
 
+  // Q22: the renderer may be stopped while the retry is committed to Play.
+  nv_recon_zerar(&r);
+  assert(nv_recon_play_intent(&r, 1, 0, 0) == -1);
+  assert(nv_recon_play_intent(&r, 1, 1, 0) == 1);
+  assert(nv_recon_play_intent(&r, 1, 1, 1) == 0);
+  assert(nv_recon_erro(&r, 1, t, 120.0));
+  assert(nv_recon_play_intent(&r, 1, 0, 0) == 1);
+  assert(nv_recon_play_intent(&r, 1, 0, 1) == 0);
+  assert(nv_recon_vencida(&r, t + 3000));
+  assert(nv_recon_play_intent(&r, 0, 0, 0) == 1);
+  assert(nv_recon_play_intent(&r, 0, 0, 1) == 0);
+  assert(nv_recon_play_intent(&r, 1, 0, 0) == -1);
+  nv_recon_zerar(&r);
+  assert(nv_recon_play_intent(&r, 0, 0, 0) == -1);
+
   // Classe do erro.
   assert(!nv_recon_rede_ums(200) && !nv_recon_rede_ums(203) && !nv_recon_rede_ums(210));
   // Medidos nos logs da LG: 300 Network Error e 4xxxx server error sao rede.

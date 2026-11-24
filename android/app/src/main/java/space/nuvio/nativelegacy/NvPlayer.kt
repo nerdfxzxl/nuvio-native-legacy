@@ -1072,12 +1072,10 @@ object NvPlayer {
         r.adotado = false
         r.carga.cancelada = true
         if (r.construido()) liberarEmFundo(r.p, null) {
-            liberarFontePreparo(r)
             // Media3 loader threads must be finished before SimpleCache release.
-            r.cache?.liberar()
+            try { liberarFontePreparo(r) } finally { r.cache?.liberar() }
         } else {
-            liberarFontePreparo(r)
-            r.cache?.liberar()
+            try { liberarFontePreparo(r) } finally { r.cache?.liberar() }
         }
     }
 
@@ -1331,11 +1329,11 @@ object NvPlayer {
                 s.buffer == bufferPreset && s.cacheMb == cacheMbPedido && (!r.construido() || r.p.playerError == null) &&
                 (f == 0 || s.inicioAceito || s.fracaoPendente > 0)) {
                 preparo = null
-                if (r.construido()) {
-                    s.ouvinte?.let { r.p.removeListener(it) }
-                    s.analitico?.let { r.p.removeAnalyticsListener(it) }
-                }
                 pendingAdoptionP6.offer(pedido, s)
+                if (r.construido()) {
+                    try { s.ouvinte?.let { r.p.removeListener(it) } } catch (_: Exception) {}
+                    try { s.analitico?.let { r.p.removeAnalyticsListener(it) } } catch (_: Exception) {}
+                }
                 abrirMain(url, cabecalhos, false, inicio, geracao, pedido, f, preparada = s,
                     identidadeCache = identidade)
             } else {
@@ -2070,31 +2068,31 @@ object NvPlayer {
         }
         // Only the request reaching construction takes ownership out of the slot.
         if (preparada != null && pendingAdoptionP6.take(pedido) !== preparada) return
-        limitedSession = limitedNext
-        novaSuperficie(act)
-        mostrarQuadro(url, tituloPedido)
-        // A more recent SAME-source SDR hold takes precedence over the
-        // older warm-resume thumbnail during a bounded recovery reopen.
-        retidoView?.bringToFront()
-        pedidoAtivo = pedido
-        hdrRecriadoPara = ""; quadroVisto = false
-        superficieInvalidadaEm = SystemClock.elapsedRealtime()
-        somLiberado = false
-        recriando = false; recriaAgendada = false; recuperouSuperficie = false; estavelEmitido = false
-        principal.removeCallbacks(recriar)
-        principal.removeCallbacks(estavelRun)
-        val minha = sessao
-        urlAtual = url
-        cabAtual = cabecalhos
-        inicioAtualMs = inicioMs
-        geracaoNative = geracao
-        appliedSeekRevision = 0
-        ev(EV_CARGA_FASE, 1, geracao = geracao) // building Media3 player
-        fracaoAtual = if (inicioMs > 0) 0 else fracao
-        fracaoPendente = 0
-        abriuEm = SystemClock.elapsedRealtime()
-        if (!reabrindo) retentou = false
         try {
+            limitedSession = limitedNext
+            novaSuperficie(act)
+            mostrarQuadro(url, tituloPedido)
+            // A more recent SAME-source SDR hold takes precedence over the
+            // older warm-resume thumbnail during a bounded recovery reopen.
+            retidoView?.bringToFront()
+            pedidoAtivo = pedido
+            hdrRecriadoPara = ""; quadroVisto = false
+            superficieInvalidadaEm = SystemClock.elapsedRealtime()
+            somLiberado = false
+            recriando = false; recriaAgendada = false; recuperouSuperficie = false; estavelEmitido = false
+            principal.removeCallbacks(recriar)
+            principal.removeCallbacks(estavelRun)
+            val minha = sessao
+            urlAtual = url
+            cabAtual = cabecalhos
+            inicioAtualMs = inicioMs
+            geracaoNative = geracao
+            appliedSeekRevision = 0
+            ev(EV_CARGA_FASE, 1, geracao = geracao) // building Media3 player
+            fracaoAtual = if (inicioMs > 0) 0 else fracao
+            fracaoPendente = 0
+            abriuEm = SystemClock.elapsedRealtime()
+            if (!reabrindo) retentou = false
             quadrosPerdidos = 0L; statsTiques = 0
             val titulo = tituloPedido
             tituloAberto = ""

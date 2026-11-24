@@ -1396,6 +1396,16 @@ int  video_reconectando(void) {
   return nv_recon_ativa(&recon) && (recon.pendente || !prontoLoad) ? recon.tentativa : 0;
 }
 
+int video_p6_recovery_play_intent(void) {
+  int incoming = reconErroPend && reconPermitida && !semDecoderAudio &&
+      !terminalVideoP5B && !recon.esgotou && (reconIniciou || recon.tentativa) &&
+      (erroDeRede(reconErroCod) || nv_recon_ativa(&recon)) &&
+      !(xtream_url_limitada(urlAtual) &&
+        (reconErroCod == 403 || reconErroCod == 458 || reconErroCod == 509));
+  return nv_recon_play_intent(&recon, prontoLoad, incoming,
+                              reconPausado || p6SystemPaused);
+}
+
 void video_bombear(void) {
   // Once Q36's terminal audio error takes over, no watchdog may silently
   // launch another player generation. Only the user-owned Retry may reopen it.

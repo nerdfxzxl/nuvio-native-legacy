@@ -4105,7 +4105,15 @@ static void alternarTocando(void) {
   // Pause tambem cai aqui, e congelar um ao vivo so desincroniza o som.
   if (ehCanal() && !avPodePausar()) return;
   retomandoSalto = 0;
+#ifdef NV_ANDROID
+  // During automatic recovery the stopped renderer does not mean Pause.
+  // A new toggle must cancel a scheduled Play, including the interval
+  // between a Media3 error callback and the native recovery tick.
+  int recoveryIntent = comVideo && !ehCanal() ? video_p6_recovery_play_intent() : -1;
+  tocando = recoveryIntent >= 0 ? !recoveryIntent : !tocando;
+#else
   tocando = !tocando;
+#endif
   pausaPessoa = !tocando;
   if (tocando) p6PendingPause = 0;
   if (comVideo) video_pausar(!tocando);

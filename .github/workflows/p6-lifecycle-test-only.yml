@@ -57,6 +57,7 @@ jobs:
           bash tests/videoerro_p5b.sh
           bash tests/playback_p2_timing.sh
           bash tests/playback_p2d_handoff.sh
+          bash tests/reconexao.sh
 
       - name: Q45 native chapter provenance, profile journal and actual resume proof regressions
         shell: bash
