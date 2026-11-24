@@ -67,7 +67,7 @@ static jmethodID mAbrirPosicao, mAbrirRecuperacao, mJanelaPronta, mLimitedConnec
 // 2.0.3 (opcional): abrirRetomada(url, cab, inicioMs, fracao, geracao). So o
 // percentual conhecido (retomada da conta, sem registro local): o Kotlin
 // aplica fracao/10000 da duracao do CONTAINER antes do primeiro quadro.
-static jmethodID mAbrirRetomada;
+static jmethodID mAbrirRetomada, mP6ArmPaused;
 static jmethodID mPreparar, mPrepararProximo, mPrepararEstado, mCancelarPreparo, mAbrirPreparada;
 static jmethodID mPararMantendoPreparo;
 static unsigned preparoAdotar;
@@ -103,6 +103,8 @@ static int resolverMetodos(JNIEnv *env) {
   if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); mAbrirPosicao = NULL; }
   // P2-B optional: only bounded SAME-source native retries may ask to hold
   // a video frame. A user-selected new release never uses this method.
+  mP6ArmPaused = (*env)->GetStaticMethodID(env, gCls, "p6ArmPausedOpen", "()V");
+  if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); mP6ArmPaused = NULL; }
   mAbrirRecuperacao = (*env)->GetStaticMethodID(env, gCls, "abrirRecuperacao", "(Ljava/lang/String;Ljava/lang/String;II)V");
   if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); mAbrirRecuperacao = NULL; }
   mAbrirRetomada = (*env)->GetStaticMethodID(env, gCls, "abrirRetomada", "(Ljava/lang/String;Ljava/lang/String;III)V");
@@ -451,7 +453,8 @@ static int reconBuscarMs = -1;
 static int reconPausado;
 // Q44: unlike a pre-existing ordinary pause, a system pause owns all
 // pending and later same-source recovery until explicit Play/new source.
-static int p6SystemPaused;
+static int p6SystemPaused, p6NextPaused;
+void video_p6_armar_abertura_pausada(int pausada) { p6NextPaused = pausada != 0; }
 static int recarregarPausa = -1, recarregarPosMs;
 static char erroTxt[64];
 
@@ -1091,7 +1094,7 @@ static int abrirSessao(int inicioMs, int fracao, int mesmaFonte) {
   largura = altura = durMs = posMs = posNativoMs = 0; bufferando = 1; bufferDesde = SDL_GetTicks();
   audioRouteDeadline = 0;
   tocandoDesde = 0; semDecoderAudio = 0; erroTxt[0] = 0; reconErroVideo = 0; terminalVideoP5B = 0;
-  pausaPedida = pausaVista = 0;
+  pausaPedida = p6SystemPaused; pausaVista = 0;
   hdrAtual = "none"; dvAtual = atmosAtual = 0;
   pthread_mutex_lock(&travaStats); statsValido = 0;
   nv_download_zerar(&medidorDownload);
@@ -1149,6 +1152,10 @@ static int abrirSessao(int inicioMs, int fracao, int mesmaFonte) {
       if (preparado) video_precarregar_cancelar(preparado);
       falhou = 1; return 0;
     }
+    if (p6SystemPaused && mP6ArmPaused) {
+      (*env)->CallStaticVoidMethod(env, gCls, mP6ArmPaused);
+      fimChamada(env);
+    }
     // abrirPosicao also when starting at 0: it is how the Kotlin side learns
     // this session's generation (StreamFit passive telemetry). At 0 the
     // resume state stays -1, exactly as the plain abrir path left it.
@@ -1201,6 +1208,7 @@ static int abrirSessao(int inicioMs, int fracao, int mesmaFonte) {
   int chamadaFalhou = (*env)->ExceptionCheck(env);
   fimChamada(env);
   if (chamadaFalhou) { falhou = 1; return 0; }
+  if (p6SystemPaused) video_pausar_sistema();
   // Every Kotlin open starts at 100%: a player session re-applies its volume
   // (source change, reconnection) after the open in the same queue.
   ganhoEnviado = CB_VOL_NORMAL;
@@ -1215,6 +1223,7 @@ static int abrirSessao(int inicioMs, int fracao, int mesmaFonte) {
 
 int video_tocar_retomada(const char *u, double segundos, double pct) {
   static int limitedEnviado;
+  int pausedOpen = p6NextPaused; p6NextPaused = 0;
   int limited = xtream_url_limitada(u);
   if (mLimitedConnections && limited != limitedEnviado) {
     kInt(mLimitedConnections, limited); limitedEnviado = limited;
@@ -1231,7 +1240,8 @@ int video_tocar_retomada(const char *u, double segundos, double pct) {
   reconPermitida = reconProxima; reconProxima = 0;
   reconIniciou = 0; reconErroPend = 0;
   reconAudio = reconLeg = -1; reconFaixasPend = 0; reconBuscarMs = -1; reconPausado = 0;
-  p6SystemPaused = 0;
+  p6SystemPaused = pausedOpen;
+  reconPausado = pausedOpen;
   recarregarPausa = -1;
   playerSessao = cacheArmado >= 0;
   cacheSessao = cacheArmado > 0 ? cacheArmado : 0;
