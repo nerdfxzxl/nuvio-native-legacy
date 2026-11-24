@@ -28,6 +28,20 @@ object RecriaHdr {
     fun mayRecoverDetach(alreadyRetried: Boolean, hasSurface: Boolean): Boolean =
         !alreadyRetried && hasSurface
 
+    // Only the observed TCL/MediaTek panel behavior justifies proactive
+    // destruction. Unknown devices retain their hardware plane; actual
+    // detach failures still use the independent bounded recovery path.
+    fun needsTclWorkaround(manufacturer: String, brand: String, decoders: List<String>): Boolean {
+        val tcl = listOf(manufacturer, brand).any {
+            it.trim().equals("TCL", ignoreCase = true)
+        }
+        if (!tcl || dispensa(decoders) != null) return false
+        return decoders.any {
+            it.startsWith("c2.mtk.", ignoreCase = true) ||
+                it.startsWith("OMX.MTK.", ignoreCase = true)
+        }
+    }
+
     fun dispensa(decoders: List<String>): String? {
         if (decoders.any { it.startsWith("OMX.MS.") }) return "MStar"
         if (decoders.any { it.startsWith("OMX.amlogic.") || it.startsWith("c2.amlogic.") }) return "Amlogic"
