@@ -44,6 +44,22 @@ int main(void) {
   assert(videoerro_p5b_retry_handoff(&retry, 9, 1, 1));
   assert(!videoerro_p5b_retry_owned(&retry, 9));
   assert(videoerro_p5b_retry_fail(&retry, 9) == 0);
-  puts("videoerro_p5b: PASS (35 production C assertions)");
+  /* A real runtime failure may acquire the active opening; duplicate
+   * events cannot replace its error reason or refresh its deadline. */
+  assert(!videoerro_p5b_retry_begin_current(&retry, 0, 300, 1));
+  assert(!videoerro_p5b_retry_begin_current(&retry, 10, 300, 0));
+  assert(videoerro_p5b_retry_begin_current(&retry, 10, 300, 1));
+  assert(videoerro_p5b_retry_owned(&retry, 10));
+  assert(!videoerro_p5b_retry_begin_current(&retry, 10, 999, 5));
+  assert(retry.desde == 300 && retry.motivo == 1);
+  assert(!videoerro_p5b_retry_handoff(&retry, 10, 1, 0));
+  assert(videoerro_p5b_retry_handoff(&retry, 10, 1, 1));
+  assert(!videoerro_p5b_retry_owned(&retry, 10));
+  videoerro_p5b_retry_arm(&retry, 4);
+  videoerro_p5b_retry_bind(&retry, 11, 400);
+  assert(!videoerro_p5b_retry_begin_current(&retry, 11, 999, 1));
+  assert(retry.desde == 400 && retry.motivo == 4);
+  assert(videoerro_p5b_retry_fail(&retry, 11) == 4);
+  puts("videoerro_p5b: PASS (47 production C assertions)");
   return 0;
 }
