@@ -441,19 +441,19 @@ object NvPlayer {
     private fun atual(minha: Int) = minha == sessao && pedidoAtivo == pedidos.get()
 
     // One opt-in request per visible session; never let a preloaded player vote.
-    private var afrPrevious: Int? = null
-    private var afrRequested: Int? = null
+    private var afrLease: FrameRateP5C.PreferenceLease<android.view.Window>? = null
     private var afrEvaluated = false
     private var afrSuspended = false
 
     private fun restoreAfr() {
         val w = activity?.window
-        val prev = afrPrevious
-        val requested = afrRequested
-        afrPrevious = null; afrRequested = null; afrEvaluated = false
-        if (w != null && prev != null && requested != null) try {
+        val lease = afrLease
+        afrLease = null
+        afrEvaluated = false
+        if (w != null && lease != null) try {
             val a = w.attributes
-            if (a.preferredDisplayModeId == requested) {
+            val prev = lease.restoreTarget(w, a.preferredDisplayModeId)
+            if (prev != null) {
                 a.preferredDisplayModeId = prev
                 w.attributes = a
             }
@@ -493,12 +493,16 @@ object NvPlayer {
                 display.supportedModes.map(::mode), required, known, retainHdr)
             afrEvaluated = true
             if (target != null) {
-                val attrs = act.window.attributes
-                afrPrevious = attrs.preferredDisplayModeId
-                afrRequested = target
-                attrs.preferredDisplayModeId = target
-                act.window.attributes = attrs
-                Log.i(TAG, "AFR requested supported mode=$target fps=${f.frameRate}")
+                val w = act.window
+                val attrs = w.attributes
+                val previous = attrs.preferredDisplayModeId
+                if (previous != target) {
+                    val lease = FrameRateP5C.PreferenceLease(w, previous, target)
+                    attrs.preferredDisplayModeId = target
+                    w.attributes = attrs
+                    afrLease = lease
+                    Log.i(TAG, "AFR requested supported mode=$target fps=${f.frameRate}")
+                }
             }
         } catch (e: Exception) { Log.w(TAG, "AFR mode query/request: $e") }
     }
