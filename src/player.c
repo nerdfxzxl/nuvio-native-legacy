@@ -446,12 +446,16 @@ static unsigned trailerSessao;
 static double parcialPos = -1.0;
 static int parcialPausa;
 static float parcialRelogio, parcialConta;
+// Session-owned timers must not survive source/episode replacement.
+static float tocouS, parcialSeek;
+static int scrubAnterior;
 static void identidadeFonteAberta(void);
 static void zerarAssistido(void) {
   eofDesde = -1.0;
   assistidoSeg = 0; assistidoAmostra = 0; trailerSessao = trailer_geracao();
   parcialPos = -1.0; parcialPausa = 0;
   parcialRelogio = parcialConta = 0;
+  tocouS = parcialSeek = 0; scrubAnterior = 0;
   snprintf(fonteSessao, sizeof fonteSessao, "%s", comVideo ? video_url_atual() : "");
   identidadeFonteAberta();
 }
@@ -3155,12 +3159,15 @@ void player_descartar_retido(void) {
 }
 
 void player_ciclo_evento(Uint32 tipo) {
+  posplay_ciclo_evento(tipo);
   if (tipo == SDL_APP_WILLENTERBACKGROUND || tipo == SDL_APP_DIDENTERBACKGROUND ||
       tipo == SDL_APP_LOWMEMORY || tipo == SDL_APP_TERMINATING) {
     if (aberto && fontePrincipal() && !scrubbing) {
       double p = video_pos();
       if (isfinite(p) && p >= 0) posSeg = (float)p;
       gravarProgressoParcial(1, "background");
+      assistidoAmostra = 0;
+      parcialSeek = 0; scrubAnterior = 0;
     }
     player_descartar_retido(); retomamorna_cancelar();
 #ifdef NV_ANDROID
@@ -5154,8 +5161,6 @@ void player_atualizar(float dt, Uint32 agora) {
              !saindo && !erroFonte && !esperandoFonte && !ehCanal() &&
              duracaoSeg >= 120.0f &&
              (partesAtiva() || !player_duracao_suspeita((double)duracaoSeg, duracaoCatalogo()));   // PRONTO do trailer (129 s) nao e deste titulo
-    static float tocouS, parcialSeek;
-    static int scrubAnterior;
     const CatItem *cs = item();
     if (cs && (jfid_e(cs->imdb) || !identidadeValida())) cs = NULL;
     if (ok && cs && cs->imdb[0]) {
