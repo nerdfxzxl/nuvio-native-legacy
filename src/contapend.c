@@ -347,7 +347,9 @@ long long contapend_gesto_alvos(const char *imdb, const char *tipo,
   long long ms = contapend_agora_ms();
   idVisto(imdb, id, sizeof id);
   if (!id[0] || perfil < 1 || n < 0 || (n && !pares)) return 0;
-  if (!sessao_logada() && !(destinos & (VISTO_TRAKT | VISTO_SIMKL))) return 0;
+  // Local-only manual and playback history must remain durable in the anon
+  // journal too; no account or tracker means no remote destinations.
+  if (!sessao_logada()) destinos &= ~VISTO_CONTA;
   for (i = 0; temporadas && i < nt; i++) {
     size_t u = strlen(temps);
     if (u + 12 >= sizeof temps) return 0;
@@ -382,6 +384,25 @@ long long contapend_gesto(const char *imdb, const char *tipo,
                           int destinos, const int *temporadas, int nt) {
   return contapend_gesto_alvos(imdb, tipo, pares, NULL, n, visto, destinos,
                                temporadas, nt);
+}
+
+int contapend_intencao(const char *imdb, const char *tipo, int t, int e, long long *ms) {
+  char id[24];
+  int estado = -1, perfil = perfis_ativo();
+  long long ultimo = 0;
+  idVisto(imdb, id, sizeof id);
+  pthread_mutex_lock(&trava);
+  garantir();
+  for (int i = 0; i < nEnt; i++) {
+    Ent *p = &ents[i];
+    if (p->sup != 'V' || p->perfil != perfil || strcmp(p->id, id) ||
+        !((p->temp == t && p->ep == e) ||
+          (!p->ep && e > 0 && !strcmp(p->tipo, "series") && (!tipo || !strcmp(tipo, p->tipo))))) continue;
+    if (estado < 0 || p->ms >= ultimo) { ultimo = p->ms; estado = p->op == '+'; }
+  }
+  pthread_mutex_unlock(&trava);
+  if (ms) *ms = ultimo;
+  return estado;
 }
 
 int contapend_estado(const char *imdb, const char *tipo, int t, int e, long long remotoMs, int remoto) {
