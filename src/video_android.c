@@ -1543,7 +1543,7 @@ void video_parar(void) {
 }
 void video_pausar(int p) {
   pausaVista = 0; pausaPedida = p ? 1 : 0;
-  if (!pausaPedida) p6SystemPaused = 0;
+  if (!pausaPedida) { p6SystemPaused = 0; reconPausado = 0; }
   if (nv_recon_ativa(&recon) || reconErroPend) reconPausado = pausaPedida;
   if (recarregarPausa >= 0) recarregarPausa = pausaPedida;
   kInt(mPausar, pausaPedida);
