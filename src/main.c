@@ -2038,7 +2038,9 @@ int main(int argc, char **argv) {
         if (e.window.event == SDL_WINDOWEVENT_FOCUS_LOST || e.window.event == SDL_WINDOWEVENT_HIDDEN)
           app_evento(&e);
         if (e.window.event == SDL_WINDOWEVENT_FOCUS_LOST || e.window.event == SDL_WINDOWEVENT_HIDDEN) {
-          player_ciclo_evento(SDL_APP_WILLENTERBACKGROUND);
+          // Window focus loss (e.g. a dialog) checkpoints only. Real SDL app
+          // lifecycle events below own the Q44 pause and post-play revocation.
+          player_ciclo_evento(SDL_WINDOWEVENT);
           ponteiro_evento(&e, app_evento);
           quadroc_suspendeu(&quadroRel);   // suspendeu: o relogio para de valer
         }
