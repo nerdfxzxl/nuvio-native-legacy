@@ -34,6 +34,9 @@
 #include "sessao.h"
 #include "perfis.h"
 #include "fontevolta.h"
+#ifdef NV_ANDROID
+#include "restore_p6.h"
+#endif
 #include "cacheboost.h"
 #include "retomamorna.h"
 #include "dados.h"
@@ -2434,6 +2437,13 @@ static void prepararAoAbrir(void) {
 // authorizes adoption into that exact new player/source generation.
 static P6NextIntent proximoIntento;
 static int p6AppHidden;
+#ifdef NV_ANDROID
+static P6RestoreTicket p6Restore;
+static int p6RestorePending;
+static unsigned p6RestorePlayer, p6RestoreSource;
+static uint64_t p6RestoreProfile;
+static Uint32 p6RestoreSince;
+#endif
 // 1 quando a escolha em curso e a do Next com uma fonte tocando para seguir
 // (bingeGroup); *prov recebe o add-on dela.
 static int nextAutorizado(void) {
@@ -3921,6 +3931,120 @@ static void perfilAbrirSessao(int antes) {
   perfilSessaoAplicada = sessao;
 }
 
+#ifdef NV_ANDROID
+// Consume even on a normal launcher open. Profile choice is authoritative.
+static void p6RestoreLoad(void) {
+  char *saved = dados_ler(P6_RESTORE_FILE);
+  const char *task = getenv("NUVIO_P6_RESTORE");
+  int removed = saved ? dados_apagar(P6_RESTORE_FILE) : 0;
+  p6RestorePending = removed && saved && p6_restore_decode(saved, &p6Restore) &&
+      p6_restore_token(task) && !strcmp(task, p6Restore.task) && sessao_logada();
+  p6RestoreSince = SDL_GetTicks();
+  free(saved);
+}
+static int p6RestoreMatch(const Stream *s) {
+  char digest[65] = "";
+  if (!s) return 0;
+  const char *hash = s->infoHash[0] ? s->infoHash : s->hashTorrent;
+  if (p6_restore_source(&p6Restore, NULL, s->addonChave, hash, s->fileIdx, s->tamanhoBytes)) return 1;
+  if (!s->url[0] || !video_p6_fingerprint(s->url, s->cabecalhos, digest, sizeof digest)) return 0;
+  return p6_restore_source(&p6Restore, digest, NULL, NULL, -1, 0);
+}
+static void p6RestoreTry(void) {
+  if (!p6RestorePending || p6AppHidden) return;
+  const P6RestoreTicket *t = &p6Restore;
+  if (p6RestorePending == 1) {
+    if (tela == TELA_ESCOLHA_PERFIL) { p6RestoreSince = SDL_GetTicks(); return; }
+    if (tela != TELA_HOME || !perfilsel_concluido() || !sessao_logada() ||
+        !p6_restore_owner(t, getenv("NUVIO_P6_RESTORE"), sessao_usuario(), perfis_ativo()) ||
+        player_aberto() || detail_aberto()) { p6RestorePending = 0; return; }
+    if (SDL_GetTicks() - p6RestoreSince > 20000u) { p6RestorePending = 0; return; }
+    int i = cat_indice_por_imdb_tipo(t->title, t->type);
+    if (i < 0) return;
+    char alvo[64];
+    if (!strcmp(t->type, "series")) {
+      int ix = cat_indice_titulo(t->title, i);
+      if (!cat_episodio_existe_final(ix, t->title, t->season, t->episode)) {
+        desc_episodios_garantir(ix); return;
+      }
+      if (!cat_id_stream(i, t->season, t->episode, alvo, sizeof alvo)) { p6RestorePending = 0; return; }
+    } else snprintf(alvo, sizeof alvo, "%s", t->title);
+    if (strcmp(alvo, t->target)) { p6RestorePending = 0; return; }
+    p6RestoreProfile = nv_perfil_sessao_ler();
+    abrirPorIndice(i);
+    if (!nv_perfil_sessao_atual(p6RestoreProfile)) { p6RestorePending = 0; return; }
+    diagnostico_cancelar_vazao();
+    p6RestoreSource = novaGeracaoFonte(); limparFontePendente(); limparFonteVOD();
+    aguardandoFonte = 0; preparoEspera = 0; retomarDiretoPendente = 0;
+    player_abrir(i, NULL);
+    if (t->episode > 0) player_definir_episodio(t->season, t->episode);
+    alvoPlayer(alvo, sizeof alvo);
+    if (strcmp(alvo, t->target) || !nv_perfil_sessao_atual(p6RestoreProfile)) {
+      p6RestorePending = 0; player_encerrar(); return;
+    }
+    player_p6_armar_restauro(t->posMs / 1000.0);
+    p6RestorePlayer = player_geracao_fonte();
+    p6RestoreSince = SDL_GetTicks();
+    p6RestorePending = 2;
+    // Existing opt-in only. A different or expired saved release cannot restore.
+    Stream saved;
+    if (ajustes_link_reusar() &&
+        fontevolta_pegar(t->target, t->account, t->profile, SDL_GetTicks(), &saved) &&
+        p6RestoreMatch(&saved) && stream_filtro_permite(&saved) && fontesmortas_idade(&saved) < 0) {
+      p6RestorePending = 0;
+      stream_definir_atual(-1);
+      voltaFonte = saved;
+      video_definir_dv(saved.dolbyVision);
+      video_definir_cabecalhos(saved.cabecalhos);
+      video_definir_mp4(stream_e_mp4(&saved));
+      definirFonteVOD(saved.url);
+      fontevolta_conferir(saved.url, saved.cabecalhos);
+      voltaAtiva = 1; voltaDesde = SDL_GetTicks();
+      renovarListaDoPlayer();
+      addons_buscar_legendas(t->target, t->type);
+      printf("[player] Q44 restore from saved exact source (paused)\n"); fflush(stdout);
+      return;
+    }
+    // No persisted URL needed; do not invoke the automatic ranker.
+    buscarParaPlayerModo(1);
+    return;
+  }
+  if (!player_aberto() || player_quer_sair() ||
+      !nv_perfil_sessao_atual(p6RestoreProfile) || player_geracao_fonte() != p6RestorePlayer ||
+      atomic_load_explicit(&stalkerGeracao, memory_order_acquire) != p6RestoreSource) {
+    p6RestorePending = 0; return;
+  }
+  char alvo[64]; alvoPlayer(alvo, sizeof alvo);
+  if (strcmp(alvo, t->target)) { p6RestorePending = 0; return; }
+  int complete = addons_estado() != ADD_BUSCANDO && !stream_recarregar_retendo() &&
+                 stream_lista_do_alvo(t->target);
+  if (!complete && SDL_GetTicks() - p6RestoreSince < 30000u) return;
+  p6RestorePending = 0;
+  int match = -1;
+  if (complete) for (int j = 0; j < stream_n(); j++) {
+    const Stream *s = stream_item(j);
+    if (!s || !stream_filtro_permite(s) || !p6RestoreMatch(s)) continue;
+    if (match >= 0) { match = -1; break; }
+    match = j;
+  }
+  const Stream *s = match >= 0 ? stream_item(match) : NULL;
+  if (!nv_perfil_sessao_atual(p6RestoreProfile)) { player_encerrar(); return; }
+  if (!s || fontesmortas_idade(s) >= 0 || (!s->url[0] && !s->infoHash[0])) {
+    fonteFalhaPos = t->posMs / 1000.0;
+    selecionarAposFalhaVOD("A fonte anterior não pôde ser confirmada. Escolha uma fonte.");
+    return;
+  }
+  stream_definir_atual(match);
+  video_definir_dv(s->dolbyVision);
+  video_definir_cabecalhos(s->cabecalhos);
+  video_definir_mp4(stream_e_mp4(s));
+  if (s->infoHash[0] && (!s->url[0] ||
+      (fontefalha_ativa() && !s->urlP2P && s->foraCache && debrid_ativo())))
+    pedirTorrentEscolhido(match);
+  else abrirFonteManualDireta(s);
+  printf("[player] Q44 restore from fresh exact source (paused)\n"); fflush(stdout);
+}
+#endif
 int app_iniciar(const char *dirArte) {
   // #415: MemAvailable abaixo do piso -> despeja texturas, mkvass, texto,
   // libass e heap; sem isto o aviso so rodava malloc_trim.
@@ -4067,6 +4191,9 @@ int app_iniciar(const char *dirArte) {
     arranque_etapa("app_iniciar/login_iniciar");
     login_iniciar();
   }
+#ifdef NV_ANDROID
+  p6RestoreLoad();
+#endif
   arranque_etapa("app_iniciar/fim");
   return 1;
 }
@@ -4437,6 +4564,9 @@ static int relogioPedidoPagina(void) {
 
 void app_evento(const SDL_Event *e) {
 #ifdef NV_ANDROID
+  if (p6RestorePending == 1 && tela != TELA_ESCOLHA_PERFIL &&
+      (e->type == SDL_KEYDOWN || e->type == SDL_FINGERDOWN || e->type == SDL_MOUSEBUTTONDOWN))
+    p6RestorePending = 0;
   if (e->type == SDL_APP_WILLENTERBACKGROUND || e->type == SDL_APP_DIDENTERBACKGROUND ||
       e->type == SDL_APP_TERMINATING) {
     p6AppHidden = 1;
@@ -5369,6 +5499,9 @@ void app_atualizar(float dt, Uint32 agora) {
     perfilsel_iniciar();
     return;
   }
+#ifdef NV_ANDROID
+  p6RestoreTry();
+#endif
   // AVISO DE PRIMEIRA EXECUCAO, e AQUI e nao antes.
   //
   // Ele ensina a tecla vermelha, e o lugar errado para isso e a frente do

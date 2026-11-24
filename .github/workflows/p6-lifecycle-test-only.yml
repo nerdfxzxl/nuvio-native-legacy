@@ -183,6 +183,6 @@ jobs:
         run: |
           echo "### P6 lifecycle and post-play test-only source verification" >> "$GITHUB_STEP_SUMMARY"
           echo "Commit: $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
-          echo "Checks: P6 detached preload ownership, lifecycle, unique-viewed-interval, actual resume and post-play policies; chapter provenance, profile journal and resume proof; earlier audio and first-frame regressions, ARM64 C/JNI syntax, API35/Media3 Kotlin compile, actual PCM replay, HDR/error, AFR and surface policies." >> "$GITHUB_STEP_SUMMARY"
+          echo "Checks: P6 one-shot task restoration, exact source proof, detached preload ownership, lifecycle, unique-viewed-interval, actual resume and post-play policies; chapter provenance, profile journal and resume proof; earlier audio and first-frame regressions, ARM64 C/JNI syntax, API35/Media3 Kotlin compile, actual PCM replay, HDR/error, AFR and surface policies." >> "$GITHUB_STEP_SUMMARY"
           echo "NO APK assembled, packaged, signed, uploaded or published. No master merge, secrets or release." >> "$GITHUB_STEP_SUMMARY"
           echo "Physical display modes, Dolby Vision and HDMI ARC/codec output are NOT proven by this source/test-only job." >> "$GITHUB_STEP_SUMMARY"
