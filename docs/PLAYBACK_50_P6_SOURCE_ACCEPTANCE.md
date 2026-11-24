@@ -148,3 +148,10 @@ CI #5 exact SHA logs: Next cinematic ownership **19/19 PASS**, native post-play 
 | Q50 | PARTIAL | Credits bounds verified #4, immediate Next and movie EOF overlay improved #5; full final episode/movie dismissal and duplicate transition production regression remains. |
 
 **P6 remains PARTIAL / NOT SOURCE ACCEPTED.** P0–P5 remain accepted; Q18 deferred. P7/P8 not authorized. No APK assembled, signed, uploaded, published or merged. No physical Android TV verification or full-app link claim. Continue from this latest exact-source checkpoint and CI #7 outcome rather than rerunning earlier accepted steps.
+
+
+### CI #7 verification — 2026-11-24
+
+Independently verified [test-only run #7](https://github.com/nerdfxzxl/nuvio-native-legacy/actions/runs/45366395775), exact production input `bb4b1bd2c6b4659929bfac2782ba70bba04d2f81`, job 138349109101: **SUCCESS**, all steps completed. Actual logs confirm opaque history persistence and stale-unwatch rejection, opaque progress reload and collision rejection, `catalog_episode_identity512: PASS`, ARM64 C/JNI syntax preflight, real Android API35/Media3 1.8.0 Kotlin compile and PCM/HEVC replays. Next ownership 19/19, post-play 17/17, watched 35/35, playback intent 33/33, route 46/46, surface 55/55 and frame hold 17/17 passed. This supersedes the in-progress status of #7 and the SDL prerequisite failure of #6. No redundant rerun needed.
+
+**P6 remains PARTIAL / NOT SOURCE ACCEPTED.** No new production code in this verification checkpoint. The remaining requirement-level integration gates in the preceding report remain open, with Q44 paused restoration after Activity/process recreation the major implementation gap. P0–P5 acceptance and Q18 owner deferral preserved. No P7/P8, APK or default-branch merge authorized or performed.
