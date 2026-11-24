@@ -2726,12 +2726,15 @@ static double credEfetivo(void) {
 // Q45 is intentionally independent of recommendation estimates and the
 // provider scrobble thresholds. Neither an unnamed chapter nor duration-only
 // third-party metadata proves the selected release.
-static double p6WatchMarker(void) {
+static double p6WatchRawMarker(void) {
   double raw = 0.0;
 #ifdef NV_ANDROID
   raw = capmkv_creditos_verificados();
 #endif
-  return p6_watched_marker(raw, duracaoSeg,
+  return raw;
+}
+static double p6WatchMarker(void) {
+  return p6_watched_marker(p6WatchRawMarker(), duracaoSeg,
       epE > 0 ? intro_creditos_janela(duracaoSeg) : intro_creditos_janela_filme(duracaoSeg));
 }
 
@@ -2742,7 +2745,7 @@ static int p6WatchReached(void) {
       video_reconectando() || video_bufferando_ms() || ehCanal() || partesMeio() ||
       (!partesAtiva() && player_duracao_suspeita(duracaoSeg, duracaoCatalogo()))) return 0;
   double p = video_pos();
-  if (!isfinite(p) || fabs(p - posSeg) > 2.0) return 0;
+  if (!isfinite(p) || fabs(p - posSeg) > 2.0 || p6WatchRawMarker() > duracaoSeg + 1.0) return 0;
   double base = 0.0;
   if (baseTocou > 0 && baseDur > 0.0 && fabs(baseDur - duracaoSeg) <= fmax(5.0, duracaoSeg * 0.02))
     base = basePos;
@@ -2919,9 +2922,8 @@ static void fecharSessao(int manter, int trocaFonte) {
   double base = baseDur > 0.0 ? basePos : duracaoSeg * basePct / 100.0;
   if (!baseTocou || (baseDur > 0.0 && fabs(baseDur - duracaoSeg) > fmax(5.0, duracaoSeg * 0.02))) base = 0.0;
   int chegou;
-  (void)player_regra_visto(base, assistidoSeg, posSeg, 0, &chegou);
-  double cred = credEfetivo();
-  int duracaoContradita = cred > 1.0 && cred - duracaoSeg > intro_creditos_janela(duracaoSeg);
+  (void)player_regra_visto(base, p6Played, posSeg, 0, &chegou);
+  int duracaoContradita = p6WatchRawMarker() > duracaoSeg + 1.0;
   int assistiu = !jaRetido && !trocaFonte && prova && !duracaoErrada && !duracaoContradita && p6WatchMark();
   // FILME EM PARTES: so a ULTIMA parte conclui, pela regra do proprio
   // arquivo (a minutagem do catalogo e a do filme inteiro). O ponto da parte
@@ -2931,9 +2933,6 @@ static void fecharSessao(int manter, int trocaFonte) {
     if (!jaRetido && partesVirt(&vp, &vd, &ult)) {
       const PartesLista *sl = partes_sessao_lista();
       int k = partes_sessao_indice();
-      // IntroDB describes the whole movie; embedded chapters describe this file.
-      if (video_creditos() <= 1.0)
-        duracaoContradita = cred > 1.0 && cred - vd > intro_creditos_janela(vd);
       assistiu = ult && !duracaoContradita && assistiu;
       durG = vd; posG = vp;
       chegou = chegou && assistiu;
@@ -2985,7 +2984,7 @@ static void fecharSessao(int manter, int trocaFonte) {
     // republicacao o guardado grava o progresso no titulo errado.
     const CatItem *ci = item();
     int ia = ci ? cat_indice_por_imdb_tipo(ci->imdb, ci->tipo) : -1;
-    if (ia >= 0) {
+    if (ia >= 0 && !p6Override) {
       home_registrar_retorno(ia, pos, durG);
       ilhacart_player_saiu(ia, pos, durG, epT, epE);
     } else {
@@ -3007,7 +3006,6 @@ static void fecharSessao(int manter, int trocaFonte) {
     // activity (jfid.h). The server got its own stop check-in above.
     if (ci && ci->imdb[0] && !jfid_e(ci->imdb)) {
       char id[64];
-      int simklScr;
       idTrakt(ci, id, sizeof id);
       // Trakt also completes by percentage, so an invalid duration cannot be sent.
       if (!trocaFonte) {
@@ -3016,47 +3014,14 @@ static void fecharSessao(int manter, int trocaFonte) {
       }
       // Simkl (#459): mesmo scrobble, independente de o Trakt estar ligado.
       // Sem vinculo, id fora do IMDb ou guarda recusando: SCR_NADA.
-      simklScr = trocaFonte ? SCR_NADA : simkl_scrobble(p6WatchState != 0 ? SCR_EV_HISTORICO_JA_GRAVADO : SCR_EV_SAIU_SEM_VISTO, id, pos, durG, assistidoSeg, 0);
+      if (!trocaFonte) simkl_scrobble(p6WatchState != 0 ? SCR_EV_HISTORICO_JA_GRAVADO : SCR_EV_SAIU_SEM_VISTO, id, pos, durG, assistidoSeg, 0);
       // "ASSISTIU" para os amigos, so quando CONCLUIU e so se ela ligou a
       // atividade (ou os "vistos recentemente" do perfil). Largar aos 8% nao
       // assistiu nada — e nao chega a lugar nenhum.
       recomenda_atividade_fim(ci, assistiu);
       // A PARADA para o Social: fim, abandono (< 20%) ou progresso.
       atividade_player_saiu(pos, durG, assistiu);
-      // O CHECK NA LISTA, LOCALMENTE E AGORA — a outra metade do #100.
-      //
-      // O relato e preciso: "mostra a barra de progresso mas nao fica com o
-      // check". Sao dois dados diferentes e o player so escrevia UM. A barra
-      // sai de cat_salvar_progresso_ep, logo acima; o check sai de vistoep, e
-      // ate aqui NADA no player tocava nesse mapa — ele so era preenchido pela
-      // leitura de /shows/<id>/progress/watched, que acontece ao abrir a pagina
-      // de detalhe. Ou seja: mesmo com o Trakt aceitando o scrobble, o check so
-      // aparecia na visita seguinte.
-      //
-      // Otimista de proposito, como o gesto manual da folha ja e ("o efeito
-      // LOCAL ja aconteceu antes de o fio nascer", episodios.c): a proxima
-      // leitura do Trakt corrige se o servidor tiver recusado.
-      // CONCLUIU TAMBEM E "VISTO" NO SIMKL E NA CONTA, e so quando assistiu:
-      // um episodio largado aos 0,8% gera `[trakt] pause ... 0.8%` (scrobble,
-      // "parei aqui") e nao pode virar historico em lugar nenhum. O Trakt fica
-      // de fora da mascara porque o scrobble acima ja fecha o visto la. Um
-      // pedido por conclusao, e so quando o check local ainda nao existia —
-      // rever um episodio ja visto nao reescreve historico.
-      if (assistiu && p6WatchState == 0 && !strncmp(ci->imdb, "tt", 2)) {
-        int dest = visto_destinos() & ~VISTO_TRAKT;
-        // O stop do scrobble ja fecha o visto no Simkl (e cai no historico
-        // sozinho se falhar): mandar o historico de novo seria pedido em dobro.
-        if (simklScr == SCR_STOP) dest &= ~VISTO_SIMKL;
-        if (epT >= 0 && epE > 0) {
-          if (vistoep_estado(ci->imdb, epT, epE) != 1) {
-            VistoPar par = { (short)epT, (short)epE };
-            visto_episodios(ci->imdb, "series", &par, 1, 1, dest);
-          }
-        } else if (strcmp(ci->tipo, "series")) {
-          visto_titulo(ci->imdb, ci->tipo, NULL, 0, 1, dest);
-        }
-      }
-      // Q45 owns all automatic IMDb history; never re-mark on closing.
+      // Q45 history has one owner; never repeat it from closing the player.
       // E para a CONTA. Trakt e conta sao dois destinos diferentes: nem todo
       // usuario liga o Trakt, e o progresso do app oficial vem da conta.
       sync_sujar_progresso();
@@ -3199,10 +3164,9 @@ static void gravarProgressoParcial(int conta, const char *porque) {
   }
   base = baseDur > 0.0 ? basePos : duracaoSeg * basePct / 100.0;
   if (!baseTocou || (baseDur > 0.0 && fabs(baseDur - duracaoSeg) > fmax(5.0, duracaoSeg * 0.02))) base = 0.0;
-  (void)player_regra_visto(base, assistidoSeg, posSeg, 0, &chegou);
+  (void)player_regra_visto(base, p6Played, posSeg, 0, &chegou);
   // Contradictory credits also invalidate the catalogue's watched proof.
-  double cred = credEfetivo();
-  if (cred > 1.0 && cred - duracaoSeg > intro_creditos_janela(duracaoSeg)) chegou = 0;
+  if (p6WatchRawMarker() > duracaoSeg + 1.0) chegou = 0;
   { double vp = posSeg, vd = duracaoSeg;
     if (partesVirt(&vp, &vd, NULL)) chegou = 0;   // o visto e so da saida da ultima parte
     if (!cat_salvar_progresso_ep(ia, vp, vd, epT, epE, chegou ? 2 : 0)) return; }
