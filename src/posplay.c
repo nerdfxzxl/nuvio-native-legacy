@@ -1,4 +1,5 @@
 #include "posplay.h"
+#include "postplay_p6.h"
 #include "intro.h"
 #include "proximo.h"
 #include "fontecache.h"
@@ -38,7 +39,7 @@
 // Contagem configuravel, 5 s de fabrica, desligada por padrao (#256).
 // O web abre o painel de filme aos 90%; aqui, desde a 2.0.3, sem marcador e um
 // tempo FIXO antes do fim (intro_fim_estimado_filme, intro.h).
-// #470: a contagem comeca quando o cartao sobe, ainda durante os creditos.
+// Q50: the card may appear during credits; automatic transition waits for real EOF.
 // Guardas do #115 ("More like this aparece cedo demais — no comeco do
 // filme"). Ver posplay_regra_filme.
 #define PP_FILME_METADE   0.5     // nunca antes da metade da duracao
@@ -98,6 +99,7 @@ static float  anim;
 static Uint32 fecharEm;              // 0 = sem contagem
 static int    pedT, pedE, pedTitulo = -1;
 static int    pedAutomatico, automaticoEntregue, recuou, aguardaBusca;
+static int    p6Suspended;
 static int    proxT, proxE;          // proximo episodio, quando ha
 static char   proxNome[120];
 // Temporada0 e especial; quem distingue ausencia e o numero do episodio.
@@ -217,13 +219,26 @@ void posplay_recuar(void) {
 
 // A posicao da barra pode mostrar o destino antes de o seek chegar ao motor.
 // Enquanto o player espera progresso real, Next continua sendo uma escolha.
+void posplay_ciclo_evento(Uint32 tipo) {
+  if (tipo == SDL_APP_WILLENTERBACKGROUND || tipo == SDL_APP_DIDENTERBACKGROUND ||
+      tipo == SDL_APP_TERMINATING) {
+    p6Suspended = 1;
+    cancelarAutomatico();
+    cancelarPreparo(0);
+    proximopreparo_cancelar();
+    preTentou = preVideoTentou = preVideoRenovou = 0;
+  } else if (tipo == SDL_APP_DIDENTERFOREGROUND) {
+    p6Suspended = 0;
+  }
+}
+
 void posplay_aguardar_busca(int aguardar) {
   aguardaBusca = aguardar != 0;
   if (aguardaBusca) cancelarAutomatico();
 }
 
 int posplay_pediu_episodio(int *t, int *e) {
-  if (!temPedidoEpisodio()) return 0;
+  if (p6Suspended || !temPedidoEpisodio()) return 0;
   if (t) *t = pedT;
   if (e) *e = pedE;
   pedT = pedE = 0;
@@ -231,7 +246,7 @@ int posplay_pediu_episodio(int *t, int *e) {
   pedAutomatico = 0;
   return 1;
 }
-int posplay_pediu_titulo(void) { int v = pedTitulo; pedTitulo = -1; return v; }
+int posplay_pediu_titulo(void) { if (p6Suspended) return -1; int v = pedTitulo; pedTitulo = -1; return v; }
 
 // Abertura A PEDIDO, pelo botao do player. Existe porque dispensar passou a
 // grudar: sem uma porta de volta, quem apertasse Voltar uma vez nao veria mais
@@ -413,6 +428,8 @@ Uint32 posplay_contagem(Uint32 agora, Uint32 fecharEm, double restaReal, int aut
 void posplay_atualizar(float dt, Uint32 agora, double posSeg, double durSeg,
                        int ehSerie, int idxCatalogo, int janelaSerie) {
   int deveAparecer = 0;
+  if (p6Suspended) return;
+  const int fimReal = p6_postplay_eof(video_ativo(), video_terminou(), video_pos(), durSeg);
   // DUAS FONTES DE MARCADOR, nesta ordem e por este motivo: o capitulo do
   // Matroska vem do PROPRIO arquivo que esta tocando, entao ele descreve esta
   // copia; o TheIntroDB descreve o LANCAMENTO, e uma copia com abertura
@@ -474,7 +491,7 @@ void posplay_atualizar(float dt, Uint32 agora, double posSeg, double durSeg,
   // painel pode subir de novo quando ele chegar ao fim outra vez.
   if (!deveAparecer) dispensado = 0;
   { const CatItem *ci = cat_item(idx);
-    cenaNoFim = ci && ci->posCreditos && durSeg - posSeg <= PP_FIM_TOL_S;
+    cenaNoFim = ci && ci->posCreditos && fimReal;
     aguardaCena = ci && ci->posCreditos && !cenaNoFim;
     if (cenaNoFim && cenaPendente) { cenaPendente = 0; dispensado = 0; }
   }
@@ -519,17 +536,17 @@ void posplay_atualizar(float dt, Uint32 agora, double posSeg, double durSeg,
     }
   }
 
-  // Arma ao abrir o cartao. Desligado, espera OK.
-  // Recuo e busca pendente suspendem a mesma contagem configuravel.
-  if (visivel && serie && janelaSerie && !recuou && !aguardaBusca) {
-    // #202: a 1,5x os segundos do arquivo passam mais depressa que os do relogio.
-    double resta = vel_tempo_real(durSeg - posSeg, player_velocidade_efetiva());
-    if (aguardaCena) fecharEm = 0;
-    else fecharEm = posplay_contagem(agora, fecharEm, resta, ajustes_proximo_auto(), ajustes_proximo_contagem());
-  }
+  // Q50: preserve the card and manual Next during credits, including when
+  // post-credit metadata is absent. Arm the configured countdown only at
+  // natural EOF; never treat the recommendation window as permission to exit.
+  const int contar = p6_postplay_countdown(fimReal, p6Suspended,
+      aguardaBusca || recuou || aguardaCena, dispensado, visivel, serie,
+      ajustes_proximo_auto());
+  if (contar) {
+    fecharEm = posplay_contagem(agora, fecharEm, 60.0, 1, ajustes_proximo_contagem());
+  } else fecharEm = 0;
 
-  // A contagem so vale para o proximo episodio.
-  if (visivel && fecharEm && agora >= fecharEm) {
+  if (contar && fecharEm && (Sint32)(agora - fecharEm) >= 0) {
     pedT = proxT; pedE = proxE;
     pedAutomatico = 1;
     esconder();
