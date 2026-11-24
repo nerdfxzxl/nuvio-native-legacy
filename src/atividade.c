@@ -363,7 +363,7 @@ static void emitir(const char *ev, int pct) { emitirP(ev, pct, 0); }
 static void fecharTrecho(double pos, double dur, int concluiu) {
   int pct = pctDe(pos, dur);
   if (trecho.ativo && !trecho.fimEnviado) {
-    if (concluiu || pct >= ATIV_FIM_PCT) emitir("fim", concluiu ? 100 : pct);
+    if (concluiu) emitir("fim", 100);
     else                                  emitirP("progresso", pct, 1);
   }
   memset(&trecho, 0, sizeof trecho);
@@ -395,7 +395,7 @@ void atividade_player_passo(const CatItem *ci, int t, int e, double pos, double 
     emitir("inicio", pct);
   }
   if (dt > 0.0f && dt < 2.0f) { trecho.seg += dt; trecho.desdeProg += dt; }
-  if (!trecho.fimEnviado && (concluiu || pct >= ATIV_FIM_PCT)) {
+  if (!trecho.fimEnviado && concluiu) {
     trecho.fimEnviado = 1;
     emitir("fim", concluiu ? 100 : pct);
     return;
