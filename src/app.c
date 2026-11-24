@@ -5911,7 +5911,7 @@ void app_atualizar(float dt, Uint32 agora) {
           // tem), a pagina abre e o toque espera a lista (cwEsperarProximo).
           // Sem proximo — fim da serie, ou o seguinte ainda nao foi ao ar —,
           // so a pagina abre.
-          if (cw->progresso >= ajustes_cw_concluido() && cw->temporada >= 0 &&
+          if (cw->progresso >= ajustes_cw_concluido() && !cat_retomavel(cw, ajustes_cw_concluido()) && cw->temporada >= 0 &&
               cw->episodio > 0) {
             int k = cat_indice_titulo(cw->imdb, it.indice);
             ProxSugestao prox;
@@ -5979,7 +5979,7 @@ void app_atualizar(float dt, Uint32 agora) {
           (cwEspera != 2 || cat_episodio_existe_final(k, cwEsperaItem.imdb,
                              cwEsperaItem.temporada, cwEsperaItem.episodio))) {
         ProxSugestao prox;
-        int retomar = cwEspera == 2;
+        int retomar = cwEspera == 2 || cat_p6_retomavel(&cwEsperaItem) == 1;
         cwEspera = 0; cwTocarT = cwTocarE = 0;
         if (retomar) {
           cwTocarT = cwEsperaItem.temporada; cwTocarE = cwEsperaItem.episodio;
