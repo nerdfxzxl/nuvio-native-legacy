@@ -187,6 +187,17 @@ static void bitTocouSobreviveAoSync(void) {
   rem.posSeg = 2701; rem.lastWatchedMs = agora + 3000;
   assert(prog_aplicar_remoto(&rem) == 1);
   assert(prog_tocou("tt7654321") == 2);
+  assert(prog_gravar_local("tt7654321", 0, 0, 2700, 2843, 3));
+  prog_invalidar();
+  assert(prog_tocou("tt7654321") == 3);
+  assert(prog_q45_retomada("tt7654321", 0, 0, 94, 0) == 1);
+  assert(prog_q45_retomada("tt7654321", 1, 1, 94, 0) == -1);
+  assert(prog_q45_retomada("tt7654321", 0, 0, 50, 0) == -1);
+  assert(prog_q45_retomada("tt7654321", 0, 0, 94, agora + 6000) == -1);
+  assert(prog_por_chave("tt7654321", &enviado));
+  assert(!prog_prova_tocou(&enviado) && !prog_fim_retomada(&enviado, 90));
+  assert(prog_gravar_local("tt7654321", 0, 0, 2843, 2843, 2));
+  assert(prog_q45_retomada("tt7654321", 0, 0, 100, 0) == 0);
   puts("ok  bit tocou: legado e remoto -1, eco do sync mantem o local");
 }
 
