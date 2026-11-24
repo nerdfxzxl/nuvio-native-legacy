@@ -104,6 +104,26 @@ jobs:
           echo 'Gradle production dependencies resolved'
           grep -E 'media3-(exoplayer|datasource):1\.8\.0' "$RUNNER_TEMP/p4-deps.log" | head -n 8 || true
 
+      - name: Compile actual Activity and complete app Kotlin source (no APK)
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Same exact SDL version as tools/android.sh. No native SDK build.
+          mkdir -p "$HOME/.cache/nuvio-android/src"
+          curl -fsSL --retry 3 https://github.com/libsdl-org/SDL/releases/download/release-2.30.9/SDL2-2.30.9.tar.gz | tar xz -C "$HOME/.cache/nuvio-android/src"
+          test -f "$HOME/.cache/nuvio-android/src/SDL2-2.30.9/android-project/app/src/main/java/org/libsdl/app/SDLActivity.java"
+          g=(bash android/gradlew -p android :app:compileDebugKotlin --no-daemon)
+          "${g[@]}" --dry-run | tee "$RUNNER_TEMP/p6-kotlin-graph.log"
+          # Check task graph before any compilation. Never assemble/package an APK
+          # or invoke external native builds in this test-only workflow.
+          if grep -Ei '^:[^ ]*:(assemble[^ ]*|package(Debug|Release)([^ ]*)?|bundle[^ ]*|sign[^ ]*|install(Debug|Release)|externalNativeBuild[^ ]*|buildCMake[^ ]*|configureCMake[^ ]*) SKIPPED' "$RUNNER_TEMP/p6-kotlin-graph.log"; then
+            echo '::error::Unexpected APK/native build task; refusing to run.'
+            exit 1
+          fi
+          "${g[@]}"
+          test -z "$(find android/app/build -type f -name '*.apk' -print -quit)"
+          echo 'Full production Kotlin source including actual NuvioActivity and SDL bridge: PASS'
+
       - name: Resolve pinned AndroidX harness JARs absent from default app graph
         shell: bash
         run: |
@@ -157,7 +177,7 @@ jobs:
           NUVIO_CACHE_COMPILE_ONLY: '0'
         run: |
           set -euo pipefail
-          python3 tests/cacheboost_android.py
+          NUVIO_ANDROID_CACHE="$RUNNER_TEMP/p6-isolated-harness" python3 tests/cacheboost_android.py
 
       - name: Execute production audio, HDR, AFR and surface transition policies
         shell: bash
@@ -183,6 +203,6 @@ jobs:
         run: |
           echo "### P6 lifecycle and post-play test-only source verification" >> "$GITHUB_STEP_SUMMARY"
           echo "Commit: $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
-          echo "Checks: P6 one-shot task restoration, exact source and track proof, full-width progress and title-local episode identity, duplicate lifecycle and bounded source matching, identity-checked resume UI, detached preload ownership, lifecycle, unique-viewed-interval, actual resume and post-play policies; chapter provenance, profile journal and resume proof; earlier audio and first-frame regressions, ARM64 C/JNI syntax, API35/Media3 Kotlin compile, actual PCM replay, HDR/error, AFR and surface policies." >> "$GITHUB_STEP_SUMMARY"
+          echo "Checks: P6 one-shot task restoration, exact source and track proof, full-width progress and title-local episode identity, duplicate lifecycle and bounded source matching, identity-checked resume UI, full production Kotlin Activity compile, detached preload ownership, lifecycle, unique-viewed-interval, actual resume and post-play policies; chapter provenance, profile journal and resume proof; earlier audio and first-frame regressions, ARM64 C/JNI syntax, API35/Media3 Kotlin compile, actual PCM replay, HDR/error, AFR and surface policies." >> "$GITHUB_STEP_SUMMARY"
           echo "NO APK assembled, packaged, signed, uploaded or published. No master merge, secrets or release." >> "$GITHUB_STEP_SUMMARY"
           echo "Physical display modes, Dolby Vision and HDMI ARC/codec output are NOT proven by this source/test-only job." >> "$GITHUB_STEP_SUMMARY"
