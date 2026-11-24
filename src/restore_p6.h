@@ -7,9 +7,14 @@
 #include <ctype.h>
 #include <stdint.h>
 #include <limits.h>
+#include "stream_id_p6.h"
+#define P6_RESTORE_TEXT_CAP 768
+#if NV_STREAM_ID_CAP != 128
+#error Update restore target scanf width with the stream ID capacity
+#endif
 #define P6_RESTORE_FILE "p6-paused-session.txt"
 typedef struct {
-  char task[37], account[96], title[64], type[8], target[64];
+  char task[37], account[96], title[64], type[8], target[NV_STREAM_ID_CAP];
   char fingerprint[65], addon[40], hash[41];
   int profile, season, episode, file;
   long long posMs, durMs;
@@ -61,10 +66,10 @@ static inline int p6_restore_encode(const P6RestoreTicket *r, char *buf, size_t 
 }
 static inline int p6_restore_decode(const char *s, P6RestoreTicket *r) {
   int n = 0;
-  if (!s || !r || strlen(s) >= 640) return 0;
+  if (!s || !r || strlen(s) >= P6_RESTORE_TEXT_CAP) return 0;
   memset(r, 0, sizeof *r);
   // Numeric bounds are checked below; width also bounds conversion input.
-  return sscanf(s, "p6v2 %36s %95s %9d %63s %7s %9d %9d %63s %10lld %10lld %64s %39s %40s %9d %19llu %16llx %1d %16llx %23s%n",
+  return sscanf(s, "p6v2 %36s %95s %9d %63s %7s %9d %9d %127s %10lld %10lld %64s %39s %40s %9d %19llu %16llx %1d %16llx %23s%n",
       r->task, r->account, &r->profile, r->title, r->type, &r->season,
       &r->episode, r->target, &r->posMs, &r->durMs, r->fingerprint, r->addon,
       r->hash, &r->file, &r->bytes, &r->audioTrack, &r->subtitleMode,

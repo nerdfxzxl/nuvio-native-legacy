@@ -170,7 +170,7 @@
 #define FONTEPREF_VALIDADE_S (180LL * 24LL * 3600LL)
 
 typedef struct {
-  char id[24];                      // IMDb do TITULO, sem ":temporada:episodio"
+  char id[64];                      // IMDb do TITULO, sem ":temporada:episodio"
   char provedor[96];
   char trilha[FONTEPREF_TRILHA];
   char bingeGroup[FONTEPREF_BINGE]; // o que o addon declarou; vazio e comum

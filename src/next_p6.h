@@ -1,3 +1,4 @@
+#include "stream_id_p6.h"
 #ifndef NV_NEXT_P6_H
 #define NV_NEXT_P6_H
 #include <stdint.h>
@@ -10,13 +11,13 @@ typedef struct {
   int tem, t, e;
   unsigned geracao, playerGeracao;
   uint64_t sessaoPerfil;
-  char alvo[64];
+  char alvo[NV_STREAM_ID_CAP];
 } P6NextIntent;
 enum { P6_NEXT_NONE, P6_NEXT_CANCEL, P6_NEXT_WAIT, P6_NEXT_CONSUME };
 static inline void p6_next_clear(P6NextIntent *i) { memset(i,0,sizeof *i); }
 static inline int p6_next_begin(P6NextIntent *i,const char *alvo,int t,int e,
                                 unsigned worker,unsigned player,uint64_t perfil) {
-  if(i->tem || !alvo || !*alvo || strlen(alvo)>=sizeof i->alvo ||
+  if(i->tem || !nv_stream_id_valid(alvo) ||
       t<0 || e<1 || !worker || !player) return 0;
   i->tem=1;i->t=t;i->e=e;i->geracao=worker;i->playerGeracao=player;i->sessaoPerfil=perfil;
   snprintf(i->alvo,sizeof i->alvo,"%s",alvo);

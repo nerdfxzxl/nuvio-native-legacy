@@ -1,3 +1,4 @@
+#include "stream_id_p6.h"
 // Tela de reproducao, no formato do NOSSO APP WEB.
 //
 // A referencia mudou: esta variante legacy segue o player do app web (o bloco
@@ -861,7 +862,7 @@ static struct {
   int capturado, explicito, t, e, tvdb, provisoria, frozen;
   unsigned versao;
   uint64_t topologia;
-  char vid[64];
+  char vid[NV_STREAM_ID_CAP];
 } p6EpIdentidade;
 static void p6EpCapturar(const CatItem *c, int t, int e, int explicito) {
   if (!c || t < 0 || e <= 0 || !c->imdb[0]) return;
@@ -1360,7 +1361,7 @@ void player_definir_episodio(int t, int e) {
   // E esta funcao e re-chamada por quadro enquanto o nome do episodio nao
   // chega (player_atualizar), entao "sempre" seria a cada quadro.
   if (c->imdb[0]) {
-    char alvo[64];
+    char alvo[NV_STREAM_ID_CAP];
     cat_id_stream(idxAtual(), epT, epE, alvo, sizeof alvo);
     if (!abrindoSessao && !aberto && stream_n() > 0 && !stream_lista_do_alvo(alvo))
       stream_invalidar("episode changed");
@@ -2041,7 +2042,7 @@ static void alvoStream(char *dst, unsigned tam);
 // player closes and reuses it when the same title opens again. Channels and
 // trailers (never armed) send nothing.
 static void armarTituloGuardado(void) {
-  char alvo[64];
+  char alvo[NV_STREAM_ID_CAP];
   alvo[0] = 0;
   if (!ehCanal()) alvoStream(alvo, sizeof alvo);
   cacheboost_backend_morno(ajustes_retomada_morna());
@@ -2778,20 +2779,20 @@ static void alvoStream(char *dst, unsigned tam) {
   dst[0] = 0;
   if (!c || !c->imdb[0]) return;
   if (epT >= 0 && epE > 0) cat_id_stream(idxAtual(), epT, epE, dst, tam);
-  else snprintf(dst, tam, "%s", c->imdb);
+  else nv_stream_id_copy(dst,tam,c->imdb);
 }
 
 // O FILME EM PARTES (partes.h): com a sessao de partes deste alvo, o que vai
 // ao Continuar assistindo, ao Trakt e a conta e a posicao do FILME INTEIRO,
 // estimada pelo tamanho das partes — o arquivo tocando e so um pedaco dele.
 static int partesVirt(double *vp, double *vd, int *ultima) {
-  char alvo[64];
+  char alvo[NV_STREAM_ID_CAP];
   if (ehCanal() || !comVideo) return 0;
   alvoStream(alvo, sizeof alvo);
   return partes_virtual(alvo, posSeg, duracaoSeg, duracaoCatalogo(), vp, vd, ultima);
 }
 static int partesAtiva(void) {
-  char alvo[64];
+  char alvo[NV_STREAM_ID_CAP];
   if (ehCanal()) return 0;
   alvoStream(alvo, sizeof alvo);
   return partes_sessao_de(alvo);
@@ -2945,7 +2946,7 @@ fim:
 static void lembrarFonte(void) {
   const Stream *s = stream_item(stream_atual());
   const char *url = video_url_atual();
-  char alvo[64];
+  char alvo[NV_STREAM_ID_CAP];
   if (ehCanal() || !comVideo) return;
   alvoStream(alvo, sizeof alvo);
   if (erroFonte || video_falhou()) {
@@ -3066,7 +3067,7 @@ static void fecharSessao(int manter, int trocaFonte) {
   if (trocaFonte) assistiu = chegou = 0;
   // O ARQUIVO DO TORBOX ABERTO PELA LISTA (partes.h), filme ou episodio: o
   // ponto dele para o Retomar voltar no mesmo arquivo; concluido, sai.
-  { PartesPonto pt; char alvoA[64];
+  { PartesPonto pt; char alvoA[NV_STREAM_ID_CAP];
     alvoStream(alvoA, sizeof alvoA);
     if (!jaRetido && comVideo && !ehCanal() && partes_arquivo_de(alvoA, &pt)) {
       if (assistiu && video_terminou()) partes_ponto_esquecer(alvoA, sessao_usuario(), perfis_ativo());
@@ -3393,7 +3394,7 @@ static int p6_checkpoint_restauro(void) {
     t.subtitleTrack = video_p6_track_key(video_legenda(leg));
     if (t.subtitleTrack) t.subtitleMode = 2;
   }
-  char ticket[640];
+  char ticket[P6_RESTORE_TEXT_CAP];
   return p6_restore_encode(&t, ticket, sizeof ticket) && dados_gravar(P6_RESTORE_FILE, ticket);
 }
 #endif
@@ -4024,7 +4025,7 @@ static void durFonteAtualizar(double real, Uint32 agora) {
   // pela lista "Arquivos desta fonte" (um especial, um OVA) foi escolha da
   // pessoa: nem aviso nem pulo (partes.h).
   if (partesAtiva()) return;
-  { char alvoA[64]; alvoStream(alvoA, sizeof alvoA);
+  { char alvoA[NV_STREAM_ID_CAP]; alvoStream(alvoA, sizeof alvoA);
     if (partes_arquivo_de(alvoA, NULL)) return; }
   { unsigned ver = cat_versao_episodios(), rev = cat_revisao();
     if (!durFonteEsperadaOk || durFonteEsperadaVer != ver || durFonteEsperadaRev != rev) {
@@ -4620,7 +4621,7 @@ static int ativarBotao(int i, int repetiu) {
     case PLR_PROXIMO: {
       Uint32 agora = SDL_GetTicks();
       const CatEp *ep;
-      char alvo[64];
+      char alvo[NV_STREAM_ID_CAP];
       if (repetiu || trocaEpisodio ||
           (episodioPedidoMarcado && agora - episodioPedidoEm < 400u)) return 0;
       ep = player_proximo_episodio();

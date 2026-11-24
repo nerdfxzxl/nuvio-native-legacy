@@ -9,9 +9,12 @@ int main(void) {
   memset(t.fingerprint, 'a', 64); memset(t.addon, 'b', 32); memset(t.hash, 'c', 40);
   t.profile = 2; t.season = 1; t.episode = 5; t.file = 3; t.bytes = 10000;
   t.posMs = 450000; t.durMs = 1500000;
-  char buf[640];
+  char buf[P6_RESTORE_TEXT_CAP];
   assert(p6_restore_encode(&t, buf, sizeof buf));
   assert(p6_restore_decode(buf, &out));
+  memset(t.target,'x',sizeof t.target-1); t.target[sizeof t.target-1]=0;
+  assert(p6_restore_encode(&t,buf,sizeof buf) && p6_restore_decode(buf,&out));
+  assert(!strcmp(t.target,out.target));
   t.audioTrack = 0x987654321abcULL; t.subtitleMode = 3;
   strcpy(t.external, "a0123456789abcdef");
   assert(p6_restore_encode(&t, buf, sizeof buf));

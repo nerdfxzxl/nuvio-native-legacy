@@ -1,3 +1,4 @@
+#include "stream_id_p6.h"
 #include "fontecache.h"
 #include "addons.h"
 #include "player.h"
@@ -24,7 +25,7 @@ extern int addons_consultar_sessao(const char *, const char *, const char *, int
 #define FC_TIPO "tv"
 
 typedef struct {
-  char    id[64];
+  char    id[NV_STREAM_ID_CAP];
   char    tipo[16];
   Stream *lista;          // malloc de n * sizeof(Stream); NULL = vaga
   int     n;
@@ -49,7 +50,7 @@ static unsigned vodGeracao;
 // Os pedidos do guia: no maximo dois (um vizinho de cada lado). Substituidos
 // inteiros a cada engatilhar — o foco mudou, os vizinhos de antes nao
 // interessam mais.
-static char   pend[2][64];
+static char   pend[2][NV_STREAM_ID_CAP];
 // A base do addon que publicou cada vizinho, para o prefetch perguntar SO a
 // ele (mesma regra de alvoBase em addons.c; sem ela cada prefetch ia a todos
 // os addons de fonte). Vazia = todos.
@@ -62,7 +63,7 @@ static Uint32 pedidoEm;
 // (o padrao de fioLegCriado), porque um fio terminado que ninguem junta vaza.
 static pthread_t fio;
 static int    vivo, criado;
-static char   emCurso[64];
+static char   emCurso[NV_STREAM_ID_CAP];
 static int    cancelar;
 static int    emCursoVod;
 static FontecacheEscopo preEscopo;
@@ -123,7 +124,7 @@ static void guardarSemTrava(const char *id, const char *tipo, const Stream *list
 }
 
 void fontecache_guardar_sessao(const char *id, const char *tipo, const Stream *lista, int n, uint64_t sessao) {
-  if (!id || !*id || !lista || n <= 0 || !ehCanal(tipo)) return;
+  if (!nv_stream_id_valid(id) || !lista || n <= 0 || !ehCanal(tipo)) return;
   if (n > FONTECACHE_FONTES_MAX) {
     // Fora, e nao cortada: ver a conta em fontecache.h.
     printf("[fontecache] %s: %d fontes passam do teto de %d; nao guardo\n",
@@ -145,7 +146,7 @@ int fontecache_pegar(const char *id, const char *tipo, Stream **lista, int *n) {
   int i, r = FC_NADA;
   if (lista) *lista = NULL;
   if (n) *n = 0;
-  if (!id || !*id || !tipo) return FC_NADA;
+  if (!nv_stream_id_valid(id) || !tipo) return FC_NADA;
   pthread_mutex_lock(&trava);
   i = achar(id, tipo, FC_AGORA());
   if (i >= 0) {
@@ -216,7 +217,7 @@ static int guardarVodSemTrava(const char *id, const char *tipo, const char *orig
   Stream *copia;
   size_t bytes;
   origem = origem ? origem : "";
-  if (!id || !*id || !ehVod(tipo) || !escopo || !lista || n <= 0 ||
+  if (!nv_stream_id_valid(id) || !ehVod(tipo) || !escopo || !lista || n <= 0 ||
       strlen(id) >= sizeof vod[0].resposta.id ||
       strlen(origem) >= sizeof vod[0].origem ||
       (size_t)n > FONTECACHE_VOD_BYTES / sizeof(Stream) ||
@@ -269,7 +270,7 @@ int fontecache_vod_pegar(const char *id, const char *tipo, const char *origem,
   if (lista) *lista = NULL;
   if (n) *n = 0;
   if (idade) *idade = 0;
-  if (!id || !*id || !ehVod(tipo) || !escopo || !lista || !n) return FC_NADA;
+  if (!nv_stream_id_valid(id) || !ehVod(tipo) || !escopo || !lista || !n) return FC_NADA;
   origem = origem ? origem : "";
   pthread_mutex_lock(&trava);
   if (!nv_perfil_sessao_atual(escopo->sessao) || escopo->geracao != vodGeracao) { pthread_mutex_unlock(&trava); return FC_NADA; }
@@ -316,7 +317,7 @@ static int cancelado(void *u) {
 
 static void *prefetch(void *u) {
   Stream *lista = NULL;
-  char id[64], base[600];
+  char id[NV_STREAM_ID_CAP], base[600];
   int n, vodPedido;
   uint64_t sessao;
   FontecacheEscopo escopo;
@@ -369,7 +370,7 @@ static void *prefetch(void *u) {
 // se nao ha fio no ar e o foco ja descansou. Quem chama ja garantiu que a
 // busca principal esta ociosa e que o player nao esta carregando.
 static void tentar(void) {
-  char id[64] = "", base[600] = "";
+  char id[NV_STREAM_ID_CAP] = "", base[600] = "";
   int k, juntar;
   Uint32 agora = FC_AGORA();
   pthread_mutex_lock(&trava);
@@ -407,7 +408,7 @@ static void tentar(void) {
 // nunca ocupa o estado/resultado da busca real de addons.c.
 int fontecache_precarregar_proximo(const char *id, const FontecacheEscopo *escopo) {
   int juntar, ok;
-  if (!id || !*id || strlen(id) >= sizeof emCurso || !escopo || addons_ocupado()) return 0;
+  if (!nv_stream_id_valid(id) || strlen(id) >= sizeof emCurso || !escopo || addons_ocupado()) return 0;
   pthread_mutex_lock(&trava);
   if (vivo) { pthread_mutex_unlock(&trava); return 0; }
   juntar = criado;
@@ -440,8 +441,8 @@ void fontecache_engatilhar(const char *idAntes, const char *baseAntes,
   pthread_mutex_lock(&trava);
   // O de BAIXO primeiro: e para onde a mesma seta que trouxe o foco ate aqui
   // continua indo, e e o CH+ do controle.
-  snprintf(pend[0], sizeof pend[0], "%s", idDepois ? idDepois : "");
-  snprintf(pend[1], sizeof pend[1], "%s", idAntes  ? idAntes  : "");
+  nv_stream_id_copy(pend[0],sizeof pend[0],idDepois);
+  nv_stream_id_copy(pend[1],sizeof pend[1],idAntes);
   snprintf(pendBase[0], sizeof pendBase[0], "%s", baseDepois ? baseDepois : "");
   snprintf(pendBase[1], sizeof pendBase[1], "%s", baseAntes  ? baseAntes  : "");
   pedidoEm = FC_AGORA(); pendSessao = nv_perfil_sessao_ler();

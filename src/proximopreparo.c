@@ -1,3 +1,4 @@
+#include "stream_id_p6.h"
 #include "proximopreparo.h"
 #include "addons.h"
 #include "ajustes.h"
@@ -24,7 +25,7 @@ typedef struct {
   int n, indice, resultado, renovou, bufferTentou, continuar;
   int catalogo, temporada, episodio;
   int transferido; // UI only: the authorized next player now owns this worker
-  char atual[64], alvo[64];
+  char atual[NV_STREAM_ID_CAP], alvo[NV_STREAM_ID_CAP];
   Stream escolhida;
   FonteFalhaSessao *politica;
   Uint32 metadadosEm, resolvidaEm;
@@ -136,7 +137,7 @@ static int despachar(ProximoJob *j, int estado) {
 
 int proximopreparo_agendar(int catalogo, int t, int e, const char *atual,
                           const char *alvo, const FontecacheEscopo *escopo) {
-  if (!atual || !*atual || !alvo || !*alvo || !strcmp(atual, alvo) ||
+  if (!nv_stream_id_valid(atual) || !nv_stream_id_valid(alvo) || !strcmp(atual, alvo) ||
       strlen(atual) >= sizeof ((ProximoJob *)0)->atual ||
       strlen(alvo) >= sizeof ((ProximoJob *)0)->alvo || !escopo || t < 0 || e < 1 ||
       !ajustes_fonte_precarregar() || ajustes_fonte_manual()) return 0;

@@ -1,3 +1,4 @@
+#include "stream_id_p6.h"
 // Ver partes.h para o porque.
 #include "partes.h"
 #include "debrid.h"
@@ -1567,12 +1568,12 @@ int partes_airlock_estado(int *ligado, char *detalhe, unsigned n) {
 
 // ---------------------------------------------------------------- sessao
 
-static char sesAlvo[64];
+static char sesAlvo[NV_STREAM_ID_CAP];
 static PartesLista sesLista;
 static int sesK = -1;
 
 void partes_sessao_iniciar(const char *alvo, const PartesLista *l, int k) {
-  if (!alvo || !*alvo || !l || k < 0 || k >= l->n || l->arq[k].extra || partes_principais(l) < 2) {
+  if (!nv_stream_id_valid(alvo) || !l || k < 0 || k >= l->n || l->arq[k].extra || partes_principais(l) < 2) {
     partes_sessao_parar("not a multi-part file");
     return;
   }
@@ -1612,10 +1613,10 @@ int partes_virtual(const char *alvo, double pos, double dur, double catDur,
 // episodio, e o Retomar volta nele — e nao na fonte que o automatico escolheria
 // (log da TV, 16/10: Horimiya E1 escolhido no pacote, Retomar abriu outra
 // fonte nos 44%).
-static char arqAlvo[64];
+static char arqAlvo[NV_STREAM_ID_CAP];
 static PartesPonto arqPonto;
 void partes_arquivo_definir(const char *alvo, int usenet, int item, int arquivo) {
-  if (!alvo || !*alvo || item <= 0 || arquivo < 0) { arqAlvo[0] = 0; return; }
+  if (!nv_stream_id_valid(alvo) || item <= 0 || arquivo < 0) { arqAlvo[0] = 0; return; }
   snprintf(arqAlvo, sizeof arqAlvo, "%s", alvo);
   arqPonto.usenet = usenet; arqPonto.item = item; arqPonto.arquivo = arquivo; arqPonto.pos = 0;
 }
@@ -1670,9 +1671,9 @@ static void pontoTirar(int i) {
 }
 
 void partes_ponto_guardar(const char *alvo, const char *conta, int perfil, const PartesPonto *p) {
-  char pre[160];
+  char pre[NV_STREAM_ID_CAP + 40];
   int i;
-  if (!alvo || !*alvo || !p || p->item <= 0 || p->arquivo < 0) return;
+  if (!nv_stream_id_valid(alvo) || !p || p->item <= 0 || p->arquivo < 0) return;
   escopo(conta, perfil, alvo, pre, sizeof pre);
   pthread_mutex_lock(&pontoTrava);
   if (!pontosLidos) pontosLer();
@@ -1685,9 +1686,9 @@ void partes_ponto_guardar(const char *alvo, const char *conta, int perfil, const
 }
 
 int partes_ponto_pegar(const char *alvo, const char *conta, int perfil, PartesPonto *p) {
-  char pre[160];
+  char pre[NV_STREAM_ID_CAP + 40];
   int i, ok = 0;
-  if (!alvo || !*alvo || !p) return 0;
+  if (!nv_stream_id_valid(alvo) || !p) return 0;
   escopo(conta, perfil, alvo, pre, sizeof pre);
   pthread_mutex_lock(&pontoTrava);
   if (!pontosLidos) pontosLer();
@@ -1709,9 +1710,9 @@ int partes_ponto_pegar(const char *alvo, const char *conta, int perfil, PartesPo
 }
 
 void partes_ponto_esquecer(const char *alvo, const char *conta, int perfil) {
-  char pre[160];
+  char pre[NV_STREAM_ID_CAP + 40];
   int i;
-  if (!alvo || !*alvo) return;
+  if (!nv_stream_id_valid(alvo)) return;
   escopo(conta, perfil, alvo, pre, sizeof pre);
   pthread_mutex_lock(&pontoTrava);
   if (!pontosLidos) pontosLer();

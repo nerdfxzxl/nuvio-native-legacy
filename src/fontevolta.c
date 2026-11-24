@@ -1,3 +1,4 @@
+#include "stream_id_p6.h"
 #include "fontevolta.h"
 #include "mediaurl.h"
 #include <pthread.h>
@@ -19,7 +20,7 @@
 //                       arranque e nao servem entre sessoes.
 // A URL continua fora do log nos dois modos.
 typedef struct {
-  char alvo[64], conta[96];
+  char alvo[NV_STREAM_ID_CAP], conta[96];
   int perfil;
   Uint32 obtido;       // SDL_GetTicks de quando o link saiu do addon (modo desligado)
   long long obtidoS;   // time(NULL) do mesmo instante (modo ligado)
@@ -62,7 +63,7 @@ static size_t esc(char *d, size_t cap, const char *src) {
   d[k] = 0;
   return k;
 }
-static void desesc(char *d, size_t cap, const char *src) {
+static int desesc(char *d, size_t cap, const char *src) {
   size_t k = 0;
   for (; *src && k + 1 < cap; src++) {
     if (*src == '\\' && src[1]) {
@@ -71,6 +72,7 @@ static void desesc(char *d, size_t cap, const char *src) {
     } else d[k++] = *src;
   }
   d[k] = 0;
+  return !*src;
 }
 static char *campo(char **p) {
   char *ini = *p, *t;
@@ -138,8 +140,8 @@ static void carregarSemTrava(void) {
     p = linha;
     e->obtidoS = atoll(campo(&p));
     e->perfil = atoi(campo(&p));
-    desesc(e->alvo, sizeof e->alvo, campo(&p));
-    desesc(e->conta, sizeof e->conta, campo(&p));
+    if (!desesc(e->alvo,sizeof e->alvo,campo(&p)) || !nv_stream_id_valid(e->alvo) ||
+        !desesc(e->conta,sizeof e->conta,campo(&p))) continue;
     { const char *salva = campo(&p);
       char *url = malloc(strlen(salva) + 1);
       if (!url) continue;
@@ -223,7 +225,7 @@ static void removerSemTrava(int i) {
 void fontevolta_guardar(const char *alvo, const char *conta, int perfil,
                         const Stream *s, Uint32 idadeLink, Uint32 agora) {
   int i;
-  if (!alvo || !*alvo || !conta || !*conta || !s || !s->url[0]) return;
+  if (!nv_stream_id_valid(alvo) || !conta || !*conta || strlen(conta)>=sizeof ent[0].conta || !s || !s->url[0]) return;
   pthread_mutex_lock(&trava);
   if (!garantir()) { pthread_mutex_unlock(&trava); return; }
   carregarSemTrava();

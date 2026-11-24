@@ -53,7 +53,7 @@ void fontepref_configurar(int reusar, long long validadeS, int preferirGrupo, in
 // sobreviver a uma troca de perfil (que rele o arquivo). Cheia, a mais antiga
 // sai; perder uma marca so faz "entre sessoes desligado" esquecer um titulo.
 #define SESSAO_MAX 64
-static struct { int perfil; char id[24]; } sessaoGravou[SESSAO_MAX];
+static struct { int perfil; char id[64]; } sessaoGravou[SESSAO_MAX];
 static int nSessao;
 static void sessaoMarcar(const char *id) {
   int i;
@@ -599,7 +599,7 @@ void fontepref_id_base(const char *id, char *dst, unsigned tam) {
   if (!dst || !tam) return;
   dst[0] = 0;
   if (!id) return;
-  snprintf(dst, tam, "%.*s", (int)idbase_len(id), id);   // "kitsu:41370" inteiro (idbase.h)
+  idbase_copiar_exato(id,dst,tam);
 }
 
 static int achar(const char *base) {
@@ -707,7 +707,7 @@ static void autoCarregar(void) {
     p = linha;
     memset(a, 0, sizeof *a);
     id = campo(&p); quando = campo(&p);
-    if (!id[0]) continue;
+    if (!id[0] || strlen(id)>=64 || strpbrk(id," \t\r\n")) continue;
     snprintf(a->p.id, sizeof a->p.id, "%s", id);
     a->p.quandoS = atoll(quando);
     if (v2) {
@@ -800,7 +800,7 @@ void fontepref_iniciar(void) {
     nivel = campo(&p);
     // Any title id, not only IMDb: an anime opened by its kitsu/mal id used to
     // be remembered for the session and dropped here at the next start.
-    if (!id[0]) continue;
+    if (!id[0] || strlen(id)>=64 || strpbrk(id," \t\r\n")) continue;
     if (!provedor[0]) continue;      // sem provedor a linha nao casa com nada
     { FontePref *f = &tabela[nTab++];
       memset(f, 0, sizeof *f);
@@ -871,7 +871,7 @@ static int venceu(const FontePref *f) {
 }
 
 const FontePref *fontepref_do_titulo(const char *id) {
-  char base[24];
+  char base[64];
   int k;
   // "Reusar a ultima fonte" desligado: a escolha continua gravada (ligar de
   // novo a traz de volta), mas nenhuma leitura a ve.
@@ -899,7 +899,7 @@ const FontePref *fontepref_do_titulo(const char *id) {
 int fontepref_tem(const char *id) { return fontepref_do_titulo(id) != NULL; }
 
 int fontepref_guardar(const char *id, const Stream *s) {
-  char base[24];
+  char base[64];
   int k;
   FontePref novo;
   if (!s || !s->provedor[0]) return 0;
@@ -1054,7 +1054,7 @@ static int escolherManual(const FontePref *p);
 // so se tiver mais de um dia, para nao reescrever o arquivo a cada episodio).
 // Grupo diferente que tocou: substitui — e a release que de fato existe hoje.
 int fontepref_auto_guardar(const char *id, const Stream *s) {
-  char base[24];
+  char base[64];
   int k;
   FontePref novo;
   long long agora = (long long)time(NULL);
@@ -1188,7 +1188,7 @@ static int semPerdaGlobal(int i, int forte, void *ctx) { (void)ctx; return strea
 
 // Lado de leitura: ver melhorAuto.
 static int escolherAuto(const char *id) {
-  char base[24];
+  char base[64];
   const char *como = "";
   int k, melhor;
   if (!carregado) fontepref_iniciar();
@@ -1209,7 +1209,7 @@ static int escolherAuto(const char *id) {
 
 const FontePref *fontepref_memoria(const char *id) {
   const FontePref *p = fontepref_do_titulo(id);
-  char base[24];
+  char base[64];
   int k;
   if (p) return p;
   if (!carregado) fontepref_iniciar();
@@ -1233,7 +1233,7 @@ int fontepref_escolher_lista(const char *id, const Stream *fontes, int total,
   if (!fontes || total < 1) return -1;
   const FontePref *p = fontepref_do_titulo(id);
   if (p) return melhorManual(p, total, itemVetor, (void *)fontes, NULL);
-  char base[24]; fontepref_id_base(id, base, sizeof base);
+  char base[64]; fontepref_id_base(id, base, sizeof base);
   int k = autoAchar(base);
   if (!autoUsavel(k)) return -1;
   return melhorAuto(&tabAuto[k], total, itemVetor, (void *)fontes, semPerda, ctx, NULL);
@@ -1243,7 +1243,7 @@ int fontepref_escolher_lista(const char *id, const Stream *fontes, int total,
 // So na RAM: o bingeGroup e o add-on da fonte que tocou de verdade agora.
 // Lido tambem pelo worker do proximo episodio, dai a trava.
 void fontepref_tocando(const char *id, const Stream *s) {
-  char base[24];
+  char base[64];
   if (!id || !s) return;
   fontepref_id_base(id, base, sizeof base);
   pthread_mutex_lock(&travaTocando);
@@ -1252,7 +1252,7 @@ void fontepref_tocando(const char *id, const Stream *s) {
 }
 
 int fontepref_tocando_de(const char *id, char *provedor, unsigned tamProv, char *binge, unsigned tamBinge) {
-  char base[24];
+  char base[64];
   int ok;
   if (!id || !cfgBinge) return 0;
   fontepref_id_base(id, base, sizeof base);
@@ -1266,7 +1266,7 @@ int fontepref_tocando_de(const char *id, char *provedor, unsigned tamProv, char 
 
 static int bingeTocando(const char *id, int total, const Stream *(*item)(int, void *), void *ctx,
                         int (*podeTocar)(int, int, void *), void *ctxPode) {
-  char base[24];
+  char base[64];
   FontePref p;
   int i, melhor = -1, melhorPts = -1;
   if (!id || !cfgBinge) return -1;
