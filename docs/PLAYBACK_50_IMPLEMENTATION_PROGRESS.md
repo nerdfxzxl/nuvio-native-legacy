@@ -28,7 +28,7 @@
 | P3 | Selector/reload/recovery | SOURCE ACCEPTED | 17 source/test commits through `03acb8861d583ef7fec6c10d65673399bd3e7343` | Final review below, hardware pending |
 | P4 | Buffer/network/cache/seek | **SOURCE ACCEPTED — Q18 explicitly deferred; P7/P8 full integration/device gates** | P4-D/A/B, P4-C and test-only CI commits; exact SHAs below | Actual API35/Media3 Kotlin compile PASS; 18/18 P4-C contracts; 36 proof checks; disk integrity/session JVM PASS; **10/10 Robolectric real Media3 cache adapter regressions**; native VOD host PASS; no APK or TV verification |
 | P5 | Fidelity/HDR/surface/audio route | SOURCE ACCEPTED — P5-A/B/C/D | See final P5 acceptance report | Exact CI #45344027529 SUCCESS; full link and physical verification pending |
-| P6 | Background/credits/post-play | PARTIAL — NOT SOURCE ACCEPTED | Updated source/test/CI input `c0d83b8264091c0d8005e510b4095e7672f335dd` | Local post-play 17/17, watched 23/23 and Kotlin intent 33/33 PASS; updated CI and integration gates pending |
+| P6 | Background/credits/post-play | PARTIAL — NOT SOURCE ACCEPTED | Review source/test/CI input `79ca121a541c5d8d2f348cd3e0f126ecef0e698d` | Exact local watched 35/35 PASS + UBSan PASS; latest test-only CI and identified source gates pending |
 | P7 | Integration/regression, post-#134 | NOT STARTED | — | — |
 | P8 | One cached APK + device tests | BLOCKED — NEEDS BUILD AUTHORIZATION | — | — |
 
@@ -41,7 +41,7 @@
 
 ## Immediate next action
 
-Verify the latest P6 test-only CI input and complete remaining Q45/CW/sync, lifecycle/preload and cleanup source acceptance gates. See the continuation in PLAYBACK_50_P6_SOURCE_ACCEPTANCE.md. Do not start P7 or build an APK.
+Verify exact P6 review CI and resolve only the outstanding source gates in the latest dedicated PLAYBACK_50_P6_SOURCE_ACCEPTANCE.md review. P7 and APK are not authorized.
 
 - **2026-11-22 / P2 source checkpoint:** Added reusable native animated loading arc, source-scoped Media3 startup phase events, measured byte-rate and P2P engine telemetry, first-frame gated fades and native tests. This is NOT the complete P2 acceptance gate; see appended P2 checkpoint.
 - **2026-11-22 / P1 source implementation:** Completed 13 scoped source commits, identity harness compilation and 32/32 source assertions; see detailed checkpoint. No GitHub Actions, APK or workflow changes.
@@ -998,3 +998,8 @@ Verified starting HEAD e8b523c775c93cf2d89d71506d730f410bf64c0e. Production/test
 ## P6 continuation — 2026-11-24
 
 Starting HEAD `e436435bc75c74bc6093a7524e17f84fb24c8d5f`; new source/test/CI input `c0d83b8264091c0d8005e510b4095e7672f335dd`. Q45 watched marking moved into playback with strict chapter provenance, configured fallback, viewing proof and journal/manual override guards; Q44 delayed-open pause ownership and Q20/Q50 background cancellation strengthened. Local exact helper tests 73/73 PASS. New native chapter/journal/progress tests and earlier Android regression harness scheduled through test-only workflow path update. CI result not independently verified. See [P6 continuation acceptance report](PLAYBACK_50_P6_SOURCE_ACCEPTANCE.md). P6 remains partial; P7/P8 not authorized; no APK.
+
+
+## P6 dedicated review checkpoint — 2026-11-24
+
+Verified starting HEAD `700b242bc53a40e9d5dbdbf9e0d5e0a696f81d8b`; exact production/test-only input `79ca121a541c5d8d2f348cd3e0f126ecef0e698d`, 25 commits ahead / zero behind / 21 changed files. Corrected Next target lost on cold source reset, stale transport after Home, focus-loss/real background distinction, confirmed checkpoint/preview cancellation, unique viewed intervals, resume/CW/actual EOF separation, and old post-play state on replacement. Exact Git blob-matched C helper tests **35/35 PASS**, UBSan **35/35 PASS**. Prior CI owner-reported success, new CI not verified. See [dedicated requirement-level review](PLAYBACK_50_P6_SOURCE_ACCEPTANCE.md#dedicated-source-acceptance-review--2026-11-24-latest-verdict) for the six remaining gates. P6 PARTIAL; P7/P8 not authorized. No APK.
