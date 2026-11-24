@@ -371,6 +371,8 @@ void cat_zerar_progresso(int indice);
 // conhecido (Trakt, conta, acao da pessoa) manda; sem ele, progresso >= 90 so
 // em filme. O(1), pode ser chamada por cartaz em todo quadro.
 int cat_visto(const CatItem *c);
+int cat_p6_retomavel(const CatItem *c);
+int cat_retomavel(const CatItem *c, int limite);
 // A fronteira efetiva de conta/perfil troca o mapa em O(HIST_BALDES), uma
 // vez; repetir a mesma identidade conserva provas locais e de outras fontes.
 void cat_historico_contexto(const char *usuario, int perfil);
