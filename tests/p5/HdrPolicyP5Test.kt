@@ -18,5 +18,14 @@ fun main() {
     checkMode("HDR10", 0, false, false, true, false)
     checkMode("HLG", 0, false, false, false, true)
     checkMode("none", 0, false, false, false, false)
-    println("P5 Q37 HDR source-policy Kotlin replay: 10/10 PASS")
+    val p = HdrPolicyP5
+    check(p.failure(4001, true, false) == p.FAIL_DECODER)
+    check(p.failure(4003, true, false) == p.FAIL_DECODER)
+    check(p.failure(4004, true, false) == p.FAIL_FORMAT)
+    check(p.failure(4005, true, false) == p.FAIL_FORMAT)
+    check(p.failure(6008, false, false) == p.FAIL_DRM)
+    check(p.failure(4001, false, true) == 0)
+    check(p.failure(6008, false, true) == 0)
+    check(p.failure(2002, false, false) == 0)
+    println("P5 Q37/Q39 HDR and video failure production Kotlin replay: 18/18 PASS")
 }

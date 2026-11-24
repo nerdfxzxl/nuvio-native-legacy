@@ -98,6 +98,7 @@ object NvPlayer {
     private const val EV_SO_AUDIO = 14  // READY with selected audio and no video tracks
     private const val EV_SUPERFICIE_INVALIDADA = 15 // same session; rebuilt hardware plane
     private const val EV_AUDIO_SAIDA_INCOMPATIVEL = 16 // P5-A: route cannot faithfully carry selected audio
+    private const val EV_VIDEO_FALHA = 17 // P5-B: user-owned terminal video error
 
     private const val TELA_W = 1920   // coordenadas de layout do app
     private const val TELA_H = 1080
@@ -1948,7 +1949,10 @@ object NvPlayer {
             superficie?.let {
                 if (h === it.holder && player != null && atual(sessao)) {
                     recuperarJanela(it)
-                    invalidarQuadroSuperficie()
+                    // Audio-only playback has no video-frame dependency.
+                    if (quadroVisto || player?.currentTracks?.groups?.any { g ->
+                            g.type == C.TRACK_TYPE_VIDEO
+                        } == true) invalidarQuadroSuperficie()
                 }
             }
             destruirIni = SystemClock.elapsedRealtime()
@@ -2225,7 +2229,8 @@ object NvPlayer {
             superficiePos = p.currentPosition
             val pedido = pedidoAtivo
             val origem = sessao
-            fun dono() = RecriaHdr.ownsTransition(origem, sessao, pedido, pedidos.get(),
+            // A background pause renews the request but intentionally retains this session.
+            fun dono() = RecriaHdr.ownsTransition(origem, sessao, pedidoAtivo, pedidos.get(),
                 player === p, superficie === sv)
             // Keep the existing hardware plane until a bounded best-effort
             // SDR snapshot is ready; HDR/DV go directly through the original
@@ -2548,7 +2553,7 @@ object NvPlayer {
                     return
                 }
                 // A repeated detach failure is terminal, not an infinite wait.
-                ev(EV_ERRO, error.errorCode, C.TRACK_TYPE_VIDEO)
+                ev(EV_VIDEO_FALHA, HdrPolicyP5.FAIL_SURFACE, error.errorCode)
                 return
             }
             val tipo = if (exo?.type == ExoPlaybackException.TYPE_RENDERER && p != null &&
@@ -2570,6 +2575,28 @@ object NvPlayer {
             val cedo = SystemClock.elapsedRealtime() - abriuEm < RETRY_DECODER_MS
             val decoder = error.errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED ||
                 error.errorCode == PlaybackException.ERROR_CODE_DECODING_FAILED
+            val videoFailure = HdrPolicyP5.failure(error.errorCode, tipo == C.TRACK_TYPE_VIDEO,
+                tipo == C.TRACK_TYPE_AUDIO)
+            if (videoFailure != 0) {
+                // Media3 has already tried its compatible decoder list. One same-player
+                // resource retry may help a transient init/decode failure; no new URL,
+                // track-selection policy, cache identity, or source-quality choice.
+                if (videoFailure == HdrPolicyP5.FAIL_DECODER && decoder && cedo && !retentou && p != null) {
+                    retentou = true
+                    invalidarQuadroSuperficie()
+                    principal.postDelayed({
+                        if (atual(minha) && player === p) {
+                            try { p.prepare() } catch (_: Exception) {
+                                ev(EV_VIDEO_FALHA, videoFailure, error.errorCode)
+                            }
+                        }
+                    }, 400)
+                    return
+                }
+                p?.pause()
+                ev(EV_VIDEO_FALHA, videoFailure, error.errorCode)
+                return
+            }
             if (decoder && cedo && !retentou) {
                 retentou = true
                 val u = urlAtual

@@ -436,6 +436,7 @@ static NvReconexao recon;
 static BufAvanco reconBufferAvanco; // actual buffer progress vetoes false stalls
 static int reconProxima, reconPermitida, reconIniciou;
 static volatile int reconErroPend, reconErroCod, reconErroVideo;
+static volatile int terminalVideoP5B;
 static int reconAudio = -1, reconLeg = -1;
 static volatile int reconFaixasPend;
 static int reconBuscarMs = -1;
@@ -948,6 +949,11 @@ JNIEXPORT void JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativeEvento(JNIEn
     case EV_AUDIO_SEM_DECODER: semDecoderAudio = 1; break;
     case 16: /* EV_AUDIO_SAIDA_INCOMPATIVEL: current route or actual sink rejected. */
       semDecoderAudio = 1; tocando = 0; break;
+    case 17: /* EV_VIDEO_FALHA: terminal video capability/renderer error. */
+      reconErroCod = b; reconErroVideo = 1; reconErroPend = 0;
+      terminalVideoP5B = a; tocando = 0; bufferando = 0; falhou = 1;
+      snprintf(erroTxt, sizeof erroTxt, "%d video playback error:%d", b, a);
+      break;
     case EV_CARGA_FASE: if (a >= 0 && a <= 3) cargaFase = a; break;
     case EV_SO_AUDIO: if (a == 1) somenteAudio = 1; break;
     case EV_LIVE_SEGMENT:
@@ -988,7 +994,7 @@ static int abrirSessao(int inicioMs, int fracao, int mesmaFonte) {
   cargaFase = somenteAudio = 0;
   velEnviada = 100;
   largura = altura = durMs = posMs = posNativoMs = 0; bufferando = 1; bufferDesde = SDL_GetTicks();
-  tocandoDesde = 0; semDecoderAudio = 0; erroTxt[0] = 0; reconErroVideo = 0;
+  tocandoDesde = 0; semDecoderAudio = 0; erroTxt[0] = 0; reconErroVideo = 0; terminalVideoP5B = 0;
   pausaPedida = pausaVista = 0;
   hdrAtual = "none"; dvAtual = atmosAtual = 0;
   pthread_mutex_lock(&travaStats); statsValido = 0;
@@ -1196,7 +1202,7 @@ int video_recarregar(void) {
   if (pausado) video_pausar(1);
   return 1;
 }
-int video_audio_retry(void) {
+static int retryMesmoSourceP5(void) {
   /* Explicit Retry on Q36's audio card; never choose a different URL/release.
    * This calls abrirSessao, which advances sessao before any old callbacks
    * can be applied and retains the Kotlin source identity. The UI allows at
@@ -1209,6 +1215,9 @@ int video_audio_retry(void) {
   reconBuscarMs = -1; recarregarPausa = -1; reconPausado = 0;
   return abrirSessao(posicao, 0, 1);
 }
+int video_audio_retry(void) { return retryMesmoSourceP5(); }
+int video_video_retry(void) { return terminalVideoP5B && retryMesmoSourceP5(); }
+int video_erro_video_p5b(void) { return ativo ? terminalVideoP5B : 0; }
 int  video_reconectando(void) {
   return nv_recon_ativa(&recon) && (recon.pendente || !prontoLoad) ? recon.tentativa : 0;
 }
@@ -1216,7 +1225,7 @@ int  video_reconectando(void) {
 void video_bombear(void) {
   // Once Q36's terminal audio error takes over, no watchdog may silently
   // launch another player generation. Only the user-owned Retry may reopen it.
-  if (semDecoderAudio) {
+  if (semDecoderAudio || terminalVideoP5B) {
     reconErroPend = 0; recarregarPausa = -1;
     nv_recon_zerar(&recon);
     return;
@@ -1332,7 +1341,7 @@ void video_parar(void) {
   novaRetomada(-1);
   capmkv_zerar();   // fio de capitulos em voo nao alimenta o proximo titulo
   nv_recon_zerar(&recon);
-  reconErroPend = 0; reconErroVideo = 0; reconFaixasPend = 0; reconBuscarMs = -1; reconPausado = 0;
+  reconErroPend = 0; reconErroVideo = 0; terminalVideoP5B = 0; reconFaixasPend = 0; reconBuscarMs = -1; reconPausado = 0;
   recarregarPausa = -1;
   if (ativo) {
     // Troca de episodio: o consumidor ja destacou o proximo buffer. Soltar

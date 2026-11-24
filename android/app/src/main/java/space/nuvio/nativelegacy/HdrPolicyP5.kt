@@ -10,6 +10,26 @@ package space.nuvio.nativelegacy
 internal object HdrPolicyP5 {
     data class Decision(val mode: String, val dolbyVision: Int)
 
+    // Stable cross-language P5-B reasons, distinct from Media3's error code.
+    const val FAIL_DECODER = 1
+    const val FAIL_FORMAT = 2
+    const val FAIL_DRM = 3
+    const val FAIL_SURFACE = 4
+    const val FAIL_OUTPUT = 5
+
+    /** Media3 1.8 PlaybackException codes; keep audio renderer errors separate. */
+    fun failure(code: Int, videoRenderer: Boolean, audioRenderer: Boolean): Int {
+        if (audioRenderer) return 0
+        if (code in 6000..6999) return FAIL_DRM
+        if (!videoRenderer) return 0
+        return when (code) {
+            4004, 4005 -> FAIL_FORMAT
+            4001, 4002, 4003, 4006 -> FAIL_DECODER
+            else -> FAIL_DECODER // renderer evidence, not an inferred network failure
+        }
+    }
+
+
     fun decide(
         dolbyVisionMime: Boolean,
         dolbyVisionDecoder: Boolean,

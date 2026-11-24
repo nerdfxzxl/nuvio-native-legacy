@@ -2640,6 +2640,10 @@ static void desfazerAntecipada(const char *porque) {
   player_definir_tentativa(antPreTent, antPreTent ? VOD_FONTE_MAX_TENTATIVAS : 0);
 }
 static void vigiarAntecipada(void) {
+#ifdef NV_ANDROID
+  /* Q39: terminal video failures belong to the native Retry/Change Stream/Back card. */
+  if (!player_id_canal()[0] && video_erro_video_p5b()) return;
+#endif
   int est = FA_NADA, i;
   if (fonteFalha) return;
   if (aguardandoFonte != 2 || fonteEscolhida != -2 || player_id_canal()[0] ||
@@ -3126,6 +3130,10 @@ static void vigiarPartes(void) {
 // Vence -> o erro de fonte do player, com "A fonte nao respondeu" e as saidas
 // de sempre. O automatico ja tem o proprio prazo (tentarProximaFonteVOD).
 static void vigiarAberturaManual(void) {
+#ifdef NV_ANDROID
+  /* Q39: terminal video failures belong to the native Retry/Change Stream/Back card. */
+  if (!player_id_canal()[0] && video_erro_video_p5b()) return;
+#endif
   FontevoltaSinais g;
   Uint32 desde;
   registrarFonteVODTocando();
@@ -3362,6 +3370,10 @@ static void guardarPosicaoFonteFalha(void) {
 }
 // One fresh addon query per interrupted VOD; silent workers have a deadline.
 static void renovarVodInterrompido(void) {
+#ifdef NV_ANDROID
+  /* Q39: terminal video failures belong to the native Retry/Change Stream/Back card. */
+  if (!player_id_canal()[0] && video_erro_video_p5b()) return;
+#endif
   if (vodRenovandoDesde) {
     if ((Sint32)(SDL_GetTicks() - vodRenovandoDesde) >= 30000) {
 #ifdef NV_ANDROID
@@ -3467,6 +3479,10 @@ static void abrirFonteManualDireta(const Stream *s) {
   if (!fonteManualDesde) fonteManualDesde = 1;
 }
 static void tentarProximaFonteVOD(void) {
+#ifdef NV_ANDROID
+  /* Q39: terminal video failures belong to the native Retry/Change Stream/Back card. */
+  if (!player_id_canal()[0] && video_erro_video_p5b()) return;
+#endif
   Uint32 desde;
   if (!fonteVODAutomatica || player_id_canal()[0] || !player_aberto() ||
       player_quer_sair() || aguardandoFonte != 0 || !fonteVODDesde) return;

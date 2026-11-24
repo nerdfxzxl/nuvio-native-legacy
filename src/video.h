@@ -420,6 +420,8 @@ int  video_legenda_atual(void);   // -1 = desligada
 // Q36: one explicit same-source audio retry, preserving track indices and generation.
 // Caller bounds the retry count; no addon/source substitution or auto loop.
 int video_audio_retry(void);
+int video_video_retry(void); /* user-owned Q39 retry of the exact selected source */
+int video_erro_video_p5b(void); /* terminal Q37/Q39 failure reason, 0 if none */
 // Capture only compatible native tracks when explicitly switching source.
 void video_p1_guardar_faixas_manual(void);
 #endif
