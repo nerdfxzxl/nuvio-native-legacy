@@ -1000,10 +1000,7 @@ JNIEXPORT void JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativeEvento(JNIEn
       terminalVideo(a, b);
       break;
     case 18: /* EV_VIDEO_RECOVERY: one same-generation decoder recovery. */
-      if (!videoerro_p5b_retry_owned(&retryVideoP5B, sessao)) {
-        videoerro_p5b_retry_arm(&retryVideoP5B, a > 0 ? a : 1);
-        videoerro_p5b_retry_bind(&retryVideoP5B, sessao, SDL_GetTicks());
-      }
+      videoerro_p5b_retry_begin_current(&retryVideoP5B, sessao, SDL_GetTicks(), a > 0 ? a : 1);
       reconErroPend = 0; tocando = 0;
       quadroSuperficie = superficieEstavel = 0;
       break;
