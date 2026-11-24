@@ -116,7 +116,9 @@ jobs:
           "${g[@]}" --dry-run | tee "$RUNNER_TEMP/p6-kotlin-graph.log"
           # Check task graph before any compilation. Never assemble/package an APK
           # or invoke external native builds in this test-only workflow.
-          if grep -Ei '^:[^ ]*:(assemble[^ ]*|package(Debug|Release)([^ ]*)?|bundle[^ ]*|sign[^ ]*|install(Debug|Release)|externalNativeBuild[^ ]*|buildCMake[^ ]*|configureCMake[^ ]*) SKIPPED' "$RUNNER_TEMP/p6-kotlin-graph.log"; then
+          # AGP resource packaging is a compile prerequisite, not APK packaging.
+          # Exempt only this exact resource task; retain the fail-closed APK/native guard.
+          if grep -Ei '^:[^ ]*:(assemble[^ ]*|package(Debug|Release)([^ ]*)?|bundle[^ ]*|sign[^ ]*|install(Debug|Release)|externalNativeBuild[^ ]*|buildCMake[^ ]*|configureCMake[^ ]*) SKIPPED' "$RUNNER_TEMP/p6-kotlin-graph.log" | grep -Fxv ':app:packageDebugResources SKIPPED'; then
             echo '::error::Unexpected APK/native build task; refusing to run.'
             exit 1
           fi
