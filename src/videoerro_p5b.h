@@ -20,4 +20,28 @@ static inline int videoerro_p5b_evento_aceito(int ativo, unsigned geracao,
                                              unsigned atual, int terminal) {
   return ativo && geracao != 0u && geracao == atual && terminal == 0;
 }
+/* Explicit same-source retry retains its failure owner until real visual
+ * handoff. Generation zero denotes an armed but not yet opened retry. */
+typedef struct { int motivo; unsigned geracao, desde; } NvVideoRetryP5B;
+static inline void videoerro_p5b_retry_clear(NvVideoRetryP5B *s) {
+  s->motivo = 0; s->geracao = s->desde = 0;
+}
+static inline void videoerro_p5b_retry_arm(NvVideoRetryP5B *s, int motivo) {
+  videoerro_p5b_retry_clear(s); s->motivo = motivo;
+}
+static inline void videoerro_p5b_retry_bind(NvVideoRetryP5B *s, unsigned g, unsigned now) {
+  if (s->motivo > 0) { s->geracao = g; s->desde = now; }
+}
+static inline int videoerro_p5b_retry_owned(const NvVideoRetryP5B *s, unsigned g) {
+  return s->motivo > 0 && g != 0u && s->geracao == g;
+}
+static inline int videoerro_p5b_retry_fail(NvVideoRetryP5B *s, unsigned g) {
+  if (!videoerro_p5b_retry_owned(s, g)) return 0;
+  int reason = s->motivo; videoerro_p5b_retry_clear(s); return reason;
+}
+static inline int videoerro_p5b_retry_handoff(NvVideoRetryP5B *s, unsigned g,
+                                              int frame, int stable) {
+  if (!videoerro_p5b_retry_owned(s, g) || !frame || !stable) return 0;
+  videoerro_p5b_retry_clear(s); return 1;
+}
 #endif
