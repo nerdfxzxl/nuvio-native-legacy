@@ -1766,9 +1766,18 @@ object NvPlayer {
             confirmarJanela(sv, pedido)
         }
     }
-    @JvmStatic fun escolher(tipo: Int, idx: Int) {
+    @JvmStatic fun escolher(tipo: Int, idx: Int, geracao: Int) {
         val pedido = pedidos.get()
-        principal.post { if (pedido == pedidos.get()) escolherMain(tipo, idx) }
+        principal.post {
+            val latest = pedidos.get()
+            if (pedido != latest) return@post
+            // Track ordinals only belong to the opening that published them.
+            // The request counter can already refer to a queued replacement
+            // while the old native callback is still returning.
+            if ((tipo == 0 || tipo == 1) &&
+                !trackCommandOwnedP7(pedido, latest, pedidoAtivo, geracao, geracaoNative)) return@post
+            escolherMain(tipo, idx)
+        }
     }
 
     // --- abrir / liberar ------------------------------------------------------

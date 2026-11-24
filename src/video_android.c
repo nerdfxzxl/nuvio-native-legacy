@@ -91,7 +91,7 @@ static int resolverMetodos(JNIEnv *env) {
   mVolume   = (*env)->GetStaticMethodID(env, gCls, "volume", "(I)V");
   mJanela   = (*env)->GetStaticMethodID(env, gCls, "janela", "(IIIII)V");
   mJanelaPronta = (*env)->GetStaticMethodID(env, gCls, "janelaPronta", "()Z");
-  mEscolher = (*env)->GetStaticMethodID(env, gCls, "escolher", "(II)V");
+  mEscolher = (*env)->GetStaticMethodID(env, gCls, "escolher", "(III)V");
   if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); return 0; }
   mHttpConfig = (*env)->GetStaticMethodID(env, gCls, "httpConfig", "(III)V");
   if ((*env)->ExceptionCheck(env)) { (*env)->ExceptionClear(env); mHttpConfig = NULL; }
@@ -369,7 +369,7 @@ void video_precarregar_adotar(unsigned token) { preparoAdotar = token <= INT_MAX
 static void ligarTap(int on) {
   JNIEnv *env = ambiente();
   if (!env) return;
-  (*env)->CallStaticVoidMethod(env, gCls, mEscolher, (jint)3, (jint)(on ? 1 : 0));
+  (*env)->CallStaticVoidMethod(env, gCls, mEscolher, (jint)3, (jint)(on ? 1 : 0), (jint)0);
   fimChamada(env);
 }
 
@@ -481,7 +481,9 @@ static char erroTxt[64];
 static int erroDeRede(int cod) { return (cod >= 2000 && cod <= 2002) ||
                                       (cod >= 2004 && cod <= 2006) || cod == 2008; }
 
-void video_escolher_audio(int i);
+// Internal helpers require travaEvento; public UI entry points take it.
+static void escolherAudioTravado(int i);
+static void escolherLegendaTravada(int i);
 
 // Source-quality ranking uses genuine Android Format metadata where present.
 // Format.codec alone does not determine fidelity, and output compatibility
@@ -528,7 +530,7 @@ static void escolherAudioPreferido(void) {
   }
   if (k < 0 || k == audioAtual) return;
   printf("[video] audio pela ordem (%s): %s (faixa %d de %d)\n", audioesc_origem_nome(o), faixaAudio[k].rotulo, k + 1, nAudio);
-  video_escolher_audio(k);
+  escolherAudioTravado(k);
 }
 
 // --- natives (Kotlin -> C) ----------------------------------------------------
@@ -679,10 +681,10 @@ static void publicarFaixas(jint selAudio) {
   fflush(stdout);
   // Recarregar de reconexao: devolve as faixas que a pessoa tinha.
   if (reconFaixasPend) {
-    if (!releitura && reconLeg >= -1 && reconLeg < nLeg) video_escolher_legenda(reconLeg);
+    if (!releitura && reconLeg >= -1 && reconLeg < nLeg) escolherLegendaTravada(reconLeg);
     if (nAudio > 0) {
       reconFaixasPend = 0;
-      if (reconAudio >= 0 && reconAudio < nAudio) video_escolher_audio(reconAudio);
+      if (reconAudio >= 0 && reconAudio < nAudio) escolherAudioTravado(reconAudio);
     }
     printf("[video] reconexao: faixas devolvidas (audio %d, legenda %d)\n", reconAudio, reconLeg);
     fflush(stdout);
@@ -700,7 +702,7 @@ static void publicarFaixas(jint selAudio) {
         match = i;
       }
       if (match >= 0) {
-        video_escolher_audio(match);
+        escolherAudioTravado(match);
         validarAudioSelecionadoP5A();
         return;
       }
@@ -723,7 +725,7 @@ static void publicarFaixas(jint selAudio) {
         if (pontos > pontuacao) { melhor = k; pontuacao = pontos; empatou = 0; }
         else if (pontos == pontuacao) empatou = 1;
       }
-      if (melhor >= 0 && !empatou) { video_escolher_audio(melhor); restaurouAudio = 1; }
+      if (melhor >= 0 && !empatou) { escolherAudioTravado(melhor); restaurouAudio = 1; }
     }
     if (p1LegValida && !releitura) {
       int unica = -1;
@@ -734,7 +736,7 @@ static void publicarFaixas(jint selAudio) {
         if (unica >= 0) { unica = -1; break; }
         unica = k;
       }
-      if (unica >= 0) video_escolher_legenda(unica);
+      if (unica >= 0) escolherLegendaTravada(unica);
     }
     p1AudioValido = p1LegValida = 0;
   }
@@ -1854,8 +1856,8 @@ void video_p1_guardar_faixas_manual(void) {
   p1FaixasPendentes = p1AudioValido || p1LegValida;
 }
 
-void video_escolher_audio(int i) {
-  if (i < 0 || i >= nAudio) return;
+static void escolherAudioTravado(int i) {
+  if (!ativo || i < 0 || i >= nAudio) return;
   if (!faixaAudio[i].decodifica || !faixaAudio[i].saidaFiel) {
     semDecoderAudio = 1; // Manual choice is not permission for silent output.
     return;
@@ -1865,21 +1867,31 @@ void video_escolher_audio(int i) {
   {
     JNIEnv *env = ambiente();
     if (!env) return;
-    (*env)->CallStaticVoidMethod(env, gCls, mEscolher, (jint)0, (jint)faixaAudio[i].numero);
+    (*env)->CallStaticVoidMethod(env, gCls, mEscolher, (jint)0, (jint)faixaAudio[i].numero, (jint)sessao);
     fimChamada(env);
   }
 }
-void video_escolher_legenda(int i) {
-  if (i >= nLeg) return;
+static void escolherLegendaTravada(int i) {
+  if (!ativo || i < -1 || i >= nLeg) return;
   legAtual = i;
   if (travaLeg) { SDL_LockMutex(travaLeg); legTexto[0] = 0; legAte = 0; SDL_UnlockMutex(travaLeg); }
   {
     JNIEnv *env = ambiente();
     if (!env) return;
     // -1 desliga a legenda no Kotlin.
-    (*env)->CallStaticVoidMethod(env, gCls, mEscolher, (jint)1, (jint)(i >= 0 ? faixaLeg[i].numero : -1));
+    (*env)->CallStaticVoidMethod(env, gCls, mEscolher, (jint)1, (jint)(i >= 0 ? faixaLeg[i].numero : -1), (jint)sessao);
     fimChamada(env);
   }
+}
+void video_escolher_audio(int i) {
+  pthread_mutex_lock(&travaEvento);
+  escolherAudioTravado(i);
+  pthread_mutex_unlock(&travaEvento);
+}
+void video_escolher_legenda(int i) {
+  pthread_mutex_lock(&travaEvento);
+  escolherLegendaTravada(i);
+  pthread_mutex_unlock(&travaEvento);
 }
 int  video_legenda_nativa(char *d, int t) {
   if (!d || t < 2) return 0;
@@ -1900,7 +1912,7 @@ void video_legenda_estilo(const VideoLegendaEstilo *e) {
   {
     JNIEnv *env = ambiente();
     if (!env) return;
-    (*env)->CallStaticVoidMethod(env, gCls, mEscolher, (jint)2, (jint)e->atrasoMs);
+    (*env)->CallStaticVoidMethod(env, gCls, mEscolher, (jint)2, (jint)e->atrasoMs, (jint)0);
     fimChamada(env);
   }
 }

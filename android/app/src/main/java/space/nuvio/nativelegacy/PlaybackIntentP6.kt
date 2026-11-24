@@ -48,3 +48,7 @@ internal class PlaybackIntentP6 {
         hold = false
     }
 }
+
+/** Track ordinals are not portable across native openings or pending Kotlin requests. */
+internal fun trackCommandOwnedP7(posted: Int, latest: Int, active: Int, owner: Int, activeOwner: Int): Boolean =
+    posted == latest && posted == active && owner != 0 && owner == activeOwner
