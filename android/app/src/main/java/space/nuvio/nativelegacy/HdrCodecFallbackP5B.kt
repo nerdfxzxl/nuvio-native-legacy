@@ -35,6 +35,7 @@ internal object HdrCodecFallbackP5B {
 
     class Factory(private val delegate: MediaCodecAdapter.Factory,
                   private val displayHdr10: () -> Boolean,
+                  private val displayDv: () -> Boolean,
                   private val report: (VideoConfig?) -> Unit) : MediaCodecAdapter.Factory {
         override fun createAdapter(configuration: MediaCodecAdapter.Configuration): MediaCodecAdapter {
             val f = configuration.format
@@ -46,10 +47,33 @@ internal object HdrCodecFallbackP5B {
             val proof = if (alternate) {
                 validateAlternate(configuration)
                 Proof()
-            } else null
+            } else {
+                // Reject incompatible native DV before initialization. Media3
+                // can then try its remaining compatible same-source candidates,
+                // rather than accepting an invalid native DV frame first.
+                if (f.sampleMimeType == MimeTypes.VIDEO_DOLBY_VISION) validateNativeDolby(info, f)
+                if (info.softwareOnly && !info.isFormatSupported(f))
+                    throw IOException("Software decoder cannot preserve the actual video format")
+                null
+            }
             val codec = delegate.createAdapter(configuration)
             report(VideoConfig(info, f, proof))
             return if (proof != null) ObservedBase(codec, proof) else codec
+        }
+
+        private fun validateNativeDolby(info: MediaCodecInfo, f: Format) {
+            val profile = CodecSpecificDataUtil.getCodecProfileAndLevel(f)
+                ?: throw IOException("Unrecognized Dolby Vision profile/level")
+            val caps = info.capabilities ?: throw IOException("Unknown Dolby Vision decoder capabilities")
+            val vc = caps.videoCapabilities ?: throw IOException("Unknown Dolby Vision video capabilities")
+            val size = f.width > 0 && f.height > 0 &&
+                if (f.frameRate.isFinite() && f.frameRate > 0f)
+                    vc.areSizeAndRateSupported(f.width, f.height, f.frameRate.toDouble())
+                else vc.isSizeSupported(f.width, f.height)
+            if (!HdrPolicyP5.compatibleDolby(displayDv(),
+                    caps.profileLevels.any { it.profile == profile.first && it.level >= profile.second }, size) ||
+                !info.isFormatSupported(f))
+                throw IOException("Native Dolby Vision decoder/output cannot preserve this format")
         }
 
         private fun validateAlternate(c: MediaCodecAdapter.Configuration) {
