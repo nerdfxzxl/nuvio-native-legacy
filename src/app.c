@@ -2432,6 +2432,7 @@ static void prepararAoAbrir(void) {
 // o worker independente termina, o episodio atual continua sendo o dono do
 // video/progresso; nunca resolve a mesma escolha outra vez no caminho frio.
 static struct { int tem, titulo, t, e, apontar; unsigned geracao; uint64_t sessaoPerfil; char atual[64], alvo[64]; } proximoIntento;
+static int p6AppHidden;
 // 1 quando a escolha em curso e a do Next com uma fonte tocando para seguir
 // (bingeGroup); *prov recebe o add-on dela.
 static int escolhaDoNext(const char *base, char *prov, unsigned tam) {
@@ -2558,6 +2559,7 @@ static void abrirProximoEpisodio(int t, int e, int apontar) {
   }
 }
 static void proximoPreparoPasso(void) {
+  if (p6AppHidden) return;
   // O gesto novo tem prioridade sobre uma contagem ja entregue. O worker
   // fica para o roteador consumir se for o mesmo Next, ou cancelar no Anterior.
   if (player_transporte_pedido_pendente()) {
@@ -4386,6 +4388,15 @@ static int relogioPedidoPagina(void) {
 }
 
 void app_evento(const SDL_Event *e) {
+#ifdef NV_ANDROID
+  if (e->type == SDL_APP_WILLENTERBACKGROUND || e->type == SDL_APP_DIDENTERBACKGROUND ||
+      e->type == SDL_APP_TERMINATING) {
+    p6AppHidden = 1;
+    memset(&proximoIntento, 0, sizeof proximoIntento);
+    proximopreparo_cancelar();
+    player_episodio_pedido_liberar();
+  } else if (e->type == SDL_APP_DIDENTERFOREGROUND) p6AppHidden = 0;
+#endif
   int heldLeft = 0;
   if (e->type == SDL_KEYDOWN && e->key.keysym.sym == SDLK_LEFT) {
     heldLeft = e->key.repeat || leftDown;
