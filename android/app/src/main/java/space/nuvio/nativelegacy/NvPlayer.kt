@@ -197,7 +197,7 @@ object NvPlayer {
                                       sampleBytes: Int, geracao: Int, seekRevision: Int)
     @JvmStatic external fun nativeDecoder4k(hevc: Int, avc: Int, vp9: Int, av1: Int)
     @JvmStatic external fun nativeTela(hdr: Int, dv: Int)
-    @JvmStatic external fun nativeHdr(hdr: String, dv: Int, atmos: Int)
+    @JvmStatic external fun nativeHdr(hdr: String, dv: Int, atmos: Int, geracao: Int)
     @JvmStatic external fun nativeErroTexto(texto: String)
     @JvmStatic external fun nativeAudioLog(texto: String)
     @JvmStatic external fun nativeRetomada(geracao: Int, aceita: Int)
@@ -2912,7 +2912,7 @@ object NvPlayer {
                         r.runtimeVideoRecovery = HdrCodecFallbackP5B.RuntimeRecovery(failed.name, format)
                         retentou = true
                         invalidarQuadroSuperficie()
-                        ev(EV_VIDEO_RECOVERY, videoFailure, geracao = geracaoDaAbertura)
+                        ev(EV_VIDEO_RECOVERY, videoFailure)
                         principal.postDelayed({
                             if (atual(minha) && !videoOutputFailed && player === p && recursosAtuais === r) {
                                 try { p.prepare() } catch (_: Exception) {
@@ -3194,6 +3194,7 @@ object NvPlayer {
     // HDR do Format do video selecionado; Atmos do audio selecionado (E-AC-3
     // JOC). Dolby Vision so quando o decoder escolhido e DV. Manda so se mudou.
     private fun publicarHdr(tracks: Tracks) {
+        if (!atual(sessao) || videoOutputFailed) return
         var hdr = "none"
         var dv = 0
         var atmos = 0
@@ -3222,7 +3223,7 @@ object NvPlayer {
         if (hdr == ultHdr && dv == ultDv && atmos == ultAtmos) return
         Log.i(TAG, "[dvtrace] hdr sessao=$sessao $ultHdr->$hdr decoderDv=$decoderDv quadro=$quadroVisto estavel=$estavelEmitido soltando=${soltando != null}")
         ultHdr = hdr; ultDv = dv; ultAtmos = atmos
-        try { nativeHdr(hdr, dv, atmos) } catch (e: UnsatisfiedLinkError) { }
+        try { nativeHdr(hdr, dv, atmos, geracaoNative) } catch (e: UnsatisfiedLinkError) { }
         hdrNaSuperficie()
     }
 }
