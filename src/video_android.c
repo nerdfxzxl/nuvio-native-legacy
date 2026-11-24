@@ -441,6 +441,8 @@ static BufAvanco reconBufferAvanco; // actual buffer progress vetoes false stall
 static int reconProxima, reconPermitida, reconIniciou;
 static volatile int reconErroPend, reconErroCod, reconErroVideo;
 static volatile int terminalVideoP5B;
+static NvVideoRetryP5B retryVideoP5B; // guarded by travaEvento
+static BufAvanco retryVideoBuffer; // app-thread only
 static int reconAudio = -1, reconLeg = -1;
 static volatile int reconFaixasPend;
 static int reconBuscarMs = -1;
@@ -905,6 +907,17 @@ enum { EV_PRONTO = 1, EV_TOCANDO = 2, EV_PAUSADO = 3, EV_FIM = 4, EV_ERRO = 5,
        EV_SUPERFICIE_ESTAVEL = 10, EV_LIVE_RECOVERY = 11, EV_LIVE_SEGMENT = 12,
        EV_CARGA_FASE = 13, EV_SO_AUDIO = 14, EV_SUPERFICIE_INVALIDADA = 15 };
 
+/* Caller owns travaEvento. Preserve the explicit modal instead of sending
+ * a failed video Retry into ordinary source recovery/selection. */
+static void terminalVideo(int reason, int code) {
+  videoerro_p5b_retry_clear(&retryVideoP5B);
+  reconErroCod = code; reconErroVideo = 1; reconErroPend = 0;
+  terminalVideoP5B = reason > 0 ? reason : 1;
+  tocando = bufferando = primeiroQuadro = quadroSuperficie = superficieEstavel = 0;
+  prontoLoad = somenteAudio = 0; falhou = 1;
+  snprintf(erroTxt, sizeof erroTxt, "%d video playback error:%d", code, terminalVideoP5B);
+}
+
 JNIEXPORT void JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativeEvento(JNIEnv *env, jclass cls,
     jint tipo, jint a, jint b, jint geracao) {
   (void)env; (void)cls;
@@ -921,11 +934,20 @@ JNIEXPORT void JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativeEvento(JNIEn
     case EV_PRONTO:  if (!prontoLoad) marco("video: pronto (android)"); durMs = a; prontoLoad = 1; break;
     case EV_TOCANDO: tocando = 1; bufferando = 0; pausaVista = 0; if (!tocandoDesde) tocandoDesde = SDL_GetTicks() | 1; break;
     case EV_PAUSADO: tocando = 0; if (pausaPedida) pausaVista = 1; break;
-    case EV_FIM:     terminou = 1; tocando = 0; break;
+    case EV_FIM:
+      if (videoerro_p5b_retry_owned(&retryVideoP5B, sessao))
+        terminalVideo(videoerro_p5b_retry_fail(&retryVideoP5B, sessao), 0);
+      else { terminou = 1; tocando = 0; }
+      break;
     // Sem `falhou` aqui: o video_bombear decide entre reconectar e desistir.
     case EV_ERRO:    if (b == 1) { /* Media3 audio renderer: do not retry as a network stall. */
+                       videoerro_p5b_retry_clear(&retryVideoP5B);
                        semDecoderAudio = 1; reconErroPend = 0; tocando = 0;
                        printf("[video] android: erro terminal de audio %d\n", a);
+                       break;
+                     }
+                     if (videoerro_p5b_retry_owned(&retryVideoP5B, sessao)) {
+                       terminalVideo(videoerro_p5b_retry_fail(&retryVideoP5B, sessao), a);
                        break;
                      }
                      reconErroCod = a; reconErroVideo = b == 2; /* Media3 C.TRACK_TYPE_VIDEO */
@@ -955,22 +977,24 @@ JNIEXPORT void JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativeEvento(JNIEn
       else if (a >= 100) bufferando = 0;
       break;
     case EV_PRIMEIRO_QUADRO: marco("video: primeiro quadro (android)"); primeiroQuadro = quadroSuperficie = 1; break;
-    case EV_SUPERFICIE_ESTAVEL: superficieEstavel = 1; break;
+    case EV_SUPERFICIE_ESTAVEL:
+      superficieEstavel = 1;
+      videoerro_p5b_retry_handoff(&retryVideoP5B, sessao, quadroSuperficie, superficieEstavel);
+      break;
     case EV_SUPERFICIE_INVALIDADA: superficieEstavel = 0; quadroSuperficie = 0; break; // old surface frame cannot authorize new handoff
-    case EV_AUDIO_SEM_DECODER: semDecoderAudio = 1; break;
+    case EV_AUDIO_SEM_DECODER: videoerro_p5b_retry_clear(&retryVideoP5B); semDecoderAudio = 1; break;
     case 16: /* EV_AUDIO_SAIDA_INCOMPATIVEL: current route or actual sink rejected. */
+      videoerro_p5b_retry_clear(&retryVideoP5B);
       semDecoderAudio = 1; tocando = 0; break;
     case 17: /* EV_VIDEO_FALHA: terminal video capability/renderer error. */
-      reconErroCod = b; reconErroVideo = 1; reconErroPend = 0;
-      // A terminal video error cannot expose a previously rendered frame
-      // as proof of current playback readiness.
-      terminalVideoP5B = a > 0 ? a : 1;
-      tocando = bufferando = primeiroQuadro = quadroSuperficie = superficieEstavel = 0;
-      prontoLoad = somenteAudio = 0; falhou = 1;
-      snprintf(erroTxt, sizeof erroTxt, "%d video playback error:%d", b, a);
+      terminalVideo(a, b);
       break;
     case EV_CARGA_FASE: if (a >= 0 && a <= 3) cargaFase = a; break;
-    case EV_SO_AUDIO: if (a == 1) somenteAudio = 1; break;
+    case EV_SO_AUDIO:
+      if (a == 1 && videoerro_p5b_retry_owned(&retryVideoP5B, sessao))
+        terminalVideo(videoerro_p5b_retry_fail(&retryVideoP5B, sessao), 0);
+      else if (a == 1) somenteAudio = 1;
+      break;
     case EV_LIVE_SEGMENT:
       pthread_mutex_lock(&travaRetomada);
       if (ativo && (unsigned)b == sessao) liveSegmentoMs = a > 60000 ? 60000u : a > 0 ? (unsigned)a : 0u;
@@ -1024,7 +1048,10 @@ static int abrirSessao(int inicioMs, int fracao, int mesmaFonte) {
   temEnv = 0;   // a SurfaceView nova ainda nao recebeu janela nenhuma
   if (!travaLeg) travaLeg = SDL_CreateMutex();
   unsigned geracao = novaRetomada(-1);
+  if (!mesmaFonte) videoerro_p5b_retry_clear(&retryVideoP5B);
+  videoerro_p5b_retry_bind(&retryVideoP5B, geracao, SDL_GetTicks());
   pthread_mutex_unlock(&travaEvento);
+  memset(&retryVideoBuffer, 0, sizeof retryVideoBuffer);
   memset(&reconBufferAvanco, 0, sizeof reconBufferAvanco);
   env = ambiente();
   if (!env) { falhou = 1; printf("[video] android: NvPlayer indisponivel\n"); fflush(stdout); return 0; }
@@ -1241,11 +1268,15 @@ int video_video_retry(void) {
   char motivoTexto[sizeof erroTxt];
   if (!motivo) return 0;
   snprintf(motivoTexto, sizeof motivoTexto, "%s", erroTxt);
+  pthread_mutex_lock(&travaEvento);
+  videoerro_p5b_retry_arm(&retryVideoP5B, motivo);
+  pthread_mutex_unlock(&travaEvento);
   if (retryMesmoSourceP5()) return 1;
   // abrirSessao resets the terminal reason before making the JNI call.
   // If that call fails synchronously, retain ownership of the explicit
   // video-error card rather than exposing a generic source watchdog.
   pthread_mutex_lock(&travaEvento);
+  videoerro_p5b_retry_clear(&retryVideoP5B);
   terminalVideoP5B = motivo;
   reconErroCod = codigo; reconErroVideo = 1; reconErroPend = 0;
   posNativoMs = posicao; posMs = posVisivel; durMs = duracao;
@@ -1255,6 +1286,42 @@ int video_video_retry(void) {
   return 0;
 }
 int video_erro_video_p5b(void) { return ativo ? terminalVideoP5B : 0; }
+int video_video_retry_pending(void) {
+  pthread_mutex_lock(&travaEvento);
+  int pending = ativo && videoerro_p5b_retry_owned(&retryVideoP5B, sessao);
+  pthread_mutex_unlock(&travaEvento);
+  return pending;
+}
+
+// Same-source Retry is one owned opening; real buffer advancement prevents
+// false timeouts on slow REMUX. No ordinary VOD selector/watchdog may take it.
+static int bombearRetryVideo(double pos) {
+  unsigned gen, since, now = SDL_GetTicks();
+  pthread_mutex_lock(&travaEvento);
+  gen = sessao;
+  if (!ativo || !videoerro_p5b_retry_owned(&retryVideoP5B, gen)) {
+    pthread_mutex_unlock(&travaEvento); return 0;
+  }
+  if (pausaPedida || pausaVista) {
+    retryVideoP5B.desde = now;
+    pthread_mutex_unlock(&travaEvento);
+    memset(&retryVideoBuffer, 0, sizeof retryVideoBuffer);
+    return 1;
+  }
+  since = retryVideoP5B.desde;
+  pthread_mutex_unlock(&travaEvento);
+  VideoStats v;
+  video_estatisticas(&v);
+  int progress = bufavanco_segura(&retryVideoBuffer, gen, now - since, now,
+                                  bufavanco_borda(pos, v.bufferSeg));
+  if (falhou || terminou || ((unsigned)(now - since) >= NV_RECON_PRAZO_MS && !progress)) {
+    pthread_mutex_lock(&travaEvento);
+    int reason = videoerro_p5b_retry_fail(&retryVideoP5B, gen);
+    if (reason) terminalVideo(reason, 2002);
+    pthread_mutex_unlock(&travaEvento);
+  }
+  return 1;
+}
 int  video_reconectando(void) {
   return nv_recon_ativa(&recon) && (recon.pendente || !prontoLoad) ? recon.tentativa : 0;
 }
@@ -1263,11 +1330,15 @@ void video_bombear(void) {
   // Once Q36's terminal audio error takes over, no watchdog may silently
   // launch another player generation. Only the user-owned Retry may reopen it.
   if (semDecoderAudio || terminalVideoP5B) {
+    pthread_mutex_lock(&travaEvento);
+    videoerro_p5b_retry_clear(&retryVideoP5B);
+    pthread_mutex_unlock(&travaEvento);
     reconErroPend = 0; recarregarPausa = -1;
     nv_recon_zerar(&recon);
     return;
   }
   double pos = video_pos();
+  if (bombearRetryVideo(pos)) return;
   int eraRecarga = recarregarPausa >= 0;
   if (recarregarPausa >= 0) {
     if (falhou || terminou || !ativo) recarregarPausa = -1;
@@ -1377,6 +1448,7 @@ void video_parar(void) {
   p1FaixasPendentes = p1AudioValido = p1LegValida = 0;
   pthread_mutex_lock(&travaEvento);
   novaRetomada(-1);
+  videoerro_p5b_retry_clear(&retryVideoP5B);
   terminalVideoP5B = 0;
   pthread_mutex_unlock(&travaEvento);
   capmkv_zerar();   // fio de capitulos em voo nao alimenta o proximo titulo
