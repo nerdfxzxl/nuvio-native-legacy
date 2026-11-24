@@ -1,7 +1,9 @@
 // Subtitle selector regression: model invariants retained across the #425 UI.
 #include "../src/legendasui.c"
 #include "linguas.h"
+#define fonteNome legauto_fixture_fonteNome
 #include "../src/legauto.c"
+#undef fonteNome
 #include <assert.h>
 
 // --- the world around the selector ------------------------------------------------

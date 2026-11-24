@@ -37,7 +37,7 @@ int main(void) {
   prog_invalidar();
   assert(prog_por_chave("tt9054364_s1e2", &r) && !strcmp(r.tipo, "series"));
   assert(writes == 1); // Saved repair is idempotent.
-  assert(continuarLocal(row, 2) == 1);
+  assert(continuarLocal(row, 2, 0) == 1);
   assert(!strcmp(row[0].imdb, "tt9054364:1:2") && !strcmp(row[0].tipo, "series"));
   assert(strcmp(row[0].titulo, "Chasing Mavericks") && !row[0].sinopse[0]);
   assert(row[0].progresso == 40 && row[0].temporada == 1 && row[0].episodio == 2);

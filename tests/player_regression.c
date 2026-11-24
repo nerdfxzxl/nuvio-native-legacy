@@ -145,10 +145,17 @@ static void testar(void) {
   assert(!v[0].url[0] && !strcmp(v[0].infoHash,"abc"));      // torrent puro
   assert(v[1].mp4 && v[1].dolbyVision && v[1].altura==2160); // flags do "title"
   free(v);
-  char longa[4500];memset(longa,'a',sizeof longa);memcpy(longa,"https://example.invalid/",24);longa[4090]=0;
+  char longa[NV_MEDIA_URL_MAX + 100];memset(longa,'a',sizeof longa);memcpy(longa,"https://example.invalid/",24);longa[4090]=0;
   snprintf(json,sizeof json,"{\"streams\":[{\"url\":\"%s\",\"name\":\"DV/HDR 4K MP4\"}]}",longa);
   n=stream_extrair(json,"Fixture",&v);assert(n==1 && strlen(v[0].url)==4090 && v[0].dolbyVision);free(v);
   longa[4090]='a';longa[4400]=0;
+  snprintf(json,sizeof json,"{\"streams\":[{\"url\":\"%s\"}]}",longa);
+  n=stream_extrair(json,"Fixture",&v);assert(n==1 && strlen(v[0].url)==4400);free(v);
+  // The signed-URL transport grew to 8192 bytes; retain both boundary checks.
+  longa[4400]='a';longa[NV_MEDIA_URL_MAX-1]=0;
+  snprintf(json,sizeof json,"{\"streams\":[{\"url\":\"%s\"}]}",longa);
+  n=stream_extrair(json,"Fixture",&v);assert(n==1 && strlen(v[0].url)==NV_MEDIA_URL_MAX-1);free(v);
+  longa[NV_MEDIA_URL_MAX-1]='a';longa[NV_MEDIA_URL_MAX]=0;
   snprintf(json,sizeof json,"{\"streams\":[{\"url\":\"%s\"}]}",longa);
   n=stream_extrair(json,"Fixture",&v);assert(n==0);free(v);
   CatItem c={0};snprintf(c.tipo,sizeof c.tipo,"series");snprintf(c.titulo,sizeof c.titulo,"Silo");

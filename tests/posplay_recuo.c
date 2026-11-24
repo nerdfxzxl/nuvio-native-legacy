@@ -103,6 +103,8 @@ int main(void) {
   assert(posplay_visivel() && !pedir());
   assert(tecla(SDLK_RETURN) == 1 && pedir());
   // Pedido ja consumido nao pode ressuscitar o cartao ao cancelar uma busca.
+  // Restore the five-second setting before testing its five-second deadline.
+  ajustes_shot_valor("proximoContagemLocal", 5);
   abrirContagem();
   quadroEOF(.016f, 4100, 3600, 3600, 1, 0, 1);
   quadroEOF(.016f, 9100, 3600, 3600, 1, 0, 1);

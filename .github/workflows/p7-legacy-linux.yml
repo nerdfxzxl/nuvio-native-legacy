@@ -4,6 +4,7 @@ on:
   push:
     branches: [feature/official-stream-selector]
     paths: [.github/workflows/p7-legacy-linux.yml]
+# CI #2: update old fixture API/URL boundary and countdown setup, retain assertions.
 permissions:
   contents: read
 jobs:
