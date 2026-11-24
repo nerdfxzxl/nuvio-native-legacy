@@ -3039,10 +3039,9 @@ static int continuarLocal(CatItem *saida, int max, int soP6) {
     cat_copiar_por_id(r->contentId, r->episodio > 0 ? "series" : "movie", d);
     // O catalogo pode guardar outro episodio desta obra. Metadados do titulo
     // permanecem; o episodio e o tempo pertencem ao progresso de agora.
-    if (d->temporada != r->temporada || d->episodio != r->episodio)
-      d->nomeEpisodio[0] = 0;
-    d->temporada = r->temporada;
-    d->episodio = r->episodio;
+    if (d->temporada != r->temporada || d->episodio != r->episodio) {
+      d->nomeEpisodio[0] = 0; d->tvdbEp = 0;
+    }
     d->progresso = (int)(100.0 * p);
     if (d->progresso < 1) d->progresso = 1; // Keep early checkpoints in the paused section.
     d->restanteMin = (int)((r->durSeg - r->posSeg) / 60.0 + 0.5);
@@ -3050,15 +3049,11 @@ static int continuarLocal(CatItem *saida, int max, int soP6) {
     // chave que instanteDaConta faria depois. Ver retomadoMs em catalogo.h.
     d->retomadoMs = r->lastWatchedMs;
     if (r->episodio > 0) {
-      d->temporada = r->temporada;
-      d->episodio  = r->episodio;
-      // The persisted record remains intact if the legacy UI ID cannot
-      // represent it. Never render a truncated ID as a different episode.
-      if (!idbase_compor_episodio(r->contentId, r->temporada >= 0 ? r->temporada : 1,
-                                  r->episodio, d->imdb, sizeof d->imdb)) continue;
+      if (!cw_card_episodio(d, r->contentId, r->temporada, r->episodio)) continue;
       snprintf(d->tipo, sizeof d->tipo, "series");
     } else {
-      snprintf(d->imdb, sizeof d->imdb, "%s", r->contentId);
+      if (!idbase_copiar_exato(r->contentId, d->imdb, sizeof d->imdb)) continue;
+      d->temporada = d->episodio = d->tvdbEp = 0;
       snprintf(d->tipo, sizeof d->tipo, "movie");
     }
     n++;
@@ -3163,7 +3158,8 @@ static long long instanteDaConta(const CatItem *c) {
   char id[64];
   int temp = c->temporada, ep = c->episodio;
   if (c->retomadoMs > 0) return c->retomadoMs;
-  prog_content_id(id, sizeof id, c->imdb, &temp, &ep);
+  cw_card_par(c, &temp, &ep);
+  prog_content_id(id, sizeof id, c->imdb, NULL, NULL);
 
   if (!prog_por_titulo(id, temp, ep, &r)) return 0;
   return r.lastWatchedMs;
@@ -3187,11 +3183,16 @@ static int candidatoVence(const CatItem *novo, const CatItem *velho) {
     ProgRegistro r;
     char id[64];
     int t = velho->temporada, e = velho->episodio;
-    prog_content_id(id, sizeof id, velho->imdb, &t, &e);
+    cw_card_par(velho, &t, &e);
+    prog_content_id(id, sizeof id, velho->imdb, NULL, NULL);
 
     // A Next seed is not proof that the remaining post-credit scenes were played.
     if (cat_p6_retomavel(velho) == 1) return 0;
-    if (!trakt_cw_concluiu(velho->imdb, antes) &&
+    char historicoId[96];
+    int provaTrakt = idbase_imdb_historico(id) &&
+        idbase_compor_episodio(id, t, e, historicoId, sizeof historicoId) &&
+        trakt_cw_concluiu_tvdb(historicoId, velho->tvdbEp, antes);
+    if (!provaTrakt &&
         !(prog_por_titulo(id, t, e, &r) && r.durSeg > 1.0 &&
           r.tocou != 0 && r.tocou != 3 && prog_fim_retomada(&r, ajustes_cw_concluido()) &&
           r.lastWatchedMs > antes && r.lastWatchedMs <= ms)) return 0;
@@ -3253,14 +3254,13 @@ static int recuarPelaDesmarcacao(const char *serie, int *t, int *e, long long re
 static char ajustadosIds[CAT_MAX][sizeof(((CatItem *)0)->imdb)];
 static int nAjustados;
 static void ajustarASeguir(CatItem *it) {
-  char serie[sizeof it->imdb], velho[sizeof it->imdb];
+  char serie[sizeof it->imdb], novo[sizeof it->imdb];
   int t = it->temporada, e = it->episodio;
-  snprintf(serie, sizeof serie, "%s", it->imdb);
-  { char *dp = strchr(serie, ':'); if (dp) *dp = 0; }
-  if (!recuarPelaDesmarcacao(serie, &t, &e, it->retomadoMs)) return;
-  snprintf(velho, sizeof velho, "%s", it->imdb);
-  it->temporada = t; it->episodio = e;
-  snprintf(it->imdb, sizeof it->imdb, "%s:%d:%d", serie, t, e);
+  if (!idbase_copiar_exato(it->imdb, serie, sizeof serie)) return;
+  if (!recuarPelaDesmarcacao(serie, &t, &e, it->retomadoMs) ||
+      !idbase_compor_episodio(serie, t, e, novo, sizeof novo)) return;
+  it->temporada = t; it->episodio = e; it->tvdbEp = 0;
+  memcpy(it->imdb, novo, strlen(novo) + 1);
   // O que o remoto sabia do episodio de ANTES nao descreve este.
   it->nomeEpisodio[0] = 0;
   it->restanteMin = 0;
@@ -3289,7 +3289,8 @@ static int filtrarRemoto(CatItem *v, int n, int (*aSeguir)(const char *),
     // manda em nada.
     { ProgRegistro r; char id[64];
       int tt = v[i].temporada, ee = v[i].episodio;
-      prog_content_id(id, sizeof id, v[i].imdb, &tt, &ee);
+      cw_card_par(&v[i], &tt, &ee);
+      prog_content_id(id, sizeof id, v[i].imdb, NULL, NULL);
 
       if (prog_por_titulo(id, tt, ee, &r) && r.durSeg > 1.0 &&
           r.lastWatchedMs > v[i].retomadoMs) {
@@ -3301,9 +3302,16 @@ static int filtrarRemoto(CatItem *v, int n, int (*aSeguir)(const char *),
         // episodio que o app acabara de oferecer. Abaixo de 1% ele continua
         // sendo "a seguir" (progresso 0); do fim para cima (>90%) sai, como
         // antes, porque ai terminou. Vale para Trakt e Simkl (aSeguir).
-        if (pct < 1 && aSeguir(v[i].imdb)) pct = 0;
+        if (prog_q45_local(&r) && prog_inicio_continuar(&r, ajustes_cw_minimo()) &&
+            !prog_fim_retomada(&r, ajustes_cw_concluido())) {
+          if (pct < 1) pct = 1;
+        } else if (pct < 1 && aSeguir(v[i].imdb)) pct = 0;
         else if (pct < ajustes_cw_minimo() || prog_fim_retomada(&r, ajustes_cw_concluido())) { (*fora)++; continue; }
+        if (pct > 100) pct = 100;
         v[i].progresso = pct;
+        v[i].retomadoMs = r.lastWatchedMs;
+        v[i].restanteMin = (int)((r.durSeg - r.posSeg) / 60.0 + 0.5);
+        if (v[i].restanteMin < 0) v[i].restanteMin = 0;
       } }
     // O EPISODIO VELHO DO REMOTO NAO VOLTA POR CIMA DO QUE ESTA TV VIU DEPOIS.
     // O cruzamento acima e por CHAVE (o mesmo episodio). Com outro episodio da
@@ -3333,12 +3341,9 @@ static int filtrarRemoto(CatItem *v, int n, int (*aSeguir)(const char *),
           printf("[desc] continuar assistindo: %s T%dE%d do remoto e mais velho que "
                  "T%dE%d visto aqui (%d%%); fica o daqui\n", r->contentId,
                  v[i].temporada, v[i].episodio, r->temporada, r->episodio, pct);
-          if (!idbase_compor_episodio(r->contentId, r->temporada >= 0 ? r->temporada : 1,
-                                      r->episodio, v[i].imdb, sizeof v[i].imdb)) {
+          if (!cw_card_episodio(&v[i], r->contentId, r->temporada, r->episodio)) {
             (*fora)++; continue;
           }
-          v[i].temporada = r->temporada;
-          v[i].episodio = r->episodio;
           v[i].progresso = pct;
           v[i].retomadoMs = r->lastWatchedMs;
           v[i].restanteMin = (int)((r->durSeg - r->posSeg) / 60.0 + 0.5);
@@ -3408,8 +3413,8 @@ static int contaASeguir(CatItem *lista, int n, int max, int comOutraFonte) {
     memset(d, 0, sizeof *d);
     // A semente da conta tambem recua para o primeiro desmarcado.
     recuarPelaDesmarcacao(sem[i].id, &sem[i].temporada, &sem[i].episodio, sem[i].vistoMs);
-    snprintf(d->imdb, sizeof d->imdb, "%s:%d:%d", sem[i].id, sem[i].temporada,
-             sem[i].episodio);
+    if (!idbase_compor_episodio(sem[i].id, sem[i].temporada, sem[i].episodio,
+                                d->imdb, sizeof d->imdb)) continue;
     for (j = 0; j < n && !ja; j++) ja = mesmaObra(&lista[j], d);
     if (ja) { fPausado++; continue; }
     // Visto em QUALQUER fonte (conta, Trakt, Simkl, esta TV): nao e "a seguir".
@@ -3915,8 +3920,8 @@ int desc_continuar_otimista(int indice) {
   if (ajustes_cw_fonte() == AJ_CWF_SIMKL && !simkl_ativo()) return 0;
   if (!strcmp(novo.tipo, "series") && novo.temporada >= 0 && novo.episodio > 0) {
     char base[64];
-    idbase_copiar(ci->imdb, base, sizeof base);
-    snprintf(novo.imdb, sizeof novo.imdb, "%s:%d:%d", base, novo.temporada, novo.episodio);
+    if (!idbase_copiar_exato(ci->imdb, base, sizeof base) ||
+        !cw_card_episodio(&novo, base, novo.temporada, novo.episodio)) return 0;
   }
   travou = pthread_mutex_trylock(&cwPubTrava) == 0;
   int cap = cat_copiar_fileira("continue_watching",NULL,0,NULL) + 1;

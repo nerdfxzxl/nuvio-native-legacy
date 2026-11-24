@@ -492,7 +492,7 @@ int contalib_aplicar_vistos(void) {
       memset(&um, 0, sizeof um);
       int estado = contapend_estado ?
           contapend_estado(vistos[i].id, vistos[i].tipo, vistos[i].temporada, vistos[i].episodio,
-                           vistos[i].vistoMs, -1) : 1;
+                           vistos[i].vistoMs, 1) : 1;
       if (estado < 0) estado = 1;
       vistoep_fonte(vistos[i].id, vistos[i].temporada, vistos[i].episodio,
                     estado, vistos[i].vistoMs, &um);

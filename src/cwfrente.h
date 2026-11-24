@@ -13,6 +13,27 @@
 #include "idbase.h"
 #include <string.h>
 
+// A paused CW card may store its full base and explicit episode pair when
+// the composite cannot fit. The card is never a stream ID.
+static inline int cw_card_episodio(CatItem *item, const char *base, int t, int e) {
+  char id[sizeof item->imdb], composto[sizeof item->imdb];
+  if (!item || t < 0 || e <= 0 || !base || idbase_len(base) != strlen(base) ||
+      !idbase_copiar_exato(base, id, sizeof id)) return 0;
+  if (!idbase_compor_episodio(id, t, e, composto, sizeof composto))
+    memcpy(composto, id, strlen(id) + 1);
+  if (item->temporada != t || item->episodio != e) {
+    item->nomeEpisodio[0] = 0; item->tvdbEp = 0;
+  }
+  memcpy(item->imdb, composto, strlen(composto) + 1);
+  item->temporada = t; item->episodio = e;
+  return 1;
+}
+// The displayed pair wins over an older composite after a progress update.
+static inline void cw_card_par(const CatItem *item, int *t, int *e) {
+  *t = item->temporada; *e = item->episodio;
+  if (*t < 0 || *e <= 0) idbase_episodio(item->imdb, t, e);
+}
+
 // `novo` na frente, as outras obras na ordem em que estavam (a mesma obra em
 // outro episodio sai: uma serie entra uma vez), ate `max`. *mudou = 0 quando a
 // fileira ja era essa (mesma ordem e mesma barra na frente): nada a publicar.
@@ -27,7 +48,10 @@ static inline int cw_frente_compor(const CatItem *atual, int n, const CatItem *n
     if (idbase_len(atual[i].imdb) == L && !strncmp(atual[i].imdb, novo->imdb, L)) continue;
     saida[k++] = atual[i];
   }
-  if (k != n || atual[0].progresso != novo->progresso) *mudou = 1;
+  if (k != n || atual[0].progresso != novo->progresso ||
+      atual[0].temporada != novo->temporada || atual[0].episodio != novo->episodio ||
+      atual[0].retomadoMs != novo->retomadoMs ||
+      atual[0].restanteMin != novo->restanteMin) *mudou = 1;
   for (i = 0; i < k && !*mudou; i++)
     if (strcmp(saida[i].imdb, atual[i].imdb)) *mudou = 1;
   return k;

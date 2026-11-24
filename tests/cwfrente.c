@@ -60,6 +60,19 @@ int main(void) {
     n = cw_frente_compor(atual, 12, &novo, saida, 12, &mudou);
     assert(n == 12 && mudou && !strcmp(saida[0].imdb, "tt1") && !strcmp(saida[11].imdb, "tt110")); }
 
+  char base[64], other[64]; memset(base,'x',63); memcpy(base,"addon:",6); base[63]=0;
+  memcpy(other,base,sizeof base); other[62]='y';
+  novo=it(base,40); novo.tvdbEp=123; novo.temporada=1; novo.episodio=1;
+  assert(cw_card_episodio(&novo,base,0,456));
+  assert(!strcmp(novo.imdb,base) && novo.temporada==0 && novo.episodio==456 && !novo.tvdbEp);
+  atual[0]=novo; atual[0].episodio=455; atual[1]=it(other,40);
+  assert(cw_frente_compor(atual,2,&novo,saida,12,&mudou)==2 && mudou);
+  assert(!strcmp(saida[0].imdb,base) && !strcmp(saida[1].imdb,other));
+  atual[0]=novo; assert(cw_frente_compor(atual,2,&novo,saida,12,&mudou)==2 && !mudou);
+  CatItem stale=it("tt9:1:2",50); stale.temporada=0; stale.episodio=9;
+  int t,e; cw_card_par(&stale,&t,&e); assert(t==0 && e==9);
+  assert(cw_card_episodio(&stale,"tt9",t,e) && !strcmp(stale.imdb,"tt9:0:9"));
+  assert(!cw_card_episodio(&stale,"tt9:0:9",0,10));
   puts("PASS: Continuar assistindo otimista na saida do player");
   return 0;
 }

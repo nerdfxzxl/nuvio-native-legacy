@@ -1,5 +1,6 @@
 #include "catalogo.h"
 #include "idbase.h"
+#include "cwfrente.h"
 #include "progresso.h"
 #include <assert.h>
 #include <stdio.h>
@@ -94,6 +95,14 @@ int main(void) {
   assert(!cat_id_stream(0,1,123,cw,sizeof cw) && !cw[0]);
   assert(cat_id_stream(0,1,123,large,sizeof large) && strlen(large)==67);
   assert(!cat_id_stream(0,-1,0,small,sizeof small) && !small[0]);
+  assert(cw_card_episodio(&c,longid,0,456));
+  assert(!strcmp(c.imdb,longid) && c.temporada==0 && c.episodio==456);
+  CatEp published=ep(0,456,0);
+  snprintf(published.vid,sizeof published.vid,"addon:exact-video");
+  cat_definir_tudo(&c,1,NULL,0); cat_definir_episodios(0,&published,1);
+  assert(cat_episodio_existe_final(0,longid,0,456));
+  assert(cat_id_stream(0,c.temporada,c.episodio,cw,sizeof cw) && !strcmp(cw,"addon:exact-video"));
+  assert(!cat_id_stream(0,0,457,cw,sizeof cw) && !cw[0]);
   puts("catalog_episode_identity512: PASS");
   return 0;
 }

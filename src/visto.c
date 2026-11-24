@@ -161,8 +161,9 @@ static void *fio(void *u) {
   int enviados = e->confirmarSemEnvio;
   if (e->destinos & VISTO_TRAKT) {
     int ok = e->titulo ? trakt_titulo_marcar_destino(&e->trakt, e->imdb, e->tipo, e->visto)
-           : e->temAlvoTrakt && trakt_episodios_marcar_alvos_destino
-             ? trakt_episodios_marcar_alvos_destino(&e->trakt, e->imdb, e->alvosTrakt, e->n, e->visto)
+           : e->temAlvoTrakt
+              ? (trakt_episodios_marcar_alvos_destino &&
+                 trakt_episodios_marcar_alvos_destino(&e->trakt, e->imdb, e->alvosTrakt, e->n, e->visto))
            : trakt_episodios_marcar_destino
              ? trakt_episodios_marcar_destino(&e->trakt, e->imdb, e->pares, e->n, e->visto)
              : trakt_episodios_marcar(e->imdb, e->pares, e->n, e->visto);
