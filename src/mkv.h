@@ -120,6 +120,8 @@ int mkv_faixas_do_trecho(const unsigned char *buf, long n, MkvFaixa *saida, int 
 // chuta pela posicao: quem sabe a duracao do filme e quem chama, e sem ela
 // "ultimo capitulo" nao distingue creditos de cena final.
 double mkv_creditos_nomeados(const MkvCap *caps, int n);
+// Strict title for Q45; unknown chapter names are recommendations only.
+double mkv_creditos_verificados(const MkvCap *caps, int n);
 // O inicio do ULTIMO capitulo que nao e previa do proximo episodio ("Preview",
 // "Next Episode"...), para a regra posicional de video_creditos; 0 com menos
 // de dois capitulos. 2.0.3: em anime o ultimo capitulo e a previa, nao o ED.
