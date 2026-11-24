@@ -398,7 +398,7 @@ static int lerIdEm(const char *p,const char *fim,char *dst,size_t tam) {
     if (c<=0x20 || c==0x7f || k+1>=tam) goto invalido;
     dst[k++]=(char)c;
   }
-  dst[k]=0; return k?1:0;
+  dst[k]=0; return k?1:-1;
 invalido:
   dst[0]=0; return -1;
 }

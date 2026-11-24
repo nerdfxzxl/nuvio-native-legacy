@@ -1,3 +1,4 @@
+#include "stream_id_p6.h"
 #include "streams.h"
 #include "fonteid_p1.h"
 #include "stream_reload_p3.h"
@@ -194,7 +195,8 @@ static char contexto[320];
 // o carimbo do proximo pedido e `alvoLista` o da lista que esta em memoria.
 // 64 e o mesmo tamanho que app.c usa para montar "tt1234567:99:99" e para os
 // ids de canal do stalker/xtream, que sao os maiores que passam por aqui.
-static char alvoPedido[64], alvoLista[64];
+static char alvoPedido[NV_STREAM_ID_CAP], alvoLista[NV_STREAM_ID_CAP];
+static int streamAlvoRecusado;
 static pthread_mutex_t fitMetaTrava = PTHREAD_MUTEX_INITIALIZER;
 // RUNTIME PER EXACT TARGET (F03). A few recent targets, each with its two
 // provenances kept apart: metadata (TMDB/Cinemeta/addon runtime) and the
@@ -203,11 +205,11 @@ static pthread_mutex_t fitMetaTrava = PTHREAD_MUTEX_INITIALIZER;
 // TMDB sheet, the player) may report for different targets at once, which is
 // why a single slot would lose data.
 #define FIT_DUR_SLOTS 8
-typedef struct { char alvo[64]; double metaSeg, midiaSeg; unsigned uso; } FitDur;
+typedef struct { char alvo[NV_STREAM_ID_CAP]; double metaSeg, midiaSeg; unsigned uso; } FitDur;
 static FitDur fitDur[FIT_DUR_SLOTS];
 static unsigned fitDurUso;
 static double (*fitMetaFonte)(const char *alvo);
-static char fitFotoAlvo[64];
+static char fitFotoAlvo[NV_STREAM_ID_CAP];
 static double fitFotoSeg;
 static StreamfitDuracao fitFotoOrigem;
 static StreamfitFoto fitFoto;
@@ -367,8 +369,13 @@ static int fitLinhas(int i) {
   return r.razao == SF_BITRATE_ESTIMADO ? 2 : 1;
 }
 void stream_definir_alvo(const char *id) {
-  if (strcmp(alvoPedido, id ? id : "")) p3ReloadAbort();
-  snprintf(alvoPedido, sizeof alvoPedido, "%s", id ? id : "");
+  if (!nv_stream_id_valid(id)) {
+    streamAlvoRecusado=1; alvoPedido[0]=0;
+    stream_invalidar("invalid stream target"); return;
+  }
+  streamAlvoRecusado=0;
+  if (strcmp(alvoPedido,id)) p3ReloadAbort();
+  nv_stream_id_copy(alvoPedido,sizeof alvoPedido,id);
 }
 int stream_lista_do_alvo(const char *id) {
   if (!id || !*id || !alvoLista[0] || n < 1) return 0;
@@ -719,6 +726,7 @@ static int selosPacoteDa(Stream *s);
 static void selosAgendar(int ini, int qtd);
 static void textoAddonLimpar(void);
 void stream_definir_lista_idade(const Stream *l, int qtd, Uint32 idade) {
+  if (streamAlvoRecusado && l && qtd>0) return;
   // A different target/account may replace the list while a reload is staged.
   // The first *fresh* batch clears retained cards before entering FRESH.
   if (p3Reload.phase == NV_P3_RELOAD_RETAINED && !p3Replacing) p3ReloadAbort();
@@ -866,6 +874,7 @@ int stream_recarregar_retendo(void) {
 }
 
 void stream_lista_acrescentar(const Stream *l, int qtd, int ordemAddon) {
+  if (streamAlvoRecusado) return;
   int i, k = 0, focoIdx = -1, linhaAntes = -1, total;
   Stream *nova, *tmp;
   unsigned *c2;
@@ -2563,7 +2572,7 @@ int stream_vod_renovar(const AddonsConsulta *consulta, const char *id, const cha
   Stream antiga, *fontes = NULL;
   if (!saida || falhaCancelada(geracao, cancelado, ctx)) return 0;
   pthread_mutex_lock(&verTrava);
-  int ok = geracao == listaGeracao && indice >= 0 && indice < n && !lista[indice].urlP2P;
+  int ok = nv_stream_id_valid(id) && !strcmp(alvoLista,id) && geracao == listaGeracao && indice >= 0 && indice < n && !lista[indice].urlP2P;
   if (ok) antiga = lista[indice];
   pthread_mutex_unlock(&verTrava);
   if (!ok) return 0;
@@ -5510,7 +5519,7 @@ static int ptTocando(void) {
   }
   if (player_aberto()) {
     const CatItem *c = cat_item(player_indice());
-    char alvo[64];
+    char alvo[NV_STREAM_ID_CAP];
     int t, e;
     PartesPonto p;
     player_episodio_atual(&t, &e);

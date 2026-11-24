@@ -1,3 +1,4 @@
+#include "stream_id_p6.h"
 #include "addons.h"
 #include "plugins.h"
 #include "idbase.h"
@@ -215,7 +216,7 @@ static const char *chaveEstatisticaPlugin(const char *nome) {
 }
 static _Atomic AddEstado estado = ADD_PARADO;
 static pthread_t fio;
-static char alvoId[64], alvoTipo[16];
+static char alvoId[NV_STREAM_ID_CAP], alvoTipo[16];
 // The current target is a personal-server item (jfid.h: Jellyfin/Emby/Plex): sources come from the
 // server's PlaybackInfo, never from addons (an opaque server id must not
 // reach third-party addons).
@@ -246,7 +247,7 @@ static int nResultado;
 static Uint32 resultadoQuando;
 static int resultadoCacheavel;
 static FontecacheEscopo fioEscopo;
-static char pendId[64], pendTipo[16];
+static char pendId[NV_STREAM_ID_CAP], pendTipo[16];
 // A ORIGEM DO PEDIDO QUE FICOU NA FILA. Zapear com uma busca de canal ainda no
 // ar enfileira o canal novo (pendId), mas app.c zera a origem logo depois de
 // addons_buscar: ao tirar o pedido da fila alvoBase estava vazio e a consulta
@@ -255,6 +256,7 @@ static char pendId[64], pendTipo[16];
 // UnioFlix (9,1 s) e tres timeouts de 12 s. A origem acompanha o pedido.
 static char pendBase[NV_ADDON_URL_MAX];
 static int pendRenovar;
+static _Atomic int buscaAlvoRecusado;
 // O alvo corrente esta sendo buscado pelo PREFETCH do guia (fontecache.c), e
 // nao por `fio`: addons_buscar o encontrou a caminho e resolveu esperar em vez
 // de repetir. addons_estado e quem colhe. Ver addons_buscar.
@@ -830,11 +832,11 @@ AddEstado addons_estado(void) {
     fioVivo = 0;
     // O que o fio deixou na fila depois da ultima drenagem.
     progDrenar();
-    if (!escopoAindaAtual(&fioEscopo)) {
+    if (atomic_load(&buscaAlvoRecusado) || !escopoAindaAtual(&fioEscopo)) {
       // Conta/perfil/configuracao mudaram durante a rede. Essa resposta nao
       // pertence mais a tela, nem pode recriar o cache depois do logout.
       free(resultado); resultado = NULL; nResultado = 0;
-      estado = ADD_PARADO;
+      estado = atomic_load(&buscaAlvoRecusado) ? ADD_VAZIO : ADD_PARADO;
       // A cancelled profile/addon search must terminate any staged same-title
       // reload even when NO addon published a result; otherwise frozen old
       // cards could remain on screen indefinitely after cancellation.
@@ -862,7 +864,7 @@ AddEstado addons_estado(void) {
     progLimpar();
     free(resultado); resultado = NULL; nResultado = 0;
     if (pendId[0]) {
-      char id[64], tipo[16];
+      char id[NV_STREAM_ID_CAP], tipo[16];
       int renovar = pendRenovar;
       snprintf(id, sizeof id, "%s", pendId);
       snprintf(tipo, sizeof tipo, "%s", pendTipo);
@@ -895,7 +897,7 @@ AddEstado addons_estado(void) {
   }
   // Busca principal ociosa: e a vez do prefetch pendente, se houver.
   if (e != ADD_BUSCANDO && !fioVivo) fontecache_avancar();
-  if (fioVivo && !atomic_load_explicit(&fioTerminou, memory_order_acquire) && escopoAindaAtual(&fioEscopo))
+  if (fioVivo && !atomic_load_explicit(&fioTerminou, memory_order_acquire) && (pendId[0] || (!atomic_load(&buscaAlvoRecusado) && escopoAindaAtual(&fioEscopo))))
     return ADD_BUSCANDO;
   return e;
 }
@@ -913,7 +915,7 @@ static void progDrenar(void) {
   progN = 0;
   pthread_mutex_unlock(&progTrava);
   for (q = 0; q < k; q++) {
-    if (!pendId[0] && escopoAindaAtual(&fioEscopo)) {
+    if (!atomic_load(&buscaAlvoRecusado) && !pendId[0] && escopoAindaAtual(&fioEscopo)) {
       if (!progPublicou)
         printf("[addons] primeira resposta em %u ms: %s\n",
                (unsigned)(SDL_GetTicks() - progInicio),
@@ -940,6 +942,7 @@ static void progDrenar(void) {
 // ser desta busca, com tudo o que ja chegou — add-on e plugin juntos, na ordem
 // em que chegaram — e o resto continua entrando aos poucos.
 static void progRepublicar(void) {
+  if (atomic_load(&buscaAlvoRecusado)) return;
   int q, k = 0;
   stream_definir_lista(NULL, 0);
   for (q = 0; q < progPubN; q++) {
@@ -1179,13 +1182,13 @@ static Legenda legs[LEG_MAX];
 static int nLegs;
 static pthread_t fioLeg;
 static int fioLegVivo, fioLegCriado, legParar;
-static char legId[64], legTipo[16];
+static char legId[NV_STREAM_ID_CAP], legTipo[16];
 static unsigned legGeracao;
 static uint64_t legSessao;
 // Extras do Stremio do arquivo que toca (#201). Valem so para `id`: o titulo
 // seguinte nao herda o nome nem o hash do anterior.
 typedef struct {
-  char id[64];
+  char id[NV_STREAM_ID_CAP];
   char arquivo[256];
   unsigned long long tamanho;
   char hash[20];
@@ -1425,7 +1428,7 @@ typedef struct {
   char extras[1200];       // segmento legextras_segmento; "" = sem extras
   const char *grupos[3];
   char gruposTexto[3][16];
-  char id[64], tipo[16];
+  char id[NV_STREAM_ID_CAP], tipo[16];
   int temporada, episodio;
   unsigned geracao;
   uint64_t sessao;
@@ -2359,7 +2362,7 @@ void addons_sondar_manifestos(void) {
 }
 
 void addons_legendas_reiniciar(void) {
-  char id[64], tp[16];
+  char id[NV_STREAM_ID_CAP], tp[16];
   pthread_mutex_lock(&legTrava);
   snprintf(id, sizeof id, "%s", legId);
   snprintf(tp, sizeof tp, "%s", legTipo);
@@ -2374,15 +2377,18 @@ void addons_legendas_reiniciar(void) {
 
 static void dispararLegendas(int juntar);
 
+static void rejeitarAlvoLegendas(void) {
+  pthread_mutex_lock(&legTrava);
+  legId[0]=legTipo[0]=0; nLegs=legManter=0;
+  memset(&legExt,0,sizeof legExt); legGeracao++;
+  pthread_mutex_unlock(&legTrava);
+}
 void addons_buscar_legendas(const char *imdb, const char *tipo) {
   int serie, juntar = 0;
-  char id[64], tp[16];
-  if (!nAddon || !imdb || !*imdb || jfid_e(imdb)) return;   // never send server ids to addons
+  char id[NV_STREAM_ID_CAP], tp[16];
+  if (!nAddon || !nv_stream_id_valid(imdb) || jfid_e(imdb)) { rejeitarAlvoLegendas(); return; }
   serie = tipo && !strcmp(tipo, "series");
-  if (serie && !idbase_tem_episodio(imdb))
-    snprintf(id, sizeof id, idbase_e_imdb(imdb) ? "%s:1:1" : "%s:1", imdb);
-  else
-    snprintf(id, sizeof id, "%s", imdb);
+  nv_stream_id_copy(id,sizeof id,imdb);
   snprintf(tp, sizeof tp, "%s", serie ? "series" : "movie");
 
   pthread_mutex_lock(&legTrava);
@@ -2407,14 +2413,11 @@ void addons_legendas_fonte(const char *imdb, const char *tipo, const char *arqui
                            unsigned long long tamanho, const char *hash,
                            const char *urlVideo, int exigeCabecalhos) {
   int serie, juntar, manter;
-  char id[64], tp[16];
+  char id[NV_STREAM_ID_CAP], tp[16];
   LegExtras novo;
-  if (!nAddon || !imdb || !*imdb || jfid_e(imdb)) return;
+  if (!nAddon || !nv_stream_id_valid(imdb) || jfid_e(imdb)) { rejeitarAlvoLegendas(); return; }
   serie = tipo && !strcmp(tipo, "series");
-  if (serie && !idbase_tem_episodio(imdb))
-    snprintf(id, sizeof id, idbase_e_imdb(imdb) ? "%s:1:1" : "%s:1", imdb);
-  else
-    snprintf(id, sizeof id, "%s", imdb);
+  nv_stream_id_copy(id,sizeof id,imdb);
   snprintf(tp, sizeof tp, "%s", serie ? "series" : "movie");
   memset(&novo, 0, sizeof novo);
   snprintf(novo.id, sizeof novo.id, "%s", id);
@@ -3261,7 +3264,7 @@ static int consultar(const char *id, const char *tipo, const char *base, int fio
   pthread_t fioEx;
   int temExtra = 0;
   *saida = NULL;
-  if (!id || !*id || !tipo || !*tipo) return 0;
+  if (!nv_stream_id_valid(id) || !tipo || !*tipo) return 0;
   if (!nv_perfil_sessao_atual(sessao)) return -1;
   memset(&c, 0, sizeof c); c.sessao = sessao;
   c.origens = capturarPedidos(sessao, &c.nOrigens, &c.versao);
@@ -3582,7 +3585,7 @@ static int arrayDeFontesCompleto(const char *corpo) {
 }
 int addons_consulta_filme(const AddonsConsulta *c, const char *id,
                           int (*cancelado)(void *), void *ctx) {
-  if (!c || !id || !*id) return -1;
+  if (!c || !nv_stream_id_valid(id)) return -1;
   Uint32 inicio = SDL_GetTicks();
   int resultado = 0;
   for (int i = 0; i < c->n; i++) {
@@ -3697,7 +3700,7 @@ int addons_consulta_consultar(const AddonsConsulta *snapshot, const char *id, co
   Stream **out = saida;
   if (!out) return -1;
   *out = NULL;
-  if (!snapshot || !id || !*id || !tipo || !*tipo) return -1;
+  if (!snapshot || !nv_stream_id_valid(id) || !tipo || !*tipo) return -1;
   ConsultaCapturada c = {0};
   c.snapshot = snapshot; c.id = id; c.tipo = tipo; c.cancelado = cancelado; c.ctx = ctx;
   if (cancelaConsultaCapturada(&c)) return -1;
@@ -3832,14 +3835,14 @@ int addons_motivo_vazio(char *dst, unsigned n) {
 }
 
 typedef struct {
-  char id[64], tipo[16], base[NV_ADDON_URL_MAX];
+  char id[NV_STREAM_ID_CAP], tipo[16], base[NV_ADDON_URL_MAX];
   FontecacheEscopo escopo;
   Resumo resumo;
   int progresso;
 } PedidoBusca;
 static int cancelarBusca(void *u) {
   PedidoBusca *p = u;
-  return !nv_perfil_sessao_atual(p->escopo.sessao) || p->escopo.addons != addons_versao();
+  return atomic_load(&buscaAlvoRecusado) || !nv_perfil_sessao_atual(p->escopo.sessao) || p->escopo.addons != addons_versao();
 }
 static void *buscar(void *u) {
   Stream *achados = NULL;
@@ -3869,6 +3872,7 @@ static void *buscar(void *u) {
 
 // A busca real do alvo corrente vai a rede. Chamado com fioVivo == 0.
 static void dispararBusca(void) {
+  atomic_store(&buscaAlvoRecusado,0);
   // Pedido real tem prioridade: o prefetch em curso (de OUTRO canal — o deste
   // teria sido adotado em addons_buscar) larga os addons que faltam.
   fontecache_ceder();
@@ -3902,9 +3906,18 @@ void addons_definir_origem(const char *base) {
 }
 
 static void buscarPedido(const char *imdb, const char *tipo, int forcar) {
-  int serie, renovar, p3Retendo = 0;
+  int renovar, p3Retendo = 0;
   char id[sizeof alvoId];
-  if (!imdb || !*imdb) return;
+  if (!nv_stream_id_valid(imdb) || (tipo && strlen(tipo)>=sizeof alvoTipo)) {
+    atomic_store(&buscaAlvoRecusado,1);
+    pendId[0]=pendTipo[0]=pendBase[0]=alvoBase[0]=0;
+    pendRenovar=adotado=jfAlvo=0;
+    stream_definir_alvo(NULL);
+    estado=ADD_VAZIO;
+    return;
+  }
+  if (!fioVivo) atomic_store(&buscaAlvoRecusado,0);
+  stream_definir_alvo(imdb);
   stream_filtro_tipo(tipo);
   stream_folha_canal(nv_tipo_canal(tipo));
   if (jfid_e(imdb)) {
@@ -3937,26 +3950,16 @@ static void buscarPedido(const char *imdb, const char *tipo, int forcar) {
   if (!nAddon && !addons_origem_extra_ativa()) { stream_definir_lista(NULL, 0); resumoDaLista(&resumo); estado = ADD_VAZIO; return; }
   // Only IMDb has a known episode convention. Custom IDs are opaque, including
   // videos[].id values without a numeric suffix: never append an episode.
-  serie = tipo && !strcmp(tipo, "series");
-  if (serie && idbase_e_imdb(imdb) && !idbase_tem_episodio(imdb))
-    snprintf(id, sizeof id, "%s:1:1", imdb);
-  else
-    snprintf(id, sizeof id, "%s", imdb);
-  // O CARIMBO E O ID QUE VAI AOS ADDONS (bloqueador 2.0.3, TCL do dono). O
-  // detalhe aberto antes de a lista de episodios chegar carimba o id cru
-  // ("tt8714904"; app.c idDoAlvo) e a pergunta sai como "tt8714904:1:1"; o
-  // player confere "tt8714904:1:1", acha a lista "de outro alvo" e descartava
-  // as 28 fontes do MESMO episodio ("episode changed"). Quem pediu carimbou o
-  // id cru agora mesmo; aqui ele vira o que de fato foi perguntado.
-  if (strcmp(id, imdb)) stream_definir_alvo(id);
+  nv_stream_id_copy(id,sizeof id,imdb);
+  // The caller supplied the exact wire target; never append an episode here.
   if (fioVivo) {
     // A same-target Reload can be queued while addons are still responding.
     // Keep cards visible but revoke their selection immediately; the old
     // worker's late arrivals are discarded while pendId is populated.
-    if (forcar && !pendId[0] && !strcmp(id, alvoId) &&
+    if (forcar && !atomic_load(&buscaAlvoRecusado) && !pendId[0] && !strcmp(id, alvoId) &&
         !strcmp(tipo ? tipo : "movie", alvoTipo) && escopoAindaAtual(&fioEscopo))
       p3Retendo = stream_recarregar_iniciar(id);
-    if (forcar || !escopoAindaAtual(&fioEscopo) || strcmp(id, alvoId) || strcmp(tipo ? tipo : "movie", alvoTipo)) {
+    if (forcar || atomic_load(&buscaAlvoRecusado) || !escopoAindaAtual(&fioEscopo) || strcmp(id, alvoId) || strcmp(tipo ? tipo : "movie", alvoTipo)) {
       snprintf(pendId, sizeof pendId, "%s", imdb);
       snprintf(pendTipo, sizeof pendTipo, "%s", tipo ? tipo : "movie");
       pendRenovar = forcar;

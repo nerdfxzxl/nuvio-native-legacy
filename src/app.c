@@ -1,3 +1,4 @@
+#include "stream_id_p6.h"
 // Roteador de telas.
 //
 // Antes disto o main.c decidia entre home e detalhe com um if. Com menu, busca,
@@ -231,7 +232,7 @@ static const char *autoMotivo = "";
 static int escolhaDoNext(const char *base, char *prov, unsigned tam);
 static int nextAutorizado(void);
 static int autoParcialPronto(void) {
-  char base[24];
+  char base[64];
   const FontePref *fp;
   int prazo, lembrada = -1, prefPendente = 0;
   static int ultN = -1, ultLembrada = -1;
@@ -399,7 +400,7 @@ typedef struct {
   unsigned preparoRodada;
   FontePreparoContexto contexto;
   int lembrada, catalogo, temporada, episodio, renovar;
-  char id[80];
+  char id[NV_STREAM_ID_CAP];
   char url[NV_MEDIA_URL_MAX];
   AddonsConsulta *consulta;
   Stream renovada;
@@ -413,13 +414,13 @@ static struct {
   int catalogo, temporada, episodio, bufferTentou;
   unsigned lista, token;
   Uint32 quando;
-  char alvo[64];
+  char alvo[NV_STREAM_ID_CAP];
   FontePreparoContexto contexto;
   FonteFalhaSessao *falha;
 } preparo;
 static struct {
   int tem;
-  char alvo[64];
+  char alvo[NV_STREAM_ID_CAP];
   unsigned lista;
   Uint32 quando;
   FontePreparoContexto contexto;
@@ -429,7 +430,7 @@ static unsigned fontePedidoGeracao;
 static int fontePendenteTipo;
 static int fontePendenteRenovando;
 static unsigned fontePendenteGeracao;
-static char fontePendenteId[80];
+static char fontePendenteId[NV_STREAM_ID_CAP];
 static int stalkerRenovando;
 
 // WATCHDOG DE CANAL. A verificacao por fonte (stream_primeira_boa) custa ate
@@ -453,7 +454,7 @@ static int    folhaCancelarTocar;
 // Play inicial e OK longo no botao primario: aguarda os addons e abre a folha
 // no Dynamic Clock da pagina de detalhes. Retomar curto continua automatico.
 static int    pedirFolhaNoPlay;
-static char   pedirFolhaAlvo[64]; // Exact movie/episode requested while add-ons finish.
+static char   pedirFolhaAlvo[NV_STREAM_ID_CAP]; // Exact movie/episode requested while add-ons finish.
 // Survives the asynchronous addon search so a short Resume keeps its intent.
 static int    retomarDiretoPendente;
 // Quantas renovacoes de link seguidas um canal de portal ganha antes de virar
@@ -479,7 +480,7 @@ static int    voltaAtiva;
 static Stream voltaFonte;  // fonte aberta fora da lista; vive alem da conferencia
 // O episodio que o Next abriu buscando (sem preparo): a escolha dele pensa
 // primeiro no bingeGroup da fonte que tocava (escolhaDoNext).
-static char buscaNextAlvo[64];
+static char buscaNextAlvo[NV_STREAM_ID_CAP];
 static Uint32 voltaDesde;
 static Uint32 fonteVODDesde;
 static Uint32 fonteManualDesde;   // OK na folha de Fontes: prazo ate o primeiro quadro
@@ -492,7 +493,7 @@ static double fonteFalhaPos = -1.0;
 // The last trustworthy point survives the failed decoder while the user
 // chooses a replacement; it is scoped by title/episode, never a global seek.
 static double p1PosEscolha = -1.0;
-static char p1AlvoEscolha[64];
+static char p1AlvoEscolha[NV_STREAM_ID_CAP];
 #endif
 static int vodRenovou;
 static Uint32 vodRenovandoDesde;
@@ -761,6 +762,7 @@ static void limparFonteVOD(void) {
   player_definir_tentativa(0, 0);
 }
 static int iniciarFonteJob(int tipo, unsigned geracao, const char *id, int renovando) {
+  if (id && *id && !nv_stream_id_valid(id)) return -1;
   FonteJob *job = &fonteJob;
   if (fioFonteVivo || atomic_load_explicit(&job->estado, memory_order_acquire) != FJOB_IDLE)
     return 1; // single-flight: o chamador agenda e o polling inicia depois
@@ -1047,8 +1049,10 @@ static void idDoAlvo(const CatItem *ci, char *dst, size_t n) {
     // cat_id_stream: "tt:T:E" no IMDb; o id do video do addon nos demais
     // ("kitsu:41370:5"). Os dois callers passam o item do detalhe.
     cat_id_stream(detail_indice(), t, e, dst, (unsigned)n);
+  else if (!strcmp(ci->tipo,"series") && idbase_imdb_historico(ci->imdb) && !idbase_tem_episodio(ci->imdb))
+    cat_id_stream(detail_indice(),1,1,dst,(unsigned)n);
   else
-    snprintf(dst, n, "%s", ci->imdb);
+    nv_stream_id_copy(dst,n,ci->imdb);
 }
 
 // A tela de Diagnostico foi aberta pelo cartao da 1.4.2, nao por Ajustes.
@@ -1100,10 +1104,10 @@ static void alvoPlayer(char *alvo, size_t tam) {
   player_episodio_atual(&t, &e);
   // Canal no ar: o id congelado na abertura vence o indice, que uma
   // republicacao do catalogo ja pode ter apontado para outro item.
-  if (player_id_canal()[0]) { snprintf(alvo,tam,"%s",player_id_canal()); return; }
+  if (player_id_canal()[0]) { nv_stream_id_copy(alvo,tam,player_id_canal()); return; }
   if (!c) { alvo[0] = 0; return; }
   if (t >= 0 && e > 0) cat_id_stream(player_indice(), t, e, alvo, (unsigned)tam);
-  else snprintf(alvo,tam,"%s",c->imdb);
+  else nv_stream_id_copy(alvo,tam,c->imdb);
 }
 // --- StreamFit runtime and passive gate (F03) -------------------------------
 // RUNTIME OF THE EXACT TARGET, from metadata the catalog already parsed. Asked
@@ -1127,7 +1131,7 @@ static double fitRuntimeItem(int indice, int t, int e) {
   return !strcmp(c->tipo, "movie") ? streamfitdur_meta_filme(c->meta) : 0;
 }
 static double fitRuntimeMeta(const char *alvo) {
-  char a[64];
+  char a[NV_STREAM_ID_CAP];
   int t = 0, e = 0;
   if (!alvo || !*alvo) return 0;
   if (player_aberto() && !player_id_canal()[0]) {
@@ -1147,10 +1151,10 @@ static double fitRuntimeMeta(const char *alvo) {
 // the player's exact target. A new file or target clears the previous media
 // duration first; metadata of that target stays. Every frame, cheap.
 static void fitDuracaoMidia(void) {
-  static char ultAlvo[64];
+  static char ultAlvo[NV_STREAM_ID_CAP];
   static unsigned long ultUrl;
   static int enviado;
-  char alvo[64];
+  char alvo[NV_STREAM_ID_CAP];
   unsigned long h = 5381;
   double d;
   if (!player_aberto() || player_id_canal()[0]) return;
@@ -1185,7 +1189,7 @@ static void origemFontes(const CatItem *c) {
 }
 
 static void buscarParaPlayerModo(int renovar) {
-  char alvo[64]; alvoPlayer(alvo,sizeof alvo);
+  char alvo[NV_STREAM_ID_CAP]; alvoPlayer(alvo,sizeof alvo);
   const char *idC = player_id_canal();
   // Episodio novo abre um ciclo novo de fontes. A fonte automatica do
   // episodio anterior nao pode contaminar o watchdog nem a lista de exclusao.
@@ -1205,7 +1209,7 @@ static void buscarParaPlayerModo(int renovar) {
   }
   {
     const CatItem *c = cat_item(player_indice());
-    if (c && alvo[0]) {
+    if (c) {
       origemFontes(c);
       if (renovar) addons_buscar_renovar(alvo,c->tipo); else addons_buscar(alvo,c->tipo);
       addons_buscar_legendas(alvo,c->tipo);
@@ -1227,7 +1231,8 @@ static void buscarParaPlayer(void) { buscarParaPlayerModo(0); }
 // assinado que expira; o dono cobre o episodio errado. Sao duas coisas.
 static void renovarListaDoPlayer(void) {
   const CatItem *ci = cat_item(player_indice());
-  char alvoP[64]; alvoPlayer(alvoP, sizeof alvoP);
+  char alvoP[NV_STREAM_ID_CAP]; alvoPlayer(alvoP, sizeof alvoP);
+  if (!alvoP[0]) { addons_buscar(NULL,ci ? ci->tipo : NULL); return; }
   if (ci && ci->imdb[0] && alvoP[0] &&
       (stream_idade_ms() > NV_LINK_VALIDO_MS || !stream_lista_do_alvo(alvoP))) {
     printf("fonte: lista com %ums%s, renovando (%s)\n",
@@ -1352,7 +1357,7 @@ static int retentarCanal(void) {
 
 static int tocarFonteGuardada(void) {
   Stream s;
-  char alvo[64];
+  char alvo[NV_STREAM_ID_CAP];
   Uint32 started = SDL_GetTicks();
   // #618: a fresh automatic choice must use the add-on's current order.
   // Keep the saved link intact for the other selection modes.
@@ -1439,13 +1444,13 @@ static void vigiarFonteGuardada(void) {
   // Sonda isolada so recua; a marca exige erro, clipe curto ou prazo do player.
   if (g.falhou || (g.pronto && g.duracao > 1.0 && g.duracao < 120.0) ||
       (g.carregando && !g.quadro && desde > FONTEVOLTA_PRAZO_MS)) {
-    Stream s; char alvo[64];
+    Stream s; char alvo[NV_STREAM_ID_CAP];
     alvoPlayer(alvo, sizeof alvo);
     if (!fonteProvouTocar() &&
         fontevolta_pegar(alvo, sessao_usuario(), perfis_ativo(), SDL_GetTicks(), &s))
       fontesmortas_marcar(&s);
   }
-  { char alvo[64]; alvoPlayer(alvo, sizeof alvo);
+  { char alvo[NV_STREAM_ID_CAP]; alvoPlayer(alvo, sizeof alvo);
     fontevolta_esquecer_alvo(alvo, sessao_usuario(), perfis_ativo(), motivo); }
   if (fonteFalhaPos > 0.0) player_definir_retomada_fonte(fonteFalhaPos);
 #ifdef NV_ANDROID
@@ -1730,7 +1735,7 @@ static void processarFonteJob(void) {
   int tipo, renovando, resultado, estado, mesmoId = 1;
   Uint32 prazo;
   unsigned geracao;
-  char id[80], url[NV_MEDIA_URL_MAX];
+  char id[NV_STREAM_ID_CAP], url[NV_MEDIA_URL_MAX];
   int aplicar;
   if (!fioFonteVivo ||
       atomic_load_explicit(&job->estado, memory_order_acquire) != FJOB_DONE)
@@ -1756,7 +1761,7 @@ static void processarFonteJob(void) {
       preparoRodando = 0;
     preparoGuardar(job);
     if (preparoEspera) {
-      char alvoP[64];
+      char alvoP[NV_STREAM_ID_CAP];
       int idx;
       preparoEspera = 0;
       alvoPlayer(alvoP, sizeof alvoP);
@@ -1878,7 +1883,7 @@ iniciarPendente:
       fontePendenteGeracao == atomic_load_explicit(&stalkerGeracao, memory_order_acquire)) {
     int pTipo = fontePendenteTipo, pRenovando = fontePendenteRenovando;
     unsigned pGeracao = fontePendenteGeracao;
-    char pId[80];
+    char pId[NV_STREAM_ID_CAP];
     snprintf(pId, sizeof pId, "%s", fontePendenteId);
     limparFontePendente();
     if (iniciarFonteJob(pTipo, pGeracao, pId, pRenovando) < 0) {
@@ -2262,7 +2267,7 @@ static int preparoVale(const char *alvo, int lembrada) {
 // tenta SO o buffer quando esse video sair, sem refazer escolha ou orcamento.
 static void preparoBufferTentar(void) {
 #ifdef NV_ANDROID
-  char alvo[64];
+  char alvo[NV_STREAM_ID_CAP];
   if (!preparo.tem || preparo.idx < 0 || preparo.token || preparo.bufferTentou ||
       !ajustes_fonte_precarregar() || ajustes_fonte_manual() || player_aberto() ||
       player_mini_ativo() || player_retido() || video_ativo() || !detail_aberto() ||
@@ -2297,7 +2302,7 @@ static void preparoVigiar(void) {
   const FontePreparoContexto *c = NULL;
   const char *esperado = NULL;
   unsigned lista = 0;
-  char alvo[64] = "";
+  char alvo[NV_STREAM_ID_CAP] = "";
   if (preparoRodando && fioFonteVivo) {
     c = &fonteJob.contexto; esperado = fonteJob.id; lista = fonteJob.listaGeracao;
   } else if (preparo.tem) {
@@ -2314,7 +2319,7 @@ static void preparoVigiar(void) {
       !preparoContextoAtual(c)) preparoInvalidar();
 }
 static void preparoGuardar(FonteJob *j) {
-  char alvo[64] = "";
+  char alvo[NV_STREAM_ID_CAP] = "";
   if (preparoEspera && player_aberto() && !player_quer_sair()) alvoPlayer(alvo, sizeof alvo);
   else if (detail_aberto() && !player_aberto() && !player_mini_ativo())
     idDoAlvo(cat_item(detail_indice()), alvo, sizeof alvo);
@@ -2373,7 +2378,7 @@ static int preparoUsar(const char *alvoPlay, int lembrada, int *idx) {
   return 1;
 }
 static void prepararAoAbrir(void) {
-  char alvo[64], base[24];
+  char alvo[NV_STREAM_ID_CAP], base[64];
   FontePreparoContexto contexto;
   const CatItem *ci;
   unsigned g;
@@ -2390,7 +2395,7 @@ static void prepararAoAbrir(void) {
   // Runs every frame on the detail page: pick (and log) once per list, title
   // and preference change, not 60 times a second.
   // The 1 s refresh follows verification marking a source dead in place.
-  { static char ultBase[24]; static unsigned ultG, ultRev; static Uint32 ultT;
+  { static char ultBase[64]; static unsigned ultG, ultRev; static Uint32 ultT;
     static int ultN = -1, ultLembrada = -1;
     if (ultN != stream_n() || ultG != g || ultRev != fontepref_revisao() || strcmp(ultBase, base) ||
         SDL_GetTicks() - ultT > 1000) {
@@ -2449,7 +2454,7 @@ static int p6RestoreCursor, p6RestoreCandidate, p6RestoreAmbiguous;
 // 1 quando a escolha em curso e a do Next com uma fonte tocando para seguir
 // (bingeGroup); *prov recebe o add-on dela.
 static int nextAutorizado(void) {
-  char alvo[64];
+  char alvo[NV_STREAM_ID_CAP];
   if (!buscaNextAlvo[0] || !player_aberto() || player_quer_sair() || player_id_canal()[0]) return 0;
   alvoPlayer(alvo, sizeof alvo);
   return !strcmp(alvo, buscaNextAlvo);
@@ -2461,7 +2466,7 @@ static void abrirProximoEpisodio(int t, int e, int apontar, int continuando) {
   if (!continuando && proximoIntento.tem) return; // duplicate Next while loading
   uint64_t sessaoEntrada = nv_perfil_sessao_ler();
   int titulo = player_indice();
-  char atual[64], alvo[64], imdb[64];
+  char atual[NV_STREAM_ID_CAP], alvo[NV_STREAM_ID_CAP], imdb[64];
   const CatItem *ci = cat_item(titulo);
   snprintf(imdb, sizeof imdb, "%s", ci ? ci->imdb : "");
   alvoPlayer(atual, sizeof atual);
@@ -2532,7 +2537,7 @@ static void abrirProximoEpisodio(int t, int e, int apontar, int continuando) {
     player_definir_episodio(t, e);
     posplay_preservar_preparo(0);
   }
-  char dono[64]; alvoPlayer(dono, sizeof dono);
+  char dono[NV_STREAM_ID_CAP]; alvoPlayer(dono, sizeof dono);
   if (strcmp(dono, alvo)) {
 #ifdef NV_ANDROID
     if (tokenAdotado) player_precarregar_cancelar(tokenAdotado);
@@ -2612,7 +2617,7 @@ static void abrirProximoEpisodio(int t, int e, int apontar, int continuando) {
 }
 static void proximoPreparoPasso(void) {
   if (p6AppHidden) return;
-  char atual[64] = "";
+  char atual[NV_STREAM_ID_CAP] = "";
   if (player_aberto() && !player_quer_sair() && !player_id_canal()[0]) alvoPlayer(atual, sizeof atual);
   if (!proximoIntento.tem) {
     // Let the explicit transport request consume the correct warm job first.
@@ -2875,7 +2880,7 @@ static void parteTocar(const char *url, double pos) {
   parteProx = -1; parteProxFase = 0; parteProxUrl[0] = 0;
   // O arquivo que toca: a saida do player guarda o ponto dele (partes.h).
   if (parteArqK >= 0 && parteArqK < parteArqLista.n) {
-    char a[64];
+    char a[NV_STREAM_ID_CAP];
     alvoPlayer(a, sizeof a);
     partes_arquivo_definir(a, parteArqLista.usenet, parteArqLista.item, parteArqLista.arq[parteArqK].id);
   }
@@ -2883,7 +2888,7 @@ static void parteTocar(const char *url, double pos) {
 static void abrirParte(int fonte, const PartesLista *l, int k) {
   const Stream *s = stream_item(fonte);
   Stream escolhida;
-  char alvo[64], imdb[64];
+  char alvo[NV_STREAM_ID_CAP], imdb[64];
   int titulo, t = 0, e = 0, serie;
   PartesPonto pt;
   if (!s || !l || k < 0 || k >= l->n) return;
@@ -2945,7 +2950,7 @@ static void abrirParte(int fonte, const PartesLista *l, int k) {
 // RETOMAR NA PARTE GUARDADA. 1 = assumiu a abertura (o link vem num fio).
 static int tocarParteGuardada(void) {
   PartesPonto p;
-  char alvo[64];
+  char alvo[NV_STREAM_ID_CAP];
   if (ajustes_fonte_manual() || !partes_disponivel() || player_id_canal()[0] || !player_aberto()) return 0;
   alvoPlayer(alvo, sizeof alvo);
   if (!alvo[0] || !partes_ponto_pegar(alvo, sessao_usuario(), perfis_ativo(), &p)) return 0;
@@ -2969,7 +2974,7 @@ static int tocarParteGuardada(void) {
 // Nao deu na parte guardada: a escolha normal assume, com a busca de fundo
 // que ja saiu (renovarListaDoPlayer / buscarParaPlayer antes daqui).
 static void parteRecuar(const char *porque) {
-  char alvo[64];
+  char alvo[NV_STREAM_ID_CAP];
   alvoPlayer(alvo, sizeof alvo);
   printf("[partes] resume falls back to the normal pick: %s\n", porque);
   fflush(stdout);
@@ -2989,7 +2994,7 @@ static void parteFalhou(const char *porque) {
   if (!player_fonte_falhou()) player_erro_fonte_motivo(i18n("Não foi possível abrir este arquivo"), NULL);
 }
 static void vigiarPartes(void) {
-  char alvo[64];
+  char alvo[NV_STREAM_ID_CAP];
   static char url[NV_MEDIA_URL_MAX];
   static PartesLista l;   // ~13 KB: fora da pilha, como as listas de partes.c
   int r;
@@ -3396,7 +3401,7 @@ static void lembrarAutomatica(void) {
   player_episodio_atual(&t, &e);
   if (t < 0 || e <= 0) return;
   ultAtual = at; ultGer = stream_lista_geracao();
-  { char base[24];
+  { char base[64];
     idBaseDoTitulo(base, sizeof base);
     if (base[0]) fontepref_auto_guardar(base, stream_item(at)); }
 }
@@ -3420,8 +3425,8 @@ static void bingeDaFonteAtual(void) {
 static void lembrarTocando(void) {
   static const Stream *ultS;
   static unsigned ultGer;
-  static char ultAlvo[64];
-  char alvo[64], base[24];
+  static char ultAlvo[NV_STREAM_ID_CAP];
+  char alvo[NV_STREAM_ID_CAP], base[64];
   const Stream *s;
   int t = 0, e = 0;
   if (player_id_canal()[0] || !player_aberto() || player_quer_sair() || aguardandoFonte != 0 ||
@@ -3473,7 +3478,7 @@ static void renovarVodInterrompido(void) {
       aguardandoFonte || player_fonte_falhou()) return;
   int causa = fontesonda_causa(video_erro_texto(), NULL);
   if (causa != FS_CAUSA_REDE && causa != FS_CAUSA_HTTP) return;
-  char alvo[64]; alvoPlayer(alvo, sizeof alvo);
+  char alvo[NV_STREAM_ID_CAP]; alvoPlayer(alvo, sizeof alvo);
   fonteDepoisDe = stream_atual();
   if (fonteDepoisDe < 0 || !alvo[0] ||
       partes_sessao_lista() || parteFase != PF_NADA) return;
@@ -3807,7 +3812,7 @@ static void cwRetidoSincronizar(void) {
 }
 
 static void guiaComCanalNoAr(void) {
-  char id[80];
+  char id[NV_STREAM_ID_CAP];
   float x, y, w, h;
   snprintf(id, sizeof id, "%s", player_id_canal());
   guia_preview_rect(&x, &y, &w, &h);
@@ -3963,7 +3968,7 @@ static void p6RestoreTry(void) {
     if (SDL_GetTicks() - p6RestoreSince > 20000u) { p6RestorePending = 0; return; }
     int i = cat_indice_por_imdb_tipo(t->title, t->type);
     if (i < 0) return;
-    char alvo[64];
+    char alvo[NV_STREAM_ID_CAP];
     if (!strcmp(t->type, "series")) {
       int ix = cat_indice_titulo(t->title, i);
       if (!cat_episodio_existe_final(ix, t->title, t->season, t->episode)) {
@@ -4019,7 +4024,7 @@ static void p6RestoreTry(void) {
       atomic_load_explicit(&stalkerGeracao, memory_order_acquire) != p6RestoreSource) {
     p6RestorePending = 0; return;
   }
-  char alvo[64]; alvoPlayer(alvo, sizeof alvo);
+  char alvo[NV_STREAM_ID_CAP]; alvoPlayer(alvo, sizeof alvo);
   if (strcmp(alvo, t->target)) { p6RestorePending = 0; return; }
   int complete = addons_estado() != ADD_BUSCANDO && !stream_recarregar_retendo() &&
                  stream_lista_do_alvo(t->target);
@@ -4590,7 +4595,7 @@ void app_evento(const SDL_Event *e) {
   if (e->type == SDL_APP_WILLENTERBACKGROUND || e->type == SDL_APP_DIDENTERBACKGROUND ||
       e->type == SDL_APP_TERMINATING) {
     p6AppHidden = 1;
-    char alvo[64] = "";
+    char alvo[NV_STREAM_ID_CAP] = "";
     if (player_aberto()) alvoPlayer(alvo, sizeof alvo);
     int cancelarCinema = p6_next_player_matches(&proximoIntento, alvo,
         player_geracao_fonte(), nv_perfil_sessao_ler());
@@ -5194,8 +5199,8 @@ static void trocaDeTituloSeSolicitada(void) {
 // defeito de antes so naquele caminho. Esperar o video (player_com_video)
 // tambem poupa a busca das candidatas que o automatico testa e descarta.
 static void legendasDaFonte(void) {
-  static char ultimo[NV_MEDIA_URL_MAX + 64];
-  char chave[sizeof ultimo], alvo[64];
+  static char ultimoAlvoLeg[NV_STREAM_ID_CAP], ultimoLinkLeg[NV_MEDIA_URL_MAX];
+  char alvo[NV_STREAM_ID_CAP];
   const Stream *s;
   const CatItem *c;
   // A legenda automatica compara o release com este nome, entao ele vale desde
@@ -5208,9 +5213,11 @@ static void legendasDaFonte(void) {
   if (!s || !c || !c->imdb[0]) return;
   alvoPlayer(alvo, sizeof alvo);
   if (!alvo[0]) return;
-  snprintf(chave, sizeof chave, "%s|%s", alvo, s->url[0] ? s->url : s->infoHash);
-  if (!strcmp(chave, ultimo)) return;
-  snprintf(ultimo, sizeof ultimo, "%s", chave);
+  const char *link=s->url[0] ? s->url : s->infoHash;
+  if (strlen(link)>=sizeof ultimoLinkLeg) return;
+  if (!strcmp(alvo,ultimoAlvoLeg) && !strcmp(link,ultimoLinkLeg)) return;
+  nv_stream_id_copy(ultimoAlvoLeg,sizeof ultimoAlvoLeg,alvo);
+  snprintf(ultimoLinkLeg,sizeof ultimoLinkLeg,"%s",link);
   addons_legendas_fonte(alvo, c->tipo, s->arquivo, (unsigned long long)s->tamanhoBytes,
                         s->videoHash, s->url, s->cabecalhos[0] != 0);
 }
@@ -5735,7 +5742,7 @@ void app_atualizar(float dt, Uint32 agora) {
   // A marca "Sua escolha anterior" na folha que abriu antes de o addon da
   // lembrada responder: confere de novo quando a lista cresce.
   if (stream_folha_aberta() && stream_preferida() < 0 && stream_n() != prefFolhaN) {
-    char base[24];
+    char base[64];
     prefFolhaN = stream_n();
     idBaseDoTitulo(base, sizeof base);
     if (base[0] && fontepref_tem(base)) stream_preferir(fontepref_escolher_manual(base));
@@ -5786,7 +5793,7 @@ void app_atualizar(float dt, Uint32 agora) {
         if (im[0]) spainel_abrir_titulo(im);
         else spainel_ir_aba(1);                       // 1 = aba Atividade
       } }
-    { static char focoChave[80]; IlhaCartao foco; Stream s; char alvo[64];
+    { static char focoChave[80]; IlhaCartao foco; Stream s; char alvo[NV_STREAM_ID_CAP];
       if (ajustes_retomada_morna() && !player_retido() && !player_aberto() &&
           ilha_retomar_focado(&foco) && ilhacart_vivo_vale(&foco)) {
         if (strcmp(focoChave, foco.chave)) {
@@ -6228,19 +6235,19 @@ void app_atualizar(float dt, Uint32 agora) {
     // titulo aberto 3 s depois do arranque consultava os 4 addons do pacote
     // ("total 0"), a lista da conta chegava aos 5 s com 12, e ninguem repetia
     // a consulta — a folha de fontes ficava vazia ate trocar de titulo.
-    { static char ultimoAlvo[64] = "";
+    { static char ultimoAlvo[NV_STREAM_ID_CAP] = "";
       static unsigned ultimaVersao = 0;
       int i = detail_indice();
       const CatItem *ci = cat_item(i);
-      char alvo[64];
+      char alvo[NV_STREAM_ID_CAP];
       int esperaFoco = 0;
       idDoAlvo(ci, alvo, sizeof alvo);
       // ANDAR PELOS EPISODIOS NAO E PEDIR FONTES (PR #567): trocar so o
       // episodio do mesmo titulo espera o foco parar 1,2 s nele; titulo novo,
       // folha de Fontes aberta ou lista de addons mudada buscam na hora.
-      { static char pendAlvo[64];
+      { static char pendAlvo[NV_STREAM_ID_CAP];
         static Uint32 pendDesde;
-        char b1[24], b2[24];
+        char b1[64], b2[64];
         fontepref_id_base(alvo, b1, sizeof b1);
         fontepref_id_base(ultimoAlvo, b2, sizeof b2);
         if (ultimoAlvo[0] && strcmp(alvo, ultimoAlvo) && !strcmp(b1, b2) && !stream_folha_aberta()) {
@@ -6334,7 +6341,7 @@ void app_atualizar(float dt, Uint32 agora) {
         // por isso passa por sucesso.
         const CatItem *ci = cat_item(detail_indice());
         limparFonteVOD();
-        char alvoPreparo[64], basePreparo[24];
+        char alvoPreparo[NV_STREAM_ID_CAP], basePreparo[64];
         int idxPreparado = -1;
         idDoAlvo(ci, alvoPreparo, sizeof alvoPreparo);
         if (ci && cwTocarT >= 0 && cwTocarE > 0)
@@ -6369,12 +6376,12 @@ void app_atualizar(float dt, Uint32 agora) {
         // no episodio anteriormente focado e o worker agora troca para o pedido
         // mais recente sem publicar resultados velhos.
         if (ci && ci->imdb[0]) {
-          char alvoLeg[64]; alvoPlayer(alvoLeg, sizeof alvoLeg);
+          char alvoLeg[NV_STREAM_ID_CAP]; alvoPlayer(alvoLeg, sizeof alvoLeg);
           addons_buscar_legendas(alvoLeg, ci->tipo);
         }
         // A busca de fontes sai SEMPRE (renovarListaDoPlayer): com a fonte
         // guardada ela corre em segundo plano e so serve a folha e ao recuo.
-        char alvoDefinitivo[64]; alvoPlayer(alvoDefinitivo, sizeof alvoDefinitivo);
+        char alvoDefinitivo[NV_STREAM_ID_CAP]; alvoPlayer(alvoDefinitivo, sizeof alvoDefinitivo);
         if (usouPreparo && !strcmp(alvoDefinitivo, alvoPreparo)) {
           fontePedidoGeracao = novaGeracaoFonte();
           limparFontePendente();
@@ -6432,7 +6439,7 @@ void app_atualizar(float dt, Uint32 agora) {
     if (detail_pediu_fontes()) {
       // A lembrada e localizada ANTES de abrir, para a folha ja desenhar a
       // marca no primeiro quadro. E so uma varredura da lista em memoria.
-      char base[24];
+      char base[64];
       int epT, epE;
       // O pedido pode trazer um episodio travado (toque no card com
       // "Escolher a fonte ao reproduzir", ou "Fontes deste episodio" no
@@ -6457,7 +6464,7 @@ void app_atualizar(float dt, Uint32 agora) {
   // Initial Play expands the Dynamic Clock right away; addon results arrive
   // progressively and the selector shows skeletons until the first response.
   if (pedirFolhaNoPlay) {
-    char alvoAtual[64];
+    char alvoAtual[NV_STREAM_ID_CAP];
     if (!detail_aberto()) {
       pedirFolhaNoPlay = 0;
       pedirFolhaAlvo[0] = 0;
@@ -6475,7 +6482,7 @@ void app_atualizar(float dt, Uint32 agora) {
   }
 
   if (pedirFolhaNoPlay && detail_aberto() && !player_aberto()) {
-    char base[24];
+    char base[64];
     pedirFolhaNoPlay = 0;
     pedirFolhaAlvo[0] = 0;
     folhaParaTocar = 1;
@@ -6555,7 +6562,7 @@ void app_atualizar(float dt, Uint32 agora) {
       // Nada lembrado devolve -1, stream_preferir(-1) desliga, e a verificacao
       // roda exatamente como rodava antes. Quem nunca abriu a folha de fontes
       // nao ve diferenca nenhuma.
-      char base[24];
+      char base[64];
       int lembrada;
       idBaseDoTitulo(base, sizeof base);
       // Com "escolher a fonte ao reproduzir" ligado so vale a escolha da PESSOA:
@@ -6591,7 +6598,7 @@ void app_atualizar(float dt, Uint32 agora) {
       } else {
         pedirFolhaNoPlay = 0;
         pedirFolhaAlvo[0] = 0;
-        char alvoP[64];
+        char alvoP[NV_STREAM_ID_CAP];
         int idx;
         alvoPlayer(alvoP, sizeof alvoP);
         if (preparoUsar(alvoP, lembrada, &idx)) {
@@ -7045,7 +7052,7 @@ void app_atualizar(float dt, Uint32 agora) {
     // Outra fonte escolhida: o filme em partes deste titulo acabou, e o ponto
     // da parte nao vale mais (o Retomar segue a fonte nova).
     if (partes_sessao_lista() || parteFase != PF_NADA) {
-      char alvoP[64];
+      char alvoP[NV_STREAM_ID_CAP];
       if (player_aberto()) { alvoPlayer(alvoP, sizeof alvoP); partes_ponto_esquecer(alvoP, sessao_usuario(), perfis_ativo()); }
       partes_sessao_parar("another source picked");
       parteZerar();
@@ -7060,7 +7067,7 @@ void app_atualizar(float dt, Uint32 agora) {
     // Explicit picks invalidate every pending automatic selection.
     novaGeracaoFonte(); limparFontePendente(); preparoEspera = 0;
     if (s) {
-      char base[24];
+      char base[64];
       idBaseDoTitulo(base, sizeof base);
       if (base[0]) fontepref_guardar(base, s);
       // A MARCA DA FOLHA SEGUE A ESCOLHA NOVA. Sem esta linha, reabrir a folha
@@ -7100,7 +7107,7 @@ void app_atualizar(float dt, Uint32 agora) {
       int mesmaParte = epAnteriorT == t && epAnteriorE == e && !folhaInicioDepoisEscolha;
 #ifdef NV_ANDROID
       if (mesmaParte) {
-        char alvoManual[64];
+        char alvoManual[NV_STREAM_ID_CAP];
         alvoPlayer(alvoManual, sizeof alvoManual);
         if (trocaPos < 0.0 && p1PosEscolha > 0.0 &&
             !strcmp(alvoManual, p1AlvoEscolha)) trocaPos = p1PosEscolha;
@@ -7171,11 +7178,11 @@ void app_atualizar(float dt, Uint32 agora) {
       limparFonteVOD(); player_voltar_a_esperar();
       // Pending Next has not published a source list yet. Fetch for the exact
       // current episode for manual selection, without arming automatic Play.
-      char alvoManual[64]; alvoPlayer(alvoManual, sizeof alvoManual);
+      char alvoManual[NV_STREAM_ID_CAP]; alvoPlayer(alvoManual, sizeof alvoManual);
       if (alvoManual[0] && !stream_lista_do_alvo(alvoManual)) buscarParaPlayer();
       folhaParaTocar = 1; folhaCancelarTocar = 0;
     }
-    char base[24];
+    char base[64];
     stream_folha_contexto(player_linha_episodio());
     idBaseDoTitulo(base, sizeof base);
 #ifdef NV_ANDROID
@@ -7283,7 +7290,7 @@ void app_atualizar(float dt, Uint32 agora) {
   if (aguardandoFonte != 2 && stream_folha_recarregar()) {
     if (player_aberto()) buscarParaPlayerModo(1);
     else {
-      const CatItem *ci=cat_item(detail_indice()); char id[64];
+      const CatItem *ci=cat_item(detail_indice()); char id[NV_STREAM_ID_CAP];
       idDoAlvo(ci,id,sizeof id);
       if (ci) { stream_definir_alvo(id); origemFontes(ci); addons_buscar_renovar(id,ci->tipo); }
     }

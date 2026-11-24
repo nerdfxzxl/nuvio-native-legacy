@@ -9,6 +9,7 @@
 #ifndef NV_CATALOGO_H
 #define NV_CATALOGO_H
 #include "addonurl.h"
+#include "stream_id_p6.h"
 #include <stdint.h>
 
 // 40 titulos hoje (14 do historico do dono + 26 dos catalogos). A folga evita
@@ -188,7 +189,7 @@ typedef struct {
   // ele que se pede fonte (/stream/series/<id>.json): o addon de anime tem id
   // proprio por episodio, e montar "<titulo>:<T>:<E>" na mao so acerta no IMDb.
   // Vazio = o meta nao trouxe; ver cat_id_stream.
-  char vid[64];
+  char vid[NV_STREAM_ID_CAP];
   int vidInvalido; // published but unrepresentable: never invent fallback
   // O MESMO EPISODIO NO TMDB (2.0.3): id da serie e o par temporada/episodio
   // que casou em /tv/<id>/season/<n> (desc_tmdb_notas_temporada_ex). 0 = o

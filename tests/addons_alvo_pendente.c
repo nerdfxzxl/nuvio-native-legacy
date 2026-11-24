@@ -41,6 +41,16 @@ int main(void) {
   stream_definir_alvo("jf:fixture:item");
   addons_buscar("jf:fixture:item", "movie");
   assert(stream_n() == 0);
+  char over[NV_STREAM_ID_CAP+1];
+  memset(over,'z',sizeof over-1); over[sizeof over-1]=0;
+  addons_buscar(over,"series");
+  assert(atomic_load(&buscaAlvoRecusado) && !pendId[0] && stream_n()==0);
+  progMarcar(0,&old,1,2); addons_drenar();
+  assert(stream_n()==0);
+  addons_buscar(alvoId,"movie");
+  assert(atomic_load(&buscaAlvoRecusado) && !strcmp(pendId,alvoId));
+  progMarcar(0,&old,1,2); addons_drenar();
+  assert(stream_n()==0);
   progLimpar(); stream_definir_lista(NULL, 0); fioVivo = 0;
   SDL_Quit();
   puts("PASS: pending title retires old sources; same-title recovery keeps them");

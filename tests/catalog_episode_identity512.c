@@ -108,6 +108,16 @@ int main(void) {
   assert(!cat_id_stream(0,1,2,large,sizeof large) && !large[0]);
   published.vidInvalido=0; cat_definir_episodios(0,&published,1);
   assert(cat_id_stream(0,1,2,large,sizeof large) && !strcmp(large,"tt21975436:1:2"));
+  CatEp wide[]={ep(0,1,0),ep(0,2,0)};
+  memset(wide[0].vid,'x',sizeof wide[0].vid-1);
+  memcpy(wide[1].vid,wide[0].vid,sizeof wide[0].vid);
+  wide[1].vid[sizeof wide[1].vid-2]='y';
+  cat_definir_episodios(0,wide,2);
+  char wire[NV_STREAM_ID_CAP];
+  assert(cat_id_stream(0,0,1,wire,sizeof wire) && !strcmp(wire,wide[0].vid));
+  assert(cat_id_stream(0,0,2,wire,sizeof wire) && !strcmp(wire,wide[1].vid));
+  assert(cat_episodio_por_video(0,c.imdb,wire,&t,&e) && t==0 && e==2);
+  assert(!cat_id_stream(0,0,1,large,sizeof large) && !large[0]);
   puts("catalog_episode_identity512: PASS");
   return 0;
 }
