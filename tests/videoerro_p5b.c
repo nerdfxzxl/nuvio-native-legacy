@@ -25,6 +25,25 @@ int main(void) {
   for (int reason = 1; reason <= 5; ++reason)
     assert(!videoerro_p5b_evento_aceito(1, 7u, 7u, reason));
   assert(videoerro_p5b_evento_aceito(1, 8u, 8u, 0));
-  puts("videoerro_p5b: PASS (21 production C assertions)");
+  NvVideoRetryP5B retry = {0};
+  videoerro_p5b_retry_arm(&retry, 5);
+  assert(!videoerro_p5b_retry_owned(&retry, 7));
+  videoerro_p5b_retry_bind(&retry, 8, 100);
+  assert(videoerro_p5b_retry_owned(&retry, 8));
+  assert(retry.desde == 100);
+  assert(!videoerro_p5b_retry_owned(&retry, 7));
+  assert(!videoerro_p5b_retry_handoff(&retry, 8, 0, 1));
+  assert(!videoerro_p5b_retry_handoff(&retry, 8, 1, 0));
+  assert(!videoerro_p5b_retry_handoff(&retry, 7, 1, 1));
+  assert(videoerro_p5b_retry_fail(&retry, 7) == 0);
+  assert(videoerro_p5b_retry_owned(&retry, 8));
+  assert(videoerro_p5b_retry_fail(&retry, 8) == 5);
+  assert(!videoerro_p5b_retry_owned(&retry, 8));
+  videoerro_p5b_retry_arm(&retry, 1);
+  videoerro_p5b_retry_bind(&retry, 9, 200);
+  assert(videoerro_p5b_retry_handoff(&retry, 9, 1, 1));
+  assert(!videoerro_p5b_retry_owned(&retry, 9));
+  assert(videoerro_p5b_retry_fail(&retry, 9) == 0);
+  puts("videoerro_p5b: PASS (35 production C assertions)");
   return 0;
 }
