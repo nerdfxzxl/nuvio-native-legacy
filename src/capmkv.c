@@ -94,7 +94,7 @@ int capmkv_trechos(const MkvCap *caps, int n, IntroTrecho *out, int max) {
 // checagem, os creditos e a entrega ao modulo de intro ficam na MESMA secao
 // critica que capmkv_zerar usa para invalidar e limpar (revisao 2.0.3, achado
 // 8). Ordem de travas: capmkv -> intro (intro.c nunca chama capmkv).
-static int publicar(const MkvCap *caps, int n, int checa, unsigned g) {
+static int publicar(const MkvCap *caps, int n, int checa, unsigned g, int prova) {
   IntroTrecho v[4];
   int k = n > 0 ? capmkv_trechos(caps, n, v, 4) : 0;
   double a, b;
@@ -102,7 +102,7 @@ static int publicar(const MkvCap *caps, int n, int checa, unsigned g) {
   if (checa && g != ger) { pthread_mutex_unlock(&trava); return 0; }
   nomeado = a = n > 0 ? mkv_creditos_nomeados(caps, n) : 0.0;
   ultimo = b = n > 0 ? mkv_creditos_ultimo(caps, n) : 0.0;
-  verificado = checa && n > 0 ? mkv_creditos_verificados(caps, n) : 0.0;
+  verificado = checa && prova && n > 0 ? mkv_creditos_verificados(caps, n) : 0.0;
   if (k > 0) intro_definir_capitulos(v, k);
   pthread_mutex_unlock(&trava);
   if (n > 0) {
@@ -112,7 +112,7 @@ static int publicar(const MkvCap *caps, int n, int checa, unsigned g) {
   return 1;
 }
 
-void capmkv_aplicar(const MkvCap *caps, int n) { publicar(caps, n, 0, 0); }
+void capmkv_aplicar(const MkvCap *caps, int n) { publicar(caps, n, 0, 0, 0); }
 
 double capmkv_creditos_verificados(void) {
   double v;
@@ -130,15 +130,16 @@ double capmkv_creditos(double dur) {
 
 // Uma leitura: cabecalho da pre-busca (sem rede) ou 320 KB; Chapters fora da
 // janela vai pelo SeekHead. `*recusa` = 1 quando o servidor recusou (recuar).
-static int lerUma(const char *url, MkvCap *caps, int max, int *recusa) {
+static int lerUma(const char *url, MkvCap *caps, int max, int *recusa, int *prova) {
   unsigned char *cab = NULL;
   long cabN = 0;
   int n = 0, st = 0, proprio = 0;
-  *recusa = 0;
+  *recusa = *prova = 0;
   if (!mkvass_cabecalho(url, &cab, &cabN) || !cab) {
     cab = (unsigned char *)rede_baixar_trecho_st(url, 20, 0, CAP_JANELA - 1, &cabN, &st, NULL, NULL, 0);
     proprio = 1;
     if (!cab) { *recusa = 1; return -1; }
+    *prova = st == 206 || st == 200; // current request, not a URL-only cached header
   }
   st = -1;
   n = mkv_capitulos_alem(url, cab, cabN, caps, max, &st);
@@ -152,13 +153,13 @@ static int lerUma(const char *url, MkvCap *caps, int max, int *recusa) {
 
 typedef struct { unsigned g; char url[]; } Pedido;   // url do tamanho dela
 
-static int lerComRecuo(const char *url, MkvCap *caps, int max, unsigned g, int esperaMs) {
+static int lerComRecuo(const char *url, MkvCap *caps, int max, unsigned g, int esperaMs, int *prova) {
   static const int RECUO_MS[CAP_TENTATIVAS] = { 0, 3000, 10000 };
   int t, n;
   for (t = 0; t < CAP_TENTATIVAS; t++) {
     int recusa = 0, ms = RECUO_MS[t] + (t == 0 ? esperaMs : 0);
     while (ms > 0) { int p = ms > 250 ? 250 : ms; dormir(p); ms -= p; if (g && !vale(g)) return -2; }
-    n = lerUma(url, caps, max, &recusa);
+    n = lerUma(url, caps, max, &recusa, prova);
     if (n >= 0) return n;                    // inclusive "arquivo sem capitulos"
     if (g && !vale(g)) return -2;
   }
@@ -170,11 +171,12 @@ static void *fio(void *arg) {
   MkvCap caps[MKV_MAX_CAPS];
   int n;
   rede_lateral(1);   // #385: leitura lateral ao video (ver rede.h)
-  n = lerComRecuo(p->url, caps, MKV_MAX_CAPS, p->g, capmkv_espera_inicial_ms);
+  int prova = 0;
+  n = lerComRecuo(p->url, caps, MKV_MAX_CAPS, p->g, capmkv_espera_inicial_ms, &prova);
   if (n >= 0) {
     cacheGuardar(p->url, caps, n);      // por URL: vale mesmo se o video ja mudou
     if (capmkv_teste_antes_de_publicar) capmkv_teste_antes_de_publicar();
-    if (n > 0 && !publicar(caps, n, 1, p->g)) {
+    if (n > 0 && !publicar(caps, n, 1, p->g, prova)) {
       printf("[mkv] capitulos de um video anterior descartados\n");
       fflush(stdout);
     } else {
@@ -215,6 +217,7 @@ void capmkv_iniciar(const char *url) {
 }
 
 int capmkv_ler_agora(const char *url, MkvCap *caps, int max, int esperaMs) {
-  int n = lerComRecuo(url, caps, max, 0, esperaMs);
+  int prova = 0;
+  int n = lerComRecuo(url, caps, max, 0, esperaMs, &prova);
   return n;
 }
