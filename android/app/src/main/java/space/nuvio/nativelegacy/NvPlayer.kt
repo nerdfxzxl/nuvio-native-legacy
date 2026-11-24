@@ -374,7 +374,7 @@ object NvPlayer {
                 if (terminou) { bitmap.recycle(); return@request }
                 terminou = true
                 principal.removeCallbacks(prazo)
-                if (resultado == PixelCopy.SUCCESS && token == retidoPedido &&
+                if (resultado == PixelCopy.SUCCESS && !videoOutputFailed && token == retidoPedido &&
                     FrameHoldP2B.ownsResult(pedido, pedidos.get(), origem, sessao,
                         player === p, superficie === sv)) {
                     mostrarRetido(bitmap, sv)
@@ -1504,7 +1504,7 @@ object NvPlayer {
     @JvmStatic fun buscar(ms: Int, revision: Int) {
         val pedido = pedidos.get()
         principal.post {
-            if (pedido != pedidos.get() || pedidoAtivo != pedido) return@post
+            if (pedido != pedidos.get() || pedidoAtivo != pedido || videoOutputFailed) return@post
             val p = player ?: return@post
             val busca = ++buscaSerial
             ++retidoPedido // invalidate an older PixelCopy even for an in-buffer seek
@@ -1518,11 +1518,12 @@ object NvPlayer {
             principal.post applySeek@{
                 if (pedido != pedidos.get() || player !== p || busca != buscaSerial) return@applySeek
                 val commit = {
-                    if (pedido == pedidos.get() && player === p && busca == buscaSerial) {
+                    if (pedido == pedidos.get() && player === p && busca == buscaSerial && !videoOutputFailed) {
                         // A startup seek must not authorize handoff with an
                         // already queued frame from the superseded position.
                         // An ordinary post-handoff seek retains the existing plane.
-                        if (!estavelEmitido) invalidarQuadroSuperficie()
+                        if (!estavelEmitido && p.isCurrentMediaItemSeekable && p.currentPosition != alvo)
+                            invalidarQuadroSuperficie()
                         p.seekTo(alvo)
                         appliedSeekRevision = revision
                     }
@@ -2911,8 +2912,10 @@ object NvPlayer {
                         config.matches(format, failed.name)) {
                         r.runtimeVideoRecovery = HdrCodecFallbackP5B.RuntimeRecovery(failed.name, format)
                         retentou = true
-                        invalidarQuadroSuperficie()
+                        // Native ownership is installed before invalidation so
+                        // its watchdog cannot take the opening in between.
                         ev(EV_VIDEO_RECOVERY, videoFailure)
+                        invalidarQuadroSuperficie()
                         principal.postDelayed({
                             if (atual(minha) && !videoOutputFailed && player === p && recursosAtuais === r) {
                                 try { p.prepare() } catch (_: Exception) {
@@ -3101,7 +3104,7 @@ object NvPlayer {
         val alvo = d * f / 10000L
         fracaoPendente = 0
         try {
-            if (!estavelEmitido) invalidarQuadroSuperficie()
+            if (!estavelEmitido && p.currentPosition != alvo) invalidarQuadroSuperficie()
             p.seekTo(alvo)
             Log.i(TAG, "[player] retomada na preparacao: ${alvo} ms de ${d} ms (${f / 100}.${"%02d".format(f % 100)}%)")
             confirmarRetomada(geracaoNative, true)
