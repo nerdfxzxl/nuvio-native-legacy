@@ -35,6 +35,15 @@ static inline void videoerro_p5b_retry_bind(NvVideoRetryP5B *s, unsigned g, unsi
 static inline int videoerro_p5b_retry_owned(const NvVideoRetryP5B *s, unsigned g) {
   return s->motivo > 0 && g != 0u && s->geracao == g;
 }
+/* Runtime decoder recovery shares the current opening's watchdog ownership.
+ * Never extend an already-owned manual retry's reason/deadline. */
+static inline int videoerro_p5b_retry_begin_current(NvVideoRetryP5B *s, unsigned g,
+                                                    unsigned now, int motivo) {
+  if (!g || motivo <= 0 || videoerro_p5b_retry_owned(s, g)) return 0;
+  videoerro_p5b_retry_arm(s, motivo);
+  videoerro_p5b_retry_bind(s, g, now);
+  return 1;
+}
 static inline int videoerro_p5b_retry_fail(NvVideoRetryP5B *s, unsigned g) {
   if (!videoerro_p5b_retry_owned(s, g)) return 0;
   int reason = s->motivo; videoerro_p5b_retry_clear(s); return reason;
