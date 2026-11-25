@@ -17,4 +17,4 @@ Work only in nerdfxzxl/nuvio-native-legacy on feature/official-stream-selector. 
 
 ## Current checkpoint
 
-Check the P6 lifecycle test-only workflow on this commit, consolidate any failures, verify source/fixture coverage, complete the acceptance report and progress tracker. See the latest handover entry for revision, open issues and evidence.
+Inspect run #28 and continue audit of actual audio output fallback, rebuffer overlay ownership and same-track support, then update the acceptance/progress reports. See the latest handover entry for revision, open issues and evidence.
