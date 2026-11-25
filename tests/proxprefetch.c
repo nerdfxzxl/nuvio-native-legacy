@@ -1,7 +1,9 @@
 // Posplay + cache + addons reais; transporte controlado, sem rede/video/debrid.
 #define main teste_vod_existente
 #define rede_baixar transporte_fixture
+#define rede_baixar_st transporte_status_fixture
 #include "fontecache_vod.c"
+#undef rede_baixar_st
 #undef rede_baixar
 #undef main
 #include "posplay.h"
@@ -28,6 +30,15 @@ char *rede_baixar(const char *url, int timeout) {
   atomic_store(&entrou, 1);
   while (atomic_load(&bloquear)) usleep(1000);
   return transporte_fixture(url, timeout);
+}
+// The production add-on request now uses the status-returning transport.
+// Route it through the same blocking hook, not the included fixture's
+// macro-renamed rede_baixar; otherwise cancellation is never exercised.
+char *rede_baixar_st(const char *url, int timeout, const char *const *headers, int *status) {
+  (void)headers;
+  char *body = rede_baixar(url, timeout);
+  if (status) *status = body ? 200 : 0;
+  return body;
 }
 const CatItem *cat_item(int i) { (void)i; return &titulo; }
 int cat_indice_vivo(int i, const char *id) { (void)id; return i; }
