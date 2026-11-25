@@ -45,6 +45,7 @@
 #include "intro.h"
 #include "perfis.h"
 #include "descoberta.h"
+#include "contapend.h"
 
 // Episode metadata stays under host-test control, without background HTTP.
 static int carregando;
@@ -118,15 +119,20 @@ void trakt_marcar(const char *imdb, double posSeg, double durSeg, double assisti
 int trakt_scrobble_alvo(int evento, const TraktScrobbleAlvo *alvo,
                         double posSeg, double durSeg, double assistidoSeg, int assistiu) {
   assert(alvo && alvo->id[0]);
-  if (evento == SCR_EV_SAIU)
+  if (evento == SCR_EV_SAIU || evento == SCR_EV_SAIU_SEM_VISTO)
     trakt_marcar(alvo->id, posSeg, durSeg, assistidoSeg, assistiu);
+  // The history-owned event may occur at threshold and again on close; it
+  // is a progress notification, not another watched-history submission.
+  if (evento == SCR_EV_HISTORICO_JA_GRAVADO) {
+    tkPos = posSeg; tkDur = durSeg; tkAssistiu |= assistiu;
+  }
   return SCR_NADA;
 }
 int visto_titulo(const char *imdb, const char *tipo, const int *temporadas,
                  int nt, int visto, int destinos) {
-  (void)imdb; (void)tipo; (void)temporadas; (void)nt; (void)visto; (void)destinos;
+  // Preserve the production local journal contract while mocking delivery.
   nVisto++;
-  return 1;
+  return contapend_gesto(imdb, tipo, NULL, 0, visto, 0, temporadas, nt) != 0;
 }
 int visto_episodios(const char *imdb, const char *tipo, const VistoPar *pares,
                     int n, int visto, int destinos) {

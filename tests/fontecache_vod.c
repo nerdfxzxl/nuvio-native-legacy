@@ -53,6 +53,9 @@ char *rede_baixar_st(const char *url, int seconds, const char *const *headers, i
 }
 char *rede_baixar(const char *url, int timeout) {
   (void)timeout;
+  // Manifest discovery is now a separate request before stream delivery.
+  // Do not count it as media-prefetch HTTP or allow any real transport.
+  if (strstr(url, "/manifest.json")) return strdup("{\"id\":\"fixture\",\"resources\":[{\"name\":\"stream\",\"types\":[\"movie\",\"series\"]}]}");
   assert(strstr(url, "/stream/") && strstr(url, ".json"));
   atomic_fetch_add(&pedidos, 1);
   if (strstr(url, "erro.invalid")) return NULL;

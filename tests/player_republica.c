@@ -10,6 +10,7 @@
 // sendo do titulo que esta tocando.
 #include "catalogo.h"
 #include "player.h"
+#include "video.h"
 #include "pausao.h"
 #include "posplay.h"
 #include "episodios.h"
@@ -96,6 +97,10 @@ int main(void) {
 
   player_abrir(4, NULL);
   player_definir_episodio(1, 3);
+  // Q50 only updates post-play on an owned ready video with real duration.
+  static const VideoSimulacao sim = { .aceita=1, .pronto=1 };
+  video_simular(&sim);
+  player_definir_fonte("https://fixture.invalid/episode.mp4");
   episodios_abrir(player_indice(), 1, 3);   // o que o botao Episodios faz
   conferir("aberto");
 

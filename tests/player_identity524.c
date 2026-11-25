@@ -77,7 +77,14 @@ int main(int argc, char **argv) {
     cat_definir_episodios(0, &ep, 1);
   }
   duracao = 300; posicao = 120;
-  player_abrir(0, "https://fixture.invalid/native-video.mp4");
+  // Match the production episode-selection route: select the explicit pair
+  // before accepting its stream. Late metadata controls intentionally open
+  // with an uncertain type to exercise the existing reconciliation path.
+  if (!movie && !late) {
+    player_abrir(0, NULL);
+    if (!defaultSeries) player_definir_episodio(expectedT, 2);
+    player_definir_fonte("https://fixture.invalid/native-video.mp4");
+  } else player_abrir(0, "https://fixture.invalid/native-video.mp4");
   if (late && !lateClose) {
     // The metadata worker resolves the original uncertain item, with the same
     // title id, while the player is already open. It does not switch titles.
@@ -120,8 +127,9 @@ int main(int argc, char **argv) {
     assert(prog_por_chave("tt9054364_s1e2", &r) && !strcmp(r.tipo, "series"));
     ep.episodio = 3; snprintf(ep.vid, sizeof ep.vid, "tt9054364:1:3");
     cat_definir_episodios(0, &ep, 1);
-    player_abrir(0, "https://fixture.invalid/next-episode.mp4");
-    player_definir_episodio(1, 3); posicao = 120;
+    player_abrir(0, NULL);
+    player_definir_episodio(1, 3);
+    player_definir_fonte("https://fixture.invalid/next-episode.mp4"); posicao = 120;
     for (int i = 0; i < 24; i++) {
       SDL_Delay(100); posicao += .1; player_atualizar(.1f, SDL_GetTicks());
     }

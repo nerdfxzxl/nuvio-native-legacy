@@ -45,6 +45,7 @@ static void tecla(SDL_Keycode k) {
 }
 static void teclaPlayer(SDL_Keycode k) {
   SDL_Event e={0};e.type=SDL_KEYDOWN;e.key.keysym.sym=k;player_evento(&e);
+  e.type=SDL_KEYUP;player_evento(&e);
 }
 static void teclaMenu(SDL_Keycode k) {
   SDL_Event e={0};e.type=SDL_KEYDOWN;e.key.keysym.sym=k;menu_evento(&e);
@@ -63,9 +64,9 @@ static void comFonte(void) {
   static const VideoSimulacao sim={.aceita=1,.pronto=1};
   video_simular(&sim);player_definir_fonte("https://example.invalid/e.mp4");
 }
-// Serie com fonte pronta (cca9acf95): Play, Proximo, Recarregar, Legendas.
+// Current series capsule: Play, Next, CC, Audio, Episodes, Aspect, Info.
 static void paraLegendas(void) {
-  teclaPlayer(SDLK_RIGHT);teclaPlayer(SDLK_RIGHT);teclaPlayer(SDLK_RIGHT);
+  teclaPlayer(SDLK_RIGHT);teclaPlayer(SDLK_RIGHT);
 }
 static void testar(void) {
   // #205 NAO PODE REGREDIR O #100. Aqui em cima porque nao dependem de estado.

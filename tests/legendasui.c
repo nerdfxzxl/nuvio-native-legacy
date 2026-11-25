@@ -137,6 +137,14 @@ static int syncAcoes(int slot, const char **r, int max, void *u) {
 }
 static void syncRodar(int slot, int acao, void *u) { (void)u; syncExec[slot] = acao; }
 
+// The old recommendations model remains testable but is not the default
+// screen. Explicitly assert the current English-only source mode first.
+static void abrirModeloLegado(void) {
+  legendasui_abrir();
+  fonteModo = 0;
+  focoChave[0] = 0; foco = 0;
+  montarLinhas(); focarAtiva();
+}
 int main(void) {
   // Format A: preserve entire readable release metadata. Provider tab / EN
   // chip are separate; only the subtitle's actual name occupies the title.
@@ -230,6 +238,10 @@ int main(void) {
   ling_local_legenda2("en");
   ativaEmb = 0;
   legendasui_abrir();
+  assert(fonteModo && aberto && nLinhasV == 2 && linhas[0].tipo == LR_NENHUMA);
+  assert(linhas[1].cand >= 0 && cand[linhas[1].cand].indice == 2);
+  assert(ling_casa(cand[linhas[1].cand].idioma, "en"));
+  abrirModeloLegado();
   assert(aberto && !mais);
   assert(nLinhasV == 4 && linhas[0].tipo == LR_NENHUMA);
   assert(linhas[1].cand >= 0 && cand[linhas[1].cand].indice == 0);
@@ -317,9 +329,9 @@ int main(void) {
     legendasui_definir_sync(NULL); }
   // Settings default and explicit full list; opening never selects a track.
   escolhidaEmb = -99; escolhidasExt = 0;
-  todas = 1; legendasui_abrir(); assert(mais);
+  todas = 1; abrirModeloLegado(); assert(mais);
   assert(tecla(SDLK_ESCAPE) == LEGUI_FECHAR);
-  todas = 0; ling_local_legenda("*"); legendasui_abrir(); assert(mais);
+  todas = 0; ling_local_legenda("*"); abrirModeloLegado(); assert(mais);
   assert(escolhidaEmb == -99 && !escolhidasExt);
   assert(tecla(SDLK_ESCAPE) == LEGUI_FECHAR);
   snprintf(sec, sizeof sec, "a1"); secOffset = 900;
@@ -335,7 +347,7 @@ int main(void) {
   faixa(2, 5, "es", "Español", "S_TEXT/UTF8", 0);
   nAdd = 6;
   ativaEmb = 2; extId[0] = 0; sec[0] = 0;
-  legendasui_abrir();
+  abrirModeloLegado();
   assert(!mais && linhaDe("rec|a") >= 0);
   assert(!strcmp(linhas[foco].chave, "rec|a"));
   assert(cand[linhas[linhaDe("rec|a")].cand].indice == 2);
@@ -366,13 +378,13 @@ int main(void) {
   nEmb = 0; nAdd = 2; tocando = "https://h.invalid/opaque";
   addon(0, "pt", "OpenSubtitles", "Show.HDTV.LOL.srt", "https://h.invalid/old.srt");
   addon(1, "pt", "OpenSubtitles", "Show.WEB-DL.NTb.srt", "https://h.invalid/new.srt");
-  legauto_fonte(NULL); legendasui_abrir();
+  legauto_fonte(NULL); abrirModeloLegado();
   assert(recP == 0);
   uint64_t assinatura = recAssinatura();
   legauto_fonte("Show.WEB-DL.NTb.mkv");
   montarLinhas();
   assert(recP == 1 && recAssinatura() != assinatura);
-  legendasui_abrir(); assert(recP == 1);
+  abrirModeloLegado(); assert(recP == 1);
   legauto_fonte(NULL); montarLinhas(); assert(recP == 0);
 
   // --- #511: the row title is the track name, the language moves below ---

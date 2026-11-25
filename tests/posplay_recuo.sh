@@ -13,4 +13,8 @@ cc -DNV_SHOT_HOOKS "${sources[@]}" tests/posplay_recuo.c -Isrc -o "$dir/test" \
   -O1 -g -I/opt/homebrew/include -I/opt/homebrew/include/SDL2 \
   -L/opt/homebrew/lib -lSDL2 -lSDL2_image -lSDL2_ttf -lz -framework OpenGL \
   -Wno-deprecated-declarations -Wno-macro-redefined
-NUVIO_DADOS="$dir/dados" "$dir/test"
+if [ "${P7_GDB:-0}" = 1 ]; then
+  NUVIO_DADOS="$dir/dados" gdb --batch --return-child-result -ex run -ex 'thread apply all bt' --args "$dir/test"
+else
+  NUVIO_DADOS="$dir/dados" "$dir/test"
+fi

@@ -4,7 +4,7 @@ on:
   push:
     branches: [feature/official-stream-selector]
     paths: [.github/workflows/p7-legacy-linux.yml]
-# CI #3: restore missing fixture boundaries, canonical scrobble observers and real EOF clock.
+# CI #4: fix EOF fixture source formatting, exercise actual selection route, collect crash traces.
 permissions:
   contents: read
 jobs:
@@ -26,7 +26,7 @@ jobs:
       - name: Install native Linux desktop test dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends clang pkg-config libsdl2-dev libsdl2-image-dev libsdl2-ttf-dev libgles-dev libegl-dev zlib1g-dev ripgrep
+          sudo apt-get install -y --no-install-recommends clang gdb pkg-config libsdl2-dev libsdl2-image-dev libsdl2-ttf-dev libgles-dev libegl-dev zlib1g-dev ripgrep
           pkg-config --exists sdl2 SDL2_image SDL2_ttf glesv2 egl zlib
       - name: Set up test-only compiler adapter
         run: |
@@ -43,6 +43,8 @@ jobs:
           for suite in $SUITES; do
             echo "::group::$suite"
             export P7_FULL_APP=0
+            export P7_GDB=0
+            case "$suite" in posplay|posplay_recuo) export P7_GDB=1 ;; esac
             case "$suite" in
               addons_alvo_pendente|fonte_manual_resume|posplay|posplay_recuo|player_eof_episodios|player_visto_trailer|player_scrobble_trailer|player|player_republica|player_retido|player_back|player_identity524) export P7_FULL_APP=1 ;;
             esac

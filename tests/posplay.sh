@@ -16,7 +16,11 @@ cc ${flags[@]+"${flags[@]}"} "${sources[@]}" tests/posplay.c -Isrc -o ${TMPDIR:-
   -O1 -g -I/opt/homebrew/include -I/opt/homebrew/include/SDL2 \
   -L/opt/homebrew/lib -lSDL2 -lSDL2_image -lSDL2_ttf -lz -framework OpenGL \
   -Wno-deprecated-declarations -Wno-macro-redefined
-${TMPDIR:-/tmp}/nuvio-posplay-tests "$@"
+if [ "${P7_GDB:-0}" = 1 ]; then
+  gdb --batch --return-child-result -ex run -ex 'thread apply all bt' --args "${TMPDIR:-/tmp}/nuvio-posplay-tests" "$@"
+else
+  ${TMPDIR:-/tmp}/nuvio-posplay-tests "$@"
+fi
 
 # #177: o cartao do proximo episodio desfoca o still pela mesma regra do detalhe.
 # O desenho nao roda sem janela; aqui a guarda e estatica, para ninguem tirar.
