@@ -1,3 +1,4 @@
+#include "parental.h"
 // #205 "VISTOS FALSOS": a duracao do TRAILER nao pode valer pela do titulo.
 //
 // O caminho, provado em log de TV (tcl-agora.log, 412.txt) e no #385: o detalhe
@@ -622,5 +623,6 @@ int main(void) {
   testarRestartReload();
 
   puts("PASS: trailer, pausa, buffer e seek sem reproducao nao marcam; >= 90% pela posicao conclui (oficial)");
+  parental_encerrar();
   return 0;
 }
