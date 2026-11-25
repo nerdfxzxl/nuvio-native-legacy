@@ -4,7 +4,7 @@ on:
   push:
     branches: [feature/official-stream-selector]
     paths: [.github/workflows/p7-legacy-linux.yml]
-# CI #6: bounded suite execution and sanitizer crash diagnostics; no debugger hangs.
+# CI #7: embedded subtitle label preservation and targeted EOF/TTL/history regressions.
 concurrency:
   group: p7-linux-legacy-${{ github.ref }}
   cancel-in-progress: true

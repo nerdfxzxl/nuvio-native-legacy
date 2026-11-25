@@ -1020,8 +1020,21 @@ static int nomeCandidato(const LegUiCand *c,char out[256]) {
     name=c->nome[0]?c->nome:strstr(c->rotulo,LU_SEP);
     if(name&&!c->nome[0])name+=strlen(LU_SEP);
     if(name&&!nomeInutil(c,name)) {
-      nomeSemExtensao(name,out,256);
-      if(out[0]&&!nomeOpaco(out))return 1;
+      // Embedded names are human track labels, not addon paths. A slash
+      // in "Full w/ honorifics" must not discard the preceding words.
+      if(!strstr(name,"://")) {
+        size_t k=0;
+        for(;name[k]&&k<255;k++) {
+          unsigned char ch=(unsigned char)name[k];
+          out[k]=(ch<32||ch==127)?' ':(char)ch;
+        }
+        out[k]=0;
+        while(k&&isspace((unsigned char)out[k-1]))out[--k]=0;
+        size_t first=0;
+        while(out[first]&&isspace((unsigned char)out[first]))first++;
+        if(first)memmove(out,out+first,strlen(out+first)+1);
+        if(out[0]&&!nomeOpaco(out))return 1;
+      }
     }
     snprintf(out,256,"%s",fonteModo?"Embedded track":nomeIdioma(c->idioma));
     return 0;

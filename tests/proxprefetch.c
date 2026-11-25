@@ -180,7 +180,10 @@ static void testarContagem(void) {
       int antesBusca = pedidos;
       posplay_fechar(); buscarTitulo("tt42:1:2", "series");
       assert(pedidos == antesBusca && nLista == 2);
-      assert(pedidos == antes + 1); // so o preparo, nao polling
+      // First prefetch is >30s before EOF at all tested speeds (credits
+      // window plus 10s lead). Exactly one TTL renewal is necessary now
+      // that Q50 waits through credits. Adoption above must not fetch again.
+      assert(pedidos == antes + 2); // initial + one renewal, never polling
     }
   }
   velocidade = 100; credito = 0;

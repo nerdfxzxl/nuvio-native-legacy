@@ -406,7 +406,7 @@ int main(void) {
     assert(!legendasui_titulo(c, 7, 3, t, sizeof t) && !strcmp(t, nomeIdioma("pt")));
     assert(!legendasui_titulo(c, 7, 4, t, sizeof t) && !strcmp(t, nomeIdioma("es")));
     legendasui_titulo(c, 7, 6, t, sizeof t);
-    assert(strlen(t) <= 43 && !strncmp(t, "An extremely", 12) && strstr(t, "\xe2\x80\xa6"));
+    assert(!strcmp(t, "An extremely long add-on label that must be cut cleanly"));
     // On screen: name first, language below it.
     nEmb = 6; nAdd = 0; mais = 1; montarLinhas();
     snprintf(t, sizeof t, "m|%s", cand[1].id);
@@ -439,11 +439,11 @@ int main(void) {
         assert(!strcmp(title, expected[k]));
         if (k == 0 || k == 1 || k == 4 || k == 5) assert(strstr(detail, nomeIdioma("en")));
       }
-      // A multibyte codepoint crosses the title's 37-byte truncation boundary.
+      // Format A keeps the complete track label within the supplied buffer.
       snprintf(cand[5].nome, sizeof cand[5].nome, "123456789012345678901234567890123456éééé");
       { LuiLinha row = {0}; row.tipo = LR_CAND; row.cand = 5;
         textoLinha(&row, title, sizeof title, detail, sizeof detail, &language, &icon, &active, &dim);
-        assert(!strcmp(title, "123456789012345678901234567890123456…")); }
+        assert(!strcmp(title, "123456789012345678901234567890123456éééé")); }
       snprintf(cand[5].nome, sizeof cand[5].nome, "Full w/ honorifics");
     }
     mais = ver = 0;

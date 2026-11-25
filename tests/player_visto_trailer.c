@@ -328,11 +328,21 @@ int main(void) {
   strcpy(semMeta.imdb, "tt90000005"); cat_definir(&semMeta, 1); dur = 2580;
   player_abrir(0, fonte); quadro();
   for (int i = 0; i < 2400; i++) { agoraMono += 1; pos += 1; quadro(); }
+  // Q45 legitimately records the main movie before the trailer replaces it.
+  // Preserve that exact durable checkpoint and prove no trailer write.
+  ProgRegistro antesTrailer, depoisTrailer;
+  assert(cat_historico_estado_id("tt90000005","movie") == 1);
+  assert(prog_por_chave("tt90000005",&antesTrailer));
+  int tkAntes=nTrakt, vistoAntes=nVisto;
   trailer_abrir(fonte, (GfxRect){0,0,100,100}, 0, 0);
   dur = pos = 180; terminou = 1;
   trailer_atualizar(SDL_GetTicks()); assert(!trailer_aberto());
   quadro(); player_encerrar();
-  assert(nTrakt == 0 && nVisto == 0 && cat_item(0)->progresso == 0);
+  assert(nTrakt == tkAntes && nVisto == vistoAntes);
+  assert(prog_por_chave("tt90000005",&depoisTrailer));
+  assert(depoisTrailer.posSeg==antesTrailer.posSeg && depoisTrailer.durSeg==antesTrailer.durSeg);
+  assert(cat_historico_estado_id("tt90000005","movie") == 1);
+  nTrakt=nVisto=tkAssistiu=0;
 
   // Pausa e buffer nao contam.
   strcpy(semMeta.imdb, "tt90000004"); cat_definir(&semMeta, 1); dur = 2580;
@@ -351,8 +361,9 @@ int main(void) {
     agoraMono += 1.0 / 60.0; pos = (i / 12) * 0.2; quadro();
   }
   player_encerrar();
-  assert(nTrakt == 1 && nVisto == 1 && cat_item(0)->progresso == 100);
-
+  assert(nTrakt == 1 && nVisto == 1 && cat_historico_estado_id("tt90000006","movie")==1);
+  assert(fabs(tkPos-170.0)<1.0 && fabs(tkDur-180.0)<1.0);
+  
   // Sem fonte (preparo/pre-busca): o video e de um trailer, nao do player.
   nTrakt = nVisto = 0; strcpy(semMeta.imdb, "tt90000007"); cat_definir(&semMeta, 1);
   player_abrir(0, NULL); dur = 180;

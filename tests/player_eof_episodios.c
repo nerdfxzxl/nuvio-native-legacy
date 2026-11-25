@@ -41,6 +41,10 @@ int main(void) {
     player_definir_episodio(temp, 1);
     player_episodio_atual(&t, &e); assert(t == temp && e == 1);
     quadro(); quadro();
+    // Warm real-duration validation before EOF, as normal viewing does.
+    // Keep the delayed catalogue response outstanding during the warm-up.
+    for(int frame=0;frame<600;frame++) quadro();
+    assert(!posplay_pediu_episodio(NULL,NULL));
     pos = dur; terminou = 1;
     quadro();
     if (caso != 3) {
@@ -68,7 +72,11 @@ int main(void) {
     }
     // Q50 countdown measures real elapsed SDL ticks at EOF, not frame count.
     Uint32 tick = SDL_GetTicks();
-    for (int i = 0; i < 600; i++) player_atualizar(.016f, tick + (Uint32)i * 16u);
+    for (int i = 0; i < 600; i++) {
+      player_atualizar(.016f, tick + (Uint32)i * 16u);
+      if (i < 300 && (caso < 2 || caso == 8))
+        assert(!posplay_pediu_episodio(NULL, NULL));
+    }
     if (caso < 2 || caso == 8) {
       ok = !player_quer_sair() && player_aberto() &&
            posplay_pediu_episodio(&t, &e) && t == temp && e == 2;

@@ -3,6 +3,7 @@
 #include "catalogo.h"
 #include "episodios.h"
 #include "player.h"
+#include "estatvivoui.h"
 #include "ajustes.h"
 #include "faixas.h"
 #include "gfx.h"
@@ -82,6 +83,9 @@ static void abrirFontesPorInfo(int serie) {
   assert(player_pediu_fontes());
   ev.type=SDL_KEYUP;player_evento(&ev);
   assert(!player_pediu_fontes());
+  // Restore Info's initial visibility: the real UI persists this preference.
+  if (estatvivo_player_aberto()) estatvivo_player_toggle();
+  assert(!estatvivo_player_aberto());
 }
 static void testar(void) {
   // #205 NAO PODE REGREDIR O #100. Aqui em cima porque nao dependem de estado.
