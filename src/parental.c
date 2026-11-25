@@ -30,8 +30,9 @@ static struct { const char *rotulo, *gravidade; } linhas[PG_MAX];
 static int  nLinhas;
 static char idPedido[16];
 static char idEmCurso[16];
-static int  fioVivo;
+static int  fioVivo, fioCriado, encerrando;
 static pthread_t fio;
+static pthread_mutex_t travaSaida = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t trava = PTHREAD_MUTEX_INITIALIZER;
 
 static const char *rotuloNivel(const char *nivel) {
@@ -131,7 +132,7 @@ static void *buscar(void *arg) {
     pthread_mutex_lock(&trava);
     // So publica se o titulo ainda e este: trocar de filme durante a busca
     // deixaria o aviso do anterior na tela do seguinte.
-    if (!strcmp(id, idPedido)) {
+    if (!encerrando && !strcmp(id, idPedido)) {
       for (k = 0; k < n; k++) {
         linhas[k].rotulo = achado[k].r;
         linhas[k].gravidade = achado[k].g;
@@ -144,7 +145,7 @@ static void *buscar(void *arg) {
   // O ALVO MUDOU ENQUANTO EU BUSCAVA? Entao ha um pedido pendente que ninguem
   // mais vai atender: `parental_pedir` nao cria fio quando ja existe um.
   pthread_mutex_lock(&trava);
-  if (strcmp(idPedido, id)) {
+  if (!encerrando && strcmp(idPedido, id)) {
     snprintf(idEmCurso, sizeof idEmCurso, "%s", idPedido);
     pthread_mutex_unlock(&trava);
     continue;
@@ -158,15 +159,47 @@ static void *buscar(void *arg) {
 void parental_pedir(const char *imdb) {
   if (!imdb || imdb[0] != 't') return;
   pthread_mutex_lock(&trava);
-  if (!strcmp(idPedido, imdb)) { pthread_mutex_unlock(&trava); return; }
+  if (encerrando || !strcmp(idPedido, imdb)) { pthread_mutex_unlock(&trava); return; }
   snprintf(idPedido, sizeof idPedido, "%s", imdb);
   nLinhas = 0;
   if (fioVivo) { pthread_mutex_unlock(&trava); return; }
+  // The previous worker released trava before declaring itself finished.
+  // Reap its thread (including network TLS destructors) before reusing fio.
+  if (fioCriado) {
+    pthread_join(fio, NULL);
+    fioCriado = 0;
+  }
   snprintf(idEmCurso, sizeof idEmCurso, "%s", imdb);
   fioVivo = 1;
+  // Publish both the handle and state under the same mutex as the worker.
+  // On failure allow the same title to be retried.
+  if (pthread_create(&fio, NULL, buscar, NULL) != 0) {
+    fioVivo = 0;
+    idPedido[0] = 0;
+  } else fioCriado = 1;
   pthread_mutex_unlock(&trava);
-  if (pthread_create(&fio, NULL, buscar, NULL) != 0) fioVivo = 0;
-  else pthread_detach(fio);
+}
+
+// Final application/harness teardown, not a per-frame or player-close call.
+// Stop publication and pending target rollover before waiting. The worker's
+// bounded network request must leave libcurl and run its TLS destructors
+// before process/library teardown; never detach a live owner at exit.
+void parental_encerrar(void) {
+  pthread_mutex_lock(&travaSaida);
+  pthread_mutex_lock(&trava);
+  encerrando = 1;
+  int juntar = fioCriado;
+  pthread_t anterior = fio;
+  idPedido[0] = 0;
+  nLinhas = 0;
+  pthread_mutex_unlock(&trava);
+  if (juntar) pthread_join(anterior, NULL);
+  pthread_mutex_lock(&trava);
+  fioCriado = fioVivo = 0;
+  idEmCurso[0] = 0;
+  encerrando = 0;
+  pthread_mutex_unlock(&trava);
+  pthread_mutex_unlock(&travaSaida);
 }
 
 int parental_n(void) {
