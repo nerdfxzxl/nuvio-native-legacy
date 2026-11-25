@@ -1115,6 +1115,9 @@ JNIEXPORT void JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativeEvento(JNIEn
         if (bufferando) bufferDesde = acaoMs;
       }
       break;
+    case 20: /* P8 same-language fallback selected; exact current opening. */
+      if (a >= 0 && a < nAudio) audioAtual = a;
+      break;
     case EV_CARGA_FASE: if (a >= 0 && a <= 3) cargaFase = a; break;
     case EV_SO_AUDIO:
       if (a == 1 && videoerro_p5b_retry_owned(&retryVideoP5B, sessao))
@@ -1858,7 +1861,7 @@ void video_p1_guardar_faixas_manual(void) {
 
 static void escolherAudioTravado(int i) {
   if (!ativo || i < 0 || i >= nAudio) return;
-  if (!faixaAudio[i].decodifica || !faixaAudio[i].saidaFiel) {
+  if (!faixaAudio[i].decodifica) {
     semDecoderAudio = 1; // Manual choice is not permission for silent output.
     return;
   }
