@@ -61,6 +61,9 @@ jobs:
             bash tests/detail_acoes_gap.sh
             python3 tests/detail_netflix.py
             bash tests/audioescolha.sh
+            bash tests/p5_audio_fidelity.sh
+            bash tests/p5_audio_route.sh
+            bash tests/p5_hdr_policy.sh
             bash tests/fileiras.sh
           fi
 
