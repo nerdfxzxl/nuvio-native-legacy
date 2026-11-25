@@ -840,7 +840,7 @@ object NvPlayer {
                         val cap = AudioOutputProbeP5A.inspect(context, f, decoder = true, dsp = false).result
                         faixas.add(FaixaAudio(r, grupo, i, codigoPublicado(f.language),
                             selecao != null && selecao.group == grupo && i in selecao.tracks,
-                            cap.sourceQualityScore, cap.outputFaithfulCandidate))
+                            cap.sourceQualityScore, cap.playableCandidate))
                         if (faixas.size == FAIXAS_MAX) break@publicar
                     }
                 }
@@ -2926,9 +2926,9 @@ object NvPlayer {
 
     private fun faithfulOutput(fmt: Format, sink: AudioSink.AudioTrackConfig,
                                cap: AudioOutputProbeP5A.Observation): Boolean =
-        AudioRouteP5D.validate(pcmOutput(sink.encoding), cap.pcmFaithful, cap.result.encodedPassthrough,
-            fmt.sampleRate, fmt.channelCount, cap.bitDepth, sink.sampleRate,
-            Integer.bitCount(sink.channelConfig), AudioOutputProbeP5A.bitDepth(sink.encoding),
+        AudioRouteP5D.playableOutput(pcmOutput(sink.encoding), cap.result.decoder,
+            cap.result.encodedPassthrough, sink.sampleRate, Integer.bitCount(sink.channelConfig),
+            AudioOutputProbeP5A.bitDepth(sink.encoding),
             sink.encoding == AudioOutputProbeP5A.encoding(fmt.sampleMimeType.orEmpty()))
 
     private fun routeBlocked(r: RecursosPlayer) = recriando || recriaAgendada || afrGate != null ||
@@ -3063,7 +3063,7 @@ object NvPlayer {
         val compatible = output != null && formatMatches && faithfulOutput(fmt, output.config, cap)
         if (r.routeTx.active) {
             val ticket = r.routeTx.ticket
-            if (r.routeFatal && r.routeTx.allowPrepare(ticket) && decision.outputFaithfulCandidate) {
+            if (r.routeFatal && r.routeTx.allowPrepare(ticket) && decision.playableCandidate) {
                 // Fatal during the audio-only transaction: same player, one
                 // prepare, no source replacement. Keep the existing deadline.
                 r.routeFatal = false
@@ -3081,7 +3081,7 @@ object NvPlayer {
             if (observed == AudioRouteP5D.Debounce.Result.CHANGED) {
                 // A newly stable device may require a different output mode
                 // than the device for which this transaction began.
-                val next = AudioRouteP5D.plan(decision.outputFaithfulCandidate, cap.pcmFaithful,
+                val next = AudioRouteP5D.plan(decision.playableCandidate, decision.decoder,
                     decision.encodedPassthrough, compatible, output?.let { pcmOutput(it.config.encoding) } == true)
                 if (next == AudioRouteP5D.Action.ERROR) {
                     failAudioRoute(minha, r, "new route has no faithful path"); return
@@ -3113,7 +3113,7 @@ object NvPlayer {
             }
             // Paused renderers may not create a new AudioTrack until Play.
             // Finish ownership without auto-resuming; validate before unmute.
-            if (r.routePhase == 2 && selectedSame && !p.playWhenReady && decision.outputFaithfulCandidate) {
+            if (r.routePhase == 2 && selectedSame && !p.playWhenReady && decision.playableCandidate) {
                 cancelAudioRoute(r, restore = false)
                 r.routeMuted = true
                 r.routeCheck = true
@@ -3142,7 +3142,9 @@ object NvPlayer {
             if (!formatMatches) return
             // Initial and ordinary audio-format validation remains Q36; a
             // stable compatible route is not an excuse to restart playback.
-            if (!compatible) failAudioRoute(minha, r, "incompatible AudioTrack configuration")
+            if (!compatible && !r.routePcm && decision.decoder) {
+                startAudioRoute(minha, r, target, true, false, now)
+            } else if (!compatible) failAudioRoute(minha, r, "incompatible AudioTrack configuration")
             else {
                 r.routeCheck = false
                 r.routeMuted = false
@@ -3151,7 +3153,7 @@ object NvPlayer {
             }
             return
         }
-        val action = AudioRouteP5D.plan(decision.outputFaithfulCandidate, cap.pcmFaithful,
+        val action = AudioRouteP5D.plan(decision.playableCandidate, decision.decoder,
             decision.encodedPassthrough, compatible && !r.routeFatal, output?.let { pcmOutput(it.config.encoding) } == true)
         when (action) {
             AudioRouteP5D.Action.ERROR -> failAudioRoute(minha, r, "no faithful path on current route")
@@ -3184,7 +3186,7 @@ object NvPlayer {
                 val r = recursosAtuais
                 val cap = if (r != null) AudioOutputProbeP5A.inspect(activity, g.getTrackFormat(i),
                     g.isTrackSupported(i), audioDsp(r), r.routeObserver.route(), true) else capacidadesAudio.getOrNull(idx)
-                if (cap?.result?.outputFaithfulCandidate != true) {
+                if (cap?.result?.playableCandidate != true) {
                     relatarAudio(sessao, "seleção de áudio recusada: capacidade de saída não comprovada")
                     ev(EV_AUDIO_SAIDA_INCOMPATIVEL, 0, 0, geracaoNative)
                     return
@@ -3390,6 +3392,13 @@ object NvPlayer {
                     }
                 }
                 if (rRoute.routeFailed) return
+                if (audioRenderer && !rRoute.routeTx.active && !rRoute.routePcm) {
+                    val target = rRoute.routeSelected ?: p?.let { selectedAudio(it) }
+                    if (target != null && target.first.isTrackSupported(target.second)) {
+                        startAudioRoute(minha, rRoute, target, true, true, SystemClock.elapsedRealtime())
+                        return
+                    }
+                }
                 cancelAudioRoute(rRoute, restore = true, recheck = true)
             }
             val status = generateSequence(error.cause) { it.cause }
