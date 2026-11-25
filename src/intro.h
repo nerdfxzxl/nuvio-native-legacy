@@ -65,6 +65,8 @@ void intro_definir_capitulos(const IntroTrecho *v,int n);
 // Exact bounded current-file interval only; 0/0 means recommendation/manual hint.
 void intro_definir_capitulos_provados(const IntroTrecho *v,int n,double inicio,double fim);
 void intro_desligar(void);
+// Final teardown only: cancel publication, join all outstanding marker workers.
+void intro_encerrar(void);
 int  intro_ativo(double posSeg,double *fim,int *tipo);
 // Segundo em que os creditos comecam, ou 0 quando nao ha marcador. Serve ao
 // posplay.c, que precisa do INSTANTE e nao de "estou dentro".
