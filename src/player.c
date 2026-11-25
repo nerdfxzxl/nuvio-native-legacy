@@ -7335,7 +7335,7 @@ void player_desenhar(Uint32 agora) {
   // e zera o relogio. Ao acabar, o estado fica como esta para o cartao sair com o
   // mesmo conteudo (a saida e a da ilha, plrilha.c).
   if (player_carregando() && !ehCanal()) {
-    if (!abrindoViva) { abrindoDesde = agora; abrindoExp = 0; abrindoT = 0.0f; abrFitIdx = -2; }
+    if (!abrindoViva) { abrindoDesde = agora; abrindoExp = ajustes_abertura_detalhada(); abrindoT = 0.0f; abrFitIdx = -2; }
     abrindoViva = 1;
   } else abrindoViva = 0;
   // O DTS NA ILHA: como o audio DTS desta faixa chega — direto da TV,
