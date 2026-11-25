@@ -1,3 +1,4 @@
+#include "parental.h"
 // O CARTAO DE PROXIMO EPISODIO, do OK ate o pedido chegar ao roteador.
 //
 // Issue #14: "o aviso de proximo episodio aparece, eu aperto OK, e o proximo
@@ -727,5 +728,6 @@ int main(void) {
   }
   puts("ok  #556: S00 Next por OK, contagem, recuo, cena e toque");
   puts("posplay: tudo ok");
+  parental_encerrar();
   return 0;
 }
