@@ -4,7 +4,7 @@ on:
   push:
     branches: [feature/official-stream-selector]
     paths: [.github/workflows/p7-legacy-linux.yml]
-# CI #9: join playback metadata workers and verify current navigation contracts.
+# CI #10: fix manual-resume fixture header order; rerun unchanged full matrix.
 concurrency:
   group: p7-linux-legacy-${{ github.ref }}
   cancel-in-progress: true

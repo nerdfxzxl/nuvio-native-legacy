@@ -1,6 +1,5 @@
-#include "parental.h"
-#include "descoberta.h"
-#include "intro.h"
+// Keep app.c headers behind the fixture renames: including descoberta.h first
+// would consume its guard before desc_sessao_aberta is renamed.
 // #667: resume must wait for a source pick even when a binge group is saved.
 #define SDL_MAIN_HANDLED
 #define sessao_logada fixture_logged_in
