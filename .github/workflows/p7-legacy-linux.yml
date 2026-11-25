@@ -4,7 +4,7 @@ on:
   push:
     branches: [feature/official-stream-selector]
     paths: [.github/workflows/p7-legacy-linux.yml]
-# CI #8: consolidated lifecycle, fixture and Q46 recovery; reject sanitizer output.
+# CI #9: join playback metadata workers and verify current navigation contracts.
 concurrency:
   group: p7-linux-legacy-${{ github.ref }}
   cancel-in-progress: true
@@ -18,7 +18,7 @@ jobs:
       fail-fast: false
       matrix:
         suites:
-          - addons_alvo_pendente addons_stream_pending fonte_manual_resume playback_p3_reload playback_diag_p7
+          - addons_alvo_pendente addons_stream_pending fonte_manual_resume playback_p3_reload playback_diag_p7 p7_join_workers
           - posplay posplay_recuo proxprefetch postplay_p6_integration proximo
           - player_eof_episodios player_visto_trailer player_scrobble_trailer
           - player player_republica player_retido player_back
@@ -50,7 +50,9 @@ jobs:
             # ASan instruments all translation units in the crash-prone full-app
             # harnesses, including split objects. Preserve the original exit code.
             case "$suite" in posplay|posplay_recuo|fonte_manual_resume|player_republica|player_eof_episodios|player_visto_trailer|player_scrobble_trailer) export P7_ASAN=1 ;; esac
-            export ASAN_OPTIONS=detect_leaks=0:halt_on_error=1:abort_on_error=1:symbolize=1
+            export ASAN_OPTIONS=detect_leaks=0:halt_on_error=1:abort_on_error=1:symbolize=1:fast_unwind_on_fatal=0
+            export UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1
+            if command -v llvm-symbolizer >/dev/null; then export ASAN_SYMBOLIZER_PATH="$(command -v llvm-symbolizer)"; fi
             export SDL_VIDEODRIVER=dummy
             export SDL_AUDIODRIVER=dummy
             export TMPDIR="$RUNNER_TEMP/p7-tmp-$suite"
