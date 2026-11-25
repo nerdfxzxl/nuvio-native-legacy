@@ -3856,6 +3856,7 @@ static void salvoParaConta(const CatItem *ci, int salvo) {
 // Finish under the outgoing identity. Selection advances the session epoch
 // immediately afterwards; old jobs may finish but cannot update the new UI.
 static void perfilEncerrarSessao(void) {
+  estatvivo_diag_finalizar(); // persist under the outgoing profile
   // End input capture before resetting the Home it belongs to. Hit targets
   // from the outgoing frame cannot activate under the destination profile.
   ponteiro_abrir_sessao();
@@ -8172,6 +8173,7 @@ int app_central_pode(void) {
 }
 
 void app_encerrar(void) {
+  estatvivo_diag_finalizar(); // before backend/account teardown
   avisos_encerrar();   // saida limpa: apaga a marca de sessao viva
   preparoInvalidar();
   proximopreparo_encerrar();
