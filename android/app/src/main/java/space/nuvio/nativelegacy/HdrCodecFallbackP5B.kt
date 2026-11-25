@@ -27,7 +27,10 @@ internal object HdrCodecFallbackP5B {
         @Volatile var valid = true
         @Volatile var sdrOutput = false
         var requestSdr = false
-        fun ready() = valid && sample && (if (requestSdr) sdrOutput else hdrOutput)
+        // HDR10 decode can be presented by the Android compositor even if
+        // the codec does not implement direct SDR tone mapping. It is not
+        // proof of physical HDR/SDR display output.
+        fun ready() = valid && sample && (hdrOutput || (requestSdr && sdrOutput))
     }
 
     private fun sameVideoFormat(a: Format, b: Format): Boolean =
@@ -146,7 +149,13 @@ internal object HdrCodecFallbackP5B {
                     throw IOException("Software decoder cannot preserve the actual video format")
                 null
             }
-            val codec = delegate.createAdapter(configuration)
+            val codec = try { delegate.createAdapter(configuration) } catch (e: Exception) {
+                // Codec-side tone mapping is optional. Retry the proven base
+                // once without the request and let Android render HDR buffers.
+                if (proof?.requestSdr != true || android.os.Build.VERSION.SDK_INT < 31) throw e
+                configuration.mediaFormat.removeKey(MediaFormat.KEY_COLOR_TRANSFER_REQUEST)
+                delegate.createAdapter(configuration)
+            }
             report(VideoConfig(info, f, proof))
             return if (proof != null) ObservedBase(codec, proof) else codec
         }
@@ -172,7 +181,7 @@ internal object HdrCodecFallbackP5B {
             // Clear, same-stream HEVC only. DRM, HLG, SDR, ambiguous or other
             // alternative MIME paths must not silently become HDR10.
             if (info.mimeType != MimeTypes.VIDEO_H265 || c.crypto != null ||
-                info.secure || f.drmInitData != null || (!displayHdr10() && android.os.Build.VERSION.SDK_INT < 31))
+                info.secure || f.drmInitData != null)
                 throw IOException("No verified clear HDR10 output path")
             val evidence = HdrBaseLayerP5B.inspect(f.codecs, f.width, f.height, f.initializationData)
                 ?: throw IOException("No independent HEVC HDR10 base-layer configuration")
@@ -212,7 +221,7 @@ internal object HdrCodecFallbackP5B {
             // Request platform codec tone mapping only for a positively proven
             // HDR10 base on a non-HDR display. Verify the actual SDR output;
             // a codec ignoring this request is not a successful downgrade.
-            if (!displayHdr10()) c.mediaFormat.setInteger(MediaFormat.KEY_COLOR_TRANSFER_REQUEST,
+            if (!displayHdr10() && android.os.Build.VERSION.SDK_INT >= 31) c.mediaFormat.setInteger(MediaFormat.KEY_COLOR_TRANSFER_REQUEST,
                 MediaFormat.COLOR_TRANSFER_SDR_VIDEO)
         }
     }
