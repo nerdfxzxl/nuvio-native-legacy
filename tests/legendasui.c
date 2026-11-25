@@ -464,7 +464,9 @@ int main(void) {
       for (int k = 0; k < nAdd; k++) {
         LuiLinha row = {0}; row.tipo = LR_CAND; row.cand = k;
         textoLinha(&row, title, sizeof title, detail, sizeof detail, &language, &icon, &active, &dim);
-        assert(strstr(title, k == 0 ? "Not synced" : k == 3 ? "Release.srt" : labels[k]));
+        // Format A never substitutes provider sync status for a filename.
+        const char *expected[] = {"Subtitle (1)", "Subtitle (2)", "Subtitle (3)", "Release"};
+        assert(!strcmp(title, expected[k]));
         assert(strstr(detail, labels[k]));
         assert(!strcmp(cand[k].arquivo, k == 3 ? "Release.srt" : ""));
       }
