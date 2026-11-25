@@ -68,6 +68,21 @@ static void comFonte(void) {
 static void paraLegendas(void) {
   teclaPlayer(SDLK_RIGHT);teclaPlayer(SDLK_RIGHT);
 }
+// Current player capsule has no dedicated Sources button. A short Info
+// press must not open Sources; a held Info press must.
+static void abrirFontesPorInfo(int serie) {
+  for (int i=0;i<8;i++) teclaPlayer(SDLK_LEFT);
+  for (int i=0;i<(serie?6:4);i++) teclaPlayer(SDLK_RIGHT);
+  teclaPlayer(SDLK_RETURN);
+  assert(!player_pediu_fontes());
+  SDL_Event ev={0};
+  ev.type=SDL_KEYDOWN; ev.key.keysym.sym=SDLK_RETURN;
+  player_evento(&ev);
+  player_atualizar(.016f, SDL_GetTicks()+521u);
+  assert(player_pediu_fontes());
+  ev.type=SDL_KEYUP;player_evento(&ev);
+  assert(!player_pediu_fontes());
+}
 static void testar(void) {
   // #205 NAO PODE REGREDIR O #100. Aqui em cima porque nao dependem de estado.
   assert(saidaVisto(2400, 2700, 2400, 2400, 0));    // aceitou o proximo nos creditos (88,9%)
@@ -191,8 +206,7 @@ static void testar(void) {
   teclaPlayer(SDLK_UP);assert(player_controles_visiveis());   // botoes -> barra
   teclaPlayer(SDLK_UP);assert(!player_controles_visiveis());  // barra -> esconde
   teclaPlayer(SDLK_UP);assert(player_controles_visiveis());
-  teclaPlayer(SDLK_RIGHT);teclaPlayer(SDLK_RIGHT);teclaPlayer(SDLK_RIGHT);teclaPlayer(SDLK_RETURN);
-  assert(player_pediu_fontes());   /* legendas -> audio -> proporcao -> fontes */
+  abrirFontesPorInfo(1);
   player_encerrar();
   // #109: a tecla que revela os controles decide o foco. Com o foco em
   // Legendas e os controles escondidos, OK pausa e os controles sobem NO PLAY
@@ -277,8 +291,8 @@ static void testar(void) {
   player_encerrar();video_simular(NULL);
   strcpy(c.tipo,"movie");cat_definir(&c,1);player_abrir(0,NULL);
   player_definir_episodio(2,4);assert(!player_linha_episodio()[0]);
-  for(int i=0;i<10;i++)teclaPlayer(SDLK_RIGHT);
-  teclaPlayer(SDLK_RETURN);assert(player_pediu_fontes() && !episodios_aberto());
+  comFonte();
+  abrirFontesPorInfo(0); assert(!episodios_aberto());
   player_encerrar();strcpy(c.tipo,"series");
 
   // --- ISSUE #101: A LISTA DE FONTES E DE UM EPISODIO --------------------------

@@ -4,13 +4,16 @@ on:
   push:
     branches: [feature/official-stream-selector]
     paths: [.github/workflows/p7-legacy-linux.yml]
-# CI #5: complete simulation metadata and assert Q45 journal/real checkpoint semantics.
+# CI #6: bounded suite execution and sanitizer crash diagnostics; no debugger hangs.
+concurrency:
+  group: p7-linux-legacy-${{ github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
   legacy:
     runs-on: ubuntu-24.04
-    timeout-minutes: 100
+    timeout-minutes: 50
     strategy:
       fail-fast: false
       matrix:
@@ -26,7 +29,7 @@ jobs:
       - name: Install native Linux desktop test dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends clang gdb pkg-config libsdl2-dev libsdl2-image-dev libsdl2-ttf-dev libgles-dev libegl-dev zlib1g-dev ripgrep
+          sudo apt-get install -y --no-install-recommends clang llvm pkg-config libsdl2-dev libsdl2-image-dev libsdl2-ttf-dev libgles-dev libegl-dev zlib1g-dev ripgrep
           pkg-config --exists sdl2 SDL2_image SDL2_ttf glesv2 egl zlib
       - name: Set up test-only compiler adapter
         run: |
@@ -43,18 +46,26 @@ jobs:
           for suite in $SUITES; do
             echo "::group::$suite"
             export P7_FULL_APP=0
-            export P7_GDB=0
-            case "$suite" in posplay|posplay_recuo) export P7_GDB=1 ;; esac
+            export P7_ASAN=0
+            # ASan instruments all translation units in the crash-prone full-app
+            # harnesses, including split objects. Preserve the original exit code.
+            case "$suite" in posplay|posplay_recuo|fonte_manual_resume|player_republica|player_eof_episodios|player_visto_trailer|player_scrobble_trailer) export P7_ASAN=1 ;; esac
+            export ASAN_OPTIONS=detect_leaks=0:halt_on_error=1:abort_on_error=1:symbolize=1
+            export SDL_VIDEODRIVER=dummy
+            export SDL_AUDIODRIVER=dummy
+            export TMPDIR="$RUNNER_TEMP/p7-tmp-$suite"
+            mkdir -p "$TMPDIR"
             case "$suite" in
               addons_alvo_pendente|fonte_manual_resume|posplay|posplay_recuo|player_eof_episodios|player_visto_trailer|player_scrobble_trailer|player|player_republica|player_retido|player_back|player_identity524) export P7_FULL_APP=1 ;;
             esac
             export NUVIO_DADOS="$RUNNER_TEMP/p7-data-$suite"
             mkdir -p "$NUVIO_DADOS"
-            if bash "tests/$suite.sh"; then
+            if timeout --signal=TERM --kill-after=20s 10m bash "tests/$suite.sh"; then
               echo "$suite PASS" >> "$GITHUB_STEP_SUMMARY"
             else
-              echo "::error::$suite failed"
-              echo "$suite FAIL" >> "$GITHUB_STEP_SUMMARY"
+              rc=$?
+              echo "::error::$suite failed (exit $rc)"
+              echo "$suite FAIL (exit $rc)" >> "$GITHUB_STEP_SUMMARY"
               failed=1
             fi
             echo "::endgroup::"

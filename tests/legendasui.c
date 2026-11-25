@@ -309,9 +309,9 @@ int main(void) {
   snprintf(extId, sizeof extId, "%s", cand[nEmb+3].id);
   agoraMs += 1000; tecla(SDLK_RETURN); assert(secEscolhas == 1 && strstr(aviso, "principal"));
   focarChave("m|-"); tecla(SDLK_RETURN); assert(!sec[0] && secDesligar == 1);
-  focarChave("m|atraso"); tecla(SDLK_LEFT); assert(secOffset == -100 && estilo.atrasoMs == 0);
+  focarChave("m|atraso"); tecla(SDLK_LEFT); assert(secOffset == -50 && estilo.atrasoMs == 0);
   focarChave("m|alvo"); tecla(SDLK_LEFT);
-  focarChave("m|atraso"); tecla(SDLK_RIGHT); assert(estilo.atrasoMs == 100 && secOffset == -100);
+  focarChave("m|atraso"); tecla(SDLK_RIGHT); assert(estilo.atrasoMs == 50 && secOffset == -50);
   // The full list also carries the AutoSync row: without a language
   // preference the panel opens straight into it.
   { LegendasSyncProvider p = { syncEstado, syncAcoes, syncRodar, NULL };

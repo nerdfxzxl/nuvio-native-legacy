@@ -43,6 +43,8 @@ if not compile_only:
     if full:
         out += pkg("--libs") + ["-ldl"]
     out += ["-pthread", "-lm"]
+if os.environ.get("P7_ASAN") == "1":
+    out += ["-fsanitize=address", "-fno-omit-frame-pointer"]
 command = [compiler, *prefix, *out]
 print("+ " + __import__("shlex").join(command), file=sys.stderr, flush=True)
 os.execv(compiler, command)

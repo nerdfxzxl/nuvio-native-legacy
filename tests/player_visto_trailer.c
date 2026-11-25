@@ -146,6 +146,7 @@ int visto_episodios(const char *imdb, const char *tipo, const VistoPar *pares,
 
 // Mantem os headers do SDK macOS; seleciona so a implementacao nativa real.
 #undef __APPLE__
+#undef NV_LINUX_DESKTOP
 #include "../src/trailer.c"
 static void quadro(void) { player_atualizar(.016f, SDL_GetTicks()); }
 

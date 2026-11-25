@@ -18,6 +18,8 @@ int main(void) {
   dados_iniciar(""); ling_local_legenda("none");
   ajustes_shot_valor("proximoAutoLocal", 0);
   assert(ajustes_proximo_auto());
+  ajustes_shot_valor("proximoContagemLocal", 5);
+  assert(ajustes_proximo_contagem() == 5);
 
   for (int caso = 0; caso < 9; caso++) {
     CatItem c = {0}; CatEp eps[2] = {{0}};

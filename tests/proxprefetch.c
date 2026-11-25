@@ -160,13 +160,20 @@ static void testarContagem(void) {
       int antes = pedidos, t, e;
       double inicio = (marcador ? 1050 : 1150) - 10 * velocidade / 100.0;
       quadro(inicio, 1); esperarFim(); assert(cacheProximo() == 2);
-      // #470: a contagem comeca com o cartao e o pedido sai antes de qualquer
-      // renovacao; a resposta do preparo ainda e valida nesse instante.
+      // Q50: credits only offer the card. At confirmed EOF start the full
+      // configured countdown without redundant source refresh.
       int pediu = 0;
       for (double p = inicio + velocidade / 100.0; p <= 1200 && !pediu; p += velocidade / 100.0) {
         atomic_fetch_add(&relogio, 1000);
         quadro(p, 1); esperarFim();
         pediu = posplay_pediu_episodio(&t, &e);
+      }
+      assert(!pediu); // No automatic transition during the credits or at EOF itself.
+      for (int sec = 1; sec <= ajustes_proximo_contagem(); sec++) {
+        atomic_fetch_add(&relogio, 1000);
+        quadro(duracao, 1); esperarFim();
+        pediu = posplay_pediu_episodio(&t, &e);
+        assert(pediu == (sec == ajustes_proximo_contagem()));
       }
       assert(pediu && t == 1 && e == 2);
       assert(cacheProximo() == 2);
