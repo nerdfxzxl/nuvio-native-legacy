@@ -14,7 +14,11 @@ internal data class AudioFidelityDecisionP5A(
     val unknown: Boolean,
     val sourceQualityScore: Long,
     val reason: String
-)
+) {
+    // Playback permission is not a bit-perfect delivery claim. Media3 and
+    // AudioTrack must still establish actual decoder/sink compatibility.
+    val playableCandidate: Boolean get() = decoder
+}
 
 internal object AudioFidelityP5A {
     private fun lossless(mime: String): Boolean {
