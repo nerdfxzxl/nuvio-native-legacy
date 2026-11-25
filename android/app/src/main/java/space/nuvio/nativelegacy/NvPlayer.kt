@@ -1009,6 +1009,7 @@ object NvPlayer {
         val downmix = StereoDownmixP8()
         val resampler = androidx.media3.common.audio.SonicAudioProcessor()
         @Volatile var outputRate = -1
+        var routeShapeKey: AudioRouteP5D.Key? = null
         val frameDeadline = FrameHoldP2B.ReadyDeadline()
         var alternateAudioTried = false
         val tap = AudioSyncTap(
@@ -2990,7 +2991,8 @@ object NvPlayer {
     }
 
     private fun startAudioRoute(minha: Int, r: RecursosPlayer, target: Pair<Tracks.Group, Int>,
-                                forcePcm: Boolean, fatal: Boolean, now: Long) {
+                                forcePcm: Boolean, fatal: Boolean, now: Long,
+                                shape: AudioRouteP5D.PcmShape? = null) {
         if (!atual(minha) || recursosAtuais !== r || r.routeTx.active) return
         val p = r.p
         val ticket = r.routeTx.begin(now)
@@ -2998,10 +3000,11 @@ object NvPlayer {
         r.routePcm = forcePcm
         val fmt = target.first.getTrackFormat(target.second)
         val device = r.routeObserver.route()
-        r.downmix.enabled = forcePcm && AudioRouteP5D.needsStereo(fmt.channelCount,
+        r.routeShapeKey = r.routeObserver.key(device)
+        r.downmix.enabled = forcePcm && (shape?.stereo ?: AudioRouteP5D.needsStereo(fmt.channelCount,
             device?.type == android.media.AudioDeviceInfo.TYPE_HDMI_ARC, device?.channelCounts,
-            fatal && sinkConfigurationFailed(p))
-        r.outputRate = if (forcePcm) AudioRouteP5D.fallbackSampleRate(fmt.sampleRate, device?.sampleRates) else -1
+            fatal && sinkConfigurationFailed(p)))
+        r.outputRate = if (forcePcm) shape?.rate ?: AudioRouteP5D.fallbackSampleRate(fmt.sampleRate, device?.sampleRates) else -1
         relatarAudio(minha, "Q49 begin ticket=$ticket pcm=$forcePcm stereo=${r.downmix.enabled} pos=${p.currentPosition} buffered=${p.bufferedPosition}")
         r.routeMuted = true
         r.routeOutputBefore = r.routeObserver.output?.serial ?: 0L
@@ -3065,7 +3068,8 @@ object NvPlayer {
         if (selected != null && !r.routeTx.active && !r.routeFatal) r.routeSelected = selected
         val target = r.routeTarget ?: selected ?: r.routeSelected
         val route = r.routeObserver.route()
-        val observed = r.routeDebounce.observe(r.routeObserver.key(route), now)
+        val routeKey = r.routeObserver.key(route)
+        val observed = r.routeDebounce.observe(routeKey, now)
         if (routeBlocked(r)) {
             if (r.routeTx.active) cancelAudioRoute(r, restore = true, recheck = true)
             if (observed == AudioRouteP5D.Debounce.Result.CHANGED || observed == AudioRouteP5D.Debounce.Result.UNSTABLE)
@@ -3127,6 +3131,16 @@ object NvPlayer {
         val coreCandidate = !audioDsp(r) && output != null &&
             AudioOutputProbeP5A.directCore(activity, route, fmt, fmt.sampleRate, output.config.channelConfig)
         val encoded = decision.encodedPassthrough || coreCandidate || core
+        val currentShape = AudioRouteP5D.PcmShape(r.downmix.enabled, r.outputRate)
+        val newShape = if (r.routeChanged && route != null && routeKey != r.routeShapeKey)
+            AudioRouteP5D.refreshPcmShape(fmt.channelCount, fmt.sampleRate,
+                route.type == android.media.AudioDeviceInfo.TYPE_HDMI_ARC,
+                route.channelCounts, route.sampleRates, currentShape) else currentShape
+        val pcmSink = output?.takeIf { pcmOutput(it.config.encoding) }?.config
+        val shapeChanged = r.routeChanged && route != null && routeKey != r.routeShapeKey &&
+            (r.routePcm || pcmSink != null) &&
+            AudioRouteP5D.pcmShapeNeedsReselect(currentShape, newShape,
+                pcmSink?.let { Integer.bitCount(it.channelConfig) } ?: 0, pcmSink?.sampleRate ?: 0)
         if (r.routeTx.active) {
             val ticket = r.routeTx.ticket
             if (r.routeFatal && r.routeTx.allowPrepare(ticket) && decision.playableCandidate) {
@@ -3155,17 +3169,17 @@ object NvPlayer {
                 // A newly stable device may require a different output mode
                 // than the device for which this transaction began.
                 val next = AudioRouteP5D.plan(decision.playableCandidate, decision.decoder,
-                    encoded, compatible, output?.let { pcmOutput(it.config.encoding) } == true)
+                    encoded, compatible && !shapeChanged, output?.let { pcmOutput(it.config.encoding) } == true)
                 if (next == AudioRouteP5D.Action.ERROR) {
                     failAudioRoute(minha, r, "new route has no faithful path"); return
                 }
                 if (next == AudioRouteP5D.Action.RESELECT_PCM || next == AudioRouteP5D.Action.RESELECT_ENCODED) {
                     val pcm = next == AudioRouteP5D.Action.RESELECT_PCM
-                    if (pcm != r.routePcm) {
+                    if (pcm != r.routePcm || (pcm && shapeChanged)) {
                         r.routePcm = pcm
-                        r.outputRate = if (pcm) AudioRouteP5D.fallbackSampleRate(fmt.sampleRate, route?.sampleRates) else -1
-                        r.downmix.enabled = pcm && AudioRouteP5D.needsStereo(fmt.channelCount,
-                            route?.type == android.media.AudioDeviceInfo.TYPE_HDMI_ARC, route?.channelCounts, false)
+                        r.routeShapeKey = routeKey
+                        r.outputRate = if (pcm) newShape.rate else -1
+                        r.downmix.enabled = pcm && newShape.stereo
                         if (r.routePhase == 2) {
                             try { reselectAudioRoute(minha, r, target, ticket) }
                             catch (_: RuntimeException) { failAudioRoute(minha, r, "new route reselection failed") }
@@ -3182,6 +3196,7 @@ object NvPlayer {
             if (r.routePhase == 2 && compatible && selectedSame &&
                 output!!.serial > r.routeOutputBefore && !r.routeDebounce.pending) {
                 r.routeSelected = target
+                r.routeShapeKey = routeKey
                 val ordinal = audios.indexOfFirst { (g, i) ->
                     g.mediaTrackGroup == target.first.mediaTrackGroup && i == target.second
                 }
@@ -3227,6 +3242,7 @@ object NvPlayer {
                 startAudioRoute(minha, r, target, true, false, now)
             } else if (!compatible) failAudioRoute(minha, r, "incompatible AudioTrack configuration")
             else {
+                r.routeShapeKey = routeKey
                 r.routeCheck = false
                 r.routeMuted = false
                 routeOwner(r, false)
@@ -3235,16 +3251,18 @@ object NvPlayer {
             return
         }
         val action = AudioRouteP5D.plan(decision.playableCandidate, decision.decoder,
-            encoded, compatible && !r.routeFatal, output?.let { pcmOutput(it.config.encoding) } == true)
+            encoded, compatible && !r.routeFatal && !shapeChanged, output?.let { pcmOutput(it.config.encoding) } == true)
         when (action) {
             AudioRouteP5D.Action.ERROR -> failAudioRoute(minha, r, "no faithful path on current route")
             AudioRouteP5D.Action.KEEP -> {
+                r.routeShapeKey = routeKey
                 cancelAudioRoute(r, restore = false)
                 r.routeCheck = false
                 refreshRouteCaps(r, route)
                 relatarAudio(minha, "Q49 retained compatible AudioTrack route=" + route?.type)
             }
-            else -> startAudioRoute(minha, r, target, action == AudioRouteP5D.Action.RESELECT_PCM, r.routeFatal, now)
+            else -> startAudioRoute(minha, r, target, action == AudioRouteP5D.Action.RESELECT_PCM,
+                r.routeFatal, now, if (shapeChanged && !r.routeFatal) newShape else null)
         }
     }
 

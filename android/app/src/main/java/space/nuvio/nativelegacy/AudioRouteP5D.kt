@@ -43,6 +43,29 @@ internal object AudioRouteP5D {
         return listOf(48000, 44100).firstOrNull { it in rates } ?: -1
     }
 
+    data class PcmShape(val stereo: Boolean, val rate: Int)
+
+    // Re-evaluate a fallback shape only on a genuinely new stable route.
+    // Unknown capabilities must not undo a working fallback.
+    fun refreshPcmShape(channels: Int, inputRate: Int, arc: Boolean,
+                        supportedChannels: IntArray?, supportedRates: IntArray?,
+                        current: PcmShape): PcmShape {
+        val stereo = when {
+            channels !in 3..8 -> false
+            needsStereo(channels, arc, supportedChannels, false) -> true
+            supportedChannels != null && channels in supportedChannels -> false
+            else -> current.stereo
+        }
+        val rate = if (supportedRates == null || supportedRates.isEmpty() || inputRate <= 0)
+            current.rate else fallbackSampleRate(inputRate, supportedRates)
+        return PcmShape(stereo, rate)
+    }
+
+    fun pcmShapeNeedsReselect(current: PcmShape, desired: PcmShape, sinkChannels: Int,
+                              sinkRate: Int): Boolean =
+        current != desired || (desired.stereo && sinkChannels > 2) ||
+            (desired.rate > 0 && sinkRate > 0 && desired.rate != sinkRate)
+
     enum class Action { KEEP, RESELECT_PCM, RESELECT_ENCODED, ERROR }
     fun plan(faithful: Boolean, pcmCompatible: Boolean, encodedCompatible: Boolean,
              currentCompatible: Boolean, currentPcm: Boolean): Action {

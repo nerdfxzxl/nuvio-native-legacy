@@ -123,3 +123,4 @@ jobs:
             echo "::endgroup::"
           done
           exit "$failed"
+# P8 Phase A: verify refreshed PCM channel/rate configuration on stable route changes.
