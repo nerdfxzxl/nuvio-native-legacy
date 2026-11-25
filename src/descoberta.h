@@ -295,6 +295,8 @@ void desc_episodios(int indiceItem, int temporada);
 // pendurada e a lista nunca chega na temporada escolhida.
 void desc_episodios_pendente(void);
 void desc_episodios_garantir(int indiceItem);
+// Final teardown only, not an episode-switch or per-frame operation.
+void desc_playback_workers_encerrar(void);
 int desc_episodios_precarregar(int indiceItem);   // -1 ocupado, 0 nada a pedir, 1 pediu
 int desc_episodios_carregando(int indiceItem);
 // Preenche `nota` (x10) e a `sinopse` no idioma pedido (#150) dos eps da
