@@ -238,6 +238,21 @@ static void testarRestartReload(void) {
   assert(!player_recarregar_contexto());
   puts("player playback actions: PASS (Restart seek/pause, held key, Reload source ownership)");
 }
+// Q45: the durable history flag and real resume checkpoint are independent.
+static void q45_checkpoint(const char *id, double expectedPos, double expectedDur,
+                           int watched, int proof) {
+  ProgRegistro r;
+  assert(prog_por_chave(id, &r));
+  assert(fabs(r.posSeg - expectedPos) < 1.5);
+  assert(fabs(r.durSeg - expectedDur) < 1.0);
+  assert(r.tocou == (proof ? 2 : 3));
+  assert((cat_historico_estado_id(id, "movie") == 1) == watched);
+  assert((nVisto == 1) == watched);
+  assert(nVisto <= 1);
+  assert((tkAssistiu != 0) == watched);
+  assert(fabs(tkPos - expectedPos) < 1.5 && fabs(tkDur - expectedDur) < 1.0);
+}
+
 int main(void) {
   assert(SDL_Init(SDL_INIT_TIMER) == 0); dados_iniciar(""); ling_local_legenda("none");
 
@@ -377,82 +392,61 @@ int main(void) {
   abrir(1, "tt90000008", NULL, NULL, 129.036, 69);
   assert(nTrakt == 1 && nVisto == 0 && cat_item(0)->progresso < 90);
 
-  // --- #205 NAO PODE REGREDIR O #100 (segunda revisao) -----------------------
-  //
-  // A prova exigia 90% da DURACAO em tempo de relogio. Quem via tudo e saia
-  // pelo caminho que o proprio app oferece ficava abaixo disso.
-
-  // Aceitar o proximo no marcador de creditos: 2400 s de 2700 = 88,9%.
+  // Q45: an unverified credits hint cannot override the configured threshold.
   sessao("tt90000010", 0, 2700); creditos = 2400;
   tocar(2400, 1); player_encerrar();
-  assert(nTrakt == 1 && nVisto == 1 && cat_item(0)->progresso == 100);
-  assert(tkPos == tkDur && tkAssistiu);
+  q45_checkpoint("tt90000010", 2400, 2700, 0, 1);
 
-  // Abertura de 90 s pulada, saida a 60 s do fim de um episodio de 22 min.
+  // A short skipped segment still leaves sufficient genuinely viewed media.
   sessao("tt90000011", 0, 1320);
   tocar(30, 1); pos += 90; quadro(); tocar(1140, 1); player_encerrar();
-  assert(nTrakt == 1 && nVisto == 1 && cat_item(0)->progresso == 100);
+  q45_checkpoint("tt90000011", 1260, 1320, 1, 1);
 
-  // 1,5x: o relogio anda 1684 s, a midia tocada sao 2526 s.
+  // 1.5x genuine playback: preserve the actual position, not synthetic EOF.
   sessao("tt90000012", 0, 2580);
   tocar(1684, 1.5); player_encerrar();
-  assert(nTrakt == 1 && nVisto == 1 && cat_item(0)->progresso == 100);
+  q45_checkpoint("tt90000012", 2526, 2580, 1, 1);
 
-  // Retomada em 60% e o resto assistido: o load novo nao pode custar o visto.
+  // Legacy percentage alone does not prove that the previous 60% was watched.
   sessao("tt90000013", 60, 6000); assert(pos == 3600);
   tocar(2350, 1); player_encerrar();
-  assert(nTrakt == 1 && nVisto == 1 && cat_item(0)->progresso == 100);
+  q45_checkpoint("tt90000013", 5950, 6000, 0, 0);
 
-  // O mesmo, saindo a 100 s do fim (o cenario da revisao). PARIDADE COM O
-  // NUVIOTV OFICIAL: 98% passa dos 90% (WatchProgress.isCompleted) — visto, e
-  // o Trakt/Simkl recebem o stop de conclusao.
-  sessao("tt90000014", 60, 6000);
+  // A durable same-duration checkpoint with viewing proof does establish a base.
+  assert(prog_gravar_local("tt90000014", 0, 0, 3600, 6000, 1));
+  sessao("tt90000014", 60, 6000); assert(pos == 3600);
   tocar(2300, 1); player_encerrar();
-  assert(nTrakt == 1 && nVisto == 1 && cat_item(0)->progresso == 100);
-  assert(tkPos == tkDur && tkAssistiu);
+  q45_checkpoint("tt90000014", 5900, 6000, 1, 1);
 
-  // SEEK ATE O FIM (log do C9, Dexter S1E2): 99 s tocados, busca, mais 34 s e
-  // sai a 19 s do fim. PARIDADE COM O NUVIOTV OFICIAL: a conclusao e pela
-  // POSICAO (99%), mesmo depois de um seek — visto, e stop de conclusao.
+  // A seek to near EOF does not manufacture watched history.
   sessao("tt90000015", 0, 2843);
   tocar(99, 1); pos = 2790; quadro(); tocar(34, 1); player_encerrar();
-  assert(nVisto == 1 && cat_item(0)->progresso == 100);
-  assert(nTrakt == 1 && tkPos == tkDur && tkAssistiu);
+  q45_checkpoint("tt90000015", 2824, 2843, 0, 0);
 
-  // RETOMADA PERTO DO FIM (terceira revisao): 85% de 2700 s, mais 285 s ate os
-  // creditos em 2580 s e aceita o proximo. A prova media metade ate o FIM DO
-  // ARQUIVO (202,5 s) sem contar a cauda: gravava 96% e o Trakt ficava sem
-  // stop. A cauda so entra depois dos 120 s reais (sexta revisao).
+  assert(prog_gravar_local("tt90000016", 0, 0, 2295, 2700, 1));
   sessao("tt90000016", 85, 2700); creditos = 2580; assert(pos == 2295);
   tocar(285, 1); player_encerrar();
-  assert(nTrakt == 1 && nVisto == 1 && cat_item(0)->progresso == 100);
-  assert(tkPos == tkDur);
-  // A mesma retomada buscando o fim (98,7%): paridade com o oficial, visto
-  // pela posicao.
+  q45_checkpoint("tt90000016", 2580, 2700, 1, 1);
+
+  // Even a proven resume base cannot authorize a subsequent large seek.
+  assert(prog_gravar_local("tt90000017", 0, 0, 2295, 2700, 1));
   sessao("tt90000017", 85, 2700); creditos = 2400;
   tocar(10, 1); pos = 2660; quadro(); tocar(5, 1); player_encerrar();
-  assert(nVisto == 1 && cat_item(0)->progresso == 100 && tkPos == tkDur);
+  q45_checkpoint("tt90000017", 2665, 2700, 0, 0);
 
-  // Sem minutagem, duracao falsa de 129 s, 70 s reais: o resto ate o fim
-  // (59 s) nao pode ser creditado como assistido — gravava 100% e visto.
   creditos = 0; abrir(1, "tt90000018", NULL, NULL, 129.036, 70);
   assert(nVisto == 0 && cat_item(0)->progresso < 90);
   assert(!tkAssistiu);
 
-  // Retomada em 85% de 2700 s, 5 s tocados e busca direto aos creditos em
-  // 2400 s: os 300 s que sobram nao viram prova de 5 s assistidos.
   sessao("tt90000019", 85, 2700); creditos = 2400;
   tocar(5, 1); pos = 2400; quadro(); player_encerrar();
   assert(nVisto == 0 && cat_item(0)->progresso < 100);
-  assert(tkPos < tkDur && !tkAssistiu && prog_tocou("tt90000019") == 0);
+  assert(tkPos < tkDur && !tkAssistiu && prog_tocou("tt90000019") == 3);
 
-  // Filme sem historico: 133 s tocados, busca e sai em 2824/2843 s (99%).
-  // PARIDADE COM O NUVIOTV OFICIAL: concluido pela POSICAO — visto, 100% e o
-  // stop de conclusao, mesmo com o fim alcancado por um seek.
   sessao("tt90000020", 0, 2843);
   tocar(133, 1); pos = 2824; quadro(); player_encerrar();
-  assert(nVisto == 1 && cat_item(0)->progresso == 100 && cat_visto(cat_item(0)));
-  assert(nTrakt == 1 && tkPos == tkDur && tkAssistiu);
+  q45_checkpoint("tt90000020", 2824, 2843, 0, 0);
+  assert(!cat_visto(cat_item(0)));
 
   // O SELO SEM PROVA continua regra do catalogo: um registro de 99% que NAO foi
   // alcancado tocando (vindo de outra fonte) nao acende o visto — nem depois de
@@ -477,46 +471,45 @@ int main(void) {
 
   // PARAR PERTO DO FIM E TERMINAR DEPOIS (setima revisao): a prova e a soma
   // gravada. 85% de 2700 s assistidos numa sessao; noutra, depois de reiniciar,
-  // a retomada toca 105 s ate os creditos e conclui.
+  // the resumed playback crosses the configured 90% threshold with proof.
   sessao("tt90000022", 0, 2700); creditos = 2400; tocar(2295, 1); player_encerrar();
   assert(nVisto == 0 && cat_item(0)->progresso == 85);
   prog_invalidar();
   sessao("tt90000022", 85, 2700); creditos = 2400; assert(pos == 2295);
-  tocar(105, 1); player_encerrar();
-  assert(nTrakt == 1 && nVisto == 1 && cat_item(0)->progresso == 100 && tkPos == tkDur);
+  tocar(155, 1); player_encerrar();
+  q45_checkpoint("tt90000022", 2450, 2700, 1, 1);
 
   // 95% de 6000 s assistidos, saindo antes dos creditos (marcador em 5790 s).
   // PARIDADE COM O NUVIOTV OFICIAL: >= 90% ja conclui na PRIMEIRA sessao.
   sessao("tt90000023", 0, 6000); creditos = 5790; tocar(5700, 1); player_encerrar();
-  assert(nTrakt == 1 && nVisto == 1 && cat_item(0)->progresso == 100 && tkPos == tkDur);
+  q45_checkpoint("tt90000023", 5700, 6000, 1, 1);
 
   // S1 COM REGISTRO: 133 s reais de 2843 s gravados numa sessao; na seguinte o
   // PRONTO do trailer (129 s) vira a duracao e 70 s reais chegam ao "fim". A
   // base de 2843 s nao vale contra 129 s: so os 70 s contam.
   sessao("tt90000024", 0, 2843); tocar(133, 1); player_encerrar();
-  assert(prog_tocou("tt90000024") == 1);
+  assert(prog_tocou("tt90000024") == 2);
   { int pct = cat_item(0)->progresso;
     sessao("tt90000024", pct, 129.036); }
   tocar(70, 1); player_encerrar();
   assert(nVisto == 0 && !tkAssistiu && cat_item(0)->progresso < 90);
 
-  // S7: registro sem o bit (linha de 10 colunas, ou vindo do servidor) e base
-  // confiavel — S4 e S5 continuam marcando.
+  // Q45: old or remote checkpoints without proof cannot establish a watched base.
   assert(prog_gravar_local("tt90000027", 0, 0, 2295, 2700, -1));
   sessao("tt90000027", 85, 2700); creditos = 2400; assert(pos == 2295);
   tocar(105, 1); player_encerrar();
-  assert(nVisto == 1 && tkAssistiu && prog_tocou("tt90000027") == 1);
+  q45_checkpoint("tt90000027", 2400, 2700, 0, 0);
   assert(prog_gravar_local("tt90000028", 0, 0, 5700, 6000, -1));
   concluido = 98; sessao("tt90000028", 95, 6000); creditos = 5790; assert(pos == 5700);
   tocar(90, 1); player_encerrar(); concluido = 90;
-  assert(nVisto == 1 && tkAssistiu);
+  q45_checkpoint("tt90000028", 5790, 6000, 0, 0);
 
   // S8: suspender e retomar (Manter o video pronto) duas vezes. A suspensao
   // grava o progresso; a base continua a da abertura e os segundos tocados
   // nao sao contados de novo. Base 600 s tocados; 510 s tocados e busca ao
   // fim (1250 s de 1300, 96%): paridade com o oficial, concluido pela posicao.
   sessao("tt90000025", 0, 1300); tocar(600, 1); player_encerrar();
-  assert(prog_tocou("tt90000025") == 1 && cat_item(0)->progresso == 46);
+  assert(prog_tocou("tt90000025") == 2 && cat_item(0)->progresso == 46);
   sessao("tt90000025", 46, 1300); assert(pos == 598);
   manter = 1;
   for (int k = 0; k < 2; k++) {
@@ -526,16 +519,15 @@ int main(void) {
     video_pausar(0);
   }
   tocar(170, 1); pos = 1250; quadro(); player_encerrar(); manter = 0;
-  assert(nVisto == 1 && tkAssistiu && prog_tocou("tt90000025") == 1);
+  q45_checkpoint("tt90000025", 1250, 1300, 0, 0);
 
-  // O PULO OFICIAL da abertura conta como tocado: 30 s, pula 150 s sozinho
-  // (#329) e toca ate o fim — sem o credito do pulo faltariam 21 s nos 90%.
+  // Auto-skip remains functional, but skipped time does not become Q45 viewing proof.
   sessao("tt90000026", 0, 1320); pularAbertura = 1;
   { IntroTrecho t = {30, 180, INTRO_ABERTURA}; intro_definir_capitulos(&t, 1); }
   tocar(30, 1); quadro(); assert(pos > 180);
   tocar(1080, 1); player_encerrar(); pularAbertura = 0;
   intro_definir_capitulos(NULL, 0);
-  assert(nVisto == 1 && tkAssistiu);
+  assert(nVisto == 0 && !tkAssistiu && prog_tocou("tt90000026") == 3);
 
   // #379: EOF sai do filme/ultimo episodio, nunca da pausa ou do canal.
   for (int caso = 0; caso < 4; caso++) {
@@ -588,26 +580,24 @@ int main(void) {
     quadro(); quadro();
     assert(prog_por_chave("tt90000030", &r) && fabs(r.posSeg - 1374) < 1.0); }
   player_encerrar();
-  assert(nVisto == 1 && cat_item(0)->progresso == 100);   // 95%: concluido na saida
+  q45_checkpoint("tt90000030", 1374, 1449, 0, 0);
 
-  // Credits beyond the reported duration disprove percentage completion.
+  // Linux video_creditos is an unverified recommendation hint, not the
+  // Android capmkv release-owned marker. It must not veto genuine fallback.
   sessao("tt90000032", 0, 536); creditos = 1335;
   tocar(500, 1);
   { SDL_Event e = {0}; e.type = SDL_KEYDOWN; e.key.keysym.sym = SDLK_PAUSE; player_evento(&e); }
   quadro(); quadro();
-  assert(cat_item(0)->progresso == 93 && !cat_visto(cat_item(0)));
-  assert(prog_tocou("tt90000032") == 0);
   player_encerrar();
-  assert(nVisto == 0 && nTrakt == 0 && cat_item(0)->progresso == 93);
-  assert(!cat_visto(cat_item(0)) && prog_tocou("tt90000032") == 0);
-  // Reconstruct the catalogue from the saved record, as after a reload.
+  q45_checkpoint("tt90000032", 500, 536, 1, 1);
+  // Reconstruct the catalogue from the real saved position, not 100%.
   { ProgRegistro r;
-    assert(prog_por_chave("tt90000032", &r) && r.tocou == 0);
+    assert(prog_por_chave("tt90000032", &r) && r.tocou == 2);
     CatItem c = {0};
     strcpy(c.imdb, "tt90000032"); strcpy(c.tipo, "movie");
     c.progresso = (int)(100.0 * r.posSeg / r.durSeg);
     cat_definir(&c, 1);
-    assert(c.progresso == 93 && !cat_visto(cat_item(0))); }
+    assert(c.progresso == 93 && cat_historico_estado_id(c.imdb, c.tipo) == 1); }
 
   // A pause during buffering must persist once buffering clears, before exit.
   sessao("tt90000031", 0, 1449);
@@ -622,7 +612,7 @@ int main(void) {
 
   testarRestartReload();
 
-  puts("PASS: trailer, pausa, buffer e seek sem reproducao nao marcam; >= 90% pela posicao conclui (oficial)");
+  puts("PASS: Q45 genuine viewing proof, actual checkpoints, trailer isolation and EOF");
   parental_encerrar();
   return 0;
 }
