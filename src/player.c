@@ -1190,6 +1190,8 @@ void player_erro_fonte(void) {
   }
 #endif
   esperandoFonte = 0; erroFonte = 1; visivel = 0; tocando = 0; soBarra = 0;
+  memset(&cine, 0, sizeof cine);
+  plrilha_cancelar_centro();
   cinemaEscapeFoco = 0;
   erroBotao = 0; erroAudioP5A = erroVideoP5B = 0;
   erroTitulo[0] = erroDica[0] = 0;   // erro sem motivo nao herda o do anterior
@@ -4834,12 +4836,10 @@ void player_evento(const SDL_Event *e) {
       } else {
         // OK always reveals genuine loading diagnostics, even when the
         // detailed card is already shown; it never silently opens a source.
-        cine.detalhada = 1;
-        abrindoExp = 1;
+        abrindoExp = !abrindoExp;
       }
       return;
     }
-    if (abrecine_tecla(&cine, k)) { abrindoExp = 1; return; }
     if (k == SDLK_DOWN) { abrindoExp = 1; return; }
     if (k == SDLK_UP) { abrindoExp = 0; return; }
     if (k == SDLK_LEFT || k == SDLK_RIGHT) return;
@@ -7065,6 +7065,18 @@ static void desenharCinema(Uint32 agora, const CatItem *c, int furou) {
   }
   desenharTelemetriaCarga(cx, y, canto, tx, v);
   y += 29.0f;
+  if (abrindoExp) {
+    AbrLinha linhas[ABR_MAX];
+    int n = linhasAbrindo(stream_item(stream_atual()), linhas);
+    for (int i = 0; i < n && y < NV_TELA_H - 85.0f; i++) {
+      char detalhe[256];
+      snprintf(detalhe, sizeof detalhe, "%s%s%s", linhas[i].rot,
+               linhas[i].rot[0] ? ": " : "", linhas[i].val);
+      TxtLinha d = txt_linha_corta(TXT_G19M, detalhe, 210, 210, 210, 255, 1100.0f);
+      txt_desenhar_alpha(d, canto ? tx : cx - d.w * .5f, y, v);
+      y += 27.0f;
+    }
+  }
   /* Q26: escape appears only after a genuinely slow 15-second startup.
    * Focus is never stolen; Down focuses it and OK confirms selection. */
   if (cinemaEscapeDisponivel(agora)) {
@@ -7195,7 +7207,7 @@ void player_desenhar(Uint32 agora) {
      * deliberately includes the pending cinematic visual handoff. */
     abrecine_passo(&cine, !erroFonte && !saindo && !ehCanal() &&
                    (fonteAindaAbrindo() || dvtela_ativa()), imagem,
-                   ajustes_abertura_detalhada(), agora, dtc, ajustes_animacoes_reduzidas());
+                   0, agora, dtc, ajustes_animacoes_reduzidas());
     if (!abrecine_navegacao(&cine) || erroFonte || saindo || ehCanal()) cinemaEscapeFoco = 0;
     if (erroFonte || saindo || ehCanal()) cine.veu = 0.0f; }
   // Live video below (hardware plane): the glass of the frame is translucent
@@ -7362,7 +7374,7 @@ void player_desenhar(Uint32 agora) {
     else snprintf(lin, sizeof lin, "%s", i18n("Sintonizando…"));
     pd.texto = lin; pd.respira = 1; pd.semFim = 1; pd.aberta = 1;
     plrilha_pedir(&pd);
-  } else if (player_carregando() && !stream_folha_aberta() && stream_folha_anim() < 0.05f &&
+  } else if (!erroFonte && player_carregando() && !stream_folha_aberta() && stream_folha_anim() < 0.05f &&
              // A TELA DO DOLBY VISION substitui o cartao: sem ela, o caminho do
              // DV mostrava "Abrindo fonte" DUAS vezes (a TV e depois o demux).
              (!dvtela_visivel() || dvtela_variante() == DVT_VAR_DETALHADA) &&
