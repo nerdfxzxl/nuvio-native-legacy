@@ -72,7 +72,7 @@ with tempfile.TemporaryDirectory(prefix="nuvio-cacheboost-android-", dir=os.envi
                                 "AudioFidelityP5A.kt", "AudioOutputProbeP5A.kt", "AudioRouteP5D.kt", "AudioRouteObserverP5D.kt", "PlaybackIntentP6.kt", "PendingAdoptionP6.kt", "HdrPolicyP5.kt", "FrameRateP5C.kt",
                                 "HdrBaseLayerP5B.kt", "HdrCodecFallbackP5B.kt",
                                 "AudioSyncTap.kt", "AudioSyncSink.kt", "RecriaHdr.kt", "ArranqueVigia.kt",
-                                "TouchViewport.kt", "Tombstone.kt")]
+                                "TouchViewport.kt", "InterfaceMode.kt", "Tombstone.kt")]
     java_roots = []
     if sdl.is_dir():
         java_roots = ["-Xjava-source-roots=" + str(sdl)]
@@ -280,11 +280,32 @@ fun main() {
         val p = GanhoAudioProcessor()
         check(p.configure(AudioProcessor.AudioFormat(48000, 6, C.ENCODING_AC3)) == AudioProcessor.AudioFormat.NOT_SET && !p.isActive)
     }
+    val dsp = GanhoAudioProcessor()
+    val mix = space.nuvio.nativelegacy.StereoDownmixP8()
+    val six = AudioProcessor.AudioFormat(48000, 6, C.ENCODING_PCM_16BIT)
+    check(dsp.configure(six) == six)
+    mix.enabled = true
+    check(mix.configure(six).channelCount == 2)
+    dsp.flush(); mix.flush()
+    fun center(): Int {
+        val frame = ByteBuffer.allocateDirect(12).order(ByteOrder.nativeOrder())
+        repeat(6) { frame.putShort(if (it == 2) 2000 else 0) }
+        frame.flip(); dsp.queueInput(frame); mix.queueInput(dsp.output)
+        val stereo = mix.output.order(ByteOrder.nativeOrder())
+        val left = stereo.short.toInt()
+        check(stereo.short.toInt() == left && !stereo.hasRemaining())
+        return left
+    }
+    val dry = center()
+    dsp.centroDb = 6
+    check(center() > dry)
+    dsp.centroDb = 0
+    check(center() == dry)
     println("cacheboost_android: PASS (statvfs fit, key/names, leftover cleanup without following links, ENOSPC guard, gain exact/linear/limited/monotonic, processor 16-bit/float/bitstream)")
 }
 """)
     rt = os.pathsep.join(map(str, (stdlib, media3["media3-common"], guava, sdk)))
-    kotlinc([kt / "CacheSessao.kt", kt / "GanhoMath.kt", kt / "GanhoAudioProcessor.kt", replay], tmp / "replay",
+    kotlinc([kt / "CacheSessao.kt", kt / "GanhoMath.kt", kt / "GanhoAudioProcessor.kt", kt / "AudioRouteP5D.kt", replay], tmp / "replay",
             os.pathsep.join(map(str, deps)))
     # android.jar is only stubs: at run time it must come AFTER the real jars
     # and nothing here may touch an Android class.
@@ -298,4 +319,8 @@ fun main() {
     hdr_rt = os.pathsep.join(map(str, (tmp / "hdr-replay", stdlib,
         media3["media3-common"], media3["media3-container"], media3["media3-exoplayer"],
         media3["media3-decoder"], guava, sdk)))
-    subprocess.run([java, "-cp", hdr_rt, "space.nuvio.nativelegacy.HdrBaseLayerP5BTestKt"], check=True)
+    subprocess.run([java, "-cp", hdr_rt, "space.nuvio.nativelegacy.HdrBaseLayerP5BTestKt", str(tmp / "base.hevc")], check=True)
+    frames = subprocess.check_output(["ffmpeg", "-v", "error", "-xerror", "-f", "hevc", "-i", str(tmp / "base.hevc"),
+                                      "-frames:v", "1", "-f", "framemd5", "-"], text=True)
+    assert "206e7a7a20a362c37b89ad4538db1ab9" in frames, frames
+    print("Adapted layer-0 sample decoded to the expected 64x64 10-bit frame")

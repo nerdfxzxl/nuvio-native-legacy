@@ -74,7 +74,7 @@ jobs:
           set -euo pipefail
           sdkmanager --install "ndk;27.2.12479018"
           sudo apt-get update -qq
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends libsdl2-dev libsdl2-image-dev libsdl2-ttf-dev
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends libsdl2-dev libsdl2-image-dev libsdl2-ttf-dev ffmpeg
           export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/27.2.12479018"
           # Expand this test-only invocation to cover changed P6 modules that
           # the ordinary APK preflight does not list. Leave the existing script

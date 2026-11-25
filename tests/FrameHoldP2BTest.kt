@@ -3,6 +3,13 @@ package space.nuvio.nativelegacy
 /** Host-only Kotlin regression suite; no Android or Gradle/SDK required. */
 fun main() {
     val p = FrameHoldP2B
+    for ((width, height, aspect) in listOf(Triple(1920, 1080, 1f), Triple(3840, 1606, 1f),
+            Triple(720, 576, 16f / 15f), Triple(1080, 1920, 1f))) {
+        val valid = p.displayWidth(width, height, aspect)
+        check(valid == (width * aspect + .5f).toInt())
+        check((p.displayWidth(0, 0, 1f) ?: valid) == valid)
+        check(p.displayWidth(width, height, Float.NaN) == null)
+    }
     check(p.mayCopy(true, true, true, false, false, false))
     check(!p.mayCopy(false, true, true, false, false, false))
     check(!p.mayCopy(true, false, true, false, false, false))
@@ -20,5 +27,5 @@ fun main() {
     check(!p.ownsResult(3, 3, 18, 19, true, true))
     check(!p.ownsResult(3, 3, 18, 18, false, true))
     check(!p.ownsResult(3, 3, 18, 18, true, false))
-    println("P2-B frame-hold policy: 17/17 PASS")
+    println("P2-B frame-hold policy: PASS including geometry")
 }

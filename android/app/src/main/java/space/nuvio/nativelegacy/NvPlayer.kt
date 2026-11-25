@@ -594,6 +594,7 @@ object NvPlayer {
     // first-frame or delayed renderer callback cannot unmute after this.
     private fun falhaVideo(minha: Int, motivo: Int, codigo: Int, geracao: Int) {
         if (!atual(minha) || videoOutputFailed) return
+        relatarAudio(minha, "P8 video terminal reason=$motivo code=$codigo decoder=$videoDecoderName size=${videoW}x$videoH stable=$estavelEmitido")
         videoOutputFailed = true
         recursosAtuais?.let { cancelAudioRoute(it, restore = false) }
         recuperacaoLive?.cancel()
@@ -1934,7 +1935,10 @@ object NvPlayer {
                         { displayHdr(act, android.view.Display.HdrCapabilities.HDR_TYPE_HDR10) },
                         { displayHdr(act, android.view.Display.HdrCapabilities.HDR_TYPE_DOLBY_VISION) },
                         { r.runtimeVideoRecovery },
-                        { config -> r.videoConfig = config })
+                        { config -> r.videoConfig = config },
+                        { detail -> principal.post {
+                            if (recursosAtuais === r && atual(sessao)) relatarAudio(sessao, "P8 video $detail")
+                        } })
                 override fun buildVideoRenderers(context: Context, extensionRendererMode: Int,
                                                   mediaCodecSelector: MediaCodecSelector, enableDecoderFallback: Boolean,
                                                   eventHandler: Handler, eventListener: VideoRendererEventListener,
@@ -3274,6 +3278,15 @@ object NvPlayer {
                     val selectedVideo = groups.any { g ->
                         g.type == C.TRACK_TYPE_VIDEO && (0 until g.length).any { i -> g.isTrackSelected(i) }
                     }
+                    val videoGroups = groups.filter { it.type == C.TRACK_TYPE_VIDEO }
+                    if (!selectedVideo && videoGroups.isNotEmpty() && videoGroups.all { group ->
+                            (0 until group.length).none { group.isTrackSupported(it, true) }
+                        }) {
+                        relatarAudio(minha, "P8 video no selectable renderer support=" +
+                            videoGroups.take(4).joinToString(",") { it.getTrackSupport(0).toString() })
+                        falhaVideo(minha, HdrPolicyP5.FAIL_FORMAT, 0, geracaoDaAbertura)
+                        return
+                    }
                     if (recursosAtuais?.runtimeVideoRecovery?.completed == false && !selectedVideo) {
                         falhaVideo(minha, HdrPolicyP5.FAIL_DECODER, 0, geracaoDaAbertura)
                         return
@@ -3413,6 +3426,8 @@ object NvPlayer {
         override fun onPlayerError(error: PlaybackException) {
             if (!atual(minha) || videoOutputFailed) return
             val exo = error as? ExoPlaybackException
+            relatarAudio(minha, "P8 renderer failure code=${error.errorCode} type=${exo?.type} support=${exo?.rendererFormatSupport} " +
+                "cause=" + generateSequence(error.cause) { it.cause }.take(5).joinToString("/") { camposErroCausa(it) })
             val p = player
             val rRoute = recursosAtuais
             val audioRenderer = exo?.type == ExoPlaybackException.TYPE_RENDERER && p != null &&
@@ -3431,7 +3446,7 @@ object NvPlayer {
                         return
                     }
                 }
-                if (rRoute.routeFailed) return
+                if (rRoute.routeFailed && audioRenderer) return
                 if (audioRenderer && !rRoute.routeTx.active && !rRoute.routePcm) {
                     val target = rRoute.routeSelected ?: p?.let { selectedAudio(it) }
                     if (target != null && target.first.isTrackSupported(target.second)) {
@@ -3523,17 +3538,19 @@ object NvPlayer {
                 // fallback (Media3 already tries that list). Exclude only the
                 // failed actual decoder for one same-player reprepare. Keep
                 // all original media, track parameters, position and effects.
-                if (videoFailure == HdrPolicyP5.FAIL_DECODER &&
-                    error.errorCode == PlaybackException.ERROR_CODE_DECODING_FAILED &&
+                if ((outputRejected || (videoFailure == HdrPolicyP5.FAIL_DECODER &&
+                    error.errorCode == PlaybackException.ERROR_CODE_DECODING_FAILED)) &&
                     p != null && r != null && r.runtimeVideoRecovery == null &&
                     !retentou) {
                     val failed = generateSequence(error.cause) { it.cause }
                         .filterIsInstance<MediaCodecDecoderException>().firstOrNull()?.codecInfo
                     val config = r.videoConfig
-                    val format = exo?.rendererFormat ?: p.videoFormat
-                    if (failed != null && config != null && format != null &&
-                        config.matches(format, failed.name)) {
-                        r.runtimeVideoRecovery = HdrCodecFallbackP5B.RuntimeRecovery(failed.name, format)
+                    val format = exo?.rendererFormat ?: p.videoFormat ?: config?.source
+                    val failedName = failed?.name ?: videoDecoderName ?: config?.info?.name
+                    if (failedName != null && config != null && format != null &&
+                        config.matches(format, failedName)) {
+                        relatarAudio(minha, "P8 video reprepare exclude=$failedName reason=$videoFailure")
+                        r.runtimeVideoRecovery = HdrCodecFallbackP5B.RuntimeRecovery(failedName, format)
                         retentou = true
                         // Native ownership is installed before invalidation so
                         // its watchdog cannot take the opening in between.
@@ -3671,6 +3688,8 @@ object NvPlayer {
                 publicarHdr(p.currentTracks)
             }
             val r = recursosAtuais
+            relatarAudio(minha, "P8 video frame codec=$videoDecoderName transfer=${r?.videoConfig?.outputTransfer} " +
+                "base=${baseLayerRendered != null} toneMapped=${baseLayerRendered?.base?.sdrOutput == true}")
             if (r?.runtimeVideoRecovery?.handoff(r.videoConfig, f, videoDecoderName) == false) {
                 falhaVideo(minha, HdrPolicyP5.FAIL_DECODER, 0, geracaoDaAbertura)
                 return
@@ -3679,6 +3698,7 @@ object NvPlayer {
             if (estavelEmitido) { esconderQuadro(); limparRetido() }
             ev(EV_PRIMEIRO_QUADRO, geracao = geracaoDaAbertura)
             quadroVisto = true
+            publicarHdr(p.currentTracks)
             logTaxaDeQuadros()
             hdrNaSuperficie()
             avaliarEstavel()
@@ -3692,7 +3712,7 @@ object NvPlayer {
             // DV so conta com decoder DV de verdade: OMX.dolby.* / c2.dolby.* e,
             // na MediaTek, c2.mtk.dvhe.* / c2.mtk.dvav.* (TCL Smart TV Pro: o
             // painel engatou Dolby Vision e o selo dizia HDR10, 30/09/2026).
-            Log.i(TAG, "[player] decoder de video: $decoderName")
+            relatarAudio(minha, "P8 video initialized codec=$decoderName initMs=$initializationDurationMs")
             videoDecoderName = decoderName
             decoderDv = decoderDolby(decoderName, recursosAtuais)
             baseLayerRendered = null
@@ -3826,7 +3846,9 @@ object NvPlayer {
                 val f = g.getTrackFormat(i)
                 if (g.type == C.TRACK_TYPE_VIDEO) {
                     val renderFormat = player?.videoFormat ?: recursosAtuais?.videoConfig?.source ?: f
-                    val t = renderFormat.colorInfo?.colorTransfer
+                    val config = recursosAtuais?.videoConfig
+                    val t = config?.takeIf { quadroVisto && it.matches(renderFormat, videoDecoderName) }?.outputTransfer
+                    val act = activity
                     // Actual renderer format wins over an adaptive candidate.
                     // PQ alone still does not prove a compatible DV base layer.
                     val baseConfirmed = baseLayerRendered?.let {
@@ -3834,9 +3856,11 @@ object NvPlayer {
                     } == true
                     val decisao = HdrPolicyP5.decide(
                         dolbyVisionMime = renderFormat.sampleMimeType == MimeTypes.VIDEO_DOLBY_VISION,
-                        dolbyVisionDecoder = decoderDv && compatibleDolby(renderFormat),
-                        st2084 = baseConfirmed || t == C.COLOR_TRANSFER_ST2084,
-                        hlg = t == C.COLOR_TRANSFER_HLG,
+                        dolbyVisionDecoder = quadroVisto && decoderDv && compatibleDolby(renderFormat),
+                        st2084 = baseConfirmed || (t == android.media.MediaFormat.COLOR_TRANSFER_ST2084 && act != null &&
+                            displayHdr(act, android.view.Display.HdrCapabilities.HDR_TYPE_HDR10)),
+                        hlg = t == android.media.MediaFormat.COLOR_TRANSFER_HLG && act != null &&
+                            displayHdr(act, android.view.Display.HdrCapabilities.HDR_TYPE_HLG),
                         verifiedSameFileHdr10Base = baseConfirmed)
                     hdr = decisao.mode; dv = decisao.dolbyVision
                 } else if (g.type == C.TRACK_TYPE_AUDIO && f.sampleMimeType == MimeTypes.AUDIO_E_AC3_JOC) {

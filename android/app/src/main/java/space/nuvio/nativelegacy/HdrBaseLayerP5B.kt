@@ -57,6 +57,48 @@ internal object HdrBaseLayerP5B {
         } catch (_: Exception) { null }
     }
 
+    // Extractors have converted clear HEVC samples to Annex B. Keep layer-0
+    // coded pictures, parameter sets and SEI (including static/dynamic HDR).
+    // Strip enhancement-layer and Dolby RPU/EL units only for a verified
+    // alternate. The original sample in the media source remains untouched.
+    fun keepBaseUnits(buffer: ByteBuffer, offset: Int, size: Int): Int {
+        if (size < 5) return size
+        require(offset >= 0 && offset <= buffer.capacity() - size)
+        val src = buffer.duplicate().apply { clear() }
+        val dst = src.duplicate()
+        val end = offset + size
+        fun prefix(from: Int): Int {
+            var i = from + 2
+            while (i < end) {
+                if (src.get(i).toInt() == 1 && src.get(i - 1).toInt() == 0 && src.get(i - 2).toInt() == 0)
+                    return if (i >= from + 3 && src.get(i - 3).toInt() == 0) i - 3 else i - 2
+                i += if (src.get(i).toInt() and 0xfe != 0) 3 else 1
+            }
+            return end
+        }
+        var start = prefix(offset)
+        if (start != offset) return size
+        var write = offset
+        while (start < end) {
+            val header = start + if (src.get(start + 2).toInt() == 1) 3 else 4
+            if (header + 1 >= end) break
+            val next = prefix(header + 2)
+            val first = src.get(header).toInt() and 255
+            val second = src.get(header + 1).toInt() and 255
+            val type = (first ushr 1) and 63
+            if (first and 1 == 0 && second and 0xf8 == 0 && type != 62 && type != 63) {
+                if (write != start) {
+                    val unit = src.duplicate().apply { position(start); limit(next) }
+                    dst.position(write)
+                    dst.put(unit)
+                }
+                write += next - start
+            }
+            start = next
+        }
+        return write - offset
+    }
+
     // Extractors submit Annex-B HEVC NALs. Require a layer-zero IRAP with a
     // first slice, not merely an enhancement layer, RPU or codec-config NAL.
     // No copying/mutation of the MediaCodec input buffer; scan only bounded

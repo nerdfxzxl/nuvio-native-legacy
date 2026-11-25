@@ -13,7 +13,7 @@ private val hlg = hex("0000000140010c01ffff02200000030090000003000003001e9598090
 private val sdr = hex("0000000140010c01ffff01600000030090000003000003001e9598090000000142010101600000030090000003000003001ea020810596566924caf016a020202080000003008000000c04000000014401c172b42240")
 private val irap = hex("000000012801af1d80f7015bfff24efeccf0")
 
-fun main() {
+fun main(args: Array<String>) {
     fun inspect(data: ByteArray, codecs: String = "dvhe.08.06", width: Int = 64) =
         HdrBaseLayerP5B.inspect(codecs, width, 64, listOf(data))
     val p = HdrBaseLayerP5B
@@ -45,6 +45,17 @@ fun main() {
     check(!p.hasBaseRandomAccess(ByteBuffer.wrap(irap.copyOf().apply { this[5] = 9 }), 0, irap.size))
     check(!p.hasBaseRandomAccess(ByteBuffer.wrap(irap.copyOf().apply { this[4] = 0x7c }), 0, irap.size))
     check(!p.hasBaseRandomAccess(ByteBuffer.wrap(irap.copyOf().apply { this[6] = 0x2f }), 0, irap.size))
+    val el = hex("0000012809af01")
+    val rpu = hex("000000017c010101")
+    val mixed = pq + el + irap + rpu
+    val adapted = ByteBuffer.allocateDirect(mixed.size + 8)
+    adapted.position(3); adapted.put(mixed)
+    val length = p.keepBaseUnits(adapted, 3, mixed.size)
+    val bytes = ByteArray(length)
+    adapted.position(3); adapted.get(bytes)
+    check(bytes.contentEquals(pq + irap))
+    check(p.keepBaseUnits(ByteBuffer.wrap(el), 0, el.size) == 0)
+    if (args.isNotEmpty()) java.io.File(args.single()).writeBytes(bytes)
     val proof = HdrCodecFallbackP5B.Proof()
     check(!proof.ready())
     proof.sample = true
@@ -88,5 +99,5 @@ fun main() {
     check(!HdrCodecFallbackP5B.needsRevalidation(sdrFormat, changedSdr, false))
     check(HdrCodecFallbackP5B.needsRevalidation(sdrFormat, changedSdr, true))
     check(!HdrCodecFallbackP5B.needsRevalidation(sdrFormat, sdrFormat.buildUpon().build(), true))
-    println("P5-B actual HEVC CSD/IRAP, codec proof, runtime and reuse guards: PASS (47 assertions)")
+    println("P5-B actual HEVC CSD/IRAP, codec proof, runtime and reuse guards: PASS including enhancement/RPU removal")
 }
