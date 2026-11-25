@@ -1,6 +1,6 @@
 # P7 comprehensive integration acceptance — 2026-11-25
 
-**Disposition: source integration review completed; final acceptance conditional on fresh exact-revision verification. NOT a final PASS yet. P8 remains NOT authorized.**
+**Disposition: source integration review completed; Android #6 production link/JNI and focused gate PASS. Final acceptance pending Linux #11 only. P8 remains NOT authorized.**
 
 Branch: `feature/official-stream-selector` only. Starting reviewed HEAD `d40b9ec0d5c133e96a6210bee55c395c979161ed`. Q46 corrected production/test input `9d4878898010e405c4b3a1dfc5b74c6aae1d6d25`. This report is a documentation-only successor; verify the actual branch HEAD and compare before closing the gate.
 
@@ -111,3 +111,7 @@ P8 separate owner authorization required for one cached Android debug APK workfl
 8. Detailed Playback Info actual measured speed and unknown during missing telemetry, scoped last report, redacted report, physical output/thermal/unknown fields; Q18 percentage remains intentionally deferred.
 
 No APK built, signed, published or released; no debug trigger, default branch or merge. No TV/ARC/mobile runtime claim.
+
+## Exact Q46 verification update — Android #6 PASS
+
+[Android #6](https://github.com/nerdfxzxl/nuvio-native-legacy/actions/runs/45605515198), exact input `9d4878898010e405c4b3a1dfc5b74c6aae1d6d25`: Android job 139175245341 and focused job 139175245618 completed successfully; actual logs inspected. AArch64 ELF, Rust `nv_mkvcore_achar_tracks`, 33 C-to-Kotlin static lookups and successful production builds confirmed. Focused logs confirm live statistics, numeric playback diagnostics (measured speed, recovery, gaps, profile/account scope), delayed subtitle publication and source-replacement telemetry ownership PASS. macOS skipped, not counted as passed. No reported sanitizer fatal diagnostics or assertions in these logs. Linux #11 remains running (subtitles/parser/fileiras group passed; five other jobs in progress at check). P7-A/B fresh verification and focused Q46 checks passed. P7-D/E audit and P7-F report complete; only Linux #11 final result/log inspection and final source verdict remain. No further broad audit or new run for documentation-only changes. No APK/device verification or P8 authorization.
