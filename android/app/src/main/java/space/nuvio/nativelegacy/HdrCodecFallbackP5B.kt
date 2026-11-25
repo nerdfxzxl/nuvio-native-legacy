@@ -25,7 +25,9 @@ internal object HdrCodecFallbackP5B {
         @Volatile var sample = false
         @Volatile var hdrOutput = false
         @Volatile var valid = true
-        fun ready() = valid && sample && hdrOutput
+        @Volatile var sdrOutput = false
+        var requestSdr = false
+        fun ready() = valid && sample && (if (requestSdr) sdrOutput else hdrOutput)
     }
 
     private fun sameVideoFormat(a: Format, b: Format): Boolean =
@@ -78,7 +80,8 @@ internal object HdrCodecFallbackP5B {
                 val info = getCodecInfo()
                 val supported = current != null && info != null && current.matches(format, info.name) &&
                     if (info.mimeType == MimeTypes.VIDEO_DOLBY_VISION) displayDv()
-                    else info.mimeType == MimeTypes.VIDEO_H265 && current.base?.ready() == true && displayHdr10()
+                    else info.mimeType == MimeTypes.VIDEO_H265 && current.base?.ready() == true &&
+                        (current.base.requestSdr || displayHdr10())
                 if (!supported) throw createRendererException(OutputRejected(), format,
                     PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED)
             }
@@ -133,7 +136,7 @@ internal object HdrCodecFallbackP5B {
                 info.mimeType != MimeTypes.VIDEO_DOLBY_VISION
             val proof = if (alternate) {
                 validateAlternate(configuration)
-                Proof()
+                Proof().apply { requestSdr = !displayHdr10() }
             } else {
                 // Reject incompatible native DV before initialization. Media3
                 // can then try its remaining compatible same-source candidates,
@@ -169,7 +172,7 @@ internal object HdrCodecFallbackP5B {
             // Clear, same-stream HEVC only. DRM, HLG, SDR, ambiguous or other
             // alternative MIME paths must not silently become HDR10.
             if (info.mimeType != MimeTypes.VIDEO_H265 || c.crypto != null ||
-                info.secure || f.drmInitData != null || !displayHdr10())
+                info.secure || f.drmInitData != null || (!displayHdr10() && android.os.Build.VERSION.SDK_INT < 31))
                 throw IOException("No verified clear HDR10 output path")
             val evidence = HdrBaseLayerP5B.inspect(f.codecs, f.width, f.height, f.initializationData)
                 ?: throw IOException("No independent HEVC HDR10 base-layer configuration")
@@ -206,6 +209,11 @@ internal object HdrCodecFallbackP5B {
             c.mediaFormat.setInteger(MediaFormat.KEY_COLOR_STANDARD, MediaFormat.COLOR_STANDARD_BT2020)
             c.mediaFormat.setInteger(MediaFormat.KEY_COLOR_TRANSFER, MediaFormat.COLOR_TRANSFER_ST2084)
             c.mediaFormat.setInteger(MediaFormat.KEY_COLOR_RANGE, MediaFormat.COLOR_RANGE_LIMITED)
+            // Request platform codec tone mapping only for a positively proven
+            // HDR10 base on a non-HDR display. Verify the actual SDR output;
+            // a codec ignoring this request is not a successful downgrade.
+            if (!displayHdr10()) c.mediaFormat.setInteger(MediaFormat.KEY_COLOR_TRANSFER_REQUEST,
+                MediaFormat.COLOR_TRANSFER_SDR_VIDEO)
         }
     }
 
@@ -245,6 +253,9 @@ internal object HdrCodecFallbackP5B {
                 f.getInteger(MediaFormat.KEY_COLOR_STANDARD) == MediaFormat.COLOR_STANDARD_BT2020 &&
                     f.getInteger(MediaFormat.KEY_COLOR_TRANSFER) == MediaFormat.COLOR_TRANSFER_ST2084 &&
                     f.getInteger(MediaFormat.KEY_COLOR_RANGE) == MediaFormat.COLOR_RANGE_LIMITED
+            } catch (_: Exception) { false }
+            proof.sdrOutput = try {
+                f.getInteger(MediaFormat.KEY_COLOR_TRANSFER) == MediaFormat.COLOR_TRANSFER_SDR_VIDEO
             } catch (_: Exception) { false }
             return f
         }
