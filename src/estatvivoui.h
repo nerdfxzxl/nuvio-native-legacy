@@ -48,6 +48,8 @@ void estatvivo_desenhar(Uint32 agora);
 void estatvivo_player_toggle(void);
 void estatvivo_player_expandir(void);
 void estatvivo_player_nova_sessao(void);
+// Finalize the numeric report before profile or app teardown on the UI thread.
+void estatvivo_diag_finalizar(void);
 int  estatvivo_player_aberto(void);
 int  estatvivo_player_detalhado(void);
 void estatvivo_player_hud_toggle(void); // retained for settings compatibility
