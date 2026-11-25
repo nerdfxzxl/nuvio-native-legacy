@@ -169,8 +169,12 @@ int main(void) {
     assert(fontevolta_pegar("fixture-titulo", "fixture-conta-a", 1, SDL_GetTicks(), &got));
     abrir("movie"); stream_definir_atual(0); posicao = 3590; player_atualizar(.016f, SDL_GetTicks());
     player_encerrar();
-    assert(!fontevolta_pegar("fixture-titulo", "fixture-conta-a", 1, SDL_GetTicks(), &got));
-    puts("ok sessao que falhou ou terminou apaga; fechamento normal guarda");
+    // A position jump near EOF is neither actual EOF nor Q45 viewed proof.
+    // Preserve its valid source for resume; the failure invalidation above
+    // remains mandatory. Do not synthesize watched history from the jump.
+    assert(fontevolta_pegar("fixture-titulo", "fixture-conta-a", 1, SDL_GetTicks(), &got));
+    assert(cat_historico_estado_id("fixture-titulo", "movie") != 1);
+    puts("ok failed source invalidates; normal/near-EOF seek close preserves source");
 
     // Lista trocada por baixo (busca de fundo): a entrada que toca nao some.
     abrir("movie"); stream_definir_atual(0); player_encerrar();

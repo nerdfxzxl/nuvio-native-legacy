@@ -4,7 +4,7 @@ on:
   push:
     branches: [feature/official-stream-selector]
     paths: [.github/workflows/p7-legacy-linux.yml]
-# CI #4: fix EOF fixture source formatting, exercise actual selection route, collect crash traces.
+# CI #5: complete simulation metadata and assert Q45 journal/real checkpoint semantics.
 permissions:
   contents: read
 jobs:

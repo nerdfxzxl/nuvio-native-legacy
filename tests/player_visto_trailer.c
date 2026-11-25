@@ -124,6 +124,9 @@ int trakt_scrobble_alvo(int evento, const TraktScrobbleAlvo *alvo,
   // The history-owned event may occur at threshold and again on close; it
   // is a progress notification, not another watched-history submission.
   if (evento == SCR_EV_HISTORICO_JA_GRAVADO) {
+    // At threshold assistiu=1; on close assistiu=0. Only count the close,
+    // keep the history proof and actual checkpoint independent.
+    if (!assistiu) nTrakt++;
     tkPos = posSeg; tkDur = durSeg; tkAssistiu |= assistiu;
   }
   return SCR_NADA;
@@ -161,7 +164,7 @@ static void abrir(int filme, const char *imdb, const char *meta,
     snprintf(ep.duracao, sizeof ep.duracao, "%s", durEp);
     cat_definir_episodios(0, &ep, 1);
   }
-  nTrakt = nVisto = 0;
+  nTrakt = nVisto = tkAssistiu = 0; tkPos = tkDur = 0;
   player_abrir(0, NULL);
   if (durEp) player_definir_episodio(1, 1);
   dur = d;
@@ -180,7 +183,7 @@ static void abrir(int filme, const char *imdb, const char *meta,
 static void sessao(const char *imdb, int progresso, double d) {
   CatItem c = {0};
   strcpy(c.imdb, imdb); strcpy(c.tipo, "movie"); c.progresso = progresso;
-  cat_definir(&c, 1); nTrakt = nVisto = 0; dur = d; creditos = 0;
+  cat_definir(&c, 1); nTrakt = nVisto = tkAssistiu = 0; tkPos = tkDur = 0; dur = d; creditos = 0;
   player_abrir(0, fonte); quadro(); quadro();
 }
 // `seg` segundos de relogio tocando a `vel` vezes a velocidade normal.
@@ -285,13 +288,14 @@ int main(void) {
   // pipeline bate com o meta. Tem que continuar marcando em todo destino.
   abrir(1, "tt22687793", "1 h 46 min", NULL, 6357.0, 6300.0);
   assert(nTrakt == 1 && nVisto == 1);
-  assert(cat_item(0)->progresso == 100);
+  assert(cat_visto(cat_item(0)) && cat_historico_estado_id("tt22687793", "movie") == 1);
+  assert(fabs(tkPos - 6300.0) < 1.0 && fabs(tkDur - 6357.0) < 1.0 && tkAssistiu);
 
   // (5) CONTROLE POSITIVO, episodio ate o fim.
   abrir(0, "tt22687794", NULL, "43 min", 2580.0, 2525.0);
   assert(nTrakt == 1);
   assert(vistoep_estado("tt22687794", 1, 1) == 1);
-  assert(cat_item(0)->progresso == 100);
+  assert(fabs(tkPos - 2525.0) < 1.0 && fabs(tkDur - 2580.0) < 1.0 && tkAssistiu);
 
   // (6) CONTROLE: filme real abandonado no comeco — progresso REAL gravado,
   // scrobble de progresso (pause) enviado, nada marcado como visto.

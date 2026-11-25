@@ -98,7 +98,7 @@ int main(void) {
   player_abrir(4, NULL);
   player_definir_episodio(1, 3);
   // Q50 only updates post-play on an owned ready video with real duration.
-  static const VideoSimulacao sim = { .aceita=1, .pronto=1 };
+  static const VideoSimulacao sim = { .aceita=1, .pronto=1, .duracao=3600 };
   video_simular(&sim);
   player_definir_fonte("https://fixture.invalid/episode.mp4");
   episodios_abrir(player_indice(), 1, 3);   // o que o botao Episodios faz
