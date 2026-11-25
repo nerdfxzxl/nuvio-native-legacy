@@ -334,11 +334,8 @@ static void testar(void) {
     cat_id_stream(0,t,e,alvo,sizeof alvo);
     assert(!strcmp(alvo,"tt0000101:2:5"));
     assert(!stream_lista_do_alvo(alvo));
-    // Request path used by buscarParaPlayerModo: with no configured addons,
-    // the obsolete list must be retired synchronously.
-    addons_buscar(alvo,"series");
-    assert(stream_n()==0 && stream_atual()==-1 &&
-           !stream_lista_do_alvo("tt0000101:2:4"));
+    // The real add-on request boundary is exercised in addons_alvo_pendente
+    // with controlled transport, not here (ondever would start a network worker).
     player_encerrar(); }
   c.imdb[0]=0;cat_definir(&c,1);cat_definir_episodios(0,eps,40);
 
