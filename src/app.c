@@ -150,6 +150,7 @@
 #include "p2p.h"
 #include "p2pmotor.h"
 #include "player.h"
+#include "parental.h"
 #include "dvtela.h"
 #include "legsync.h"
 #include "badges.h"
@@ -8194,6 +8195,7 @@ void app_encerrar(void) {
   aguardandoFonte = 0;
   limparFonteVOD();
   player_encerrar();
+  parental_encerrar(); // join before network/process teardown
   simkl_scrobble_drenar(3000);   // stop sem resposta fica em disco para retry
   legsync_destruir();   // F05: join dos fios do AutoSync, depois do player
   discord_encerrar();   // a atividade some na hora, sem esperar o Discord notar a queda
