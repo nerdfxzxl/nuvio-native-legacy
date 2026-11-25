@@ -103,6 +103,7 @@ object NvPlayer {
     private const val EV_AUDIO_SAIDA_INCOMPATIVEL = 16 // P5-A: route cannot faithfully carry selected audio
     private const val EV_VIDEO_FALHA = 17 // P5-B: user-owned terminal video error
     private const val EV_VIDEO_RECOVERY = 18 // bounded same-source decoder recovery
+    private const val EV_AUDIO_FALLBACK_SELECTED = 20
     private const val EV_AUDIO_ROUTE_RECOVERY = 19 // generation-owned Q49, not a video handoff
 
     private const val TELA_W = 1920   // coordenadas de layout do app
@@ -1003,6 +1004,8 @@ object NvPlayer {
         var routeValidatedSerial = 0L
         var routeAwaitingPlay = false
         val proc = GanhoAudioProcessor()
+        val downmix = StereoDownmixP8()
+        var alternateAudioTried = false
         val tap = AudioSyncTap(
             { pcm, n, pts -> if (adotado) try { nativeAudioPcm(pcm, n, pts) } catch (_: UnsatisfiedLinkError) {} },
             { fmt ->
@@ -1978,7 +1981,7 @@ object NvPlayer {
                     AudioSyncSink(DefaultAudioSink.Builder(context).setEnableFloatOutput(false)
                         .setEnableAudioTrackPlaybackParams(false)
                         .setAudioTrackProvider(r.routeObserver)
-                        .setAudioProcessors(arrayOf(r.proc)).build(), r.tap,
+                        .setAudioProcessors(arrayOf(r.proc, r.downmix)).build(), r.tap,
                         { r.velocidadePcm || r.ajustePcm || r.routePcm })
             }.setExtensionRendererMode(androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
                 .setMediaCodecSelector(MediaCodecSelector { mime, secure, tunneling ->
@@ -2909,6 +2912,31 @@ object NvPlayer {
 
     private fun failAudioRoute(minha: Int, r: RecursosPlayer, reason: String) {
         if (!atual(minha) || recursosAtuais !== r || r.routeFailed || videoOutputFailed) return
+        // One compatible same-language alternative after the current PCM path fails.
+        // Never change the media item or substitute a dub/commentary track.
+        val old = r.routeTarget ?: r.routeSelected
+        if (!r.alternateAudioTried && old != null) {
+            val original = old.first.getTrackFormat(old.second)
+            val language = codigoPublicado(original.language)
+            val alternative = audios.filter { (g, i) ->
+                val f = g.getTrackFormat(i)
+                (g.mediaTrackGroup != old.first.mediaTrackGroup || i != old.second) &&
+                    language.isNotBlank() && codigoPublicado(f.language) == language &&
+                    f.roleFlags == original.roleFlags && g.isTrackSupported(i)
+            }.maxByOrNull { (g, i) ->
+                val f = g.getTrackFormat(i)
+                AudioFidelityP5A.sourceQuality(f.sampleMimeType.orEmpty(), f.channelCount,
+                    f.sampleRate, AudioOutputProbeP5A.bitDepth(f.pcmEncoding), f.bitrate)
+            }
+            if (alternative != null) {
+                r.alternateAudioTried = true
+                cancelAudioRoute(r, restore = true)
+                r.routeSelected = alternative
+                startAudioRoute(minha, r, alternative, true, r.p.playerError != null,
+                    SystemClock.elapsedRealtime())
+                return
+            }
+        }
         r.routeFailed = true
         cancelAudioRoute(r, restore = false)
         r.routeMuted = true
@@ -2948,6 +2976,7 @@ object NvPlayer {
         val ticket = r.routeTx.begin(now)
         r.routeTarget = target
         r.routePcm = forcePcm
+        r.downmix.enabled = forcePcm && target.first.getTrackFormat(target.second).channelCount > 2
         r.routeMuted = true
         r.routeOutputBefore = r.routeObserver.output?.serial ?: 0L
         routeOwner(r, true)
@@ -3090,6 +3119,7 @@ object NvPlayer {
                     val pcm = next == AudioRouteP5D.Action.RESELECT_PCM
                     if (pcm != r.routePcm) {
                         r.routePcm = pcm
+                        r.downmix.enabled = pcm && fmt.channelCount > 2
                         if (r.routePhase == 2) {
                             try { reselectAudioRoute(minha, r, target, ticket) }
                             catch (_: RuntimeException) { failAudioRoute(minha, r, "new route reselection failed") }
@@ -3105,6 +3135,11 @@ object NvPlayer {
             } == true
             if (r.routePhase == 2 && compatible && selectedSame &&
                 output!!.serial > r.routeOutputBefore && !r.routeDebounce.pending) {
+                r.routeSelected = target
+                val ordinal = audios.indexOfFirst { (g, i) ->
+                    g.mediaTrackGroup == target.first.mediaTrackGroup && i == target.second
+                }
+                if (ordinal >= 0) ev(EV_AUDIO_FALLBACK_SELECTED, ordinal)
                 cancelAudioRoute(r, restore = false)
                 r.routeCheck = false
                 refreshRouteCaps(r, route)
