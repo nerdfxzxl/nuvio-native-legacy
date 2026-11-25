@@ -1,5 +1,6 @@
 #include "arteurl.h"
 #include "descoberta.h"
+#include "p7_join_workers.h"
 #include "dados.h"
 #include "idioma.h"
 #include "ajustes.h"
@@ -1289,7 +1290,7 @@ static int catalogosFora;
 // Quantos catalogos NAO DESLIGADOS o teto impediu de pedir na ultima montagem,
 // sem o clamp de catalogosFora. Ver o uso em desc_remontar_fileiras.
 static int catalogosNaoPedidos;
-static pthread_t fioEp;
+static P7Workers playbackMetaWorkers = P7_WORKERS_INIT;
 static int epItem = -1, epTemp, fioEpVivo;
 
 int desc_buscando(void) {
@@ -9773,12 +9774,12 @@ void desc_episodios(int indiceItem, int temporada) {
   epItem = indiceItem; epTemp = temporada;
   fioEpVivo = 1;
   pthread_mutex_unlock(&epPedidoTrava);
-  if (pthread_create(&fioEp, NULL, buscarEpsPedido, p) != 0) {
+  if (!p7_workers_start(&playbackMetaWorkers, buscarEpsPedido, p)) {
     pthread_mutex_lock(&epPedidoTrava);
     if (p->geracao == epGeracao) fioEpVivo = 0;
     pthread_mutex_unlock(&epPedidoTrava);
     free(p);
-  } else pthread_detach(fioEp);
+  }
 }
 
 // Elenco com nomes mas sem id de pessoa do TMDB em ninguem: veio de catalogo
@@ -9857,7 +9858,7 @@ static char sobTipo[8];
 static int  sobIndice = -1;   // resultado, consumido por desc_titulo_pronto
 static int  sobFioVivo;
 static NvPerfilSessao sobSessao;
-static pthread_t sobFio;
+
 // SEMENTE (R2): o que o clique ja sabia do titulo (nome, ano, cartaz). Com ela
 // a pagina abre NA HORA, com o layout normal, e o buscarEps preenche o resto.
 static CatItem sobSemente;
@@ -9966,8 +9967,7 @@ static void pedirTmdb(long tmdbId, const char *tipo, int semente) {
   sobIndice = -1;
   sobFioVivo = 1;
   sobSessao = nv_perfil_sessao_ler();
-  if (pthread_create(&sobFio, NULL, buscarTitulo, NULL) != 0) sobFioVivo = 0;
-  else pthread_detach(sobFio);
+  if (!p7_workers_start(&playbackMetaWorkers, buscarTitulo, NULL)) sobFioVivo = 0;
 }
 void desc_pedir_titulo_tmdb(long tmdbId, const char *tipo) { pedirTmdb(tmdbId, tipo, 0); }
 
@@ -9989,8 +9989,7 @@ void desc_pedir_titulo(const char *imdb) {
   sobIndice = -1;
   sobFioVivo = 1;
   sobSessao = nv_perfil_sessao_ler();
-  if (pthread_create(&sobFio, NULL, buscarTitulo, NULL) != 0) sobFioVivo = 0;
-  else pthread_detach(sobFio);
+  if (!p7_workers_start(&playbackMetaWorkers, buscarTitulo, NULL)) sobFioVivo = 0;
 }
 
 // Como desc_pedir_titulo/_tmdb, mas com o que o clique ja sabia. Sem cartaz ou
@@ -10110,4 +10109,10 @@ void desc_abrir_sessao(void) {
   cwo_ajustados_definir(NULL, 0);
   cwo_publicar_futuros(NULL, 0);
   cat_definir_tudo(NULL, 0, NULL, 0);
+}
+
+// Final teardown: keep catalogue, marker and network infrastructure alive until
+// playback episode/title metadata and their TLS destructors have returned.
+void desc_playback_workers_encerrar(void) {
+  p7_workers_shutdown(&playbackMetaWorkers);
 }
