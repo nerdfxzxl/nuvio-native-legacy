@@ -56,7 +56,7 @@ flags=(
 # Compile every native file touched by the Netflix detail integration.
 sources=(
   src/main.c src/home.c src/streams.c src/gfx.c src/selospacote.c src/ajustes.c
-  src/player.c src/celular.c src/text.c src/stream_parse.c
+  src/player.c src/plrilha.c src/celular.c src/text.c src/stream_parse.c
   src/ctxmenu.c src/fileiras.c src/descoberta.c src/catalogo.c src/cwordem.c
   src/progresso.c src/simkl.c src/trakt.c src/androidcache.c src/cachearte.c
   src/perfiltv.c src/tex_cache.c src/estatvivoui.c src/estatvivo.c
