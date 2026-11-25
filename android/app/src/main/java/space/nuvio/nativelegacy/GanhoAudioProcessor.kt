@@ -167,29 +167,9 @@ internal class StereoDownmixP8 : BaseAudioProcessor() {
         val samples = IntArray(channels)
         repeat(frames) {
             for (i in samples.indices) samples[i] = src.short.toInt()
-            var left = samples[0].toFloat()
-            var right = samples[1].toFloat()
-            // Quad has no center; conventional 3/5/6/7/8-channel layouts do.
-            if (channels == 4) {
-                left += .7071f * samples[2]; right += .7071f * samples[3]
-            } else {
-                left += .7071f * samples[2]; right += .7071f * samples[2]
-                val surround = if (channels >= 6) 4 else 3
-                if (channels >= 6) {
-                    left += .25f * samples[3]; right += .25f * samples[3]
-                }
-                if (surround + 1 < channels) {
-                    left += .7071f * samples[surround]; right += .7071f * samples[surround + 1]
-                }
-                if (channels == 7) {
-                    left += .5f * samples[6]; right += .5f * samples[6]
-                } else if (channels == 8) {
-                    left += .5f * samples[6]; right += .5f * samples[7]
-                }
-            }
-            val norm = if (channels <= 4) 1.7071f else if (channels <= 6) 2.6642f else 3.1642f
-            out.putShort((left / norm).roundToInt().coerceIn(-32768, 32767).toShort())
-            out.putShort((right / norm).roundToInt().coerceIn(-32768, 32767).toShort())
+            val mixed = AudioRouteP5D.stereoMix(samples)
+            out.putShort((mixed shr 16).toShort())
+            out.putShort(mixed.toShort())
         }
         out.flip()
     }
