@@ -2952,7 +2952,7 @@ object NvPlayer {
         enc == android.media.AudioFormat.ENCODING_PCM_32BIT ||
         enc == android.media.AudioFormat.ENCODING_PCM_FLOAT
 
-    private fun faithfulOutput(fmt: Format, sink: AudioSink.AudioTrackConfig,
+    private fun compatibleOutput(fmt: Format, sink: AudioSink.AudioTrackConfig,
                                cap: AudioOutputProbeP5A.Observation): Boolean =
         AudioRouteP5D.playableOutput(pcmOutput(sink.encoding), cap.result.decoder,
             cap.result.encodedPassthrough, sink.sampleRate, Integer.bitCount(sink.channelConfig),
@@ -3089,7 +3089,7 @@ object NvPlayer {
         val input = r.routeInput ?: p.audioFormat
         val formatMatches = input != null && input.sampleMimeType == fmt.sampleMimeType &&
             input.channelCount == fmt.channelCount && input.sampleRate == fmt.sampleRate
-        val compatible = output != null && formatMatches && faithfulOutput(fmt, output.config, cap)
+        val compatible = output != null && formatMatches && compatibleOutput(fmt, output.config, cap)
         if (r.routeTx.active) {
             val ticket = r.routeTx.ticket
             if (r.routeFatal && r.routeTx.allowPrepare(ticket) && decision.playableCandidate) {
@@ -3433,6 +3433,10 @@ object NvPlayer {
                         startAudioRoute(minha, rRoute, target, true, true, SystemClock.elapsedRealtime())
                         return
                     }
+                }
+                if (audioRenderer) {
+                    failAudioRoute(minha, rRoute, "audio renderer fallback exhausted")
+                    return
                 }
                 cancelAudioRoute(rRoute, restore = true, recheck = true)
             }
