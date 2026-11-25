@@ -2917,11 +2917,11 @@ object NvPlayer {
         val old = r.routeTarget ?: r.routeSelected
         if (!r.alternateAudioTried && old != null) {
             val original = old.first.getTrackFormat(old.second)
-            val language = codigoPublicado(original.language)
+            val language = original.language.orEmpty().trim().lowercase().takeUnless { it in setOf("und", "unk", "none", "zxx") }.orEmpty()
             val alternative = audios.filter { (g, i) ->
                 val f = g.getTrackFormat(i)
                 (g.mediaTrackGroup != old.first.mediaTrackGroup || i != old.second) &&
-                    language.isNotBlank() && codigoPublicado(f.language) == language &&
+                    language.isNotBlank() && f.language.orEmpty().trim().lowercase() == language &&
                     f.roleFlags == original.roleFlags && g.isTrackSupported(i)
             }.maxByOrNull { (g, i) ->
                 val f = g.getTrackFormat(i)
