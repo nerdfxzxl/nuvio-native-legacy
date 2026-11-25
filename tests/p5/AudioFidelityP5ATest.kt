@@ -26,5 +26,9 @@ fun main() {
     check(AudioFidelityP5A.chooseOriginal(list, "ja", manualIdentity = 0) == 0)
     check(AudioFidelityP5A.chooseOriginal(list, "ja", manualIdentity = 7) == null)
     check(original.sourceQualityScore > dub.sourceQualityScore)
-    println("p5_audio_fidelity: PASS (17 Kotlin/JVM policy assertions)")
+    val converted = decide(mime = "audio/true-hd", channels = 8, bits = 24, pcm = false, arc = true)
+    check(converted.playableCandidate && !converted.outputFaithfulCandidate)
+    check(decide(rate = 0).playableCandidate)
+    check(!decide(decoder = false).playableCandidate)
+    println("p5_audio_fidelity: PASS (20 Kotlin/JVM policy assertions)")
 }
