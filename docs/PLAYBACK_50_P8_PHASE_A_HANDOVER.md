@@ -20,3 +20,13 @@ Work only in nerdfxzxl/nuvio-native-legacy on feature/official-stream-selector. 
 ## Investigation queue
 
 Next: inspect baseline/run diffs and production renderer, audio sink, surface and recovery pathways. The owner identified full-player restart in NvPlayer.audioAdjustments; verify callers and active sinks. No physical exception or successful fallback has been established. Test commands, revisions and outcomes will be recorded as exercised. Devices: Redmi Note 10 Pro, crDroid A16 portrait/landscape; Xiaomi S Mini LED 55-inch India with JBL SB180 HDMI ARC, motion 10. Use the same TorBox item via ElfHosted/Nightly.
+
+## Baseline investigation
+
+Production input 266e138d0c137e47055d6ffc432d58b401673d85. GitHub comparisons show #134 bad57b2 → #135 5af5210 spans 562 commits, #135 → #136 spans 30. #136 changed NvPlayer, audio fidelity, route/downmix, codec adapter, native selection, terminal and loading paths. P7's source acceptance predates these changes. Confirmed that audioAdjustments and velocidade call stop/seek/prepare. Phone PCM was conditional on effects, speed or recovery. startAudioRoute forced stereo for every multichannel PCM retry. onVideoSizeChanged publishes zero dimensions to SDL; calcularJanela then applies the unfitted requested rectangle. This is a demonstrable stretch path; the device sequence is unrecorded.
+
+Pinned androidx/media 1.8.0 MediaCodecVideoRenderer queries soft-match candidates, preferring alternative MIME on a non-DV display. MediaCodecUtil maps selected backward-compatible DV profiles to HEVC, AVC or AV1; Legacy validates only clear HEVC with independent PQ base evidence. Runtime retry previously required a wrapped MediaCodecDecoderException and omitted output-rejection failures. #136 resubmits unchanged HEVC access units and CSD to alternate codec. Physical exception, available codecs and file bitstream remain unknown. Official NuvioMedia/NuvioTV dev f656d54521d9bf781fa4906e981ca66563bc4ff6 uses NuvioBaseMpvView, a separate mpv surface/lifecycle/loadfile path and PlayerRuntimeControllerMpv. Legacy FFmpeg renderer is audio-only. If a selected representation exceeds every usable video decoder, a separately authorized video decoding backend would be needed; no device throughput guarantee.
+
+No Phase A tests run yet.
+
+Next action: Implement and exercise PCM/output transitions, dimension retention and decoder fallback/diagnostics, then run the test-only native and Android gates.
