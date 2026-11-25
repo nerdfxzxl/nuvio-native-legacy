@@ -17,4 +17,4 @@ Work only in nerdfxzxl/nuvio-native-legacy on feature/official-stream-selector. 
 
 ## Current checkpoint
 
-Inspect all three test-only runs on this source revision and repair demonstrated failures in batches. Recheck the production requirements and exact branch tip and complete the acceptance and progress documents. See the latest handover entry for revision, open issues and evidence.
+Astra's three outstanding tests passed at 058b5d4ed1c7491d27c6dd027ebd570b66b0e3c8. Regular Chat found and corrected a stable-route PCM channel/rate shape restoration defect in 0ce67d811b9c3372ffa2a6b2d1f25cf0361f661a. All three new test-only workflows are in progress: P6 #30 (45675070388), Android #8 (45675070245), Linux #13 (45675070396). Read docs/PLAYBACK_50_P8_PHASE_A_ACCEPTANCE.md and latest handover entry. Inspect actual job logs, repair demonstrated failures in a batch if necessary, compare latest HEAD with tested revision, finish final source acceptance and update all three documents. Do not rebuild APK or begin Phase B. No need to repeat previous accepted implementation.
