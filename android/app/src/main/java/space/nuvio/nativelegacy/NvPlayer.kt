@@ -1808,7 +1808,7 @@ object NvPlayer {
         return config.takeIf {
             it.matches(f, videoDecoderName) && it.info.mimeType == MimeTypes.VIDEO_H265 &&
                 it.base?.ready() == true &&
-                displayHdr(act, android.view.Display.HdrCapabilities.HDR_TYPE_HDR10)
+                (it.base.requestSdr || displayHdr(act, android.view.Display.HdrCapabilities.HDR_TYPE_HDR10))
         }
     }
 
@@ -3785,7 +3785,9 @@ object NvPlayer {
                     val t = renderFormat.colorInfo?.colorTransfer
                     // Actual renderer format wins over an adaptive candidate.
                     // PQ alone still does not prove a compatible DV base layer.
-                    val baseConfirmed = baseLayerRendered?.let { it === verifiedBase(renderFormat) } == true
+                    val baseConfirmed = baseLayerRendered?.let {
+                        it === verifiedBase(renderFormat) && it.base?.requestSdr != true
+                    } == true
                     val decisao = HdrPolicyP5.decide(
                         dolbyVisionMime = renderFormat.sampleMimeType == MimeTypes.VIDEO_DOLBY_VISION,
                         dolbyVisionDecoder = decoderDv && compatibleDolby(renderFormat),
