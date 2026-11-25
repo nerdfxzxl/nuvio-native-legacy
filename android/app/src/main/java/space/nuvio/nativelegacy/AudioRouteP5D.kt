@@ -8,6 +8,27 @@ internal object AudioRouteP5D {
     data class Key(val id: Int, val type: Int, val encodings: List<Int>,
                    val rates: List<Int>, val channels: List<Int>, val masks: List<Int>,
                    val directProfiles: List<String> = emptyList())
+    // Only the main looper commits a mode edge. The audio renderer reads
+    // the committed value until its current Q49 transaction finishes.
+    class OutputPolicy(initialPcm: Boolean) {
+        @Volatile var pcm = initialPcm
+            private set
+        private var requested = initialPcm
+        private var since = 0L
+        fun request(next: Boolean, now: Long) {
+            if (next != requested) { requested = next; since = now }
+        }
+        fun apply(now: Long, busy: Boolean): Boolean {
+            if (busy || pcm == requested || now - since < 120L) return false
+            pcm = requested
+            return true
+        }
+    }
+
+    fun needsStereo(channels: Int, standardArc: Boolean, supported: IntArray?, sinkFailed: Boolean) =
+        channels in 3..8 && (standardArc || sinkFailed ||
+            (supported != null && supported.isNotEmpty() && 2 in supported && channels !in supported))
+
     enum class Action { KEEP, RESELECT_PCM, RESELECT_ENCODED, ERROR }
     fun plan(faithful: Boolean, pcmCompatible: Boolean, encodedCompatible: Boolean,
              currentCompatible: Boolean, currentPcm: Boolean): Action {

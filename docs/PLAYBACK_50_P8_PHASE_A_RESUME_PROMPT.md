@@ -17,4 +17,4 @@ Work only in nerdfxzxl/nuvio-native-legacy on feature/official-stream-selector. 
 
 ## Current checkpoint
 
-Implement and exercise PCM/output transitions, dimension retention and decoder fallback/diagnostics, then run the test-only native and Android gates. See the latest handover entry for revision, open issues and evidence.
+Verify decoder proof/adaptation, record exact audio/geometry source revision, add fixtures and run test-only CI. See the latest handover entry for revision, open issues and evidence.

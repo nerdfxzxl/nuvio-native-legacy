@@ -30,3 +30,9 @@ Pinned androidx/media 1.8.0 MediaCodecVideoRenderer queries soft-match candidate
 No Phase A tests run yet.
 
 Next action: Implement and exercise PCM/output transitions, dimension retention and decoder fallback/diagnostics, then run the test-only native and Android gates.
+
+## Live audio and geometry implementation
+
+Commit accompanied by this entry changes NvPlayer, AudioRouteP5D, FrameHoldP2B, video_android.c, player.c and AudioRouteP5DTest. The visible sink and preloads derive phone PCM from hardware configuration, independently of selected UI. Effects update the installed processor; only a settled effective PCM edge asks the existing Q49 route transaction to re-evaluate the active output. Normal speed/effects updates no longer stop, seek, prepare or assign play state. Multichannel PCM is preserved unless ARC, explicit stereo route capabilities or sink failure requires downmix. Geometry rejects missing dimensions before JNI; native dimensions survive buffering and viewport changes trigger zoom recomputation. Android app log gets geometry transitions and route-ticket before/after positions. Tests added for coalescing, transaction overlap and multichannel choice. Status implemented, pending actual compile and fixture execution.
+
+Next action: Verify decoder proof/adaptation, record exact audio/geometry source revision, add fixtures and run test-only CI.

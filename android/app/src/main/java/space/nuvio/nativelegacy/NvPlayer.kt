@@ -981,8 +981,9 @@ object NvPlayer {
         @Volatile var videoConfig: HdrCodecFallbackP5B.VideoConfig? = null
         @Volatile var runtimeVideoRecovery: HdrCodecFallbackP5B.RuntimeRecovery? = null
         @Volatile var audioFormato = AudioSyncTap.FMT_NENHUM
-        @Volatile var velocidadePcm = false
-        @Volatile var ajustePcm = false // DSP requires decoded PCM, never lossy AC-3 transcoding
+        var phonePcm = false
+        var speedRequested = false
+        lateinit var outputPolicy: AudioRouteP5D.OutputPolicy
         @Volatile var routePcm = false
         lateinit var routeObserver: AudioRouteObserverP5D
         val routeDebounce = AudioRouteP5D.Debounce()
@@ -1668,49 +1669,33 @@ object NvPlayer {
             centroDb = center.coerceIn(-10, 30)
             noiteNivel = night.coerceIn(0, 3)
             aplicarGanho()
-            // FFmpeg/MediaCodec decode the ORIGINAL compressed track into PCM.
-            // Re-negotiate the sink only when DSP crosses on/off: never encode
-            // PCM back to lossy AC-3 or downgrade the selected source track.
-            val requirePcm = amplificacaoDb != 0 || baixoDb != 0 ||
-                centroDb != 0 || noiteNivel != 0
-            val r = recursosAtuais ?: return@post
-            val p = player ?: return@post
-            if (r.ajustePcm != requirePcm) {
-                cancelAudioRoute(r, restore = true, recheck = true)
-                val pos = p.currentPosition
-                val resume = p.playWhenReady
-                r.ajustePcm = requirePcm
-                p.stop()
-                p.seekTo(pos)
-                p.prepare()
-                p.playWhenReady = resume
-                Log.i(TAG, "[audio] PCM processing=" + requirePcm + " (PCM route requested; output fidelity separately verified)")
-            }
+            // The processor is permanently installed in the integer PCM chain.
+            // Only an output-mode edge can require audio track reselection.
+            recursosAtuais?.let { requestAudioPolicy(it) }
         }
     }
-    // C reapplies speed after each open; keep PCM policy with that player.
+
     @JvmStatic fun velocidade(centesimos: Int) {
-        val v = centesimos.coerceIn(25, 400) / 100f
+        val speed = centesimos.coerceIn(25, 400) / 100f
         val pedido = pedidos.get()
         principal.post {
             if (pedido != pedidos.get()) return@post
             val p = player ?: return@post
             val r = recursosAtuais ?: return@post
-            val pcm = v != 1f
-            if (r.velocidadePcm != pcm) {
-                cancelAudioRoute(r, restore = true, recheck = true)
-                val pos = p.currentPosition
-                r.velocidadePcm = pcm
-                // Re-select the audio decoder against the new sink capabilities.
-                // stop/prepare keeps the media source, track overrides and pause.
-                p.stop()
-                p.seekTo(pos)
-                p.setPlaybackSpeed(v)
-                p.prepare()
-            } else p.setPlaybackSpeed(v)
-            Log.i(TAG, "[speed] requested=$v parameters=${p.playbackParameters.speed} pcm=$pcm")
+            r.speedRequested = speed != 1f
+            requestAudioPolicy(r)
+            p.setPlaybackSpeed(speed)
         }
     }
+
+    private fun requestAudioPolicy(r: RecursosPlayer) {
+        r.outputPolicy.request(r.phonePcm || effectsEnabled() || r.speedRequested,
+            SystemClock.elapsedRealtime())
+    }
+
+    private fun effectsEnabled() = amplificacaoDb != 0 || baixoDb != 0 ||
+        centroDb != 0 || noiteNivel != 0
+
     private val janelaPedido = AtomicInteger()
     // Request -> applied on the UI thread (definida) -> acknowledged after a
     // traversal on a valid surface (aplicada). Lifecycle/layout events drop the
@@ -1870,6 +1855,13 @@ object NvPlayer {
                     else minOf(autoBytes.toLong(), tetoAlto).toInt()
         val r = RecursosPlayer(CargaPlayer(minMs, maxMs, bytes, preparando, profile), maxMs,
             if (preparando) idiomaAudio else "")
+        val pm = act.packageManager
+        r.phonePcm = InterfaceMode.automaticMobile(
+            act.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_TYPE_MASK ==
+                android.content.res.Configuration.UI_MODE_TYPE_TELEVISION,
+            pm.hasSystemFeature(android.content.pm.PackageManager.FEATURE_TELEVISION),
+            pm.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK))
+        r.outputPolicy = AudioRouteP5D.OutputPolicy(r.phonePcm || effectsEnabled())
         r.routeObserver = AudioRouteObserverP5D(act, principal)
         try {
             val http = DefaultHttpDataSource.Factory().setAllowCrossProtocolRedirects(true)
@@ -1982,7 +1974,7 @@ object NvPlayer {
                         .setEnableAudioTrackPlaybackParams(false)
                         .setAudioTrackProvider(r.routeObserver)
                         .setAudioProcessors(arrayOf(r.proc, r.downmix)).build(), r.tap,
-                        { r.velocidadePcm || r.ajustePcm || r.routePcm })
+                        { r.outputPolicy.pcm || r.routePcm })
             }.setExtensionRendererMode(androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
                 .setMediaCodecSelector(MediaCodecSelector { mime, secure, tunneling ->
                     val candidates = videoCodecSelector.getDecoderInfos(mime, secure, tunneling)
@@ -2140,6 +2132,7 @@ object NvPlayer {
             // An adopted warm player has already created its actual AudioTrack.
             if (preparada != null) r.routeValidatedSerial = r.routeObserver.output?.serial ?: 0L
             r.routeObserver.start { audioRouteTick(minha, r) }
+            requestAudioPolicy(r)
             processador = r.proc
             r.tap.ligado = tap.ligado
             tap = r.tap
@@ -2503,11 +2496,10 @@ object NvPlayer {
     private fun aplicarJanela() {
         val c = camada ?: return
         val sv = superficie ?: return
-        var cw = c.width
-        var ch = c.height
+        val cw = c.width
+        val ch = c.height
         if (cw < 1 || ch < 1) {
-            val m = c.resources.displayMetrics
-            cw = m.widthPixels; ch = m.heightPixels
+            return // wait for the real viewport layout
         }
         val ex = cw.toFloat() / larguraLogica()
         val ey = ch.toFloat() / alturaLogica()
@@ -2841,8 +2833,7 @@ object NvPlayer {
     // --- Q49 audio-route ownership; main looper, visible session only --------
     private var routeForeground = true
 
-    private fun audioDsp(r: RecursosPlayer?) = amplificacaoDb != 0 || baixoDb != 0 ||
-        centroDb != 0 || noiteNivel != 0 || r?.velocidadePcm == true
+    private fun audioDsp(r: RecursosPlayer?) = r?.outputPolicy?.pcm ?: effectsEnabled()
 
     private fun selectedAudio(p: ExoPlayer?): Pair<Tracks.Group, Int>? {
         p ?: return null
@@ -2976,7 +2967,14 @@ object NvPlayer {
         val ticket = r.routeTx.begin(now)
         r.routeTarget = target
         r.routePcm = forcePcm
-        r.downmix.enabled = forcePcm && target.first.getTrackFormat(target.second).channelCount > 2
+        val fmt = target.first.getTrackFormat(target.second)
+        val device = r.routeObserver.route()
+        r.downmix.enabled = forcePcm && AudioRouteP5D.needsStereo(fmt.channelCount,
+            device?.type == android.media.AudioDeviceInfo.TYPE_HDMI_ARC, device?.channelCounts,
+            fatal && generateSequence(p.playerError?.cause) { it.cause }.any {
+                it is AudioSink.InitializationException || it is AudioSink.ConfigurationException
+            })
+        relatarAudio(minha, "Q49 begin ticket=$ticket pcm=$forcePcm stereo=${r.downmix.enabled} pos=${p.currentPosition} buffered=${p.bufferedPosition}")
         r.routeMuted = true
         r.routeOutputBefore = r.routeObserver.output?.serial ?: 0L
         routeOwner(r, true)
@@ -3070,6 +3068,10 @@ object NvPlayer {
             r.routeCheck = true
         }
         if (target == null) return
+        if (r.outputPolicy.apply(now, r.routeTx.active)) {
+            r.routeChanged = true
+            r.routeCheck = true
+        }
         if (r.routeAwaitingPlay) {
             if (!p.playWhenReady) { routeOwner(r, false); return }
             r.routeAwaitingPlay = false
@@ -3119,7 +3121,8 @@ object NvPlayer {
                     val pcm = next == AudioRouteP5D.Action.RESELECT_PCM
                     if (pcm != r.routePcm) {
                         r.routePcm = pcm
-                        r.downmix.enabled = pcm && fmt.channelCount > 2
+                        r.downmix.enabled = pcm && AudioRouteP5D.needsStereo(fmt.channelCount,
+                            route?.type == android.media.AudioDeviceInfo.TYPE_HDMI_ARC, route?.channelCounts, false)
                         if (r.routePhase == 2) {
                             try { reselectAudioRoute(minha, r, target, ticket) }
                             catch (_: RuntimeException) { failAudioRoute(minha, r, "new route reselection failed") }
@@ -3143,7 +3146,7 @@ object NvPlayer {
                 cancelAudioRoute(r, restore = false)
                 r.routeCheck = false
                 refreshRouteCaps(r, route)
-                relatarAudio(minha, "Q49 verified replacement AudioTrack route=" + route?.type)
+                relatarAudio(minha, "Q49 end ticket=$ticket route=${route?.type} pos=${p.currentPosition} buffered=${p.bufferedPosition}")
                 return
             }
             // Paused renderers may not create a new AudioTrack until Play.
@@ -3263,6 +3266,7 @@ object NvPlayer {
             if (!atual(minha) || videoOutputFailed) return
             val p = player ?: return
             Log.i(TAG, "[player] onPlaybackStateChanged state=$state renderer=audio(${p.audioFormat?.sampleMimeType}),video(${p.videoFormat?.sampleMimeType}) loadMs=${SystemClock.elapsedRealtime() - abriuEm}")
+            relatarAudio(minha, "geometry state=$state display=${videoW}x$videoH rect=$jx,$jy,${jw}x$jh stable=$estavelEmitido")
             when (state) {
                 Player.STATE_BUFFERING -> ev(EV_BUFFER, 0)
                 Player.STATE_READY -> {
@@ -3289,7 +3293,7 @@ object NvPlayer {
                     ev(EV_CARGA_FASE, 3) // decoded tracks ready; awaiting rendered video frame
                     if (live.ready()) Log.i(TAG, "[live] janela recuperada na mesma sessao=$minha")
                     ev(EV_BUFFER, 100)
-                    Log.i(TAG, "[speed] ready parameters=${p.playbackParameters.speed} pcm=${recursosAtuais?.velocidadePcm}; awaiting native clock measurement")
+                    Log.i(TAG, "[speed] ready parameters=${p.playbackParameters.speed} pcm=${recursosAtuais?.outputPolicy?.pcm}; awaiting native clock measurement")
                     relatarAudio(minha, "pronto volume=${p.volume} playWhenReady=${p.playWhenReady} suppression=${p.playbackSuppressionReason}")
                     if (!pronto) {
                         // Antes do EV_PRONTO: o C le o ack ao ver o "pronto".
@@ -3364,8 +3368,9 @@ object NvPlayer {
 
         override fun onVideoSizeChanged(v: VideoSize) {
             if (!atual(minha)) return
-            // Pixel anamorfico entra na largura: e a proporcao que o zoom do C usa.
-            videoW = (v.width * v.pixelWidthHeightRatio + 0.5f).toInt()
+            val width = FrameHoldP2B.displayWidth(v.width, v.height, v.pixelWidthHeightRatio) ?: return
+            if (width == videoW && v.height == videoH) return
+            videoW = width
             videoH = v.height
             ev(EV_TAMANHO, videoW, videoH)
             if (temJanela) calcularJanela() else aplicarEncaixe()

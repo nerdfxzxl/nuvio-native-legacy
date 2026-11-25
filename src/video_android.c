@@ -1063,7 +1063,7 @@ JNIEXPORT void JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativeEvento(JNIEn
                      reconErroPend = 1; tocando = 0;
                      snprintf(erroTxt, sizeof erroTxt, "%d player error:%d", a, b);
                      printf("[video] android: erro do player %d (%d)\n", a, b); break;
-    case EV_TAMANHO: largura = a; altura = b; break;
+    case EV_TAMANHO: if (a > 0 && b > 0) { largura = a; altura = b; } break;
     case EV_BUFFER:
       if (a < 100) {
         pthread_mutex_lock(&travaStats);

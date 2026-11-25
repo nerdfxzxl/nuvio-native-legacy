@@ -6,6 +6,11 @@ package space.nuvio.nativelegacy
  * substitution. A negative result means keep Media3's hardware plane as-is.
  */
 internal object FrameHoldP2B {
+    fun displayWidth(width: Int, height: Int, pixelAspect: Float): Int? {
+        if (width <= 0 || height <= 0 || !pixelAspect.isFinite() || pixelAspect <= 0f) return null
+        return (width * pixelAspect + 0.5f).toInt().takeIf { it > 0 }
+    }
+
     fun mayCopy(
         renderedFrame: Boolean,
         surfaceValid: Boolean,

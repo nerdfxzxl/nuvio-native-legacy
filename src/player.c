@@ -5216,9 +5216,14 @@ void player_atualizar(float dt, Uint32 agora) {
   }
 #endif
   if (comVideo) {
-    static int ultLarg, ultAlt;
+    static int ultLarg, ultAlt, viewportW, viewportH;
     int lw = video_largura(), lh = video_altura();
-    if (lw != ultLarg || lh != ultAlt) { ultLarg = lw; ultAlt = lh; aplicarAspecto(); }
+    if (lw > 0 && lh > 0 && (lw != ultLarg || lh != ultAlt ||
+        viewportW != (int)NV_TELA_W || viewportH != (int)NV_TELA_H)) {
+      ultLarg = lw; ultAlt = lh;
+      viewportW = (int)NV_TELA_W; viewportH = (int)NV_TELA_H;
+      aplicarAspecto();
+    }
   }
 
   // RECUO DO VIDEO: alvo pelo painel de creditos, e o caminho ate ele em poucos
