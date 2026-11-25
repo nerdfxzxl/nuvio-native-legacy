@@ -324,9 +324,21 @@ static void testar(void) {
     // episodio nao chega, e descartar ali custaria uma busca por quadro.
     player_definir_episodio(2,4);
     assert(stream_n()==1);
-    // A pessoa desceu para o E5: a lista do E4 nao serve mais.
+    // The setter also runs on late metadata and multipart playback, so it
+    // must not indiscriminately erase a live list. The existing app route
+    // asks addons for the exact newly chosen episode and retires the old list.
     player_definir_episodio(2,5);
-    assert(stream_n()==0 && !stream_lista_do_alvo("tt0000101:2:4"));
+    int t=0,e=0; char alvo[NV_STREAM_ID_CAP];
+    player_episodio_atual(&t,&e);
+    assert(t==2 && e==5);
+    cat_id_stream(0,t,e,alvo,sizeof alvo);
+    assert(!strcmp(alvo,"tt0000101:2:5"));
+    assert(!stream_lista_do_alvo(alvo));
+    // Request path used by buscarParaPlayerModo: with no configured addons,
+    // the obsolete list must be retired synchronously.
+    addons_buscar(alvo,"series");
+    assert(stream_n()==0 && stream_atual()==-1 &&
+           !stream_lista_do_alvo("tt0000101:2:4"));
     player_encerrar(); }
   c.imdb[0]=0;cat_definir(&c,1);cat_definir_episodios(0,eps,40);
 
