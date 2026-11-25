@@ -74,6 +74,7 @@ void plrilha_titulo(const char *t);
 int  plrilha_direita(void);
 // Esconde a ilha neste quadro (a folha de Fontes por cima de tudo).
 void plrilha_esconder(void);
+void plrilha_cancelar_centro(void);
 void plrilha_desenhar(Uint32 agora);
 // O retangulo desenhado no ultimo quadro; 0 = fora da tela.
 int  plrilha_rect(GfxRect *r);
