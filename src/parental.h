@@ -13,6 +13,8 @@
 // Pede o guia de `imdb` (formato "tt1234567"). Nao bloqueia: dispara um fio e
 // devolve na hora. Chamar de novo com o MESMO id nao refaz o pedido.
 void parental_pedir(const char *imdb);
+// Final lifecycle teardown: invalidate publication and join the network worker.
+void parental_encerrar(void);
 
 // Quantas linhas ja chegaram (0 enquanto busca, ou quando o titulo nao tem
 // dado). `rotulo` e a categoria traduzida, `gravidade` o nivel.
