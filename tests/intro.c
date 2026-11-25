@@ -272,7 +272,7 @@ int main(int argc,char **argv) {
            "KiB"
 #endif
     );
-    intro_desligar();assert(!unlink(caminho));assert(!rmdir(dadosTeste));return 0;
+    intro_encerrar();assert(!unlink(caminho));assert(!rmdir(dadosTeste));return 0;
   }
 
   // Lixo no buffer MKV nao pode atribuir os creditos ao AniSkip.
@@ -853,5 +853,6 @@ int main(int argc,char **argv) {
   }
 
   testarBackup();
+  intro_encerrar();
   return 0;
 }

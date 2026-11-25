@@ -1,4 +1,6 @@
 #include "parental.h"
+#include "descoberta.h"
+#include "intro.h"
 // Drive the real player handler and app sheet dispatch without a decoder.
 #include "video.h"
 static unsigned buffering;
@@ -96,7 +98,7 @@ int main(int argc, char **argv) {
       assert(!visivel && !saindo && !pediuSair);
     } else assert(!"unknown case");
     printf("PASS: %s Back regression\n", argv[1]);
-    parental_encerrar(); SDL_Quit();
+    desc_playback_workers_encerrar(); intro_encerrar(); parental_encerrar(); SDL_Quit();
     return 0;
   }
   SDL_Keycode keys[] = {SDLK_AC_BACK, SDLK_ESCAPE, SDLK_BACKSPACE, SDLK_DELETE};
@@ -169,7 +171,7 @@ int main(int argc, char **argv) {
   e.type = SDL_KEYUP; app_evento(&e);
   e.type = SDL_KEYDOWN; app_evento(&e);
   assert(saindo && pediuSair);
-  parental_encerrar(); SDL_Quit();
+  desc_playback_workers_encerrar(); intro_encerrar(); parental_encerrar(); SDL_Quit();
   puts("PASS: Back dismisses one layer; held Back stays; release/new press exits; pure video/loading exit");
   return 0;
 }

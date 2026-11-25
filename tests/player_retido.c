@@ -1,4 +1,5 @@
 #include "parental.h"
+#include "intro.h"
 // O backend falso conta os custos que o retorno rapido deve eliminar. Nenhuma
 // janela, conta ou fonte real: o estado de pausa e confirmado separadamente.
 #include "player.h"
@@ -209,5 +210,5 @@ int main(void) {
     fontevolta_esquecer("teste"); stream_definir_lista(NULL, 0); }
   puts("ok padrao: sair libera o pipeline e guarda a fonte para o Retomar");
 
-  parental_encerrar(); SDL_Quit(); puts("player_retido: tudo ok");
+  desc_playback_workers_encerrar(); intro_encerrar(); parental_encerrar(); SDL_Quit(); puts("player_retido: tudo ok");
 }

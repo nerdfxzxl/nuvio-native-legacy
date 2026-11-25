@@ -1,4 +1,6 @@
 #include "parental.h"
+#include "descoberta.h"
+#include "intro.h"
 // #413: changing title while a partial search runs must retire its sources.
 // Real addons/streams; the in-flight worker is controlled, no network or TV.
 #define ondever_pedir nv_test_ondever_pedir
@@ -69,7 +71,7 @@ int main(void) {
   addons_buscar("tt0000101:2:5", "series");
   assert(stream_n() == 0 && stream_atual() == -1);
   assert(!stream_lista_do_alvo("tt0000101:2:4"));
-  parental_encerrar(); SDL_Quit();
+  desc_playback_workers_encerrar(); intro_encerrar(); parental_encerrar(); SDL_Quit();
   puts("PASS: pending title retires old sources; same-title recovery keeps them");
   return 0;
 }

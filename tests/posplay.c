@@ -728,6 +728,6 @@ int main(void) {
   }
   puts("ok  #556: S00 Next por OK, contagem, recuo, cena e toque");
   puts("posplay: tudo ok");
-  parental_encerrar();
+  desc_playback_workers_encerrar(); intro_encerrar(); parental_encerrar();
   return 0;
 }

@@ -1,4 +1,6 @@
 #include "parental.h"
+#include "descoberta.h"
+#include "intro.h"
 // #524: a late, same-title metadata response must not leave playback using
 // its earlier uncertain media type. Reuse only the real player's fake video
 // boundary; catalog, player, progress persistence and scrobble JSON are real.
@@ -168,6 +170,6 @@ int main(int argc, char **argv) {
   if (movie ? !strstr(body, "\"movie\"") :
       (!strstr(body, "\"show\"") || !strstr(body, expectedSeason) || !strstr(body, expectedNumber)))
     failed = 1;
-  parental_encerrar(); SDL_Quit();
+  desc_playback_workers_encerrar(); intro_encerrar(); parental_encerrar(); SDL_Quit();
   return failed;
 }

@@ -1,4 +1,6 @@
 #include "parental.h"
+#include "descoberta.h"
+#include "intro.h"
 // Reusa o catalogo/roteiro de posplay; exercita o modulo real sem duplicar SDL.
 #define main posplay_roteiro
 #include "posplay.c"
@@ -120,6 +122,6 @@ int main(void) {
   posplay_recuar(); posplay_aguardar_busca(1);
   assert(!posplay_visivel() && !pedir());
   puts("posplay_recuo: contagem configuravel/antecipada, pedido automatico, amostra antiga, OK manual e troca de titulo ok");
-  parental_encerrar();
+  desc_playback_workers_encerrar(); intro_encerrar(); parental_encerrar();
   return 0;
 }

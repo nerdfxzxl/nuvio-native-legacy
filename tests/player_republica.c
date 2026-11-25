@@ -1,4 +1,6 @@
 #include "parental.h"
+#include "descoberta.h"
+#include "intro.h"
 // #190 (Owlphibia29, LG 65UT73006LA): "depois de um tempo o titulo e a lista
 // de episodios trocam por outro (Attack on Titan vira Knights of Guinevere na
 // tela de pausa e no menu de episodios do player)".
@@ -159,6 +161,7 @@ int main(void) {
   assert(!strcmp(titulo(episodios_titulo()), "Attack on Titan"));
 
   puts("PASS: #190 titulo e episodios do player seguem o titulo que toca apos republicar o catalogo");
-  parental_encerrar();
+  player_encerrar();
+  desc_playback_workers_encerrar(); intro_encerrar(); parental_encerrar();
   return 0;
 }

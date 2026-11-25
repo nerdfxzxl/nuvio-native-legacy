@@ -1,4 +1,6 @@
 #include "parental.h"
+#include "descoberta.h"
+#include "intro.h"
 // #667: resume must wait for a source pick even when a binge group is saved.
 #define SDL_MAIN_HANDLED
 #define sessao_logada fixture_logged_in
@@ -56,6 +58,6 @@ int main(int argc, char **argv) {
     assert(aguardandoFonte == 2);
     puts("PASS: automatic resume retains automatic source routing");
   }
-  parental_encerrar();
+  desc_playback_workers_encerrar(); intro_encerrar(); parental_encerrar();
   return 0;
 }

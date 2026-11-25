@@ -198,27 +198,35 @@ static void actionKey(Uint32 type, SDL_Keycode key, int repeat) {
   event.type = type; event.key.keysym.sym = key; event.key.repeat = repeat;
   player_evento(&event);
 }
-static void testarRestartReload(void) {
+static void testarSeekReload(void) {
   for (int pause = 0; pause < 2; pause++) {
     sessao(pause ? "tt90000563" : "tt90000562", 0, 1800);
-    pos = 240; quadro();
+    pos = 2; quadro();
     if (pause) {
       actionKey(SDL_KEYDOWN, SDLK_PAUSE, 0);
       actionKey(SDL_KEYUP, SDLK_PAUSE, 0);
     }
     assert(pausado == pause);
-    // The first transport action after movie Play is Restart, reached normally.
+    // Compact movie pill: Play then Subtitles, not the removed Restart action.
+    player_shot_estado(SDL_GetTicks(), 2, 1800, !pause, 0, 0, 0);
+    int seeks = nBuscas, opens = nAberturas;
     actionKey(SDL_KEYDOWN, SDLK_RIGHT, 0);
     actionKey(SDL_KEYUP, SDLK_RIGHT, 0);
-    int seeks = nBuscas, opens = nAberturas;
     actionKey(SDL_KEYDOWN, SDLK_RETURN, 0);
+    actionKey(SDL_KEYUP, SDLK_RETURN, 0);
+    assert(player_pediu_faixas() == 2);
+    assert(nBuscas == seeks && pausado == pause);
+    // Reach zero through the seek bar without changing the stream or pause state.
+    actionKey(SDL_KEYDOWN, SDLK_UP, 0);
+    actionKey(SDL_KEYUP, SDLK_UP, 0);
+    assert(player_foco_na_barra());
+    actionKey(SDL_KEYDOWN, SDLK_LEFT, 0);
+    actionKey(SDL_KEYUP, SDLK_LEFT, 0);
+    actionKey(SDL_KEYDOWN, SDLK_RETURN, 0);
+    actionKey(SDL_KEYUP, SDLK_RETURN, 0);
     assert(nBuscas == seeks + 1 && pos == 0);
     assert(pausado == pause && !strcmp(urlAtual, fonte) && nAberturas == opens);
     assert(!player_pediu_recarregar());
-    actionKey(SDL_KEYDOWN, SDLK_RETURN, 0);
-    actionKey(SDL_KEYDOWN, SDLK_RETURN, 1);
-    assert(nBuscas == seeks + 1); // a held key restarts only once
-    actionKey(SDL_KEYUP, SDLK_RETURN, 0);
     player_encerrar();
   }
 
@@ -236,7 +244,7 @@ static void testarRestartReload(void) {
   assert(replacement && replacement != token && !player_recarregar_fonte(token));
   player_encerrar();
   assert(!player_recarregar_contexto());
-  puts("player playback actions: PASS (Restart seek/pause, held key, Reload source ownership)");
+  puts("player playback actions: PASS (compact pill, seek-to-start/pause, Reload source ownership)");
 }
 // Q45: the durable history flag and real resume checkpoint are independent.
 static void q45_checkpoint(const char *id, double expectedPos, double expectedDur,
@@ -610,9 +618,9 @@ int main(void) {
     assert(prog_por_chave("tt90000031", &r) && fabs(r.posSeg - 232) < 1.0); }
   player_encerrar();
 
-  testarRestartReload();
+  testarSeekReload();
 
   puts("PASS: Q45 genuine viewing proof, actual checkpoints, trailer isolation and EOF");
-  parental_encerrar();
+  desc_playback_workers_encerrar(); intro_encerrar(); parental_encerrar();
   return 0;
 }

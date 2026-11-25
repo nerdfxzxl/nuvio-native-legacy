@@ -1,4 +1,5 @@
 #include "parental.h"
+#include "descoberta.h"
 #include "streams.h"
 #include "nvtmp.h"
 #include "catalogo.h"
@@ -392,16 +393,17 @@ static void testar(void) {
   assert(!player_regra_proximo(1200,1500,1100));   /* 400s left: still refused */
   assert(!player_regra_concluiu(0,0,0));      // sem duracao nao ha o que concluir
 
-  // Ordem da rail: Inicio, Explorar, Guia TV, Busca. Um DOWN para em Explorar,
-  // o Guia fica a dois e Buscar a tres. A ordem e a assercao dos itens novos.
+  // The default Dynamic Clock layout puts Search before Explore and Guide.
+  assert(ajustes_home_layout()==HOME_LAYOUT_DINAMICA);
+  assert(ajustes_menu_explorar() && ajustes_menu_guia());
   menu_iniciar();menu_abrir();teclaMenu(SDLK_DOWN);teclaMenu(SDLK_RETURN);
+  assert(menu_destino()==MENU_BUSCAR && menu_mudou_destino() && !menu_mudou_destino());
+  menu_abrir();teclaMenu(SDLK_DOWN);teclaMenu(SDLK_RETURN);
   assert(menu_destino()==MENU_EXPLORAR && menu_mudou_destino() && !menu_mudou_destino());
   menu_abrir();teclaMenu(SDLK_DOWN);teclaMenu(SDLK_RETURN);
-  assert(menu_destino()==MENU_GUIA && menu_mudou_destino());
-  menu_abrir();teclaMenu(SDLK_DOWN);teclaMenu(SDLK_RETURN);
-  assert(menu_destino()==MENU_BUSCAR && menu_mudou_destino());
+  assert(menu_destino()==MENU_GUIA && menu_mudou_destino() && !menu_mudou_destino());
   menu_abrir();teclaMenu(SDLK_DOWN);teclaMenu(SDLK_ESCAPE);
-  assert(!menu_aberto() && menu_destino()==MENU_BUSCAR);
+  assert(!menu_aberto() && menu_destino()==MENU_GUIA);
   char pasta[NVT_MAX],arquivo[256]; nvt_set(pasta, sizeof pasta, "/nuvio-progress-test-XXXXXX");assert(mkdtemp(pasta));
   snprintf(arquivo,sizeof arquivo,"%s/catalogo.txt",pasta);
   FILE *fp=fopen(arquivo,"w");assert(fp);fclose(fp);
@@ -524,13 +526,13 @@ static void captura(const char *nome,SDL_Window *win,int painel) {
 int main(int argc,char **argv) {
   assert(SDL_Init(SDL_INIT_VIDEO|SDL_INIT_TIMER)==0);
   testar();
-  if(argc<2){parental_encerrar();return 0;}
+  if(argc<2){desc_playback_workers_encerrar(); intro_encerrar(); parental_encerrar();return 0;}
   if(!strcmp(argv[1],"--social")) {
     rede_preparar();assert(trakt_carregar("deploy/app/art"));
     CatItem *social=calloc(8,sizeof *social);assert(social);
     int n=trakt_social(social,8);assert(n>0);
     for(int i=0;i<n;i++)assert(social[i].imdb[0]&&social[i].pais[0]&&social[i].titulo[0]);
-    printf("PASS: %d atividades reais, com autoria e titulo.\n",n);free(social);parental_encerrar();return 0;
+    printf("PASS: %d atividades reais, com autoria e titulo.\n",n);free(social);desc_playback_workers_encerrar(); intro_encerrar(); parental_encerrar();return 0;
   }
   if(!strcmp(argv[1],"--live")) {
     rede_preparar();
@@ -573,7 +575,7 @@ int main(int argc,char **argv) {
         puts("PASS: alvo do botão Reproduzir coincide com o próximo episódio real do Trakt.");
       }
     }
-    parental_encerrar();
+    desc_playback_workers_encerrar(); intro_encerrar(); parental_encerrar();
     return 0;
   }
   IMG_Init(IMG_INIT_PNG|IMG_INIT_JPG);
@@ -597,7 +599,7 @@ int main(int argc,char **argv) {
     // e a do painel de Salvos, que ocupa a mesma moldura.
     spainel_abrir();spainel_atualizar(1.0f,SDL_GetTicks());
     captura(nvt("/nuvio-salvos-painel.bmp"),w,5);
-    parental_encerrar();
+    desc_playback_workers_encerrar(); intro_encerrar(); parental_encerrar();
     return 0;
   }
   cat_carregar("deploy/app/art");
@@ -636,6 +638,6 @@ int main(int argc,char **argv) {
   faixas_abrir_em(1);captura(nvt("/nuvio-player-subtitles.bmp"),w,3);
   menu_iniciar();captura(nvt("/nuvio-player-cards.bmp"),w,4);
   menu_abrir();captura(nvt("/nuvio-player-menu.bmp"),w,4);
-  tex_encerrar();txt_encerrar();gfx_encerrar();SDL_GL_DeleteContext(gl);SDL_DestroyWindow(w);parental_encerrar();SDL_Quit();
+  tex_encerrar();txt_encerrar();gfx_encerrar();SDL_GL_DeleteContext(gl);SDL_DestroyWindow(w);desc_playback_workers_encerrar(); intro_encerrar(); parental_encerrar();SDL_Quit();
   printf("PASS: seis capturas de revisão em %s/nuvio-player-*.bmp (dados de teste, sem reprodução real).\n", nvt_dir());return 0;
 }
