@@ -35,6 +35,36 @@ internal object AudioRouteP5D {
         if (pcm) decoder && sinkRate in 8000..384000 && sinkChannels in 1..16 && sinkBits > 0
         else encodedCompatible && exactEncoding
 
+    /** Conventional PCM interleaving, normalized to avoid clipping.
+     * Pack two signed PCM16 samples in a single Int to avoid per-frame allocation. */
+    fun stereoMix(samples: IntArray): Int {
+        val channels = samples.size
+        require(channels in 3..8)
+        var left = samples[0].toFloat()
+        var right = samples[1].toFloat()
+        if (channels == 4) {
+            left += .7071f * samples[2]; right += .7071f * samples[3]
+        } else {
+            left += .7071f * samples[2]; right += .7071f * samples[2]
+            val surround = if (channels >= 6) 4 else 3
+            if (channels >= 6) {
+                left += .25f * samples[3]; right += .25f * samples[3]
+            }
+            if (surround + 1 < channels) {
+                left += .7071f * samples[surround]; right += .7071f * samples[surround + 1]
+            }
+            if (channels == 7) {
+                left += .5f * samples[6]; right += .5f * samples[6]
+            } else if (channels == 8) {
+                left += .5f * samples[6]; right += .5f * samples[7]
+            }
+        }
+        val norm = if (channels <= 4) 1.7071f else if (channels <= 6) 2.6642f else 3.1642f
+        val l = kotlin.math.round(left / norm).toInt().coerceIn(-32768, 32767)
+        val r = kotlin.math.round(right / norm).toInt().coerceIn(-32768, 32767)
+        return (l shl 16) or (r and 65535)
+    }
+
     /** Duplicate samples do not extend the quiet period or absolute deadline. */
     class Debounce {
         private var initialized = false
