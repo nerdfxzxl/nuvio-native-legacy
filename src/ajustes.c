@@ -784,7 +784,7 @@ static const char *V_ICONE_APP[ICONEAPP_N] = {
   "Play tricolor", "Arco", "TV viva", "Clube retrô", "Arcade N",
 };
 static const char *V_FONTE_ORDEM_ADDON[] = { "Por qualidade", "Do addon" };
-static const char *V_TELA_ABERTURA[] = { "Cinema", "Detalhada" };
+static const char *V_TELA_ABERTURA[] = { "Cinema", "Cinema + detalhes" };
 static const char *V_ABERTURA_FUNDO[] = { "Desligado", "Arte", "Arte borrada" };
 static const char *V_ABERTURA_ESTILO[] = { "Centro", "Canto" };
 static const char *V_ARTE_TOM[] = { "Vívido", "Claro" };
@@ -8353,7 +8353,7 @@ static const char *ajudaOpcaoBase(int op) {
     case AJ_CW_RETIDO_TAMBEM: return "Quando o título está na ilha ou em Retomar agora, mostra também na fileira Continuar assistindo.";
     case AJ_EP_TAMANHO: return "Pequeno, Médio (padrão) ou Grande. Só vale no layout Moderno, na página de séries. Vale só nesta TV.";
     case AJ_ABERTURA_ADDON: return "Desligado (padrão): a tela Cinema mostra só a arte, o logo e a barra. Ligado: o nome do add-on aparece sob a barra. Vale só nesta TV.";
-    case AJ_TELA_ABERTURA: return "Cinema (padrão): a arte e o logo do título ficam na tela até o vídeo entrar. Detalhada: a fonte, o add-on e cada passo da abertura. Na Cinema, Para cima ou Para baixo mostra os detalhes. Vale só nesta TV.";
+    case AJ_TELA_ABERTURA: return "Cinema (padrão): a arte e o logo do título ficam na tela até o vídeo entrar. Cinema + detalhes: mostra os dados da fonte na mesma tela. OK alterna os detalhes. Vale só neste aparelho.";
     case AJ_TITULO_FIL: return "Como o título de cada fileira da Home aparece. Clássico (padrão): só o texto. Ilha: numa pílula de vidro. Editorial: com uma linha de categoria acima. Acento: com um ponto de destaque. Vale só nesta TV.";
     case AJ_FUNDO_DIN: return "O fundo do layout Dinâmica. Cinza (padrão): o cinza escuro da Apple TV, sempre o mesmo. Cor: uma cor sua, fixa. Imersivo: acompanha a arte do título, em tons suaves e com troca lenta. Vale só nesta TV. Cinza escuro: degradê grafite quase preto, fixo.";
     case AJ_PALCO_FUNDO: return "Palco na Moderna e na Dinâmica (Apple TV), com artes de fundo, nunca o cartaz. Cortina (padrão): arte à direita com o logo; Aura: arte desfocada; Tríptico: três artes; Monumento: arte no tom do app; Preto: só cartazes e ficha; Como está: destaque completo; Só arte: sem texto no topo. Sem arte de fundo, usa Preto. Só neste aparelho.";
@@ -8582,7 +8582,7 @@ static const char *beneficioProprio(int op) {
     case AJ_FONTE_PRIORIDADE: return "O critério da escolha automática: equilíbrio, qualidade ou começar rápido.";
     case AJ_FONTE_PRAZO: return "Quanto tempo o Nuvio espera os add-ons antes de escolher.";
     case AJ_PLR_CLASSIF: return "No começo do filme, a ilha mostra a classificação e os avisos.";
-    case AJ_TELA_ABERTURA: return "O que aparece enquanto o vídeo abre: a arte do título ou os detalhes da fonte.";
+    case AJ_TELA_ABERTURA: return "A tela Cinema, com ou sem detalhes da fonte.";
     case AJ_ESTAT_TAMANHO: return "Completo, Compacto ou Mínimo: o tamanho das estatísticas ao vivo no player.";
     case AJ_ESTAT_LADO: return "Direita ou Esquerda: o lado do player onde as estatísticas ao vivo ficam.";
     case AJ_SAIDA_PLAYER: return "O filme pode ficar na ilha do relógio para você voltar depois.";
