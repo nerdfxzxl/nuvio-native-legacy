@@ -27,6 +27,14 @@ internal object AudioRouteP5D {
             sinkBits > 0 && (sourceBits <= 0 || sinkBits >= sourceBits)
         else encodedFaithful && exactEncoding
 
+    // AudioTrack initialization is real output evidence, unlike a prospective
+    // route profile. PCM may be downmixed/resampled by Android; do not call
+    // this bit-perfect. Encoded delivery still requires route evidence.
+    fun playableOutput(pcm: Boolean, decoder: Boolean, encodedCompatible: Boolean,
+                       sinkRate: Int, sinkChannels: Int, sinkBits: Int, exactEncoding: Boolean): Boolean =
+        if (pcm) decoder && sinkRate in 8000..384000 && sinkChannels in 1..16 && sinkBits > 0
+        else encodedCompatible && exactEncoding
+
     /** Duplicate samples do not extend the quiet period or absolute deadline. */
     class Debounce {
         private var initialized = false
