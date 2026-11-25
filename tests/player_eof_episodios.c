@@ -1,3 +1,4 @@
+#include "parental.h"
 // Reuse the host video pipeline and playback fixture; no window or network.
 #define main visto_trailer_main
 #include "player_visto_trailer.c"
@@ -152,6 +153,6 @@ int main(void) {
     player_encerrar();
   }
   puts("PASS dismissed Up next exits at EOF with autoplay disabled");
-  SDL_Quit();
+  parental_encerrar(); SDL_Quit();
   return falhas ? 1 : 0;
 }
