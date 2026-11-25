@@ -1,7 +1,7 @@
 # Nuvio Legacy — Q01–Q50 Implementation Progress
 
-**Last updated:** 2026-11-24
-**Status:** P0–P6 source accepted. Q18 owner-deferred. P7 eligible, NOT STARTED / awaiting explicit owner instruction; P8 NOT AUTHORIZED. No APK/full native link; physical TV/ARC gate reserved for P7/P8.
+**Last updated:** 2026-11-25
+**Status:** P0–P6 source accepted. Q18 owner-deferred. P7 integration/delta audit complete, final acceptance PENDING fresh Q46 correction CI #6/#11. Earlier Android #5 and Linux #10 passed. P8 NOT AUTHORIZED. No APK or physical TV/ARC verification.
 **Branch:** `feature/official-stream-selector` (not `master`).
 **Prior feature baseline:** `6171645e05d2137d2a1e9ed1b113687246acd7ca` — docs: lock subtitle filename Format A and unbuilt wrapping/parser test handoff.
 **Latest planning commits:** master specification `7d3c81d81aee309843dd2f0b767c6ef3c2d59723`; work packages `b059a7a9a42ae2b91d87bff0a03bfeb314d0f647`; this progress tracker is an additional documentation-only commit. **Recheck actual HEAD at the beginning of every session.**
@@ -29,10 +29,10 @@
 | P4 | Buffer/network/cache/seek | **SOURCE ACCEPTED — Q18 explicitly deferred; P7/P8 full integration/device gates** | P4-D/A/B, P4-C and test-only CI commits; exact SHAs below | Actual API35/Media3 Kotlin compile PASS; 18/18 P4-C contracts; 36 proof checks; disk integrity/session JVM PASS; **10/10 Robolectric real Media3 cache adapter regressions**; native VOD host PASS; no APK or TV verification |
 | P5 | Fidelity/HDR/surface/audio route | SOURCE ACCEPTED — P5-A/B/C/D | See final P5 acceptance report | Exact CI #45344027529 SUCCESS; full link and physical verification pending |
 | P6 | Background/credits/post-play | **SOURCE ACCEPTED** | Final verified input `c0b0d926a81ec5ef048e2d168b8e32762bd63b43` | [CI #27](https://github.com/nerdfxzxl/nuvio-native-legacy/actions/runs/45438480856) SUCCESS; final six-requirement source matrix below; full integration/device gates pending |
-| P7 | Integration/regression, post-#134 | NOT STARTED | — | — |
+| P7 | Integration/regression, post-#134 | AUDIT COMPLETE; FINAL ACCEPTANCE PENDING | `9d4878898010e405c4b3a1dfc5b74c6aae1d6d25` | Android #5 and Linux #10 passed; Q46 fix fresh #6/#11 pending; [individual source matrix and device checklist](PLAYBACK_50_P7_SOURCE_ACCEPTANCE.md) |
 | P8 | One cached APK + device tests | BLOCKED — NEEDS BUILD AUTHORIZATION | — | — |
 
-**Q01–Q50 coverage:** P1's ten source-decision IDs were checkpointed; P2's assigned scope has now passed its **source-only acceptance review**, with Q18 current-playhead embedded-P2P readiness percentage explicitly deferred. This is **not** 50/50 implementation, full Android compilation, APK integration, or TV verification. P3 passed its source checkpoint. See P4 below. P5 and P6 source accepted; P7 eligible but not started, P8 not authorized. “Committed” ≠ “compiled” ≠ “APK built” ≠ “device tested”.
+**Q01–Q50 coverage:** P1's ten source-decision IDs were checkpointed; P2's assigned scope has now passed its **source-only acceptance review**, with Q18 current-playhead embedded-P2P readiness percentage explicitly deferred. This is **not** 50/50 implementation, full Android compilation, APK integration, or TV verification. P3 passed its source checkpoint. See P4 below. P5 and P6 source accepted; P7 integration/delta review recorded below; fresh Q46 gate pending, P8 not authorized. “Committed” ≠ “compiled” ≠ “APK built” ≠ “device tested”.
 
 ## Change log
 
@@ -41,7 +41,7 @@
 
 ## Immediate next action
 
-P6 final source acceptance is recorded below and in PLAYBACK_50_P6_SOURCE_ACCEPTANCE.md. On explicit owner instruction, proceed with P7 full integration/regression and preserve all post-#134 refinements. No APK workflow until separate P8 authorization.
+P7-D/E integration audit and P7-F checklist are recorded in [P7 source acceptance](PLAYBACK_50_P7_SOURCE_ACCEPTANCE.md). Verify fresh Android #6 and Linux #11 results and actual logs; close final P7 source gate if both pass and no blocking issues. No APK workflow until separate P8 authorization.
 
 - **2026-11-22 / P2 source checkpoint:** Added reusable native animated loading arc, source-scoped Media3 startup phase events, measured byte-rate and P2P engine telemetry, first-frame gated fades and native tests. This is NOT the complete P2 acceptance gate; see appended P2 checkpoint.
 - **2026-11-22 / P1 source implementation:** Completed 13 scoped source commits, identity harness compilation and 32/32 source assertions; see detailed checkpoint. No GitHub Actions, APK or workflow changes.
@@ -1196,3 +1196,9 @@ Corrected simulated catalogue playback duration to 3600 seconds, canonical Trakt
 
 - [Linux CI #10](https://github.com/nerdfxzxl/nuvio-native-legacy/actions/runs/45590217741) tested exact revision `268b255e2b1c9bd19dba0898cbaa95fa2b868828`. All six jobs and all 27 suites completed successfully. All six job logs inspected, with no reported ASan/UBSan fatal diagnostics or assertion failures. Both manual and automatic resume cases passed; 50 worker shutdown repetitions passed. Original 25 suites plus Q46 diagnostics and worker lifecycle coverage retained. ASan leak detection was disabled for the targeted crash diagnostic; no leak-free claim. This is Linux host regression evidence, not Android-device validation or proof that all races are eliminated.
 - P7-C Linux host gate PASS. Prior macOS runner attempts were cancelled; Linux adaptation is the completed host gate. The fresh Android integration workflow push runs the existing ARM64 link/Kotlin/Java/JNI and focused checks; redundant macOS jobs are restricted to manual dispatch, not deleted or marked passed. No production source edits in this checkpoint. P7-A/B fresh production verification pending, P7-D individual Q01–Q50 evidence audit, P7-E post-134 audit, and P7-F final acceptance pending. P7 remains PARTIAL; P8 not authorized. No APK, merge, release or debug trigger change. Q18 sole authorized feature deferral.
+
+
+## P7-D/E/F comprehensive integration audit checkpoint — 2026-11-25
+
+- Starting `d40b9ec0d5c133e96a6210bee55c395c979161ed`, Android #5 [actual logs and jobs](https://github.com/nerdfxzxl/nuvio-native-legacy/actions/runs/45603811488) confirmed production ARM64 link, Kotlin/Java/JNI and focused post-134/ownership/posplay tests passed. Linux #10 previously passed 27/27. Current source/delta review against P0–P6 accepted evidence completed; all 50 requirement IDs and all eight post-#134 groups plus physical-device checklist recorded in [P7 comprehensive integration report](PLAYBACK_50_P7_SOURCE_ACCEPTANCE.md). No comprehensive device or fresh rerun of every historical focused test claimed.
+- Confirmed Q46 stale/estimated speed issue and corrected production code/tests in `9d4878898010e405c4b3a1dfc5b74c6aae1d6d25`: native fresh measured Android rate, unknown not inferred, labeled estimate on other backends, no mixed-origin averaging, numeric sampled report. Triggered necessary test-only [Android #6](https://github.com/nerdfxzxl/nuvio-native-legacy/actions/runs/45605515198) and [Linux #11](https://github.com/nerdfxzxl/nuvio-native-legacy/actions/runs/45605515205), both in progress at this checkpoint. #11 all 27 original suites plus estatvivo. No APK workflow. P7-D matrix and P7-E preservation audit complete; P7-F acceptance report drafted but **final verdict remains pending exact correction CI**, no new non-deferred feature blocker found besides verification. Q18 remains sole authorized deferral. Next precise action inspect both completed logs, confirm no source change since input, and finalize acceptance only if evidence supports it. P8 NOT authorized.
