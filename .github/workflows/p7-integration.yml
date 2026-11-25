@@ -88,6 +88,9 @@ jobs:
           done
           exit "$failed"
   legacy:
+    # Linux CI #10 passed the full legacy matrix. Keep macOS available on
+    # manual dispatch, without duplicating it on the fresh Android link push.
+    if: github.event_name == 'workflow_dispatch'
     runs-on: macos-15
     timeout-minutes: 110
     strategy:
