@@ -1,4 +1,5 @@
 #include "intro.h"
+#include "p7_join_workers.h"
 #include "creditosjson.h"
 #include "rede.h"
 #include "js.h"
@@ -16,6 +17,8 @@
 #include <string.h>
 
 static pthread_mutex_t trava=PTHREAD_MUTEX_INITIALIZER;
+static P7Workers introWorkers=P7_WORKERS_INIT;
+static int introEncerrado;
 static IntroTrecho trechos[8];static int nTrechos;static unsigned geracao;
 static IntroTrecho creditosLimitados[8];static int nCreditosLimitados;
 static int botaoIdx=-1;static double botaoDesde;
@@ -613,16 +616,17 @@ static void *baixar(void *u){
 
 // Dispara o pedido de `base` com a duracao `dur`. Chamar SEM a trava.
 static void disparar(const Pedido *base,double dur,int novo){
-  Pedido*p;pthread_t fio;
+  Pedido*p;
   p=malloc(sizeof*p);if(!p)return;
   *p=*base;p->dur=dur;
   pthread_mutex_lock(&trava);
+  if(introEncerrado){pthread_mutex_unlock(&trava);free(p);return;}
   if(novo){nTrechos=0;nCreditosLimitados=0;nCapTr=0;capCredInicio=capCredFim=0;refeitos=0;tentativas=0;}
   falhou=0;
   p->anime=animeDe(p->id,p->tmdb);
   p->g=++geracao;ultimo=*p;temUltimo=1;enviadoDur=dur;
   pthread_mutex_unlock(&trava);
-  if(pthread_create(&fio,NULL,baixar,p)==0)pthread_detach(fio);else free(p);
+  if(!p7_workers_start(&introWorkers,baixar,p))free(p);
 }
 
 void intro_pedir_ids_mapeados(const char *imdb,long tmdb,int t,int e,int imdbT,int imdbE,double durAnt,double durProx){
@@ -681,6 +685,15 @@ void intro_definir_capitulos_provados(const IntroTrecho *v,int n,double inicio,d
 }
 void intro_definir_capitulos(const IntroTrecho *v,int n){intro_definir_capitulos_provados(v,n,0,0);}
 void intro_desligar(void){pthread_mutex_lock(&trava);geracao++;nTrechos=nCreditosLimitados=0;nCapTr=0;capCredInicio=capCredFim=0;botaoVis=0;botaoIdx=-1;temUltimo=0;falhou=0;pthread_mutex_unlock(&trava);}
+
+// Only final application or fixture shutdown may wait for network threads.
+void intro_encerrar(void){
+  pthread_mutex_lock(&trava);
+  introEncerrado=1;
+  pthread_mutex_unlock(&trava);
+  intro_desligar();
+  p7_workers_shutdown(&introWorkers);
+}
 
 // DURACAO DA MIDIA E O TIPO (filme/serie), para recusar janelas absurdas.
 static double durMidia;static int ehFilme;
