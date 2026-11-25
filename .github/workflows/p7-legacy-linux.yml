@@ -4,7 +4,7 @@ on:
   push:
     branches: [feature/official-stream-selector]
     paths: [.github/workflows/p7-legacy-linux.yml]
-# CI #7: embedded subtitle label preservation and targeted EOF/TTL/history regressions.
+# CI #8: consolidated lifecycle, fixture and Q46 recovery; reject sanitizer output.
 concurrency:
   group: p7-linux-legacy-${{ github.ref }}
   cancel-in-progress: true
@@ -18,7 +18,7 @@ jobs:
       fail-fast: false
       matrix:
         suites:
-          - addons_alvo_pendente addons_stream_pending fonte_manual_resume playback_p3_reload
+          - addons_alvo_pendente addons_stream_pending fonte_manual_resume playback_p3_reload playback_diag_p7
           - posplay posplay_recuo proxprefetch postplay_p6_integration proximo
           - player_eof_episodios player_visto_trailer player_scrobble_trailer
           - player player_republica player_retido player_back
@@ -38,7 +38,7 @@ jobs:
           ln -s "$GITHUB_WORKSPACE/tests/p7_linux_cc.py" "$RUNNER_TEMP/p7-bin/cc"
           echo "P7_REAL_CC=$(command -v clang)" >> "$GITHUB_ENV"
           echo "$RUNNER_TEMP/p7-bin" >> "$GITHUB_PATH"
-      - name: Run original legacy suites without changing assertions
+      - name: Run legacy suites and focused diagnostics with sanitizer-output gate
         env:
           SUITES: ${{ matrix.suites }}
         run: |
@@ -60,7 +60,7 @@ jobs:
             esac
             export NUVIO_DADOS="$RUNNER_TEMP/p7-data-$suite"
             mkdir -p "$NUVIO_DADOS"
-            if timeout --signal=TERM --kill-after=20s 10m bash "tests/$suite.sh"; then
+            if bash tests/p7_run_suite.sh bash "tests/$suite.sh"; then
               echo "$suite PASS" >> "$GITHUB_STEP_SUMMARY"
             else
               rc=$?
