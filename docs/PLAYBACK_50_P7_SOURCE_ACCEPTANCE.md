@@ -1,6 +1,6 @@
 # P7 comprehensive integration acceptance — 2026-11-25
 
-**Disposition: source integration review completed; Android #6 production link/JNI and focused gate PASS. Final acceptance pending Linux #11 only. P8 remains NOT authorized.**
+**FINAL DISPOSITION: P7-A through P7-F SOURCE INTEGRATION ACCEPTED. All required integration gates passed. Q18 playable P2P readiness percentage remains owner-deferred. P8 remains NOT authorized.**
 
 Branch: `feature/official-stream-selector` only. Starting reviewed HEAD `d40b9ec0d5c133e96a6210bee55c395c979161ed`. Q46 corrected production/test input `9d4878898010e405c4b3a1dfc5b74c6aae1d6d25`. This report is a documentation-only successor; verify the actual branch HEAD and compare before closing the gate.
 
@@ -17,7 +17,7 @@ Re-read approved master register, work packages, P0 baseline, post-#134 handoff,
 
 ## P7-D — individual requirement integration matrix
 
-Status **Retained** means prior accepted implementation evidence and current integration/delta review found no new demonstrated source blocker; not a fresh per-requirement runtime proof. **Recheck** is a corrected source defect whose new exact CI gate is open. **Deferred** is the sole explicitly owner-deferred feature. All other physical behavior remains for P8.
+Status **Retained** means prior accepted implementation evidence and current integration/delta review found no new demonstrated source blocker; not a fresh per-requirement runtime proof. **Corrected / accepted** means the demonstrated source defect was corrected and the exact-revision integration gates passed. **Deferred** is the sole explicitly owner-deferred feature. All other physical behavior remains for P8.
 
 | Requirement | Source disposition | Current path / evidence and acceptance boundary |
 |---|---|---|
@@ -66,7 +66,7 @@ Status **Retained** means prior accepted implementation evidence and current int
 | Q43 — fast seek | Retained | player.c terminarSalto/seek coalescing and native vodBufferFimMs generation, NvPlayer FrameHold and cache validation. P4-D/P4-C tests, #10 player/seek regressions. |
 | Q44 — background pause | Retained | NuvioActivity task token and lifecycle methods; player.c p6 checkpoint generation/profile, app.c exact restoration, PlaybackIntentP6. P6 restore/intent tests and #5 compile; process death/device background pending. |
 | Q45 — watched at credits | Retained | capmkv current-file credit bounds, watched_p6.h viewed proof, player.c p6WatchReached/Mark, exact identity/journal fallback. P6 35 tests, #10 watched/trailer/identity suites. Unproven IntroDB hints cannot mark or skip; configured reliable fallback retained. |
-| Q46 — truthful diagnostics | Recheck | New numeric report scoped to account/profile and persisted via estatvivoui; audit found stale/estimated live speed and snapshot reread in old stats. Correction uses native fresh rolling measurement, unknown stays unknown, estimates labeled on other backends, historical origin separation. New focused tests and exact link/host gate in progress. |
+| Q46 — truthful diagnostics | Corrected / accepted | New numeric report scoped to account/profile and persisted via estatvivoui; audit found stale/estimated live speed and snapshot reread in old stats. Correction uses native fresh rolling measurement, unknown stays unknown, estimates labeled on other backends, historical origin separation. New focused tests and exact Android #6/Linux #11 gates passed. |
 | Q47 — stable surfaces | Retained | NvPlayer FrameHoldP2B, surface lifecycle and stable-frame gate, P5-C surface 55 assertions. Device HDR transitions may still briefly flash. |
 | Q48 — cancellation/cleanup | Retained | PendingAdoptionP6, proximopreparo generation/cancel, app.c player close then discovery/intro/parental final joins. #10 full suites, 50 ASan/UBSan repetitions, #5 production link. No claim all races/leaks eliminated. |
 | Q49 — audio-route recovery | Retained | NvPlayer AudioRouteObserverP5D and AudioRouteP5D, composed volume/mute gate, native capability generation and deadline. P5-D 46 tests, HDMI audio-focus guard, #5 ownership; actual ARC/BT/speaker switching pending. |
@@ -98,7 +98,7 @@ Observed source issue in estatvivo.c: old speed persisted on invalid/missing mea
 
 ## P7-F — final gate / P8 device checklist
 
-P7 source integration audit covers the signed-off 50 IDs (48 retained, one owner-deferred Q18, one corrected Q46 awaiting exact test/link evidence). P7-E eight groups reviewed. **Final acceptance cannot be issued while #6/#11 remain in progress.** Once both complete, inspect actual logs and confirm the tested SHA equals current production tree (documentation-only successors allowed); close P7 with final report/status if no new blocking evidence. Fix demonstrated failures only. No additional full audit/redundant run required for documentation-only changes.
+P7 source integration audit covers all 50 IDs (48 retained, Q46 corrected and accepted, Q18 owner-deferred). P7-E eight groups reviewed. **Both final integration workflows passed at the same exact tested revision; P7 final source acceptance PASS.** The current pre-acceptance HEAD differs from tested input only in two documentation paths. No further full audit or redundant CI required for this documentation-only sign-off. P8 is the next eligible package but requires separate explicit authorization.
 
 P8 separate owner authorization required for one cached Android debug APK workflow, then test the same integrated artifact:
 1. Manual Play/Resume, exact source selection and replacement, progressive reload/search/addon focus, no-results, Back and 15s Change Stream.
@@ -115,3 +115,10 @@ No APK built, signed, published or released; no debug trigger, default branch or
 ## Exact Q46 verification update — Android #6 PASS
 
 [Android #6](https://github.com/nerdfxzxl/nuvio-native-legacy/actions/runs/45605515198), exact input `9d4878898010e405c4b3a1dfc5b74c6aae1d6d25`: Android job 139175245341 and focused job 139175245618 completed successfully; actual logs inspected. AArch64 ELF, Rust `nv_mkvcore_achar_tracks`, 33 C-to-Kotlin static lookups and successful production builds confirmed. Focused logs confirm live statistics, numeric playback diagnostics (measured speed, recovery, gaps, profile/account scope), delayed subtitle publication and source-replacement telemetry ownership PASS. macOS skipped, not counted as passed. No reported sanitizer fatal diagnostics or assertions in these logs. Linux #11 remains running (subtitles/parser/fileiras group passed; five other jobs in progress at check). P7-A/B fresh verification and focused Q46 checks passed. P7-D/E audit and P7-F report complete; only Linux #11 final result/log inspection and final source verdict remain. No further broad audit or new run for documentation-only changes. No APK/device verification or P8 authorization.
+
+## FINAL P7 acceptance — 2026-11-25
+
+- Exact verified production/test revision: `9d4878898010e405c4b3a1dfc5b74c6aae1d6d25`. [Android integration #6](https://github.com/nerdfxzxl/nuvio-native-legacy/actions/runs/45605515198) required Android and focused jobs passed, as recorded above. [Linux regression #11](https://github.com/nerdfxzxl/nuvio-native-legacy/actions/runs/45605515205) all six jobs completed SUCCESS. All six actual job logs inspected: 28 named suites, zero reported ASan/UBSan fatal diagnostics, assertion failures or CI error annotations. Included live statistics, numeric diagnostics and 50 worker shutdown repetitions under ASan/UBSan. Selected suites use sanitizer coverage; leak detection remains disabled for the earlier targeted crash diagnostic. This does not prove the absence of every race or leak.
+- GitHub compare `9d4878898010e405c4b3a1dfc5b74c6aae1d6d25` to `bc167b9ee24566475cc1e0ac6a421751891dc838`: two commits ahead, zero behind, exactly two changed paths (this report and PLAYBACK_50_IMPLEMENTATION_PROGRESS.md). No production/test/workflow changes after tested input. This final sign-off changes only those same two documents.
+- P7-A ARM64 link PASS; P7-B production Kotlin/Java/JNI and ownership/focused gates PASS; P7-C 28/28 host regressions PASS; P7-D all 50 decision IDs dispositioned (49 non-deferred source requirements accepted including corrected Q46; Q18 explicitly owner-deferred); P7-E all eight protected post-#134 groups reviewed and applicable regression contracts passed; P7-F consolidated acceptance and device checklist COMPLETE. Inherited P0–P6 accepted evidence retained, not represented as freshly rerun in its entirety. No known remaining blocking source integration defect in this bounded review.
+- **P0–P7 accepted at source/integration stage. P8 NOT STARTED / NOT AUTHORIZED.** Await explicit owner approval for the cached APK build and physical-device validation using the checklist above. No APK built/signed/published, no normal/debug trigger changed, no default-branch update or merge. No physical TV/phone/ARC/network validation or leak-free claim.
