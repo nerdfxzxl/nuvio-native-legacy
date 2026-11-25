@@ -11,6 +11,16 @@ static VideoFaixa emb[8];
 static int nEmb;
 static Legenda add[LEG_MAX];
 static int nAdd;
+// Installed provider metadata for the selector; transport is mocked below.
+unsigned addons_versao(void) { return 1; }
+int addons_n(void) { return 3; }
+int addons_ativo(int i) { return i >= 0 && i < 3; }
+int addons_sondado(int i) { return addons_ativo(i); }
+int addons_fornece(int i, int oque) { return addons_ativo(i) && oque == ADD_LEGENDA; }
+const char *addons_nome(int i) { static const char *names[]={"OpenSubtitles","SubDL","Subs.ro"}; return addons_ativo(i) ? names[i] : ""; }
+const char *addons_id_manifesto(int i) { return addons_nome(i); }
+const char *addons_nome_por_id(const char *id) { return id ? id : ""; }
+const char *addons_base(int i) { (void)i; return ""; }
 static char extId[24];
 static int ativaEmb = -1;
 static int escolhidaEmb = -99, escolhidasExt;

@@ -226,7 +226,21 @@ void stream_invalidar(const char *p) { (void)p; }
 int stream_n(void) { return 0; }
 int stream_lista_do_alvo(const char *id) { (void)id; return 0; }
 // addons.c recarimba o id normalizado ("tt:1:1") do pedido.
-void stream_definir_alvo(const char *id) { (void)id; }
+static char fixturePedido[NV_STREAM_ID_CAP];
+void stream_definir_alvo(const char *id) {
+  snprintf(fixturePedido, sizeof fixturePedido, "%s", id ? id : "");
+}
+int stream_pedido_do_alvo(const char *id) {
+  return id && *id && !strcmp(fixturePedido, id);
+}
+
+// This fixture models the transport/manifest boundary, not the retained
+// selector UI. The actual reload state machine has playback_p3_reload and
+// full-app source-selection coverage. No display-only cards are retained here.
+int stream_recarregar_iniciar(const char *id) { (void)id; return 0; }
+void stream_recarregar_primeira(void) {}
+void stream_recarregar_concluir(void) {}
+
 Uint32 SDL_GetTicks(void) { return 1000 + sportTicks; }
 const char *sessao_usuario(void) { return ""; }
 int perfis_ativo(void) { return 1; }

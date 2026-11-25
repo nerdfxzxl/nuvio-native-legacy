@@ -22,6 +22,13 @@ void nv_identity_trakt_marcar(const char *id, double p, double d, double a, int 
   (void)p; (void)d; (void)a; (void)fim;
   snprintf(statsId, sizeof statsId, "%s", id);
 }
+// Observe the canonical scrobble boundary (including Q45 history-owned exits).
+int nv_identity_scrobble_alvo(int evento, const TraktScrobbleAlvo *alvo,
+                            double p, double d, double a, int fim) {
+  (void)evento; assert(alvo && alvo->id[0]);
+  nv_identity_trakt_marcar(alvo->id, p, d, a, fim);
+  return SCR_NADA;
+}
 // Neither parental HTTP nor the detached Home refresh participates in the
 // identity being tested. Capture their real requests without starting workers
 // that could outlive the fixture's normal SDL_Quit teardown.
@@ -62,6 +69,13 @@ int main(int argc, char **argv) {
   snprintf(c.tipo, sizeof c.tipo, "%s", late ? "anime" : movie ? "movie" : "series");
   snprintf(c.meta, sizeof c.meta, "5 min");
   cat_definir(&c, 1);
+  // Known-series controls must publish canonical episode metadata before
+  // opening freezes the selected identity; do not infer it from later lists.
+  if (!movie && !late) {
+    ep.temporada = special ? 0 : 1; ep.episodio = defaultSeries ? 1 : 2;
+    snprintf(ep.vid, sizeof ep.vid, "tt9054364:%d:%d", ep.temporada, ep.episodio);
+    cat_definir_episodios(0, &ep, 1);
+  }
   duracao = 300; posicao = 120;
   player_abrir(0, "https://fixture.invalid/native-video.mp4");
   if (late && !lateClose) {
@@ -74,7 +88,7 @@ int main(int argc, char **argv) {
   if (!movie) {
     ep.temporada = special ? 0 : 1; ep.episodio = defaultSeries ? 1 : 2;
     snprintf(ep.vid, sizeof ep.vid, "tt9054364:%d:%d", ep.temporada, ep.episodio);
-    cat_definir_episodios(0, &ep, 1);
+    if (late) cat_definir_episodios(0, &ep, 1);
     if (!defaultSeries) player_definir_episodio(expectedT, 2);
   }
   player_episodio_atual(&t, &e);

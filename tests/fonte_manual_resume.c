@@ -38,7 +38,7 @@ int main(int argc, char **argv) {
   if (ajustes_fonte_manual()) {
     assert(stream_folha_aberta() && folhaParaTocar);
     assert(aguardandoFonte == 0 && fonteEscolhida == -2);
-    // Opening the sheet alone must not choose. Enter picks the saved source.
+    // Q15: opening alone must not choose; manual focus starts at the first row,\n    // even when automatic preference still points to the saved release.
     int pick = -1;
     assert(!stream_folha_escolheu(&pick));
     SDL_Event e = {0}; e.type = SDL_KEYDOWN;
@@ -47,8 +47,9 @@ int main(int argc, char **argv) {
     e.key.keysym.sym = SDLK_DOWN; stream_folha_evento(&e);
     e.key.keysym.sym = SDLK_RETURN;
     stream_folha_evento(&e);
-    assert(stream_folha_escolheu(&pick) && pick == 1);
-    puts("PASS: manual resume opens sheet, waits, focuses saved source");
+    e.type = SDL_KEYUP; stream_folha_evento(&e);
+    assert(stream_folha_escolheu(&pick) && pick == 0);
+    puts("PASS: manual resume waits and starts at first row; automatic preference remains saved");
   } else {
     assert(!stream_folha_aberta());
     assert(aguardandoFonte == 2);

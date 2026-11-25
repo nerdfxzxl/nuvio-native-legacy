@@ -3,10 +3,16 @@
 // Contadores POR EVENTO E SERVICO, checados ANTES do player_encerrar: o
 // scrobble de SAIDA so satisfaz um contador unico, nunca o evento certo.
 #define main main_base
+#define trakt_scrobble_alvo fixture_base_trakt_scrobble_alvo
 #include "player_visto_trailer.c"
+#undef trakt_scrobble_alvo
 #undef main
 #include "traktscrobble.h"   // SCR_EV_TOCANDO / SCR_EV_PAUSOU / SCR_EV_SAIU
-static int nTk[4], nSk[4];   // [SCR_EV_TOCANDO, SCR_EV_PAUSOU, SCR_EV_SAIU]
+static int nTk[SCR_EV_HISTORICO_JA_GRAVADO+1], nSk[SCR_EV_HISTORICO_JA_GRAVADO+1];   // [SCR_EV_TOCANDO, SCR_EV_PAUSOU, SCR_EV_SAIU]
+int trakt_scrobble_alvo(int ev, const TraktScrobbleAlvo *alvo, double p, double d, double a, int x) {
+  assert(alvo && alvo->id[0] && ev > 0 && ev <= SCR_EV_HISTORICO_JA_GRAVADO);
+  (void)p; (void)d; (void)a; (void)x; nTk[ev]++; return SCR_NADA;
+}
 static void zera(void) { memset(nTk, 0, sizeof nTk); memset(nSk, 0, sizeof nSk); }
 int nv_cnt_trakt_scrobble(int ev, const char *id, double p, double d, double a, int x) {
   (void)id; (void)p; (void)d; (void)a; (void)x; nTk[ev]++; return 0;

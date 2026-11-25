@@ -62,6 +62,14 @@ int proximopreparo_renovar(const char *atual, const char *alvo) {
 int ajustes_proximo_auto(void) { return 1; }
 int ajustes_proximo_contagem(void) { return 5; }
 double video_creditos(void) { return credito; }
+// Metadata-only fixture: playback remains active; EOF is a separate signal.
+static int fixtureEOF;
+int video_ativo(void) { return 1; }
+int video_terminou(void) { return fixtureEOF; }
+double video_pos(void) { return posicao; }
+void player_id_stream(char *dst, unsigned tam) {
+  if (!cat_id_stream(0, atualT, atualE, dst, tam)) dst[0] = 0;
+}
 // A regra temporal real e exercitada tambem em tests/posplay.sh.
 int player_janela_proximo(double antecedencia) {
   return posicao + antecedencia * velocidade / 100.0 >= (credito > 1 ? credito : duracao - 50);
@@ -80,6 +88,7 @@ void desc_pedir_titulo_semente(const char *id, long tmdb, const char *tipo,
 
 static void quadro(double p, int serie) {
   posicao = p;
+  fixtureEOF = p >= duracao;
   posplay_atualizar(1, SDL_GetTicks(), p, duracao, serie, 0, player_janela_proximo(0));
 }
 static void iniciar(void) {

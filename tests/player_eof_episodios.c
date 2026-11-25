@@ -64,8 +64,7 @@ int main(void) {
       if (caso >= 5 && caso <= 7) cat_definir_episodios(0, eps, 1);
       carregando = 0;
     }
-    for (int i = 0; i < 600; i++) quadro();
-    if (caso < 2 || caso == 8) {
+    // Q50 countdown measures real elapsed SDL ticks at EOF, not frame count.\n    Uint32 tick = SDL_GetTicks();\n    for (int i = 0; i < 600; i++) player_atualizar(.016f, tick + (Uint32)i * 16u);\n    if (caso < 2 || caso == 8) {
       ok = !player_quer_sair() && player_aberto() &&
            posplay_pediu_episodio(&t, &e) && t == temp && e == 2;
       assert(!posplay_pediu_episodio(NULL, NULL));

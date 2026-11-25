@@ -72,7 +72,16 @@ int stream_extrair(const char *json, const char *provedor, Stream **saida) {
   }
   return fontesRede;
 }
-void stream_definir_alvo(const char *id) { snprintf(pedidoAlvo, sizeof pedidoAlvo, "%s", id); }
+void stream_definir_alvo(const char *id) { snprintf(pedidoAlvo, sizeof pedidoAlvo, "%s", id ? id : ""); }
+int stream_pedido_do_alvo(const char *id) { return id && *id && !strcmp(pedidoAlvo, id); }
+
+// This fixture models the transport/manifest boundary, not the retained
+// selector UI. The actual reload state machine has playback_p3_reload and
+// full-app source-selection coverage. No display-only cards are retained here.
+int stream_recarregar_iniciar(const char *id) { (void)id; return 0; }
+void stream_recarregar_primeira(void) {}
+void stream_recarregar_concluir(void) {}
+
 void stream_folha_canal(int sim) { (void)sim; }
 void stream_filtro_tipo(const char *tipo) { (void)tipo; }
 // F11: Jellyfin targets are routed away from addons; not exercised here.
