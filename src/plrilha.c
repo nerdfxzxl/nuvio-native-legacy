@@ -96,6 +96,12 @@ static char cenT[200], cenD[80], cenI[32], cenUT[200], cenUD[80], cenUI[32];
 static int temCen;
 static float cenA, cenCorpoA, cenW, cenH, cenVW, cenVH;
 static Uint32 cenQuadro;
+// Terminal error owns the whole player UI: retire an outgoing central card now.
+void plrilha_cancelar_centro(void) {
+  temCen = 0;
+  cenA = cenCorpoA = cenW = cenH = cenVW = cenVH = 0.0f;
+  memset(&cenUlt, 0, sizeof cenUlt);
+}
 // Quanto a pilula da HORA segura depois que um corpo com `voltaRelogio` acaba,
 // antes de encolher e sair (o corpo vira o relogio e ai some).
 #define HORA_SEGURA_MS 800u
