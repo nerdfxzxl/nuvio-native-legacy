@@ -1207,7 +1207,7 @@ static void player_erro_audio(void) {
   // Pause the silent video immediately, keep the selected URL/track for Retry.
   video_pausar(1);
   player_erro_fonte_motivo("Audio Playback Error",
-    "The selected audio cannot be delivered faithfully on this output. Retry the same stream, choose another stream, or go Back.");
+    "No compatible audio output could be established. Retry the same stream, choose another stream, or go Back.");
   erroAudioP5A = 1;
 }
 static void player_erro_video(int motivo) {
@@ -7068,13 +7068,14 @@ static void desenharCinema(Uint32 agora, const CatItem *c, int furou) {
   if (abrindoExp) {
     AbrLinha linhas[ABR_MAX];
     int n = linhasAbrindo(stream_item(stream_atual()), linhas);
-    for (int i = 0; i < n && y < NV_TELA_H - 85.0f; i++) {
+    float dy = 100.0f;
+    for (int i = 0; i < n && dy < 420.0f; i++) {
       char detalhe[256];
       snprintf(detalhe, sizeof detalhe, "%s%s%s", linhas[i].rot,
                linhas[i].rot[0] ? ": " : "", linhas[i].val);
       TxtLinha d = txt_linha_corta(TXT_G19M, detalhe, 210, 210, 210, 255, 1100.0f);
-      txt_desenhar_alpha(d, canto ? tx : cx - d.w * .5f, y, v);
-      y += 27.0f;
+      txt_desenhar_alpha(d, NV_TELA_W - 64.0f - d.w, dy, v);
+      dy += 27.0f;
     }
   }
   /* Q26: escape appears only after a genuinely slow 15-second startup.
@@ -7326,7 +7327,10 @@ void player_desenhar(Uint32 agora) {
       else if (player_com_video() && !erroFonte && !saindo && !ehCanal())
         gfx_cor(tela, 0.0f, 0.0f, 0.0f, 0.0f, abrindoFundo);
     }
-    if (!quadroMorno && abrecine_cinema(&cine) && !(dvtela_visivel() && dvtela_variante() == DVT_VAR_DETALHADA)) desenharCinema(agora, c, furar); }
+    if (!quadroMorno && abrecine_cinema(&cine) && !(dvtela_visivel() && dvtela_variante() == DVT_VAR_DETALHADA)) {
+       plrilha_cancelar_centro();
+       desenharCinema(agora, c, furar);
+     } }
   // Uma abertura NOVA (a anterior acabou, ou o player reabriu): volta ao compacto
   // e zera o relogio. Ao acabar, o estado fica como esta para o cartao sair com o
   // mesmo conteudo (a saida e a da ilha, plrilha.c).
