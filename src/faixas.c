@@ -1221,7 +1221,7 @@ static void aplicar(void) {
     // the native audio error card takes ownership instead.
 #ifdef NV_ANDROID
     { const VideoFaixa *f = video_audio(indice);
-      if (f && (!f->decodifica || !f->saidaFiel)) {
+      if (f && !f->decodifica) {
         video_escolher_audio(indice); // signals Audio Playback Error
         return;
       } }
@@ -2086,7 +2086,7 @@ static void linhaLista(int col, int i, float x, float y, float w, float a) {
         }
       }
       { const char *saida = f->saidaFiel ? (f->passthroughSaida ? "Bitstream-capable" : "PCM-capable")
-                          : f->saidaIncerta ? "Output unverified" : "Output unsupported";
+                          : f->decodifica ? "Compatible output attempted" : "Output unsupported";
         size_t n = strlen(sub);
         snprintf(sub + n, sizeof sub - n, "%s%s", n ? " · " : "", saida);
       }
