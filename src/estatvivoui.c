@@ -16,6 +16,9 @@
 #include "layout.h"
 #include "perfiltv.h"
 #include "perfis.h"
+#include "perfisessao.h"
+#include "sessao.h"
+#include "playback_diag_p7.h"
 #include "player.h"
 #include "plrui.h"
 #include "plrilha.h"
@@ -90,10 +93,76 @@ static int playerInfoAberto, playerInfoAuto, playerInfoModo, playerInfoHud, play
 static int playerInfoScroll, playerInfoFoco, playerInfoHudFoco;
 static int playerInfoFocused;
 #define EVU_ARQ_PLAYER_INFO "estatvivo-player-info.txt"
-static EvInfoLinha playerInfoLinhas[48];
+static EvInfoLinha playerInfoLinhas[64];
 static int playerInfoN;
 static void playerInfoMontarLinhas(void);
 static void playerInfoGarantirScroll(void);
+
+// Q46: the report owns only numeric observations, never EvTela, EvEstado.host
+// or a URL. All accesses occur on the UI thread, with the profile generation
+// held while reading/writing the profile/account-scoped local file.
+static P7Diag diagLive;
+static P7DiagReport diagLast;
+static NvPerfilSessao diagOwner, diagLastOwner;
+static int diagLastLoaded, diagLastValid;
+static char diagPath[96];
+
+static void diagCarregar(void) {
+  NvPerfilSessao owner = nv_perfil_sessao_ler();
+  if (diagLastLoaded && diagLastOwner == owner) return;
+  memset(&diagLast, 0, sizeof diagLast);
+  diagLastLoaded = 0; diagLastValid = 0;
+  if (!nv_perfil_sessao_travar(owner)) return;
+  char path[96];
+  if (p7_diag_path(path, sizeof path, sessao_usuario(), perfis_ativo())) {
+    char *saved = dados_ler(path);
+    diagLastValid = p7_diag_decode(saved, &diagLast);
+    free(saved);
+  }
+  diagLastOwner = owner; diagLastLoaded = 1;
+  nv_perfil_sessao_destravar();
+}
+
+void estatvivo_diag_finalizar(void) {
+  if (diagLive.report.samples && nv_perfil_sessao_travar(diagOwner)) {
+    char path[96], serialized[256];
+    if (p7_diag_path(path,sizeof path,sessao_usuario(),perfis_ativo()) &&
+        !strcmp(path,diagPath) &&
+        p7_diag_encode(&diagLive.report,serialized,sizeof serialized)) {
+      // Keep the latest report available in memory even if local storage is
+      // unavailable. The previous account's report is never read by this UI.
+      diagLast = diagLive.report;
+      diagLastOwner = diagOwner;
+      diagLastValid = diagLastLoaded = 1;
+      dados_gravar(path,serialized);
+    }
+    nv_perfil_sessao_destravar();
+  }
+  memset(&diagLive,0,sizeof diagLive);
+  diagPath[0]=0;
+  diagOwner=0;
+}
+
+static void diagAmostrar(Uint32 now, const EvEntrada *in) {
+  NvPerfilSessao owner = nv_perfil_sessao_ler();
+  if (diagLive.report.samples && diagOwner != owner) {
+    // A stale epoch is no longer authorized to publish or display.
+    memset(&diagLive,0,sizeof diagLive);
+    diagPath[0]=0;
+  }
+  if (!diagPath[0]) {
+    if (!nv_perfil_sessao_travar(owner)) return;
+    int ok=p7_diag_path(diagPath,sizeof diagPath,sessao_usuario(),perfis_ativo());
+    diagOwner=owner;
+    nv_perfil_sessao_destravar();
+    if (!ok) { diagPath[0]=0; return; }
+  }
+  if (!nv_perfil_sessao_atual(diagOwner)) return;
+  p7_diag_sample(&diagLive,now,player_geracao_fonte(),
+      in->tocando && video_pronto(),in->bufferando,in->reconectando,
+      in->falhou,in->vs.bytes);
+}
+
 static int editando, focoEd, perfilTiles = -1, nTiles[EV_TAM_N], tiles[EV_TAM_N][6];
 static const char *const tileNome[] = {
   "Velocidade", "Buffer à frente", "Fonte", "Conexões e servidor", "Erros e reconexões", "Quadros perdidos"
@@ -284,6 +353,8 @@ void estatvivo_player_expandir(void) {
   playerInfoSalvar();
 }
 void estatvivo_player_nova_sessao(void) {
+  estatvivo_diag_finalizar();
+  diagCarregar();
   playerInfoCarregar();
   playerInfoAberto = playerInfoAuto;
   playerInfoScroll = playerInfoFoco = playerInfoHudFoco = playerInfoFocused = 0;
@@ -638,6 +709,8 @@ void estatvivo_atualizar(Uint32 agora) {
   if (teste) return;
 #endif
   if (!player_aberto() || !player_com_video()) {
+    if (!player_aberto() && !player_retido()) estatvivo_diag_finalizar();
+    else p7_diag_gap(&diagLive); // no elapsed time across a retained/source gap
     if (temSessao) { ev_zerar(&est); temSessao = 0; }
     aberto = fixado = 0;
     entraA = 0;
@@ -663,6 +736,7 @@ void estatvivo_atualizar(Uint32 agora) {
   t = time(NULL);
   lt = localtime(&t);
   ev_amostra(&est, agora, &in, lt ? lt->tm_hour : 0, lt ? lt->tm_min : 0);
+  diagAmostrar(agora,&in);
   sistemaAmostrar();
   if (aberto || fixado || playerInfoAberto) montarTela(in.taxaKbps);
 }
@@ -1491,7 +1565,7 @@ static void playerInfoMontarLinhas(void) {
   playerInfoAdicionar(0, "Connections", tela.connections);
   playerInfoAdicionar(0, "Requests", tela.requests);
   playerInfoAdicionar(0, "Server latency", tela.latency);
-  playerInfoAdicionar(0, "Rebuffers", tela.rebuffers);
+  playerInfoAdicionar(0, "Reconnections", tela.rebuffers);
   playerInfoAdicionar(1, "SYSTEM", "");
   if (sistema.cpuAtual >= 0)
     snprintf(b, sizeof b, "%.0f%% · avg %.0f%%", sistema.cpuAtual, sistema.cpuMedia);
@@ -1510,6 +1584,29 @@ static void playerInfoMontarLinhas(void) {
   if (sistema.thermalC >= 0) snprintf(b, sizeof b, "%.1f °C", sistema.thermalC);
   else snprintf(b, sizeof b, "—");
   playerInfoAdicionar(0, "Thermal", b);
+  playerInfoAdicionar(1, "LAST SESSION", "");
+  // The read is cached by profile epoch; never perform per-frame disk I/O.
+  diagCarregar();
+  if (diagLastValid && nv_perfil_sessao_atual(diagLastOwner)) {
+    snprintf(b,sizeof b,"%llu",diagLast.samples);
+    playerInfoAdicionar(0,"Samples (1 s)",b);
+    snprintf(b,sizeof b,"%llu s",diagLast.playMs/1000);
+    playerInfoAdicionar(0,"Observed playback",b);
+    snprintf(b,sizeof b,"%llu s",diagLast.bufferMs/1000);
+    playerInfoAdicionar(0,"Observed buffering",b);
+    snprintf(b,sizeof b,"%llu",diagLast.buffers);
+    playerInfoAdicionar(0,"Observed rebuffers",b);
+    snprintf(b,sizeof b,"%llu",diagLast.recoveries);
+    playerInfoAdicionar(0,"Observed recoveries",b);
+    snprintf(b,sizeof b,"%llu",diagLast.errors);
+    playerInfoAdicionar(0,"Observed errors",b);
+    if (diagLast.speedN)
+      snprintf(b,sizeof b,"%.2f / %.2f Mbps (measured)",
+        (double)diagLast.speedSum/diagLast.speedN/1000.0,
+        (double)diagLast.peakKbps/1000.0);
+    else snprintf(b,sizeof b,"Unknown");
+    playerInfoAdicionar(0,"Avg / peak speed",b);
+  } else playerInfoAdicionar(0,"Report","Unknown");
   playerInfoGarantirScroll();
 }
 
