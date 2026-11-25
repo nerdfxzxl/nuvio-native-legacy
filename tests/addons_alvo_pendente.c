@@ -59,6 +59,16 @@ int main(void) {
   progMarcar(0,&old,1,2); addons_drenar();
   assert(stream_n()==0);
   progLimpar(); stream_definir_lista(NULL, 0); fioVivo = 0;
+  // No add-on configured: changing to a new episode still retires the old
+  // list at the real request boundary, without an external network worker.
+  nAddon = 0;
+  stream_definir_alvo("tt0000101:2:4");
+  stream_definir_lista(&old, 1);
+  assert(stream_lista_do_alvo("tt0000101:2:4") && stream_n() == 1);
+  stream_definir_alvo("tt0000101:2:5");
+  addons_buscar("tt0000101:2:5", "series");
+  assert(stream_n() == 0 && stream_atual() == -1);
+  assert(!stream_lista_do_alvo("tt0000101:2:4"));
   parental_encerrar(); SDL_Quit();
   puts("PASS: pending title retires old sources; same-title recovery keeps them");
   return 0;
