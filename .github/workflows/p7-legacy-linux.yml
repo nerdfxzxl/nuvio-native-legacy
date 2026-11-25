@@ -21,7 +21,7 @@ jobs:
           - addons_alvo_pendente addons_stream_pending fonte_manual_resume playback_p3_reload playback_diag_p7 p7_join_workers estatvivo
           - posplay posplay_recuo proxprefetch postplay_p6_integration proximo
           - player_eof_episodios player_visto_trailer player_scrobble_trailer
-          - player player_republica player_retido player_back
+          - player player_republica player_retido player_back videoerro_p5b audioerro_p5a playback_p2d_handoff
           - catalog_episode_identity512 episode_identity512 player_identity524 cw_stats_identity524 visto_identidade512
           - addons_legendas legendasui stream_parser fileiras
     steps:

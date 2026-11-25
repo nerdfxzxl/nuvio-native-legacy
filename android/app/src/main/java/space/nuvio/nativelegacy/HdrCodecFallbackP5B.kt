@@ -151,6 +151,7 @@ internal object HdrCodecFallbackP5B {
     }
 
     data class VideoConfig(val info: MediaCodecInfo, val source: Format, val base: Proof?) {
+        var requestedToneMap = false
         @Volatile var outputTransfer: Int? = null
         fun matches(format: Format, name: String?): Boolean =
             name == info.name && sameVideoFormat(source, format)
@@ -159,7 +160,22 @@ internal object HdrCodecFallbackP5B {
     /** A single actual failed decoder per player opening. During recovery
      * the new decoder must accept the same video representation, not a lower
      * resolution, color mode or bitrate silently selected by the track selector. */
-    class RuntimeRecovery(val failed: String, private val source: Format) {
+    class RuntimeRecovery(val failed: String, private val source: Format,
+                          val excluded: Set<String> = setOf(failed),
+                          val platformOnly: Set<String> = emptySet()) {
+        fun next(name: String, format: Format, requestedToneMap: Boolean): RuntimeRecovery? {
+            if (!sameRepresentation(format) || name in excluded || excluded.size >= 4) return null
+            return after(name, format, requestedToneMap, excluded, platformOnly)
+        }
+
+        companion object {
+            fun after(name: String, format: Format, requestedToneMap: Boolean,
+                      excluded: Set<String> = emptySet(), platformOnly: Set<String> = emptySet()): RuntimeRecovery =
+                if (requestedToneMap && name !in platformOnly)
+                    RuntimeRecovery(name, format, excluded, platformOnly + name)
+                else RuntimeRecovery(name, format, excluded + name, platformOnly)
+        }
+
         @Volatile var completed = false
             private set
 
@@ -171,7 +187,7 @@ internal object HdrCodecFallbackP5B {
                 java.lang.Float.compare(source.pixelWidthHeightRatio, f.pixelWidthHeightRatio) == 0
 
         fun permits(name: String, f: Format): Boolean =
-            name != failed && (completed || sameRepresentation(f))
+            name !in excluded && (completed || sameRepresentation(f))
 
         fun handoff(config: VideoConfig?, f: Format?, name: String?): Boolean {
             if (completed) return true
@@ -185,6 +201,7 @@ internal object HdrCodecFallbackP5B {
     class Factory(private val delegate: MediaCodecAdapter.Factory,
                   private val displayHdr10: () -> Boolean,
                   private val displayDv: () -> Boolean,
+                  private val displayHlg: () -> Boolean,
                   private val runtimeRecovery: () -> RuntimeRecovery?,
                   private val report: (VideoConfig?) -> Unit,
                   private val trace: (String) -> Unit = {}) : MediaCodecAdapter.Factory {
@@ -224,16 +241,30 @@ internal object HdrCodecFallbackP5B {
                     throw Rejection("Software decoder cannot preserve the actual video format")
                 null
             }
+            val platformOutput = when {
+                proof != null -> proof.requestSdr
+                f.sampleMimeType == MimeTypes.VIDEO_DOLBY_VISION -> false
+                f.colorInfo?.colorTransfer == C.COLOR_TRANSFER_ST2084 -> !displayHdr10()
+                f.colorInfo?.colorTransfer == C.COLOR_TRANSFER_HLG -> !displayHlg()
+                else -> false
+            }
+            var toneMap = platformOutput && android.os.Build.VERSION.SDK_INT >= 31 &&
+                runtimeRecovery()?.platformOnly?.contains(info.name) != true
+            if (toneMap) {
+                trace("request codec SDR transfer")
+                configuration.mediaFormat.setInteger(MediaFormat.KEY_COLOR_TRANSFER_REQUEST, MediaFormat.COLOR_TRANSFER_SDR_VIDEO)
+            }
             val codec = try { delegate.createAdapter(configuration) } catch (e: Exception) {
                 // Codec-side tone mapping is optional. Retry the proven base
                 // once without the request and let Android render HDR buffers.
-                if (proof?.requestSdr != true || android.os.Build.VERSION.SDK_INT < 31) throw e
+                if (!toneMap) throw e
                 trace("tone-map configuration failed; retry platform presentation")
+                toneMap = false
                 configuration.mediaFormat.removeKey(MediaFormat.KEY_COLOR_TRANSFER_REQUEST)
                 delegate.createAdapter(configuration)
             }
             trace("configured codec=${info.name} verifiedBase=${proof != null}")
-            report(VideoConfig(info, f, proof))
+            report(VideoConfig(info, f, proof).also { it.requestedToneMap = toneMap })
             return if (proof != null) ObservedBase(codec, proof) else codec
         }
 
@@ -284,11 +315,7 @@ internal object HdrCodecFallbackP5B {
             c.mediaFormat.setInteger(MediaFormat.KEY_COLOR_STANDARD, MediaFormat.COLOR_STANDARD_BT2020)
             c.mediaFormat.setInteger(MediaFormat.KEY_COLOR_TRANSFER, MediaFormat.COLOR_TRANSFER_ST2084)
             c.mediaFormat.setInteger(MediaFormat.KEY_COLOR_RANGE, MediaFormat.COLOR_RANGE_LIMITED)
-            // Request platform codec tone mapping only for a positively proven
-            // HDR10 base on a non-HDR display. Verify the actual SDR output;
-            // a codec ignoring this request is not a successful downgrade.
-            if (!displayHdr10() && android.os.Build.VERSION.SDK_INT >= 31) c.mediaFormat.setInteger(MediaFormat.KEY_COLOR_TRANSFER_REQUEST,
-                MediaFormat.COLOR_TRANSFER_SDR_VIDEO)
+
         }
     }
 

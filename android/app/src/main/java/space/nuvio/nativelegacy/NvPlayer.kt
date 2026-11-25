@@ -1007,6 +1007,9 @@ object NvPlayer {
         var routeAwaitingPlay = false
         val proc = GanhoAudioProcessor()
         val downmix = StereoDownmixP8()
+        val resampler = androidx.media3.common.audio.SonicAudioProcessor()
+        @Volatile var outputRate = -1
+        val frameDeadline = FrameHoldP2B.ReadyDeadline()
         var alternateAudioTried = false
         val tap = AudioSyncTap(
             { pcm, n, pts -> if (adotado) try { nativeAudioPcm(pcm, n, pts) } catch (_: UnsatisfiedLinkError) {} },
@@ -1748,7 +1751,9 @@ object NvPlayer {
             janelaUltimoPedido = geometria
             janelaPedido.incrementAndGet()
         }
+        val opening = pedidos.get()
         principal.post {
+            if (opening != pedidos.get() || pedido != janelaPedido.get() || w <= 0 || h <= 0) return@post
             definirJanela(x, y, w, h, encaixa != 0)
             janelaDefinida = pedido
             val sv = superficie ?: return@post
@@ -1934,6 +1939,7 @@ object NvPlayer {
                     HdrCodecFallbackP5B.Factory(super.getCodecAdapterFactory(),
                         { displayHdr(act, android.view.Display.HdrCapabilities.HDR_TYPE_HDR10) },
                         { displayHdr(act, android.view.Display.HdrCapabilities.HDR_TYPE_DOLBY_VISION) },
+                        { displayHdr(act, android.view.Display.HdrCapabilities.HDR_TYPE_HLG) },
                         { r.runtimeVideoRecovery },
                         { config -> r.videoConfig = config },
                         { detail -> principal.post {
@@ -1977,14 +1983,15 @@ object NvPlayer {
                     AudioSyncSink(DefaultAudioSink.Builder(context).setEnableFloatOutput(false)
                         .setEnableAudioTrackPlaybackParams(false)
                         .setAudioTrackProvider(r.routeObserver)
-                        .setAudioProcessors(arrayOf(r.proc, r.downmix)).build(), r.tap,
-                        { r.outputPolicy.pcm || r.routePcm })
+                        .setAudioProcessors(arrayOf(r.proc, r.downmix, r.resampler)).build(), r.tap,
+                        { r.outputPolicy.pcm || r.routePcm },
+                        { r.resampler.setOutputSampleRateHz(r.outputRate) })
             }.setExtensionRendererMode(androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
                 .setMediaCodecSelector(MediaCodecSelector { mime, secure, tunneling ->
                     val candidates = videoCodecSelector.getDecoderInfos(mime, secure, tunneling)
-                    val failed = r.runtimeVideoRecovery?.failed
-                    if (failed != null && MimeTypes.isVideo(mime))
-                        candidates.filter { it.name != failed } else candidates
+                    val excluded = r.runtimeVideoRecovery?.excluded
+                    if (excluded != null && MimeTypes.isVideo(mime))
+                        candidates.filter { it.name !in excluded } else candidates
                 })
                 .setEnableDecoderFallback(true)
             r.fabricaMidia = DefaultMediaSourceFactory(act)
@@ -2162,8 +2169,7 @@ object NvPlayer {
                 p.setVideoSurfaceView(sv)
                 sv.holder.addCallback(depoisDoMedia3)
             }
-            temJanela = false
-            aplicarEncaixe()
+            if (mesmaFonte && temJanela) calcularJanela() else aplicarEncaixe()
 
             if (preparada == null) {
                 val mediaItem = itemMidia(url)
@@ -2256,8 +2262,10 @@ object NvPlayer {
         pronto = false
         somLiberado = false
         duracaoEnviada = -1
-        videoW = 0; videoH = 0
-        temJanela = false
+        if (!preservarRetido) {
+            videoW = 0; videoH = 0
+            temJanela = false
+        }
         assinatura = ""
         audios = ArrayList(); capacidadesAudio = ArrayList(); legendas = ArrayList()
         decoderDv = false
@@ -2386,7 +2394,19 @@ object NvPlayer {
         override fun run() {
             if (!atual(minha)) return
             val p = player ?: return
-            recursosAtuais?.let { audioRouteTick(minha, it) }
+            recursosAtuais?.let { r ->
+                audioRouteTick(minha, r)
+                val waiting = !estavelEmitido && !videoOutputFailed && routeForeground && !afrSuspended &&
+                    p.playWhenReady && p.playbackSuppressionReason == Player.PLAYBACK_SUPPRESSION_REASON_NONE &&
+                    p.playbackState == Player.STATE_READY && r.routeHasVideo && !r.routeTx.active
+                if (r.frameDeadline.expired(waiting, SystemClock.elapsedRealtime())) {
+                    val reason = if (quadroVisto || superficie?.holder?.surface?.isValid != true)
+                        HdrPolicyP5.FAIL_SURFACE else HdrPolicyP5.FAIL_DECODER
+                    if (reason == HdrPolicyP5.FAIL_SURFACE ||
+                        !retryConfiguredVideo(minha, r, p, p.videoFormat, videoDecoderName, reason, 0))
+                        falhaVideo(minha, reason, 0, geracaoNative)
+                }
+            }
             // Keep the signed live-window clock for stall detection. Only the
             // native UI position is clamped; a moving negative position is valid.
             val live = p.isCurrentMediaItemLive
@@ -2917,13 +2937,14 @@ object NvPlayer {
                 val f = g.getTrackFormat(i)
                 (g.mediaTrackGroup != old.first.mediaTrackGroup || i != old.second) &&
                     language.isNotBlank() && f.language.orEmpty().trim().lowercase() == language &&
-                    f.roleFlags == original.roleFlags && g.isTrackSupported(i)
+                    AudioRouteP5D.sameAudioRole(original.roleFlags, original.label, f.roleFlags, f.label) && g.isTrackSupported(i)
             }.maxByOrNull { (g, i) ->
                 val f = g.getTrackFormat(i)
                 AudioFidelityP5A.sourceQuality(f.sampleMimeType.orEmpty(), f.channelCount,
                     f.sampleRate, AudioOutputProbeP5A.bitDepth(f.pcmEncoding), f.bitrate)
             }
             if (alternative != null) {
+                relatarAudio(minha, "P8 audio same-language same-role alternate ordinal=${audios.indexOf(alternative)}")
                 r.alternateAudioTried = true
                 cancelAudioRoute(r, restore = true)
                 r.routeSelected = alternative
@@ -2946,6 +2967,10 @@ object NvPlayer {
         enc == android.media.AudioFormat.ENCODING_PCM_24BIT_PACKED ||
         enc == android.media.AudioFormat.ENCODING_PCM_32BIT ||
         enc == android.media.AudioFormat.ENCODING_PCM_FLOAT
+
+    private fun sinkConfigurationFailed(p: ExoPlayer) = generateSequence(p.playerError?.cause) { it.cause }.any {
+        it is AudioSink.InitializationException || it is AudioSink.ConfigurationException
+    }
 
     private fun compatibleOutput(fmt: Format, sink: AudioSink.AudioTrackConfig,
                                cap: AudioOutputProbeP5A.Observation): Boolean =
@@ -2975,9 +3000,8 @@ object NvPlayer {
         val device = r.routeObserver.route()
         r.downmix.enabled = forcePcm && AudioRouteP5D.needsStereo(fmt.channelCount,
             device?.type == android.media.AudioDeviceInfo.TYPE_HDMI_ARC, device?.channelCounts,
-            fatal && generateSequence(p.playerError?.cause) { it.cause }.any {
-                it is AudioSink.InitializationException || it is AudioSink.ConfigurationException
-            })
+            fatal && sinkConfigurationFailed(p))
+        r.outputRate = if (forcePcm) AudioRouteP5D.fallbackSampleRate(fmt.sampleRate, device?.sampleRates) else -1
         relatarAudio(minha, "Q49 begin ticket=$ticket pcm=$forcePcm stereo=${r.downmix.enabled} pos=${p.currentPosition} buffered=${p.bufferedPosition}")
         r.routeMuted = true
         r.routeOutputBefore = r.routeObserver.output?.serial ?: 0L
@@ -3095,13 +3119,27 @@ object NvPlayer {
         val input = r.routeInput ?: p.audioFormat
         val formatMatches = input != null && input.sampleMimeType == fmt.sampleMimeType &&
             input.channelCount == fmt.channelCount && input.sampleRate == fmt.sampleRate
-        val compatible = output != null && formatMatches && compatibleOutput(fmt, output.config, cap)
+        val core = output?.let {
+            !audioDsp(r) && it.config.encoding == AudioOutputProbeP5A.coreEncoding(fmt.sampleMimeType) &&
+                AudioOutputProbeP5A.directCore(activity, route, fmt, it.config.sampleRate, it.config.channelConfig)
+        } == true
+        val compatible = output != null && formatMatches && (core || compatibleOutput(fmt, output.config, cap))
+        val coreCandidate = !audioDsp(r) && output != null &&
+            AudioOutputProbeP5A.directCore(activity, route, fmt, fmt.sampleRate, output.config.channelConfig)
+        val encoded = decision.encodedPassthrough || coreCandidate || core
         if (r.routeTx.active) {
             val ticket = r.routeTx.ticket
             if (r.routeFatal && r.routeTx.allowPrepare(ticket) && decision.playableCandidate) {
                 // Fatal during the audio-only transaction: same player, one
                 // prepare, no source replacement. Keep the existing deadline.
                 r.routeFatal = false
+                // A failed encoded or multichannel AudioTrack must not be
+                // prepared again with the same unusable sink configuration.
+                r.routePcm = true
+                r.downmix.enabled = AudioRouteP5D.needsStereo(fmt.channelCount,
+                    route?.type == android.media.AudioDeviceInfo.TYPE_HDMI_ARC, route?.channelCounts,
+                    sinkConfigurationFailed(p))
+                r.outputRate = AudioRouteP5D.fallbackSampleRate(fmt.sampleRate, route?.sampleRates)
                 r.routePhase = 2
                 r.routeDisabled = false
                 r.routeOutputBefore = output?.serial ?: r.routeOutputBefore
@@ -3117,7 +3155,7 @@ object NvPlayer {
                 // A newly stable device may require a different output mode
                 // than the device for which this transaction began.
                 val next = AudioRouteP5D.plan(decision.playableCandidate, decision.decoder,
-                    decision.encodedPassthrough, compatible, output?.let { pcmOutput(it.config.encoding) } == true)
+                    encoded, compatible, output?.let { pcmOutput(it.config.encoding) } == true)
                 if (next == AudioRouteP5D.Action.ERROR) {
                     failAudioRoute(minha, r, "new route has no faithful path"); return
                 }
@@ -3125,6 +3163,7 @@ object NvPlayer {
                     val pcm = next == AudioRouteP5D.Action.RESELECT_PCM
                     if (pcm != r.routePcm) {
                         r.routePcm = pcm
+                        r.outputRate = if (pcm) AudioRouteP5D.fallbackSampleRate(fmt.sampleRate, route?.sampleRates) else -1
                         r.downmix.enabled = pcm && AudioRouteP5D.needsStereo(fmt.channelCount,
                             route?.type == android.media.AudioDeviceInfo.TYPE_HDMI_ARC, route?.channelCounts, false)
                         if (r.routePhase == 2) {
@@ -3196,7 +3235,7 @@ object NvPlayer {
             return
         }
         val action = AudioRouteP5D.plan(decision.playableCandidate, decision.decoder,
-            decision.encodedPassthrough, compatible && !r.routeFatal, output?.let { pcmOutput(it.config.encoding) } == true)
+            encoded, compatible && !r.routeFatal, output?.let { pcmOutput(it.config.encoding) } == true)
         when (action) {
             AudioRouteP5D.Action.ERROR -> failAudioRoute(minha, r, "no faithful path on current route")
             AudioRouteP5D.Action.KEEP -> {
@@ -3447,7 +3486,9 @@ object NvPlayer {
                     }
                 }
                 if (rRoute.routeFailed && audioRenderer) return
-                if (audioRenderer && !rRoute.routeTx.active && !rRoute.routePcm) {
+                if (audioRenderer && !rRoute.routeTx.active && (!rRoute.routePcm ||
+                        (!rRoute.downmix.enabled && p != null && sinkConfigurationFailed(p) &&
+                            (rRoute.routeSelected?.let { it.first.getTrackFormat(it.second).channelCount } ?: 0) in 3..8))) {
                     val target = rRoute.routeSelected ?: p?.let { selectedAudio(it) }
                     if (target != null && target.first.isTrackSupported(target.second)) {
                         startAudioRoute(minha, rRoute, target, true, true, SystemClock.elapsedRealtime())
@@ -3538,33 +3579,12 @@ object NvPlayer {
                 // fallback (Media3 already tries that list). Exclude only the
                 // failed actual decoder for one same-player reprepare. Keep
                 // all original media, track parameters, position and effects.
-                if ((outputRejected || (videoFailure == HdrPolicyP5.FAIL_DECODER &&
-                    error.errorCode == PlaybackException.ERROR_CODE_DECODING_FAILED)) &&
-                    p != null && r != null && r.runtimeVideoRecovery == null &&
-                    !retentou) {
+                if ((outputRejected || error.errorCode == PlaybackException.ERROR_CODE_DECODING_FAILED) &&
+                    r != null && p != null && tipo == C.TRACK_TYPE_VIDEO) {
                     val failed = generateSequence(error.cause) { it.cause }
-                        .filterIsInstance<MediaCodecDecoderException>().firstOrNull()?.codecInfo
-                    val config = r.videoConfig
-                    val format = exo?.rendererFormat ?: p.videoFormat ?: config?.source
-                    val failedName = failed?.name ?: videoDecoderName ?: config?.info?.name
-                    if (failedName != null && config != null && format != null &&
-                        config.matches(format, failedName)) {
-                        relatarAudio(minha, "P8 video reprepare exclude=$failedName reason=$videoFailure")
-                        r.runtimeVideoRecovery = HdrCodecFallbackP5B.RuntimeRecovery(failedName, format)
-                        retentou = true
-                        // Native ownership is installed before invalidation so
-                        // its watchdog cannot take the opening in between.
-                        ev(EV_VIDEO_RECOVERY, videoFailure)
-                        invalidarQuadroSuperficie()
-                        principal.postDelayed({
-                            if (atual(minha) && !videoOutputFailed && player === p && recursosAtuais === r) {
-                                try { p.prepare() } catch (_: Exception) {
-                                    falhaVideo(minha, videoFailure, error.errorCode, geracaoDaAbertura)
-                                }
-                            }
-                        }, 400)
-                        return
-                    }
+                        .filterIsInstance<MediaCodecDecoderException>().firstOrNull()?.codecInfo?.name
+                    if (retryConfiguredVideo(minha, r, p, exo?.rendererFormat ?: p.videoFormat,
+                            failed ?: videoDecoderName, videoFailure, error.errorCode)) return
                 }
                 // Media3 has already tried its compatible decoder list. One same-player
                 // resource retry may help a transient init/decode failure; no new URL,
@@ -3599,6 +3619,37 @@ object NvPlayer {
             }
             ev(EV_ERRO, error.errorCode, tipo)
         }
+    }
+
+    private fun retryConfiguredVideo(owner: Int, r: RecursosPlayer, p: ExoPlayer, input: Format?,
+                                     decoder: String?, reason: Int, code: Int): Boolean {
+        val config = r.videoConfig ?: return false
+        val format = input ?: config.source
+        val name = decoder ?: config.info.name
+        if (!config.matches(format, name)) return false
+        val previous = r.runtimeVideoRecovery
+        val retry = if (previous == null)
+            HdrCodecFallbackP5B.RuntimeRecovery.after(name, format, config.requestedToneMap)
+        else previous.next(name, format, config.requestedToneMap) ?: return false
+        r.runtimeVideoRecovery = retry
+        retentou = true
+        relatarAudio(owner, "P8 video retry codec=$name platformOnly=${name in retry.platformOnly} excluded=${retry.excluded.size} reason=$reason")
+        cancelAudioRoute(r, restore = true, recheck = true)
+        ev(EV_VIDEO_RECOVERY, reason)
+        invalidarQuadroSuperficie()
+        val generation = geracaoNative
+        principal.postDelayed({
+            if (atual(owner) && !videoOutputFailed && player === p && recursosAtuais === r &&
+                r.runtimeVideoRecovery === retry) {
+                try {
+                    // A READY codec that never produced a frame must be released.
+                    // Fatal renderer errors have already put Media3 in IDLE.
+                    if (p.playbackState != Player.STATE_IDLE) p.stop()
+                    p.prepare()
+                } catch (_: RuntimeException) { falhaVideo(owner, reason, code, generation) }
+            }
+        }, 400)
+        return true
     }
 
     private fun analitico(minha: Int, geracaoDaAbertura: Int) = object : AnalyticsListener {

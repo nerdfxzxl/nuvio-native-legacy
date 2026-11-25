@@ -7383,7 +7383,11 @@ void player_desenhar(Uint32 agora) {
     else snprintf(lin, sizeof lin, "%s", i18n("Sintonizando…"));
     pd.texto = lin; pd.respira = 1; pd.semFim = 1; pd.aberta = 1;
     plrilha_pedir(&pd);
-  } else if (!erroFonte && player_carregando() && !stream_folha_aberta() && stream_folha_anim() < 0.05f &&
+  }
+#ifndef NV_ANDROID
+  // Android VOD owns the cinematic overlay and its inline details throughout
+  // opening. Other platforms retain their configured legacy card.
+  else if (!erroFonte && player_carregando() && !stream_folha_aberta() && stream_folha_anim() < 0.05f &&
              // A TELA DO DOLBY VISION substitui o cartao: sem ela, o caminho do
              // DV mostrava "Abrindo fonte" DUAS vezes (a TV e depois o demux).
              (!dvtela_visivel() || dvtela_variante() == DVT_VAR_DETALHADA) &&
@@ -7403,6 +7407,7 @@ void player_desenhar(Uint32 agora) {
       pd.corpo = corpoCarregando;
       plrilha_pedir(&pd); }
   }
+#endif
   // REBUFFER (#182 pediu um indicador): com o video ja rodando, o buffer que
   // esvazia congelava a imagem sem nenhum sinal. So o anel, e so depois de 600 ms parado — o
   // vai-e-volta curto de um seek nao acende.

@@ -14,7 +14,8 @@ import java.nio.ByteBuffer
 // Non-normal speed requires decoded PCM so Sonic can change the audio clock.
 @androidx.annotation.OptIn(UnstableApi::class)
 class AudioSyncSink(sink: AudioSink, private val tap: AudioSyncTap,
-                    private val forcePcm: () -> Boolean = { false }) : ForwardingAudioSink(sink) {
+                    private val forcePcm: () -> Boolean = { false },
+                    private val configurePcm: () -> Unit = {}) : ForwardingAudioSink(sink) {
     override fun supportsFormat(format: Format): Boolean =
         getFormatSupport(format) != AudioSink.SINK_FORMAT_UNSUPPORTED
 
@@ -29,6 +30,7 @@ class AudioSyncSink(sink: AudioSink, private val tap: AudioSyncTap,
 
     override fun configure(inputFormat: Format, specifiedBufferSize: Int, outputChannels: IntArray?) {
         val pcm = MimeTypes.AUDIO_RAW == inputFormat.sampleMimeType
+        if (pcm) configurePcm()
         val enc = when (inputFormat.pcmEncoding) {
             C.ENCODING_PCM_16BIT -> AudioSyncTap.ENC_PCM16
             C.ENCODING_PCM_FLOAT -> AudioSyncTap.ENC_FLOAT

@@ -57,6 +57,27 @@ internal object AudioOutputProbeP5A {
         else -> 0
     }
 
+    // A subset/core bitstream can preserve the program when the full track
+    // cannot pass through ARC. Only Media3 actually constructing that output
+    // and a matching observed route count as successful core delivery.
+    fun coreEncoding(mime: String?) = when (encoding(mime.orEmpty())) {
+        AudioFormat.ENCODING_DTS_HD -> AudioFormat.ENCODING_DTS
+        AudioFormat.ENCODING_E_AC3_JOC -> AudioFormat.ENCODING_E_AC3
+        else -> 0
+    }
+
+    fun directCore(ctx: Context?, route: AudioDeviceInfo?, format: Format, rate: Int, mask: Int): Boolean {
+        val core = coreEncoding(format.sampleMimeType)
+        if (core == 0 || route == null || core !in route.encodings || rate <= 0 || mask == 0 ||
+            Build.VERSION.SDK_INT < 29) return false
+        if (Build.VERSION.SDK_INT >= 33 &&
+            mediaRoute(ctx?.getSystemService(Context.AUDIO_SERVICE) as? AudioManager)?.id != route.id) return false
+        return try {
+            val af = AudioFormat.Builder().setEncoding(core).setSampleRate(rate).setChannelMask(mask).build()
+            android.media.AudioTrack.isDirectPlaybackSupported(af, mediaAttributes())
+        } catch (_: RuntimeException) { false }
+    }
+
     private fun explicitProfile(device: AudioDeviceInfo, format: Format): Boolean {
         val channels = format.channelCount
         val hz = format.sampleRate

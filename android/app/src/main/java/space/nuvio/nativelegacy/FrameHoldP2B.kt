@@ -6,6 +6,19 @@ package space.nuvio.nativelegacy
  * substitution. A negative result means keep Media3's hardware plane as-is.
  */
 internal object FrameHoldP2B {
+    // Count only continuously READY, foreground, unsuppressed video. Network
+    // buffering, audio-only items and paused playback do not consume the budget.
+    class ReadyDeadline {
+        private var since = -1L
+        fun expired(waiting: Boolean, now: Long): Boolean {
+            if (!waiting) { since = -1L; return false }
+            if (since < 0) since = now
+            if (now - since < 16000L) return false
+            since = -1L
+            return true
+        }
+    }
+
     fun displayWidth(width: Int, height: Int, pixelAspect: Float): Int? {
         if (width <= 0 || height <= 0 || !pixelAspect.isFinite() || pixelAspect <= 0f) return null
         return (width * pixelAspect + 0.5f).toInt().takeIf { it > 0 }

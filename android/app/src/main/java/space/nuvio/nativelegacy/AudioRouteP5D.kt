@@ -29,6 +29,20 @@ internal object AudioRouteP5D {
         channels in 3..8 && (standardArc || sinkFailed ||
             (supported != null && supported.isNotEmpty() && 2 in supported && channels !in supported))
 
+    // Unflagged commentary/descriptive/dub tracks often carry the role only
+    // in a Matroska title. Unknown differing titles need an explicit choice.
+    private val technicalLabel = Regex(
+        """(?i)\b(?:dolby|digital|digitalplus|truehd|atmos|dts|hd|ma|master|audio|pcm|lpcm|ac3|eac3|aac|flac|stereo|mono|surround|ch|channels?|kbps|khz|bit)\b|[\d\s.()_/+:\-]+"""
+    )
+    fun sameAudioRole(role: Int, label: String?, otherRole: Int, otherLabel: String?): Boolean =
+        role == otherRole && technicalLabel.replace(label.orEmpty().lowercase(), "") ==
+            technicalLabel.replace(otherLabel.orEmpty().lowercase(), "")
+
+    fun fallbackSampleRate(input: Int, rates: IntArray?): Int {
+        if (input <= 0 || rates == null || rates.isEmpty() || input in rates) return -1
+        return listOf(48000, 44100).firstOrNull { it in rates } ?: -1
+    }
+
     enum class Action { KEEP, RESELECT_PCM, RESELECT_ENCODED, ERROR }
     fun plan(faithful: Boolean, pcmCompatible: Boolean, encodedCompatible: Boolean,
              currentCompatible: Boolean, currentPcm: Boolean): Action {

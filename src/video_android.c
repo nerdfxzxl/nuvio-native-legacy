@@ -1106,7 +1106,7 @@ JNIEXPORT void JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativeEvento(JNIEn
       quadroSuperficie = superficieEstavel = 0;
       break;
     case 19: /* Q49: audio-only owner never invalidates the video plane. */
-      if (a && !audioRouteDeadline) {
+      if (a && !audioRouteDeadline && !videoerro_p5b_retry_owned(&retryVideoP5B, sessao)) {
         audioRouteDeadline = (SDL_GetTicks() + 15000u) | 1u;
         acaoMs = SDL_GetTicks();
       } else if (!a) {
@@ -1163,7 +1163,8 @@ static int abrirSessao(int inicioMs, int fracao, int mesmaFonte) {
   ativo = 1; superficieEstavel = quadroSuperficie = 0; prontoLoad = primeiroQuadro = falhou = terminou = tocando = 0;
   cargaFase = somenteAudio = 0;
   velEnviada = 100;
-  largura = altura = durMs = posMs = posNativoMs = 0; bufferando = 1; bufferDesde = SDL_GetTicks();
+  if (!mesmaFonte) largura = altura = 0;
+  durMs = posMs = posNativoMs = 0; bufferando = 1; bufferDesde = SDL_GetTicks();
   audioRouteDeadline = 0;
   tocandoDesde = 0; semDecoderAudio = 0; erroTxt[0] = 0; reconErroVideo = 0; terminalVideoP5B = 0;
   pausaPedida = p6SystemPaused; pausaVista = 0;
@@ -1175,7 +1176,7 @@ static int abrirSessao(int inicioMs, int fracao, int mesmaFonte) {
   pthread_mutex_unlock(&travaStats);
   nAudio = nLeg = 0; audioAtual = 0; legAtual = -1;
   nNovasA = nNovasL = 0;
-  temEnv = 0;   // a SurfaceView nova ainda nao recebeu janela nenhuma
+  if (!mesmaFonte) temEnv = 0; /* same-source open reapplies the retained rectangle in Kotlin */
   if (!travaLeg) travaLeg = SDL_CreateMutex();
   if (travaLeg) {
     SDL_LockMutex(travaLeg);

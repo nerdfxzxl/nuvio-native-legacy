@@ -70,6 +70,14 @@ fun main(args: Array<String>) {
         .setCodecs("dvhe.08.06").setWidth(64).setHeight(64).setFrameRate(24f)
         .setAverageBitrate(2000000).setPeakBitrate(3000000).setInitializationData(listOf(pq)).build()
     val recovery = HdrCodecFallbackP5B.RuntimeRecovery("failed.hw", original)
+    val platform = HdrCodecFallbackP5B.RuntimeRecovery.after("codec1", original, true)
+    check(platform.permits("codec1", original) && "codec1" in platform.platformOnly)
+    val next = platform.next("codec1", original, false)!!
+    check(!next.permits("codec1", original))
+    check(next.next("codec1", original, false) == null)
+    check(next.next("codec2", original.buildUpon().setWidth(32).build(), false) == null)
+    val last = next.next("codec2", original, false)!!.next("codec3", original, false)!!.next("codec4", original, false)!!
+    check(last.next("codec5", original, false) == null)
     check(!recovery.completed)
     check(recovery.sameRepresentation(original))
     check(recovery.permits("compatible.sw", original.buildUpon().build()))

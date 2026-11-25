@@ -2,6 +2,10 @@ package space.nuvio.nativelegacy
 
 /** Host-only Kotlin regression suite; no Android or Gradle/SDK required. */
 fun main() {
+    val deadline = FrameHoldP2B.ReadyDeadline()
+    check(!deadline.expired(true, 0) && !deadline.expired(false, 15000))
+    check(!deadline.expired(true, 30000) && !deadline.expired(true, 45999))
+    check(deadline.expired(true, 46000) && !deadline.expired(true, 46001))
     val p = FrameHoldP2B
     for ((width, height, aspect) in listOf(Triple(1920, 1080, 1f), Triple(3840, 1606, 1f),
             Triple(720, 576, 16f / 15f), Triple(1080, 1920, 1f))) {

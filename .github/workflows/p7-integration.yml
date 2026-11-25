@@ -76,7 +76,7 @@ jobs:
       - name: Production callback race and post-134 contracts
         run: |
           failed=0
-          for check in 'bash tests/p7_callback_ownership.sh' 'bash tests/p7_track_command.sh' 'python3 tests/player_home_polish_134.py' 'python3 tests/player_panel_131_contract.py' 'bash tests/catalog_episode_identity512.sh' 'bash tests/postplay_p6_integration.sh' 'bash tests/estatvivo.sh' 'bash tests/playback_diag_p7.sh'; do
+          for check in 'bash tests/audioerro_p5a.sh' 'bash tests/videoerro_p5b.sh' 'bash tests/playback_p2d_handoff.sh' 'bash tests/p7_callback_ownership.sh' 'bash tests/p7_track_command.sh' 'python3 tests/player_home_polish_134.py' 'python3 tests/player_panel_131_contract.py' 'bash tests/catalog_episode_identity512.sh' 'bash tests/postplay_p6_integration.sh' 'bash tests/estatvivo.sh' 'bash tests/playback_diag_p7.sh'; do
             echo "::group::$check"
             if bash -c "$check"; then
               echo "$check passed" >> "$GITHUB_STEP_SUMMARY"

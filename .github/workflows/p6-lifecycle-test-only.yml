@@ -184,7 +184,7 @@ jobs:
           GRADLE
           bash android/gradlew -p "$deps" resolveP4 --no-daemon
 
-      - name: Compile real P5-A/B/C Android Media3 sources and run PCM plus HEVC fixture replays
+      - name: Compile real Android Media3 sources and replay live DSP, downmix and adapted HEVC
         shell: bash
         env:
           NUVIO_TEST_JAVA: java

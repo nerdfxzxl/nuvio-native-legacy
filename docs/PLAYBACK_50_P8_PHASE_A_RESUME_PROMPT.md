@@ -17,4 +17,4 @@ Work only in nerdfxzxl/nuvio-native-legacy on feature/official-stream-selector. 
 
 ## Current checkpoint
 
-Inspect run #28 and continue audit of actual audio output fallback, rebuffer overlay ownership and same-track support, then update the acceptance/progress reports. See the latest handover entry for revision, open issues and evidence.
+Inspect all three test-only runs on this source revision and repair demonstrated failures in batches. Recheck the production requirements and exact branch tip and complete the acceptance and progress documents. See the latest handover entry for revision, open issues and evidence.
