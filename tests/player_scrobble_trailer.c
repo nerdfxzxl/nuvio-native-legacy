@@ -1,3 +1,4 @@
+#include "parental.h"
 // B6: trailer (PRONTO de 129 s sobre um titulo de 1 h 46) nao scrobbla ao
 // vivo — nem start nem pause, Trakt ou Simkl. Titulo real continua falando.
 // Contadores POR EVENTO E SERVICO, checados ANTES do player_encerrar: o
@@ -72,5 +73,6 @@ int main(void) {
   assert(nTk[SCR_EV_PAUSOU] == 0 && nSk[SCR_EV_PAUSOU] == 0);
 
   puts("ok");
+  parental_encerrar();
   return 0;
 }
