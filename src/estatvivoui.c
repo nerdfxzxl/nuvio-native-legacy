@@ -145,7 +145,7 @@ void estatvivo_diag_finalizar(void) {
 
 static void diagAmostrar(Uint32 now, const EvEntrada *in) {
   NvPerfilSessao owner = nv_perfil_sessao_ler();
-  if (diagLive.report.samples && diagOwner != owner) {
+  if (diagPath[0] && diagOwner != owner) {
     // A stale epoch is no longer authorized to publish or display.
     memset(&diagLive,0,sizeof diagLive);
     diagPath[0]=0;
@@ -725,7 +725,8 @@ void estatvivo_atualizar(Uint32 agora) {
   proxAmostra = agora + 1000u;
   amostraEm = agora;
   memset(&in, 0, sizeof in);
-  video_estatisticas(&in.vs);
+  video_stats_vazio(&in.vs);
+    video_estatisticas(&in.vs);
   in.pos = video_pos();
   in.bufferando = video_bufferando_ms() > 0;
   in.tocando = video_tocando() && !in.bufferando;
