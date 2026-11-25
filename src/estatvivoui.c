@@ -69,7 +69,7 @@ typedef struct {
   char frameLead[32], display[48], taxa[24];
   char audio[96], audioCodec[32], audioChannels[16], audioSampleRate[24];
   char audioLanguage[32], audioRoute[40], legenda[64];
-  char buffer[32], backBuffer[32], network[48], connections[24];
+  char buffer[32], backBuffer[32], network[80], connections[24];
   char requests[32], latency[32], rebuffers[32];
   int plataforma;
 } EvTela;
@@ -160,7 +160,7 @@ static void diagAmostrar(Uint32 now, const EvEntrada *in) {
   if (!nv_perfil_sessao_atual(diagOwner)) return;
   p7_diag_sample(&diagLive,now,player_geracao_fonte(),
       in->tocando && video_pronto(),in->bufferando,in->reconectando,
-      in->falhou,in->vs.bytes);
+      in->falhou,in->medicaoDireta ? in->kbpsDireto : -1);
 }
 
 static int editando, focoEd, perfilTiles = -1, nTiles[EV_TAM_N], tiles[EV_TAM_N][6];
@@ -644,8 +644,9 @@ static void montarTela(int taxaKbps) {
     char atual[24], media[24];
     ev_fmt_mbps(atual, sizeof atual, est.kbps, sepDec());
     ev_fmt_mbps(media, sizeof media, est.mediaKbps, sepDec());
-    snprintf(tela.network, sizeof tela.network, "%s Mbps · avg %s Mbps", atual, media);
-  } else snprintf(tela.network, sizeof tela.network, "—");
+    snprintf(tela.network, sizeof tela.network, "%s Mbps · avg %s Mbps (%s)", atual, media,
+             est.velOrigem == EVO_MEDIDO ? "measured" : "estimated");
+  } else snprintf(tela.network, sizeof tela.network, "Unknown");
   {
     int dw=0, dh=0;
     gfx_tamanho_tela(&dw, &dh);
@@ -726,7 +727,13 @@ void estatvivo_atualizar(Uint32 agora) {
   amostraEm = agora;
   memset(&in, 0, sizeof in);
   video_stats_vazio(&in.vs);
-    video_estatisticas(&in.vs);
+  video_estatisticas(&in.vs);
+#ifdef NV_ANDROID
+  // The native meter already owns opening identity, real byte timing,
+  // smoothing and expiration. Never derive Android speed from playback.
+  in.medicaoDireta = 1;
+  in.kbpsDireto = ev_kbps_de_bps(video_download_bps());
+#endif
   in.pos = video_pos();
   in.bufferando = video_bufferando_ms() > 0;
   in.tocando = video_tocando() && !in.bufferando;
@@ -1541,7 +1548,7 @@ static void playerInfoMontarLinhas(void) {
   playerInfoAdicionar(0, "Server", tela.server);
   playerInfoAdicionar(0, "File", tela.filename);
   playerInfoAdicionar(0, "Size", tela.size);
-  playerInfoAdicionar(0, "File bitrate", tela.taxa);
+  playerInfoAdicionar(0, "File bitrate (estimate)", tela.taxa);
   playerInfoAdicionar(0, "Player Engine", tela.engine);
   playerInfoAdicionar(1, "VIDEO", "");
   playerInfoAdicionar(0, "Codec", tela.videoCodec);
@@ -1606,7 +1613,7 @@ static void playerInfoMontarLinhas(void) {
         (double)diagLast.speedSum/diagLast.speedN/1000.0,
         (double)diagLast.peakKbps/1000.0);
     else snprintf(b,sizeof b,"Unknown");
-    playerInfoAdicionar(0,"Avg / peak speed",b);
+    playerInfoAdicionar(0,"Avg / peak sampled speed",b);
   } else playerInfoAdicionar(0,"Report","Unknown");
   playerInfoGarantirScroll();
 }
@@ -1648,7 +1655,8 @@ static void desenharPlayerHud(float a) {
   if (est.kbps >= 0) {
     ev_fmt_mbps(now, sizeof now, est.kbps, '.');
     ev_fmt_mbps(avg, sizeof avg, est.mediaKbps, '.');
-    snprintf(b, sizeof b, "%s Mbps   avg %s", now, avg);
+    snprintf(b, sizeof b, "%s Mbps   avg %s (%s)", now, avg,
+             est.velOrigem == EVO_MEDIDO ? "measured" : "estimated");
     HUD_ADD("network", b, 0);
   }
   if (est.perdidos >= 0) {

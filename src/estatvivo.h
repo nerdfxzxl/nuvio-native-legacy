@@ -50,6 +50,9 @@ typedef struct {
   int reconectando;    // video_reconectando() != 0
   int falhou;          // video_falhou()
   int taxaKbps;
+  // Android's source-owned rolling socket-byte measurement. When enabled,
+  // unknown (-1) must not fall back to inferred file or playback bitrate.
+  int medicaoDireta, kbpsDireto;
 } EvEntrada;
 
 typedef struct {
@@ -86,6 +89,7 @@ void ev_amostra(EvEstado *e, unsigned agoraMs, const EvEntrada *in, int hora, in
 // Taxa media do arquivo em kbps pelo tamanho declarado e a duracao; 0 sem um
 // dos dois.
 int ev_taxa_arquivo(unsigned long long bytes, long tamanhoMB, double duracaoS);
+int ev_kbps_de_bps(double bps);
 
 // "42,8" (uma casa abaixo de 100), "412" dali para cima. `sep` ',' ou '.'.
 void ev_fmt_mbps(char *dst, size_t n, int kbps, char sep);

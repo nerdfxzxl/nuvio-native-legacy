@@ -4,7 +4,7 @@ on:
   push:
     branches: [feature/official-stream-selector]
     paths: [.github/workflows/p7-legacy-linux.yml]
-# CI #10: fix manual-resume fixture header order; rerun unchanged full matrix.
+# CI #11: final Q46 diagnostics provenance correction and full regression.
 concurrency:
   group: p7-linux-legacy-${{ github.ref }}
   cancel-in-progress: true
@@ -18,7 +18,7 @@ jobs:
       fail-fast: false
       matrix:
         suites:
-          - addons_alvo_pendente addons_stream_pending fonte_manual_resume playback_p3_reload playback_diag_p7 p7_join_workers
+          - addons_alvo_pendente addons_stream_pending fonte_manual_resume playback_p3_reload playback_diag_p7 p7_join_workers estatvivo
           - posplay posplay_recuo proxprefetch postplay_p6_integration proximo
           - player_eof_episodios player_visto_trailer player_scrobble_trailer
           - player player_republica player_retido player_back

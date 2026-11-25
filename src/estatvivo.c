@@ -16,7 +16,7 @@ const char *ev_origem_rotulo(EvOrigem o) {
 
 void ev_zerar(EvEstado *e) {
   memset(e, 0, sizeof *e);
-  e->kbps = -1;
+  e->kbps = e->mediaKbps = -1;
   e->bufSeg = e->bufMb = -1.0;
   e->bufPct = -1;
   e->conexoes = e->primeiroByteMs = -1;
@@ -32,18 +32,28 @@ int ev_taxa_arquivo(unsigned long long bytes, long tamanhoMB, double duracaoS) {
   return (int)(bits / duracaoS / 1000.0 + 0.5);
 }
 
+// Convert measured bytes/s to decimal network kbps; reject NaN, unknown,
+// and impossible/out-of-range values before converting to int.
+int ev_kbps_de_bps(double bps) {
+  return bps >= 0.0 && bps <= 500000000.0 ? (int)(bps * 0.008 + 0.5) : -1;
+}
+
 // A conta da velocidade, por ordem de confianca. Devolve kbps (>= 0) ou -1 e
 // diz a origem.
 static int velocidade(EvEstado *e, unsigned agoraMs, const EvEntrada *in, int *origem) {
   double dt = (double)(agoraMs - e->tUlt) / 1000.0;
   *origem = EVO_SEM;
+  if (in->medicaoDireta) {
+    *origem = EVO_MEDIDO;
+    return in->kbpsDireto >= 0 && in->kbpsDireto <= 4000000 ? in->kbpsDireto : -1;
+  }
   if (!e->temUlt || dt < 0.25 || dt > 10.0) return -1;
   // 1. BYTES CONTADOS (Android). Contador que voltou = abertura nova
   //    (reconexao, troca de fonte): a linha de base recomeca.
   if (in->vs.bytes >= 0) {
     *origem = EVO_MEDIDO;
     if (e->bytesUlt < 0 || in->vs.bytes < e->bytesUlt) return -1;
-    return (int)((double)(in->vs.bytes - e->bytesUlt) * 8.0 / 1000.0 / dt + 0.5);
+    return ev_kbps_de_bps((double)(in->vs.bytes - e->bytesUlt) / dt);
   }
   if (in->taxaKbps <= 0) return -1;
   // 2. BUFFER EM SEGUNDOS (webOS): o fim do que ja foi baixado andou quantos
@@ -68,8 +78,13 @@ void ev_amostra(EvEstado *e, unsigned agoraMs, const EvEntrada *in, int hora, in
   if (!e || !in) return;
   k = velocidade(e, agoraMs, in, &origem);
   if (k > 4000000) k = -1;   // 4 Gbps: conta errada, nao velocidade
-  if (origem != EVO_SEM) e->velOrigem = origem;
   if (k >= 0) {
+    // Do not mix estimated throughput with measured history/averages.
+    if (e->velOrigem != origem) {
+      e->nHist = e->nMedia = e->picoKbps = 0;
+      e->somaKbps = 0; e->mediaKbps = -1;
+    }
+    e->velOrigem = origem;
     e->kbps = k;
     // Pausado nao entra no historico nem na media: o buffer cheio para a rede
     // de proposito, e isso nao e a velocidade da conexao.
@@ -81,7 +96,7 @@ void ev_amostra(EvEstado *e, unsigned agoraMs, const EvEntrada *in, int hora, in
       e->nMedia++;
       e->mediaKbps = (int)(e->somaKbps / e->nMedia);
     }
-  } else if (e->velOrigem == EVO_SEM) e->kbps = -1;
+  } else e->kbps = -1; // historical observations are not current speed
   e->tUlt = agoraMs;
   e->temUlt = 1;
   e->bytesUlt = in->vs.bytes;

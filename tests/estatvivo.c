@@ -37,7 +37,7 @@ int main(void) {
   // contador que voltou (reabriu): nao vira numero negativo
   in.vs.bytes = 100;
   ev_amostra(&e, 3000, &in, 21, 0);
-  assert(e.kbps == 42800 && e.nHist == 1);
+  assert(e.kbps == -1 && e.nHist == 1);
   in.vs.bytes = 100 + 7650000;                 // 61,2 Mbps
   ev_amostra(&e, 4000, &in, 21, 0);
   assert(e.picoKbps == 61200 && e.mediaKbps == (42800 + 61200) / 2 && e.nHist == 2);
@@ -58,7 +58,7 @@ int main(void) {
   assert(e.bufOrigem == EVO_MEDIDO && e.servOrigem == EVO_LINK && e.quadrosOrigem == EVO_SEM);
   in.pos = 20; in.vs.bufferSeg = 3;            // busca para tras: sem numero novo
   ev_amostra(&e, 2000, &in, 0, 0);
-  assert(e.kbps == 40000 && e.nHist == 1);
+  assert(e.kbps == -1 && e.nHist == 1);
   // sem a taxa do arquivo nao ha como estimar
   ev_zerar(&e);
   in.taxaKbps = 0;
@@ -75,9 +75,24 @@ int main(void) {
   ev_amostra(&e, 1000, &in, 0, 0);
   assert(e.kbps == 36000 && e.velOrigem == EVO_ESTIMADA && e.bufOrigem == EVO_SO_PCT && e.bufPct == 62);
   assert(e.servOrigem == EVO_SEM && e.quadrosOrigem == EVO_SEM);
-  in.bufferando = 1; in.pos = 11;              // parado no buffer: mantem o ultimo
+  in.bufferando = 1; in.pos = 11;              // parado no buffer: current speed unknown
   ev_amostra(&e, 2000, &in, 0, 0);
-  assert(e.kbps == 36000 && e.nHist == 1);
+  assert(e.kbps == -1 && e.nHist == 1);
+
+  // ANDROID: direct backend rate, never an inferred bitrate or stale counter.
+  in.medicaoDireta = 1; in.kbpsDireto = -1; in.vs.bytes = 9999999;
+  ev_amostra(&e, 3000, &in, 0, 0);
+  assert(e.kbps == -1 && e.nHist == 1);
+  in.tocando = 1; in.bufferando = 0; in.kbpsDireto = ev_kbps_de_bps(5350000.0);
+  ev_amostra(&e, 4000, &in, 0, 0);
+  assert(e.kbps == 42800 && e.velOrigem == EVO_MEDIDO && e.nHist == 1 && e.mediaKbps == 42800);
+  in.kbpsDireto = -1;
+  ev_amostra(&e, 5000, &in, 0, 0);
+  assert(e.kbps == -1 && e.mediaKbps == 42800 && e.nHist == 1);
+  in.kbpsDireto = 0;
+  ev_amostra(&e, 6000, &in, 0, 0);
+  assert(e.kbps == 0 && e.nHist == 2);
+  assert(ev_kbps_de_bps(-1.0) == -1 && ev_kbps_de_bps(500000001.0) == -1);
 
   // RECONEXOES e ERROS: cada subida conta uma vez, com a hora.
   ev_zerar(&e);

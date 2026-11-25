@@ -18,14 +18,13 @@ typedef struct {
 typedef struct {
   P7DiagReport report;
   unsigned lastMs, source;
-  long long bytes;
   int have, played, playing, buffering, recovering, failed;
 } P7Diag;
 
 static inline void p7_diag_gap(P7Diag *d) { d->have = 0; }
 static inline void p7_diag_sample(P7Diag *d, unsigned now, unsigned source,
                                  int playing, int buffering, int recovering,
-                                 int failed, long long bytes) {
+                                 int failed, int measuredKbps) {
   unsigned dt = now - d->lastMs;
   int same = d->have && d->source == source && dt <= 2000u;
   P7DiagReport *r = &d->report;
@@ -38,20 +37,19 @@ static inline void p7_diag_sample(P7Diag *d, unsigned now, unsigned source,
   if (d->played && buffering && (!same || !d->buffering)) r->buffers++;
   if (recovering && (!same || !d->recovering)) r->recoveries++;
   if (failed && (!same || !d->failed)) r->errors++;
-  if (same && dt >= 250u && playing && d->playing && bytes >= 0 &&
-      d->bytes >= 0 && bytes >= d->bytes) {
-    long long delta = bytes - d->bytes;
-    if (delta <= 1000000000LL) {
-      unsigned long long kbps = (unsigned long long)delta * 8u / dt;
-      if (kbps <= 4000000u && r->speedSum <= ULLONG_MAX - kbps) {
-        r->speedSum += kbps; r->speedN++;
-        if (kbps > r->peakKbps) r->peakKbps = kbps;
-      }
+  // The backend's fresh, opening-owned rolling measurement is the only
+  // source of throughput. Re-reading a byte counter is not a new sample.
+  if (same && dt >= 250u && playing && d->playing &&
+      measuredKbps >= 0 && measuredKbps <= 4000000) {
+    unsigned long long kbps = (unsigned long long)measuredKbps;
+    if (r->speedSum <= ULLONG_MAX - kbps) {
+      r->speedSum += kbps; r->speedN++;
+      if (kbps > r->peakKbps) r->peakKbps = kbps;
     }
   }
   r->samples++;
   d->played |= playing;
-  d->lastMs = now; d->source = source; d->bytes = bytes;
+  d->lastMs = now; d->source = source;
   d->have = 1; d->playing = playing; d->buffering = buffering;
   d->recovering = recovering; d->failed = failed;
 }
