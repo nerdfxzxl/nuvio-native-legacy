@@ -508,7 +508,7 @@ static void escolherAudioPreferido(void) {
     // Decoder support alone cannot prove that PCM or encoded audio reaches
     // the current HDMI/speaker route. Kotlin publishes independent findings.
     c[i].dts = audioesc_dts_truehd(c[i].codec, c[i].rotulo);
-    c[i].pode = faixaAudio[i].decodifica && faixaAudio[i].saidaFiel;
+    c[i].pode = faixaAudio[i].decodifica;
     c[i].numero = faixaAudio[i].numero;
   }
   k = audioesc_escolher(c, nAudio, &o);
@@ -653,7 +653,7 @@ static void validarAudioSelecionadoP5A(void) {
   int idiomaErrado = !m && original && original[0] &&
       strcmp(original, "none") && a &&
       (!a->idioma[0] || !ling_casa(a->idioma, original));
-  if (!a || !a->decodifica || !a->saidaFiel || manualErrado || idiomaErrado) {
+  if (!a || !a->decodifica || manualErrado || idiomaErrado) {
     semDecoderAudio = 1;
     printf("[audio] Q36 selected output incompatible: track=%d decoder=%d pcm=%d pass=%d faithful=%d unknown=%d manualMismatch=%d originalMismatch=%d\n",
            audioAtual, a ? a->decodifica : 0, a ? a->pcmSaida : 0,
