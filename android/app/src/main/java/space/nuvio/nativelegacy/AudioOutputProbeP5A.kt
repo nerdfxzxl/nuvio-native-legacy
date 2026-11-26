@@ -128,14 +128,22 @@ internal object AudioOutputProbeP5A {
         // Never assert HD encoded delivery without an explicitly observed eARC
         // path; decoder presence or HDMI ports are not an eARC guarantee.
         val hdTransportProven = type == AudioDeviceInfo.TYPE_HDMI_EARC
-        val canBitstream = if (Build.VERSION.SDK_INT < 33 || route == null ||
-            policyRoute?.id != route.id || enc == 0 || mask == 0 ||
+        // API 29-32 exposes the direct query on AudioTrack. Use it only
+        // alongside the observed device. An inventory of connected devices
+        // is insufficient. API 24-28 uses the selected device profile and
+        // still needs confirmation of the actual AudioTrack encoding.
+        val canBitstream = if (route == null || enc == 0 || mask == 0 ||
             hz <= 0 || enc !in route.encodings || dsp ||
+            (Build.VERSION.SDK_INT >= 33 && policyRoute != null && policyRoute.id != route.id) ||
             (hdSource && !hdTransportProven)) false else try {
             val af = AudioFormat.Builder().setEncoding(enc).setSampleRate(hz)
                 .setChannelMask(mask).build()
-            val support = AudioManager.getDirectPlaybackSupport(af, attrs)
-            support and AudioManager.DIRECT_PLAYBACK_BITSTREAM_SUPPORTED != 0
+            when {
+                Build.VERSION.SDK_INT >= 33 -> AudioManager.getDirectPlaybackSupport(af, attrs) and
+                    AudioManager.DIRECT_PLAYBACK_BITSTREAM_SUPPORTED != 0
+                Build.VERSION.SDK_INT >= 29 -> android.media.AudioTrack.isDirectPlaybackSupported(af, attrs)
+                else -> actualRoute && (route.sampleRates.isEmpty() || hz in route.sampleRates)
+            }
         } catch (_: RuntimeException) { false }
         val decision = AudioFidelityP5A.assess(
             mime, channels, hz, bits, bitrate, decoder, pcmRoute, canBitstream,

@@ -1006,7 +1006,6 @@ object NvPlayer {
         var routeValidatedSerial = 0L
         var routeAwaitingPlay = false
         val proc = GanhoAudioProcessor()
-        val downmix = StereoDownmixP8()
         val resampler = androidx.media3.common.audio.SonicAudioProcessor()
         @Volatile var outputRate = -1
         var routeShapeKey: AudioRouteP5D.Key? = null
@@ -1984,7 +1983,7 @@ object NvPlayer {
                     AudioSyncSink(DefaultAudioSink.Builder(context).setEnableFloatOutput(false)
                         .setEnableAudioTrackPlaybackParams(false)
                         .setAudioTrackProvider(r.routeObserver)
-                        .setAudioProcessors(arrayOf(r.proc, r.downmix, r.resampler)).build(), r.tap,
+                        .setAudioProcessors(arrayOf(r.proc, r.resampler)).build(), r.tap,
                         { r.outputPolicy.pcm || r.routePcm },
                         { r.resampler.setOutputSampleRateHz(r.outputRate) })
             }.setExtensionRendererMode(androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
@@ -2028,7 +2027,7 @@ object NvPlayer {
         val seletor = if (r.idiomaAudio.isNotEmpty()) SeletorAudioPreparo(act, r.idiomaAudio)
                       else DefaultTrackSelector(act)
         seletor.parameters = seletor.parameters.buildUpon()
-            .setTunnelingEnabled(nativeTunneling()).build()
+            .setTunnelingEnabled(nativeTunneling() && !r.outputPolicy.pcm && !r.routePcm).build()
         builder.setTrackSelector(seletor)
         r.fioPreparo?.let { builder.setPlaybackLooper(it.looper) }
         r.bandaPreparo?.let { builder.setBandwidthMeter(it) }
@@ -2985,7 +2984,10 @@ object NvPlayer {
         (retentou && !estavelEmitido) || recuperacaoLive?.recovering() == true
 
     private fun routeSelection(p: ExoPlayer, target: Pair<Tracks.Group, Int>, disabled: Boolean) {
-        p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
+        val r = recursosAtuais ?: return
+        val selector = p.trackSelector as? DefaultTrackSelector ?: return
+        selector.parameters = selector.parameters.buildUpon()
+            .setTunnelingEnabled(nativeTunneling() && !r.outputPolicy.pcm && !r.routePcm)
             .setOverrideForType(TrackSelectionOverride(target.first.mediaTrackGroup, target.second))
             .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, disabled).build()
     }
@@ -3001,11 +3003,11 @@ object NvPlayer {
         val fmt = target.first.getTrackFormat(target.second)
         val device = r.routeObserver.route()
         r.routeShapeKey = r.routeObserver.key(device)
-        r.downmix.enabled = forcePcm && (shape?.stereo ?: AudioRouteP5D.needsStereo(fmt.channelCount,
+        r.proc.stereo = forcePcm && (shape?.stereo ?: AudioRouteP5D.needsStereo(fmt.channelCount,
             device?.type == android.media.AudioDeviceInfo.TYPE_HDMI_ARC, device?.channelCounts,
             fatal && sinkConfigurationFailed(p)))
         r.outputRate = if (forcePcm) shape?.rate ?: AudioRouteP5D.fallbackSampleRate(fmt.sampleRate, device?.sampleRates) else -1
-        relatarAudio(minha, "Q49 begin ticket=$ticket pcm=$forcePcm stereo=${r.downmix.enabled} pos=${p.currentPosition} buffered=${p.bufferedPosition}")
+        relatarAudio(minha, "Q49 begin ticket=$ticket pcm=$forcePcm stereo=${r.proc.stereo} pos=${p.currentPosition} buffered=${p.bufferedPosition}")
         r.routeMuted = true
         r.routeOutputBefore = r.routeObserver.output?.serial ?: 0L
         routeOwner(r, true)
@@ -3127,20 +3129,24 @@ object NvPlayer {
             !audioDsp(r) && it.config.encoding == AudioOutputProbeP5A.coreEncoding(fmt.sampleMimeType) &&
                 AudioOutputProbeP5A.directCore(activity, route, fmt, it.config.sampleRate, it.config.channelConfig)
         } == true
-        val compatible = output != null && formatMatches && (core || compatibleOutput(fmt, output.config, cap))
+        val pcmSink = output?.takeIf { pcmOutput(it.config.encoding) }?.config
         val coreCandidate = !audioDsp(r) && output != null &&
             AudioOutputProbeP5A.directCore(activity, route, fmt, fmt.sampleRate, output.config.channelConfig)
         val encoded = decision.encodedPassthrough || coreCandidate || core
-        val currentShape = AudioRouteP5D.PcmShape(r.downmix.enabled, r.outputRate)
-        val newShape = if (r.routeChanged && route != null && routeKey != r.routeShapeKey)
+        val currentShape = AudioRouteP5D.PcmShape(r.proc.stereo, r.outputRate)
+        // Evaluate the first initialized output as well as hot route changes.
+        // Android can accept a 6-channel PCM track and downmix it downstream
+        // of our center control on a stereo-only ARC route.
+        val newShape = if (route != null && routeKey != r.routeShapeKey)
             AudioRouteP5D.refreshPcmShape(fmt.channelCount, fmt.sampleRate,
                 route.type == android.media.AudioDeviceInfo.TYPE_HDMI_ARC,
                 route.channelCounts, route.sampleRates, currentShape) else currentShape
-        val pcmSink = output?.takeIf { pcmOutput(it.config.encoding) }?.config
-        val shapeChanged = r.routeChanged && route != null && routeKey != r.routeShapeKey &&
-            (r.routePcm || pcmSink != null) &&
+        val shapeChanged = route != null && routeKey != r.routeShapeKey && pcmSink != null &&
             AudioRouteP5D.pcmShapeNeedsReselect(currentShape, newShape,
-                pcmSink?.let { Integer.bitCount(it.channelConfig) } ?: 0, pcmSink?.sampleRate ?: 0)
+                Integer.bitCount(pcmSink.channelConfig), pcmSink.sampleRate)
+        val tunnelBypassesEffects = audioDsp(r) && output?.config?.tunneling == true
+        val compatible = output != null && formatMatches && !tunnelBypassesEffects &&
+            (core || compatibleOutput(fmt, output.config, cap))
         if (r.routeTx.active) {
             val ticket = r.routeTx.ticket
             if (r.routeFatal && r.routeTx.allowPrepare(ticket) && decision.playableCandidate) {
@@ -3150,7 +3156,7 @@ object NvPlayer {
                 // A failed encoded or multichannel AudioTrack must not be
                 // prepared again with the same unusable sink configuration.
                 r.routePcm = true
-                r.downmix.enabled = AudioRouteP5D.needsStereo(fmt.channelCount,
+                r.proc.stereo = AudioRouteP5D.needsStereo(fmt.channelCount,
                     route?.type == android.media.AudioDeviceInfo.TYPE_HDMI_ARC, route?.channelCounts,
                     sinkConfigurationFailed(p))
                 r.outputRate = AudioRouteP5D.fallbackSampleRate(fmt.sampleRate, route?.sampleRates)
@@ -3179,7 +3185,7 @@ object NvPlayer {
                         r.routePcm = pcm
                         r.routeShapeKey = routeKey
                         r.outputRate = if (pcm) newShape.rate else -1
-                        r.downmix.enabled = pcm && newShape.stereo
+                        r.proc.stereo = pcm && newShape.stereo
                         if (r.routePhase == 2) {
                             try { reselectAudioRoute(minha, r, target, ticket) }
                             catch (_: RuntimeException) { failAudioRoute(minha, r, "new route reselection failed") }
@@ -3238,8 +3244,8 @@ object NvPlayer {
             if (!formatMatches) return
             // Initial and ordinary audio-format validation remains Q36; a
             // stable compatible route is not an excuse to restart playback.
-            if (!compatible && !r.routePcm && decision.decoder) {
-                startAudioRoute(minha, r, target, true, false, now)
+            if ((!compatible || shapeChanged) && !r.routePcm && decision.decoder) {
+                startAudioRoute(minha, r, target, true, false, now, if (shapeChanged) newShape else null)
             } else if (!compatible) failAudioRoute(minha, r, "incompatible AudioTrack configuration")
             else {
                 r.routeShapeKey = routeKey
@@ -3505,7 +3511,7 @@ object NvPlayer {
                 }
                 if (rRoute.routeFailed && audioRenderer) return
                 if (audioRenderer && !rRoute.routeTx.active && (!rRoute.routePcm ||
-                        (!rRoute.downmix.enabled && p != null && sinkConfigurationFailed(p) &&
+                        (!rRoute.proc.stereo && p != null && sinkConfigurationFailed(p) &&
                             (rRoute.routeSelected?.let { it.first.getTrackFormat(it.second).channelCount } ?: 0) in 3..8))) {
                     val target = rRoute.routeSelected ?: p?.let { selectedAudio(it) }
                     if (target != null && target.first.isTrackSupported(target.second)) {

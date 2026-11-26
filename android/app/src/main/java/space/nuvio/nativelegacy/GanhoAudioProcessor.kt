@@ -6,24 +6,10 @@ import androidx.media3.common.audio.BaseAudioProcessor
 import androidx.media3.common.util.UnstableApi
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import kotlin.math.abs
-import kotlin.math.cos
-import kotlin.math.pow
-import kotlin.math.roundToInt
-import kotlin.math.sin
-import kotlin.math.sqrt
+import kotlin.math.*
 
-/**
- * Real PCM processing, not a volume shortcut:
- * - Bass uses a 110 Hz low-shelf biquad (-12..+6 dB, cuts prioritised).
- * - Amplification is broadband +0..+10 dB.
- * - Center mix changes the center PCM channel when a surround track exists.
- * - Night Mode offers three progressively stronger peak-compression levels.
- *
- * Media3 bypasses AudioProcessors for direct bitstream passthrough; never
- * silently disable passthrough or claim these controls work in that mode.
- * All DSP state belongs to the audio-renderer thread; UI values are volatile.
- */
+/** One floating-point mix and one output quantization. The renderer thread owns
+ * all filter state. Only the requested controls cross threads. No lookahead. */
 @androidx.annotation.OptIn(UnstableApi::class)
 class GanhoAudioProcessor : BaseAudioProcessor() {
     @Volatile var ganho = 1f
@@ -31,146 +17,198 @@ class GanhoAudioProcessor : BaseAudioProcessor() {
     @Volatile var baixoDb = 0
     @Volatile var centroDb = 0
     @Volatile var noiteNivel = 0
+    @Volatile var stereo = false
 
-    // Transposed Direct Form II with per-channel histories (never shared).
-    private var z1 = FloatArray(0)
-    private var z2 = FloatArray(0)
-    private var channels = 2
-    private var sampleRate = 48000
-    private var currentBass = Int.MIN_VALUE
-    private var b0 = 1f
-    private var b1 = 0f
-    private var b2 = 0f
-    private var a1 = 0f
-    private var a2 = 0f
+    private var frame = FloatArray(0)
+    private var z1 = DoubleArray(0)
+    private var z2 = DoubleArray(0)
+    private var level = 1f
+    private var center = 1f
+    private var bass = 0f
+    private var initial = true
+    private var b0 = 1.0
+    private var b1 = 0.0
+    private var b2 = 0.0
+    private var a1 = 0.0
+    private var a2 = 0.0
+    private val dynamics = PlaybackDynamics()
 
     override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
-        if (inputAudioFormat.encoding != C.ENCODING_PCM_16BIT &&
-            inputAudioFormat.encoding != C.ENCODING_PCM_FLOAT) return AudioProcessor.AudioFormat.NOT_SET
-        channels = inputAudioFormat.channelCount.coerceIn(1, 32)
-        sampleRate = inputAudioFormat.sampleRate.coerceAtLeast(8000)
-        z1 = FloatArray(channels)
-        z2 = FloatArray(channels)
-        currentBass = Int.MIN_VALUE
-        return inputAudioFormat
+        val f = inputAudioFormat
+        if (f.encoding != C.ENCODING_PCM_16BIT && f.encoding != C.ENCODING_PCM_FLOAT)
+            return AudioProcessor.AudioFormat.NOT_SET
+        return if (stereo && f.channelCount in 3..8)
+            AudioProcessor.AudioFormat(f.sampleRate, 2, f.encoding) else f
     }
 
     override fun onFlush() {
-        z1.fill(0f)
-        z2.fill(0f)
+        val count = inputAudioFormat.channelCount.coerceAtLeast(0)
+        frame = FloatArray(count)
+        z1 = DoubleArray(count)
+        z2 = DoubleArray(count)
+        bass = 0f
+        initial = true
+        dynamics.reset(inputAudioFormat.sampleRate.coerceAtLeast(1))
     }
 
-    // RBJ low-shelf cookbook, slope S=1, cutoff 110 Hz.
-    private fun updateBass(db: Int) {
-        if (currentBass == db) return
-        currentBass = db
-        z1.fill(0f)
-        z2.fill(0f)
-        if (db == 0) { b0 = 1f; b1 = 0f; b2 = 0f; a1 = 0f; a2 = 0f; return }
-        val A = 10.0.pow(db / 40.0)
-        val omega = 2.0 * Math.PI * 110.0 / sampleRate
-        val co = cos(omega)
-        val sn = sin(omega)
-        val alpha = sn / 2.0 * sqrt(2.0)
-        val root = 2.0 * sqrt(A) * alpha
-        val aa0 = (A + 1.0) + (A - 1.0) * co + root
-        val bb0 = A * ((A + 1.0) - (A - 1.0) * co + root)
-        val bb1 = 2.0 * A * ((A - 1.0) - (A + 1.0) * co)
-        val bb2 = A * ((A + 1.0) - (A - 1.0) * co - root)
-        val aa1 = -2.0 * ((A - 1.0) + (A + 1.0) * co)
-        val aa2 = (A + 1.0) + (A - 1.0) * co - root
-        b0 = (bb0 / aa0).toFloat()
-        b1 = (bb1 / aa0).toFloat()
-        b2 = (bb2 / aa0).toFloat()
-        a1 = (aa1 / aa0).toFloat()
-        a2 = (aa2 / aa0).toFloat()
+    // RBJ 110 Hz low shelf with independent per-channel filter history.
+    private fun setShelf(db: Float, rate: Int) {
+        if (db == bass) return
+        bass = db
+        if (db == 0f) {
+            z1.fill(0.0)
+            z2.fill(0.0)
+            return
+        }
+        val a = 10.0.pow(db / 40.0)
+        val w = 2.0 * PI * 110 / rate
+        val c = cos(w)
+        val s = sqrt(2.0 * a) * sin(w)
+        val d = a + 1 + (a - 1) * c + s
+        b0 = a * (a + 1 - (a - 1) * c + s) / d
+        b1 = 2 * a * (a - 1 - (a + 1) * c) / d
+        b2 = a * (a + 1 - (a - 1) * c - s) / d
+        a1 = -2 * (a - 1 + (a + 1) * c) / d
+        a2 = (a + 1 + (a - 1) * c - s) / d
     }
 
     override fun queueInput(inputBuffer: ByteBuffer) {
-        val n = inputBuffer.remaining()
-        if (n == 0) return
-        val out = replaceOutputBuffer(n)
-        val src = inputBuffer.duplicate().order(ByteOrder.nativeOrder())
-        val bass = baixoDb.coerceIn(-12, 6)
-        val amp = amplificacaoDb.coerceIn(0, 10)
-        val center = centroDb.coerceIn(-10, 30)
+        if (!inputBuffer.hasRemaining()) return
+        val f = inputAudioFormat
+        val outputs = outputAudioFormat.channelCount
+        val fold = outputs < f.channelCount
+        val float = f.encoding == C.ENCODING_PCM_FLOAT
+        val frames = inputBuffer.remaining() / f.bytesPerFrame
+        val out = replaceOutputBuffer(frames * outputAudioFormat.bytesPerFrame).order(ByteOrder.nativeOrder())
+        val src = inputBuffer.order(ByteOrder.nativeOrder())
+        val gainTarget = ganho * linear(amplificacaoDb.coerceIn(0, 10))
+        val centerTarget = linear(centroDb.coerceIn(-10, 30))
+        val bassTarget = baixoDb.coerceIn(-12, 6).toFloat()
         val night = noiteNivel.coerceIn(0, 3)
-        val g = ganho.coerceAtLeast(0f)
-        if (g <= 1f && bass == 0 && amp == 0 && center == 0 && night == 0) {
+        // A persistent processor permits live changes without rebuilding the sink.
+        if (initial) {
+            level = gainTarget
+            center = centerTarget
+            setShelf(bassTarget, f.sampleRate)
+            initial = false
+        }
+        if (!fold && gainTarget == 1f && level == 1f && centerTarget == 1f && center == 1f &&
+            bassTarget == 0f && bass == 0f && night == 0 && dynamics.idle()) {
             out.put(src)
-            inputBuffer.position(inputBuffer.limit())
             out.flip()
             return
         }
-        updateBass(bass)
-        val volume = (g * 10.0.pow(amp / 20.0)).toFloat()
-        val centerGain = 10.0.pow(center / 20.0).toFloat()
-        val nightGain = floatArrayOf(1f, 1.10f, 1.20f, 1.30f)[night]
-        val threshold = floatArrayOf(1f, 0.52f, 0.40f, 0.30f)[night]
-        val ratio = floatArrayOf(1f, 1.8f, 2.5f, 3.4f)[night]
-        val applyBass = bass != 0
-        val processCenter = center != 0 && channels >= 3
-        val floatPcm = inputAudioFormat.encoding == C.ENCODING_PCM_FLOAT
-        val bytesPerSample = if (floatPcm) 4 else 2
-        var channel = 0
-        while (src.remaining() >= bytesPerSample) {
-            val x = if (floatPcm) src.float else src.short / 32768f
-            var y = x
-            if (applyBass) {
-                // Direct Form II transposed low-shelf.
-                val v = b0 * y + z1[channel]
-                z1[channel] = b1 * y - a1 * v + z2[channel]
-                z2[channel] = b2 * y - a2 * v
-                y = v
+        val slew = 1f - exp(-1f / (0.005f * f.sampleRate))
+        val shelfSlew = 1f - exp(-16f / (0.005f * f.sampleRate))
+        repeat(frames) { index ->
+            level = approach(level, gainTarget, slew)
+            center = approach(center, centerTarget, slew)
+            if (index % 16 == 0) setShelf(approach(bass, bassTarget, shelfSlew), f.sampleRate)
+            for (ch in frame.indices) {
+                frame[ch] = if (float) src.float.let { if (it.isFinite()) it else 0f } else src.short / 32768f
             }
-            if (processCenter && channel == 2) y *= centerGain
-            // Use the same soft limiter as GanhoMath.pcm16 for boosted PCM.
-            // Plain multiply + hard-clamp introduced audible clipping and
-            // mismatched the production gain contract (Replay.kt:165).
-            y = if (volume > 1f) GanhoMath.amostra(y, volume) else y * volume
-            if (night > 0) {
-                y *= nightGain
-                val magnitude = abs(y)
-                if (magnitude > threshold) {
-                    val compressed = threshold + (magnitude - threshold) / ratio
-                    y = if (y < 0f) -compressed else compressed
+            if (frame.size in 3..8 && frame.size != 4) frame[2] *= center
+            if (fold) AudioRouteP5D.foldStereo(frame)
+            var peak = 0f
+            for (ch in 0 until outputs) {
+                var v = frame[ch]
+                if (bass != 0f) {
+                    val y = b0 * v + z1[ch]
+                    z1[ch] = b1 * v - a1 * y + z2[ch]
+                    z2[ch] = b2 * v - a2 * y
+                    v = y.toFloat()
                 }
+                frame[ch] = v * level
+                peak = max(peak, abs(frame[ch]))
             }
-            // Protect 16-bit output from integer wrap and gross clipping.
-            y = y.coerceIn(-1f, 1f)
-            if (floatPcm) out.putFloat(y)
-            else out.putShort((y * 32768f).roundToInt().coerceIn(-32768, 32767).toShort())
-            channel++
-            if (channel >= channels) channel = 0
+            val scale = dynamics.gain(peak, night)
+            for (ch in 0 until outputs) {
+                val v = frame[ch] * scale
+                if (float) out.putFloat(v.coerceIn(-1f, 1f))
+                else out.putShort((v * 32768f).roundToInt().coerceIn(-32768, 32767).toShort())
+            }
         }
-        inputBuffer.position(inputBuffer.limit())
         out.flip()
     }
+
+    private fun linear(db: Int) = if (db == 0) 1f else 10.0.pow(db / 20.0).toFloat()
+    private fun approach(value: Float, target: Float, step: Float) =
+        if (abs(value - target) < 0.0001f) target else value + (target - value) * step
 }
 
-/** Bounded PCM stereo fallback after the original DSP, preserving center mix.
- * Android conventional interleaved channel order; no encoded transcode. */
-@androidx.annotation.OptIn(UnstableApi::class)
-internal class StereoDownmixP8 : BaseAudioProcessor() {
-    @Volatile var enabled = false
-    override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat =
-        if (enabled && inputAudioFormat.encoding == C.ENCODING_PCM_16BIT &&
-            inputAudioFormat.channelCount in 3..8)
-            AudioProcessor.AudioFormat(inputAudioFormat.sampleRate, 2, C.ENCODING_PCM_16BIT)
-        else AudioProcessor.AudioFormat.NOT_SET
+/** NuvioTV dev 3c14893, NightModeAudioProcessor and PeakLimiter, adapted for
+ * the floating-point post-mix frame. Gain and limiting always link channels. */
+private class PlaybackDynamics {
+    private var env = 0f
+    private var gainDb = 0f
+    private var lift = 1f
+    private var step = 0f
+    private var phase = 0
+    private var ea = 0f
+    private var er = 0f
+    private var ga = 0f
+    private var gr = 0f
+    private var hold = 0
+    private var holdFrames = 0
+    private var releaseFrames = 1f
+    private var limiter = 1f
+    private var release = 1f
 
-    override fun queueInput(inputBuffer: ByteBuffer) {
-        val channels = inputAudioFormat.channelCount
-        val frames = inputBuffer.remaining() / (channels * 2)
-        val src = inputBuffer.order(ByteOrder.nativeOrder())
-        val out = replaceOutputBuffer(frames * 4).order(ByteOrder.nativeOrder())
-        val samples = IntArray(channels)
-        repeat(frames) {
-            for (i in samples.indices) samples[i] = src.short.toInt()
-            val mixed = AudioRouteP5D.stereoMix(samples)
-            out.putShort((mixed shr 16).toShort())
-            out.putShort(mixed.toShort())
+    fun reset(rate: Int) {
+        ea = exp(-1000f / rate)
+        er = exp(-5f / rate)
+        ga = exp(-16f / (0.005f * rate))
+        gr = exp(-16f / (0.300f * rate))
+        holdFrames = (0.010f * rate).toInt()
+        releaseFrames = 0.100f * rate
+        env = 0f
+        gainDb = 0f
+        lift = 1f
+        step = 0f
+        phase = 0
+        hold = 0
+        limiter = 1f
+        release = 1f
+    }
+
+    fun idle() = gainDb == 0f && lift == 1f && limiter == 1f
+
+    fun gain(peak: Float, night: Int): Float {
+        if (night != 0 || lift != 1f || gainDb != 0f) {
+            env = peak + (if (peak > env) ea else er) * (env - peak)
+            if (phase == 0) {
+                val makeup = when (night) { 1 -> 6f; 2 -> 10f; 3 -> 15f; else -> 0f }
+                val ratio = night + 1f
+                val db = 20f * log10(max(env, 1e-6f))
+                val over = if (night == 0) 0f else db + makeup * ratio / (ratio - 1f)
+                val slope = 1f / ratio - 1f
+                val reduction = when {
+                    over <= -3f -> 0f
+                    over < 3f -> slope * (over + 3f) * (over + 3f) / 12f
+                    else -> slope * over
+                }
+                val target = max(0f, makeup * ((db + 65f) / 15f).coerceIn(0f, 1f) + reduction)
+                gainDb = target + (if (target < gainDb) ga else gr) * (gainDb - target)
+                if (night == 0 && gainDb < 0.0001f) gainDb = 0f
+                step = (10f.pow(gainDb / 20f) - lift) / 16f
+            }
+            lift += step
+            phase = (phase + 1) % 16
+            if (phase == 0 && night == 0 && gainDb == 0f) {
+                lift = 1f
+                env = 0f
+            }
         }
-        out.flip()
+        val ceiling = if (night != 0) 0.891f else 32767f / 32768f
+        val hot = peak * lift
+        if (hot * limiter > ceiling) {
+            limiter = ceiling / hot
+            hold = holdFrames
+            release = (1f / limiter).pow(1f / releaseFrames)
+        }
+        val current = limiter
+        if (hold > 0) hold-- else if (limiter < 1f)
+            limiter = min(1f, max(Math.nextUp(limiter), limiter * release))
+        return lift * current
     }
 }

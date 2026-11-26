@@ -266,50 +266,32 @@ fun main() {
     }
     run {
         val o = processar(C.ENCODING_PCM_16BIT, 2f, { b -> b.putShort(1000); b.putShort(-1000); b.putShort(32767); b.putShort(0) }, 8)
-        check(o.short == 2000.toShort() && o.short == (-2000).toShort() && o.short in 30000..32767 && o.short == 0.toShort())
+        check(o.short == 2000.toShort() && o.short == (-2000).toShort() && o.short in 29000..32767 && o.short == 0.toShort())
         val o1 = processar(C.ENCODING_PCM_16BIT, 1f, { b -> b.putShort(32767); b.putShort(-32768) }, 4)
         check(o1.short == 32767.toShort() && o1.short == (-32768).toShort())
         val of = processar(C.ENCODING_PCM_FLOAT, 1.5f, { b -> b.putFloat(0.2f); b.putFloat(-1f) }, 8)
-        // Positive gain is linear below the -1 dBFS knee; loud samples must
-        // pass through GanhoMath's smooth limiter, not hard-clip at full scale.
-        check(Math.abs(of.float - 0.3f) < 1e-6f && of.float > -1f)
+        // The limiter shares gain between channels to preserve the image.
+        val left = of.float; val right = of.float
+        check(right >= -1f && right < -.99f && Math.abs(left + right * .2f) < 1e-5f)
         val peak = processar(C.ENCODING_PCM_FLOAT, 2f, { b -> b.putFloat(0.6f); b.putFloat(-0.6f) }, 8)
-        check(peak.float in 0.9f..1f && peak.float in -1f..-0.9f)
+        check(peak.float in 0.99f..1f && peak.float in -1f..-0.99f)
         // Small 16-bit samples must round to the *correct* integer, not
         // truncate 1999.94 to 1999 at 2x gain (prior Replay.kt:165 failure).
         val p = GanhoAudioProcessor()
         check(p.configure(AudioProcessor.AudioFormat(48000, 6, C.ENCODING_AC3)) == AudioProcessor.AudioFormat.NOT_SET && !p.isActive)
     }
-    val dsp = GanhoAudioProcessor()
-    val mix = space.nuvio.nativelegacy.StereoDownmixP8()
-    val six = AudioProcessor.AudioFormat(48000, 6, C.ENCODING_PCM_16BIT)
-    check(dsp.configure(six) == six)
-    mix.enabled = true
-    check(mix.configure(six).channelCount == 2)
-    dsp.flush(); mix.flush()
-    fun center(): Int {
-        val frame = ByteBuffer.allocateDirect(12).order(ByteOrder.nativeOrder())
-        repeat(6) { frame.putShort(if (it == 2) 2000 else 0) }
-        frame.flip(); dsp.queueInput(frame); mix.queueInput(dsp.output)
-        val stereo = mix.output.order(ByteOrder.nativeOrder())
-        val left = stereo.short.toInt()
-        check(stereo.short.toInt() == left && !stereo.hasRemaining())
-        return left
-    }
-    val dry = center()
-    dsp.centroDb = 6
-    check(center() > dry)
-    dsp.centroDb = 0
-    check(center() == dry)
     println("cacheboost_android: PASS (statvfs fit, key/names, leftover cleanup without following links, ENOSPC guard, gain exact/linear/limited/monotonic, processor 16-bit/float/bitstream)")
 }
 """)
     rt = os.pathsep.join(map(str, (stdlib, media3["media3-common"], guava, sdk)))
-    kotlinc([kt / "CacheSessao.kt", kt / "GanhoMath.kt", kt / "GanhoAudioProcessor.kt", kt / "AudioRouteP5D.kt", replay], tmp / "replay",
+    kotlinc([kt / "CacheSessao.kt", kt / "GanhoMath.kt", kt / "GanhoAudioProcessor.kt", kt / "AudioRouteP5D.kt", root / "tests/p5/PlaybackSignalTest.kt", replay], tmp / "replay",
             os.pathsep.join(map(str, deps)))
     # android.jar is only stubs: at run time it must come AFTER the real jars
     # and nothing here may touch an Android class.
     subprocess.run([java, "-cp", os.pathsep.join((str(tmp / "replay"), rt)), "ReplayKt"], check=True)
+
+    subprocess.run([java, "-cp", os.pathsep.join((str(tmp / "replay"), rt)),
+                    "space.nuvio.nativelegacy.PlaybackSignalTestKt"], check=True)
 
     # Q37: real Media3 NalUnitUtil on independently encoded HEVC data. Compile
     # actual production parser/adapter with the fixture (no mock parser).
