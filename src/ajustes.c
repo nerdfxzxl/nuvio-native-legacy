@@ -3256,6 +3256,9 @@ float ajustes_tamanho_ajustes(void) {
 // The phone always uses List. Keep the stored TV preference unchanged.
 static int ajLayoutSelecionavel(void) { return !telefoneui_ativo(); }
 static int ajOpcaoDisponivel(int op) {
+  // Retain old persisted indices, but the single badge selector owns the OSD.
+  if (op == AJ_PLR_FORMATO || op == AJ_PLR_FORMATO_POS || op == AJ_PLR_CODEC) return 0;
+  if (edPerfil && (op == AJ_PLAYER_BADGES || op == AJ_PLAYER_SHOW || op == AJ_SELOS_PACOTE)) return 0;
   // These controls use active-profile stores rather than the edited value array.
   if (edPerfil && (ajFalhaBackend(op) || op == AJ_PROVEDORES_ESCOPO || op == AJ_FILTROS_FONTES ||
                    op == AJ_FALHA_PROVEDOR_ORDEM || op == AJ_FALHA_ADDON_ORDEM ||
@@ -6965,6 +6968,7 @@ static void focarOpcao(int op);
 // D1: "Posicao do relogio" 238 pessoas, "Sincronia por audio" 157, "Zoom do
 // trailer" 86, P2P no .wgt 6), escondendo o aviso que importa.
 static int foraDestaPlataforma(int op) {
+  if (op == AJ_PLR_FORMATO || op == AJ_PLR_FORMATO_POS || op == AJ_PLR_CODEC) return 1;
   // Os limites dos provedores sao editados dentro da folha de ordem.
   if (op >= AJ_FALHA_RD_LIMITE && op <= AJ_FALHA_AD_LIMITE) return 1;
   // Only the shared parent appears in the category; these editors are its children.
@@ -8117,8 +8121,8 @@ static const char *ajudaOpcaoBase(int op) {
     case AJ_LIVETV_MODO: return "Teste para TVs em que o canal chega mas não aparece. A é o modo de sempre; B não escolhe a faixa de vídeo antes de o canal abrir; C também manda o pedido no formato de transmissão ao vivo. O diagnóstico da Live TV testa os três.";
     case AJ_LIVETV_DIAG: return "Mede a rede até o provedor, lê a conta Xtream e testa vários canais: se tocam, em que formato, com que resolução e em quanto tempo. No fim sugere ajustes da Live TV e pode aplicá-los.";
     case AJ_SELOS_CORES: return "Na lista de fontes, cada selo (4K, HDR, Dolby, codec, serviço) ganha a cor do seu tipo, como no pacote de selos do Nuvio. Desligado, os selos ficam brancos.";
-    case AJ_PLAYER_BADGES: return "Choose the badge pack used in the player. Same as stream badges follows the stream selection; a specific URL uses that pack independently.";
-    case AJ_PLAYER_SHOW: return "Show video and audio badges beneath the player title. Use badge packs that match plain text such as 2160p or Atmos.";
+    case AJ_PLAYER_BADGES: return "Choose Legacy, Xperience or an imported pack for the single top-left player row. Same as stream badges follows the stream selection.";
+    case AJ_PLAYER_SHOW: return "Show one compact badge row at the top left. Playback Info stays available when badges are hidden.";
     case AJ_SELOS_PACOTE: return "Choose Xperience, Legacy or an imported badge pack for stream cards. This choice is saved per profile.";
     case AJ_SELOS_PACOTE_ADD: return "Scan the QR code with your phone to view, add, edit, or remove Fusion badge URLs. Both devices must be on the same local network.";
     case AJ_URL_LISTA: return "Listas M3U e guias XMLTV deste perfil. Cada lista M3U vira uma fonte do Guia; cada guia XMLTV serve a programação de todas. Aqui aparece só o servidor; a URL inteira fica só nesta TV.";

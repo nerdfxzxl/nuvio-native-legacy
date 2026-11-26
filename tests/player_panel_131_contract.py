@@ -84,3 +84,11 @@ check("@legacy" in pack and "@xperience" in pack and "SELOS_LEGACY" in settings,
       "independent persisted Legacy and Xperience selection")
 check(all("PLAYER_BADGE_"+v in plr for v in ("RES","HDR","ATMOS","AUDIO_CODEC","CHANNELS")),
       "all five independent playback badge switches have production consumers")
+
+# Single selected badge family and exclusive rendering ownership.
+check(plr.count("playerBadgeRow(")==2 and "playerFusionTitulo(" not in plr and "fileiraFormato(" not in plr,
+      "one production badge draw site; no old title or format row")
+check("playerBadgeRow(NV_ILHA_MARGEM_D,NV_ILHA_Y" in plr and "estatvivo_player_aberto()" in plr,
+      "compact top-left ownership with Playback Info collision avoidance")
+check("rotuloAudioOsd(" not in plr and "p8_badge_policy(" in plr,
+      "old audio label cannot bypass individual visibility or output-route policy")

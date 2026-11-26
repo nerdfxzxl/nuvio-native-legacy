@@ -70,6 +70,7 @@ typedef struct {
   char frameLead[32], display[48], taxa[24];
   char audio[96], audioCodec[32], audioChannels[16], audioSampleRate[24];
   char audioLanguage[32], audioRoute[40], legenda[64];
+  char selectedAtmos[48];
   char buffer[32], backBuffer[32], network[80], connections[24];
   char requests[32], latency[32], rebuffers[32];
   int plataforma;
@@ -674,6 +675,7 @@ static void montarTela(int taxaKbps) {
       audioinfo_texto(fa->codec, fa->canais, strstr(fa->rotulo, "Atmos") != NULL, cc, sizeof cc);
       snprintf(tela.audioCodec, sizeof tela.audioCodec, "%s", codec[0] ? codec : (fa->rotulo[0] ? fa->rotulo : "—"));
       snprintf(tela.audioChannels, sizeof tela.audioChannels, "%s", canais[0] ? canais : "—");
+      if (video_tem_atmos()) snprintf(tela.selectedAtmos,sizeof tela.selectedAtmos,"JOC track selected");
 #ifdef NV_ANDROID
       if (fa->amostraHz > 0) snprintf(tela.audioSampleRate, sizeof tela.audioSampleRate, "%d Hz", fa->amostraHz);
 #endif
@@ -1565,6 +1567,7 @@ static void playerInfoMontarLinhas(void) {
   playerInfoAdicionar(0, "Channels", tela.audioChannels);
   playerInfoAdicionar(0, "Sample rate", tela.audioSampleRate);
   playerInfoAdicionar(0, "Language", tela.audioLanguage);
+  playerInfoAdicionar(0, "Atmos (selected track)", tela.selectedAtmos);
   playerInfoAdicionar(0, "Output route", tela.audioRoute);
   playerInfoAdicionar(1, "NETWORK", "");
   playerInfoAdicionar(0, "Buffer", tela.buffer);
