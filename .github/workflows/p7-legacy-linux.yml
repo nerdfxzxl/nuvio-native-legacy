@@ -74,3 +74,5 @@ jobs:
           done
           exit "$failed"
 # P8 Phase A: verify refreshed PCM channel/rate configuration on stable route changes.
+
+# P8 Phase B final fixture and focus-clip correction, exact revision.

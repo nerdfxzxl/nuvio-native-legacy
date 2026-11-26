@@ -1353,7 +1353,7 @@ static const char *menuRot(int i) {
 static const char *menuIcone(int i) { return i == 1 && menuTiraSecundaria() ? "pl_eye-off" : menuLin[i].icone; }
 static GfxRect menuGeo(GfxRect c) {
   CtxLinha l[3];
-  float ry = c.y + LU_PAD_Y + (fonteModo ? 126.0f : LU_TIT_H + 14.0f) + (foco - rolagem) * (LU_LN_H + LU_LN_VAO);
+  float ry = c.y + LU_PAD_Y + (fonteModo ? 126.0f : LU_TIT_H + 14.0f) + (foco - rolagemVisual) * (LU_LN_H + LU_LN_VAO);
   float w = 0.0f, h = LU_MENU_PAD * 2.0f + 3 * ctx_menu_passo() - 4.0f, y;
   for (int i = 0; i < 3; i++) { l[i].rot = menuRot(i); l[i].icone = menuIcone(i); }
   w = ctx_menu_largura(l, 3);
@@ -1453,7 +1453,7 @@ void legendasui_corpo(GfxRect c, float a) {
 #endif
   if (count>0) {
     int ptr=pont;
-    gfx_recorte(x0,y,w,area);
+    gfx_recorte(x0-5.0f,y-4.0f,w+10.0f,area+8.0f);
     for (i=0;i<nLinhasV;i++) {
       float ry=y+i*passo-offset;
       if (ry+LU_LN_H<=y || ry>=y+area) continue;

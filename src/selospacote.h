@@ -75,7 +75,7 @@ const char *selospacote_url(int i);
 int  selospacote_da_tv(int i);                  // 1 = adicionado nesta TV (removivel)
 int  selospacote_n_filtros(int i);              // filtros validos e ativos
 int  selospacote_ativo(void);                   // -1 = "Do Nuvio" (o embutido)
-int  selospacote_player_fonte(void);            // renderer: 0 same, 1 hidden, >=2 pack
+int  selospacote_player_fonte(void);            // renderer: 0 same, 1 hidden, >=2 imported, SELOS_LEGACY/XPERIENCE
 int  selospacote_player_preferencia(void);      // picker: 0 same, 1.. selected URL
 int  selospacote_player_mostrar(void);          // independent display toggle
 void selospacote_player_definir_mostrar(int mostrar);

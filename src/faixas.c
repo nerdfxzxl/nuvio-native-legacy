@@ -2304,7 +2304,7 @@ static float alturaLista(int col) {
 static void ponteiroFaixa(int i, int b) {
   (void)b;
   if (!aberta || modo || i < 0 || i >= nLinhas(0)) return;
-  coluna = 0; volFoco = velFoco = 0; foco[0] = i;
+  coluna = 0; volFoco = velFoco = audioTopoFoco = 0; foco[0] = i;
 }
 
 
@@ -2419,7 +2419,7 @@ static void corpoLista(GfxRect c, float a) {
   }
 #endif
   if (count > 0) {
-    gfx_recorte(x0,y,w,area);
+    gfx_recorte(x0-5.0f,y-4.0f,w+10.0f,area+8.0f);
     for (i=0;i<n;i++) {
       float ry=y+i*passo-offset;
       if (ry+IL_LN_H<=y || ry>=y+area) continue;

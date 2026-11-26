@@ -186,6 +186,17 @@ int main(void) {
     snprintf(names[0].arquivo,sizeof names[0].arquivo,"%s",longName);
     assert(legendasui_titulo(names,4,0,title,sizeof title));
     assert(strlen(title)==205 && !strstr(title,".srt"));
+    // Unnamed embedded tracks keep their actual embedded provenance, and an
+    // opaque singleton still gets a stable visible number.
+    memset(names,0,sizeof names);
+    snprintf(names[0].idioma,sizeof names[0].idioma,"en");
+    names[0].embutida=1;
+    assert(!legendasui_titulo(names,1,0,title,sizeof title));
+    assert(!strcmp(title,"English (Embedded)"));
+    names[0].embutida=0;
+    snprintf(names[0].arquivo,sizeof names[0].arquivo,"3752803-8674841.zip");
+    assert(!legendasui_titulo(names,1,0,title,sizeof title));
+    assert(!strcmp(title,"English (1)"));
     fonteModo=0;
   }
   // #439: the secondary overlay must keep all added sizes.
@@ -465,7 +476,7 @@ int main(void) {
         LuiLinha row = {0}; row.tipo = LR_CAND; row.cand = k;
         textoLinha(&row, title, sizeof title, detail, sizeof detail, &language, &icon, &active, &dim);
         // Format A never substitutes provider sync status for a filename.
-        const char *expected[] = {"English (1)", "English (2)", "English (3)", "Release"};
+        const char *expected[] = {"Subtitle (1)", "Subtitle (2)", "Subtitle (3)", "Release"};
         assert(!strcmp(title, expected[k]));
         assert(strstr(detail, labels[k]));
         assert(!strcmp(cand[k].arquivo, k == 3 ? "Release.srt" : ""));
