@@ -1266,3 +1266,7 @@ Phase A source work is closed. P8 overall remains partial; Phase B NOT STARTED /
 ## P8 Phase B combined continuation — 2026-11-26
 
 Owner authorized all of Phase B without splitting. Source implementation and tests committed through `85f5723cacce1f4c2748446e02cba14c601b83a3`; exact-source CI #10 Android, #15 Linux, #32 lifecycle pending/in progress. **Phase B remains PARTIAL pending source gates and final acceptance.** See [Phase B acceptance checkpoint](PLAYBACK_50_P8_PHASE_B_ACCEPTANCE.md) for requirement matrix, source revisions, run IDs and remaining gates. Phase A accepted source preserved; no APK triggered or physical acceptance claimed.
+
+## Phase B final-review correction — 2026-11-26
+
+Previous exact-revision CI #10/#15/#32 passed (nine executed jobs); final review found duplicate badge rendering and visibility/output-provenance bypass. Corrected at 528224741a60fd5fba8f55553b26f44be5d80dac; fresh Android #11, Linux #16, P6 #33 submitted. See [Phase B acceptance report](PLAYBACK_50_P8_PHASE_B_ACCEPTANCE.md) for the verified earlier evidence, correction and exact-revision links. Final acceptance remains PARTIAL pending fresh CI and all job logs. No APK built or triggered.
