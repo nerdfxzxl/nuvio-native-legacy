@@ -48,3 +48,6 @@ P8 integrated Android debug APK — owner authorized 2026-11-25. Accepted branch
 
 
 P8 #136 — owner-authorized compatibility fallback and cinematic overlay correction after #135 phone evidence. Build complete current accepted feature branch, full preflight including P5 audio, route, HDR policy and native overlay checks. Retain normal two ABI debug signing and all caches. No release or default branch changes.
+
+
+P8 integrated APK #137 request — owner authorized 2026-11-26 after both Phase A and Phase B source acceptance. Accepted HEAD 8369f012be7617779af1fc8c38d489b56a3eb83a; exact tested production revision 528224741a60fd5fba8f55553b26f44be5d80dac (Android #11, Linux #16 and P6 #33 all PASS). Trigger documentation only; existing full mandatory preflight and two-ABI debug APK workflow, unchanged Gradle/native/FFmpeg/P2P cache settings, Rust core, package and signing configuration. Q18 prior owner deferral remains. Physical device acceptance pending. No release or merge.
