@@ -1674,7 +1674,7 @@ static const Opcao OPCOES[AJ_N] = {
   ACAO("Ver o registro na tela"),
   ESC("Medidor de desempenho",           V_MEDIDOR, 4),       // local: medidorFormaLocal
   ACAO("Guia de uso"),
-  ESC("Pacote de selos",                 V_SELOS_PACOTE, 6),   // por perfil: selospacote.c
+  ESC("Stream badge pack",              V_SELOS_PACOTE, 6),   // por perfil: selospacote.c
   ACAO("Fusion badge URLs"),
   ACAO("Remover pacote"),
   ESC("Tamanho da interface",            V_TAMANHO_UI, 9),    // local: tamanhoUiLocal
@@ -8119,7 +8119,7 @@ static const char *ajudaOpcaoBase(int op) {
     case AJ_SELOS_CORES: return "Na lista de fontes, cada selo (4K, HDR, Dolby, codec, serviço) ganha a cor do seu tipo, como no pacote de selos do Nuvio. Desligado, os selos ficam brancos.";
     case AJ_PLAYER_BADGES: return "Choose the badge pack used in the player. Same as stream badges follows the stream selection; a specific URL uses that pack independently.";
     case AJ_PLAYER_SHOW: return "Show video and audio badges beneath the player title. Use badge packs that match plain text such as 2160p or Atmos.";
-    case AJ_SELOS_PACOTE: return "Qual pacote de selos desenha a lista de fontes. Do Nuvio é o pacote que vem no app; os outros são os pacotes da sua conta (importados no Nuvio web) e os que você adiciona aqui. Vale para este perfil. Se nenhum selo do pacote combinar com a fonte, ela usa os selos do app.";
+    case AJ_SELOS_PACOTE: return "Choose Xperience, Legacy or an imported badge pack for stream cards. This choice is saved per profile.";
     case AJ_SELOS_PACOTE_ADD: return "Scan the QR code with your phone to view, add, edit, or remove Fusion badge URLs. Both devices must be on the same local network.";
     case AJ_URL_LISTA: return "Listas M3U e guias XMLTV deste perfil. Cada lista M3U vira uma fonte do Guia; cada guia XMLTV serve a programação de todas. Aqui aparece só o servidor; a URL inteira fica só nesta TV.";
     case AJ_URL_M3U_ADD: return "Adiciona uma lista de canais M3U pela URL. Digite no teclado da TV ou pelo celular.";

@@ -73,3 +73,14 @@ check("English (Embedded)" in leg and 'fonteModo?"English": "Subtitle"' in leg,
       "embedded fallback and numbered opaque-name fallback")
 check("TXT_FAMILIA_ROBOTO" in plr and "const int bottomControls" in plr,
       "Roboto default and side sheets do not lift subtitles")
+
+# Source and measured metadata are separate; pack choice and five independent toggles.
+info=source("estatvivoui.c")
+pack=source("selospacote.c")
+settings=source("ajustes.c")
+check("stream_selos_player_titulo(NULL, metadata," in plr and "Source HDR (metadata)" in info and "VIDEO (PLAYBACK)" in info,
+      "source claims cannot override playback badges or measured resolution")
+check("@legacy" in pack and "@xperience" in pack and "SELOS_LEGACY" in settings,
+      "independent persisted Legacy and Xperience selection")
+check(all("PLAYER_BADGE_"+v in plr for v in ("RES","HDR","ATMOS","AUDIO_CODEC","CHANNELS")),
+      "all five independent playback badge switches have production consumers")

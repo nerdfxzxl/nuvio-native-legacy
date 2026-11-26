@@ -82,3 +82,6 @@ check("if(!ehCanal() && duracaoSeg > 0.0f)" in player
       "buffer endpoint is retained independent of seek-only OSD")
 check("return layout_modo_mobile() && homeRetratoTelefone();" in home,
       "landscape mobile no longer forces a half-height hero")
+
+check("expansionScale" in pill and "baseW+expanded+28.0f" in pill and "baseW+2.0f*expanded" not in pill,
+      "occupied capsule geometry has no mirrored empty expansion")

@@ -7791,9 +7791,8 @@ static float playerFusionTitulo(float x, float y, float alpha, int medir) {
   if (alpha <= 0.001f || ehCanal()) return 0.0f;
   playerFusionCaracteristicas(metadata, sizeof metadata);
   if (!metadata[0]) return 0.0f;
-  // Match the real source filename/name and measured playback info separately.
-  // A filename can identify Atmos-in-MKV or an HDR profile missing from the
-  // decoder, while resolution always comes from the active video pipeline.
+  // Under-title badges describe the selected pipeline/track, not source filename.
+  // Source claims remain separately labeled in Playback Info.
   return stream_selos_player_titulo(NULL, metadata,
                                    x, y, 680.0f, 30.0f, 0.953f, alpha, medir);
 }

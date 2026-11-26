@@ -4561,7 +4561,7 @@ static void selosAgendar(int ini, int qtd) {
   selosPedVer = selospacote_versao(); selosPedGer = listaGeracao;
   if (qtd <= 0 || ini < 0 || ini + qtd > n) return;
   selospacote_colorido(ajustes_selos_coloridos());
-  if (selospacote_ativo() < 0 && !selospacote_embutidos_ok()) return;
+  if (selospacote_ativo() == SELOS_LEGACY || (selospacote_ativo() < 0 && !selospacote_embutidos_ok())) return;
   selosPedVer = selospacote_versao();
   L = malloc(sizeof *L + sizeof(Stream) * (size_t)qtd);
   if (!L) return;
@@ -4578,7 +4578,7 @@ static int selosPacoteDa(Stream *s) {
   // O modo colorido vale para a lista inteira: ligar/desligar nos Ajustes
   // sobe a versao do pacote e a lista e recalculada (no fio) na proxima olhada.
   selospacote_colorido(ajustes_selos_coloridos());
-  if (selospacote_ativo() < 0 && !selospacote_embutidos_ok()) return 0;
+  if (selospacote_ativo() == SELOS_LEGACY || (selospacote_ativo() < 0 && !selospacote_embutidos_ok())) return 0;
   ver = selospacote_versao();
   // verTrava: episode changed frees lista on the UI thread while this sheet
   // still draws. The pointer check and the walk have to see the same block.

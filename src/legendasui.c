@@ -1430,7 +1430,9 @@ void legendasui_corpo(GfxRect c, float a) {
       }
       xx+=ww+gap;
     }
-    gfx_recorte(c.x,c.y,c.w,c.h);
+    { GfxRect ilha;
+      if (plrilha_rect(&ilha)) gfx_recorte(ilha.x,ilha.y,ilha.w,ilha.h);
+      else gfx_recorte(c.x,c.y,c.w,c.h); }
   }
   y+=126.0f;
   ajustarRolagem(vis);

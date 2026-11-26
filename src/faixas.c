@@ -2780,7 +2780,9 @@ static void corpoEstilo(GfxRect c, float a) {
       if(chosen)gfx_icone((GfxRect){item.x+item.w-31.0f,item.y+8.0f,22.0f,22.0f},
                            "pl_check",1,1,1,a);
     }
-    gfx_recorte(c.x,c.y,c.w,c.h);
+    { GfxRect ilha;
+      if (plrilha_rect(&ilha)) gfx_recorte(ilha.x,ilha.y,ilha.w,ilha.h);
+      else gfx_recorte(c.x,c.y,c.w,c.h); }
   }
 }
 
