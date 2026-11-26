@@ -545,6 +545,7 @@ static void reconstruir(void) {
   for (i = 0; i < nPac; i++) { nomeDe(&pac[i]); compilaPacote(&pac[i]); }
   ativo = -1;
   if (escolhaExplicita) {
+    if (!strcmp(escolhaUrl, "@legacy")) ativo = SELOS_LEGACY;
     for (i = 0; i < nPac; i++) if (escolhaUrl[0] && !strcasecmp(pac[i].raw->url, escolhaUrl)) ativo = i;
   } else {
     for (i = 0; i < nPac; i++) if (!pac[i].daTv && pac[i].raw->ativo && pac[i].nc) { ativo = i; break; }
@@ -642,6 +643,8 @@ int selospacote_player_fonte(void) {
   int result = 0;
   travar(); selospacote_iniciar();
   if (!playerShow) result = 1;
+  else if (!strcmp(playerUrl,"@legacy")) result = SELOS_LEGACY;
+  else if (!strcmp(playerUrl,"@xperience")) result = SELOS_XPERIENCE;
   else if (playerUrl[0]) for (int i = 0; i < nPac; i++)
     if (!strcasecmp(playerUrl, pac[i].raw->url)) { result = i + 2; break; }
   soltar(); return result;
@@ -649,7 +652,9 @@ int selospacote_player_fonte(void) {
 int selospacote_player_preferencia(void) {
   int result = 0;
   travar(); selospacote_iniciar();
-  if (playerUrl[0]) for (int i = 0; i < nPac; i++)
+  if (!strcmp(playerUrl,"@legacy")) result = SELOS_LEGACY;
+  else if (!strcmp(playerUrl,"@xperience")) result = SELOS_XPERIENCE;
+  else if (playerUrl[0]) for (int i = 0; i < nPac; i++)
     if (!strcasecmp(playerUrl, pac[i].raw->url)) { result = i + 1; break; }
   soltar(); return result;
 }
@@ -678,7 +683,9 @@ void selospacote_player_escolher(int v) {
     dados_gravar(nome, "0");
   } else {
     playerUrl[0] = 0;
-    if (v >= 2 && v - 2 < nPac)
+    if (v == SELOS_LEGACY || v == SELOS_XPERIENCE)
+      snprintf(playerUrl, sizeof playerUrl, "%s", v == SELOS_LEGACY ? "@legacy" : "@xperience");
+    else if (v >= 2 && v - 2 < nPac)
       snprintf(playerUrl, sizeof playerUrl, "%s", pac[v - 2].raw->url);
     snprintf(nome, sizeof nome, "selos-player-p%d.txt", perfilLido);
     if (playerUrl[0]) dados_gravar(nome, playerUrl);
@@ -693,11 +700,11 @@ void selospacote_player_escolher(int v) {
 
 static void selospacote_escolher_i(int i) {
   selospacote_iniciar();
-  if (i < 0 || i >= nPac) i = -1;
+  if ((i < 0 && i != SELOS_LEGACY) || i >= nPac) i = -1;
   escolhaExplicita = 1;
-  snprintf(escolhaUrl, sizeof escolhaUrl, "%s", i >= 0 ? pac[i].raw->url : "");
+  snprintf(escolhaUrl, sizeof escolhaUrl, "%s", i >= 0 ? pac[i].raw->url : i == SELOS_LEGACY ? "@legacy" : "");
   gravarEscolha(perfilLido);
-  ativo = i >= 0 && pac[i].nc ? i : -1;
+  ativo = i == SELOS_LEGACY ? i : i >= 0 && pac[i].nc ? i : -1;
   versao++;
 }
 void selospacote_escolher(int i) { travar(); selospacote_escolher_i(i); soltar(); }
@@ -760,7 +767,7 @@ static int selospacote_remover_i(int i) {
   if (era) { escolhaExplicita = 1; escolhaUrl[0] = 0; gravarEscolha(perfilLido); }
   // Removing the pack used in the player should clear that explicit source,
   // not silently reactivate it if the same URL is imported again later.
-  if (playerUrl[0]) {
+  if (playerUrl[0] && strcmp(playerUrl,"@legacy") && strcmp(playerUrl,"@xperience")) {
     int stillPresent = 0;
     for (int z = 0; z < tv.n; z++)
       if (!strcasecmp(tv.p[z].url, playerUrl)) stillPresent = 1;
@@ -1025,8 +1032,8 @@ static int selospacote_casar_i(const char *const *campos, int nc, unsigned short
   size_t jn = 0, jcap = 0;
   selospacote_iniciar();
   if (max <= 0) return 0;
-  int escolhido=pacote>=0?pacote:ativo;
-  if(escolhido>=nPac) return 0;
+  int escolhido=pacote==-1?ativo:pacote;
+  if(escolhido==SELOS_LEGACY || escolhido>=nPac) return 0;
   if(escolhido<0 && !embCarregar()) return 0;
   p = escolhido >= 0 ? &pac[escolhido] : NULL;
   arena = malloc((size_t)(CAND_MAX + 1) * CAND_BYTES);
@@ -1082,7 +1089,8 @@ int selospacote_casar_pacote(int pacote,const char *const *campos,int nc,
 }
 
 const SeloFiltro *selospacote_filtro_pacote(int pacote,unsigned short id) {
-  int escolhido=pacote>=0?pacote:ativo;
+  int escolhido=pacote==-1?ativo:pacote;
+  if (escolhido == SELOS_LEGACY) return NULL;
   if (escolhido < 0) {
     int nd = embPac[0].nc;
     if (!embOk) return NULL;

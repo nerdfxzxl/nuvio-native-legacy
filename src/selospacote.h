@@ -12,6 +12,8 @@
 
 #define SELOS_MAX_PACOTES 3
 #define SELOS_MAX_CASADOS 16
+#define SELOS_LEGACY (-2)
+#define SELOS_XPERIENCE (-3) /* explicit built-in pack, not follow-stream */
 
 // PACOTES EMBUTIDOS (dono, 05/10/2026: "use o primeiro como o padrao e o
 // segundo como a versao colorida"): os dois pacotes do Xperience em

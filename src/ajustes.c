@@ -759,6 +759,7 @@ typedef enum {
   AJ_BUF_LOW_RAM,
   AJ_HTTP_PARALLEL, AJ_HTTP_COUNT, AJ_HTTP_CHUNK,
   AJ_AFR,
+  AJ_BADGE_RES, AJ_BADGE_HDR, AJ_BADGE_ATMOS, AJ_BADGE_AUDIO_CODEC, AJ_BADGE_CHANNELS,
   AJ_N
 } OpcaoId;
 _Static_assert(DEBRID_RD == 0 && DEBRID_TB == 1 && DEBRID_PM == 2 && DEBRID_AD == 3,
@@ -769,7 +770,7 @@ _Static_assert(DEBRID_RD == 0 && DEBRID_TB == 1 && DEBRID_PM == 2 && DEBRID_AD =
 static const char *V_PROVEDORES_ESCOPO[] = { "Compartilhada neste aparelho", "Separada para este perfil" };
 static const char *V_HDR_UI[] = { "Automático", "Desligado" };
 static const char *V_LEG_MOSTRAR[] = { "Só meus idiomas", "Todas" };
-static const char *V_SELOS_PACOTE[] = { "Do Nuvio", "Pacote 1", "Pacote 2", "Pacote 3" };
+static const char *V_SELOS_PACOTE[] = { "Xperience", "Pack 1", "Pack 2", "Pack 3", "Legacy", "Xperience" };
 
 // Selo de assistido: a ordem e a do disco (0 = Ligado do V_LIGA antigo vira Icone,
 // 1 = Desligado continua), entao o que ja foi gravado nao precisa migrar.
@@ -1673,7 +1674,7 @@ static const Opcao OPCOES[AJ_N] = {
   ACAO("Ver o registro na tela"),
   ESC("Medidor de desempenho",           V_MEDIDOR, 4),       // local: medidorFormaLocal
   ACAO("Guia de uso"),
-  ESC("Pacote de selos",                 V_SELOS_PACOTE, 4),   // por perfil: selospacote.c
+  ESC("Pacote de selos",                 V_SELOS_PACOTE, 6),   // por perfil: selospacote.c
   ACAO("Fusion badge URLs"),
   ACAO("Remover pacote"),
   ESC("Tamanho da interface",            V_TAMANHO_UI, 9),    // local: tamanhoUiLocal
@@ -1900,7 +1901,7 @@ static const Opcao OPCOES[AJ_N] = {
   ESC("Tamanho do destaque", V_HERO_TAMANHO, 3),       // local: heroSizeLocal
   ESC("Mostrar detalhes da pasta no destaque", V_LIGA, 2),
   LER("Seletor anterior (reservado)"), // Keep retired AJ_STREAM_SELECTOR slot.
-  ESC("Player badges", V_SELOS_PACOTE, 4),
+  ESC("Player badges", V_SELOS_PACOTE, 6),
   ESC("Show in player", V_LIGA, 2),
   ESC("Descrição dos episódios", V_LIGA, 2),
   ESC("IMDb por episódio", V_LIGA, 2),
@@ -1930,6 +1931,8 @@ static const Opcao OPCOES[AJ_N] = {
   NUM("HTTP connections", 2, 6, 1, NULL),
   NUM("HTTP chunk size", 1, 4, 1, " MiB"),
   ESC("Automatic frame rate (AFR)", V_VIDRO_FOSCO, 2),
+  ESC("Resolution badge", V_LIGA, 2), ESC("HDR / Dolby Vision badge", V_LIGA, 2),
+  ESC("Atmos badge", V_LIGA, 2), ESC("Audio codec badge", V_LIGA, 2), ESC("Audio channels badge", V_LIGA, 2),
   };
 
 // Nome de cada opcao no arquivo. O formato era POSICIONAL — uma linha por
@@ -2291,6 +2294,8 @@ static const char *CHAVE[] = {
   "bufferLowTargetLocal",
   "httpParallelLocal", "httpCountLocal", "httpChunkMiBLocal",
   "automaticFrameRateLocal",
+  "playerBadgeResolutionLocal", "playerBadgeHdrLocal", "playerBadgeAtmosLocal",
+  "playerBadgeAudioCodecLocal", "playerBadgeChannelsLocal",
 };
 // QUATRO VETORES PARALELOS indexados pelo mesmo enum AJ_*: OPCOES, CHAVE,
 // valor e as secoes. OPCOES ja e declarado [AJ_N], e `valor` aceita inicializacao
@@ -3819,6 +3824,9 @@ int   ajustes_fundo_addon(void)       { return lig(AJ_ADDON_FUNDO); }
 int   ajustes_logo_addon(void)        { return lig(AJ_ADDON_LOGO); }
 int   ajustes_col_arte_conta(void)    { return lig(AJ_COL_ARTE_CONTA); }
 int   ajustes_selos_coloridos(void)   { return lig(AJ_SELOS_CORES); }
+int ajustes_player_badge_ligado(int grupo) {
+  return grupo >= 0 && grupo < 5 && lig(AJ_BADGE_RES + grupo);
+}
 int   ajustes_livetv_resolucao(void)  { return valor[AJ_LIVETV_RES]; }
 int   ajustes_livetv_formato(void)    { return valor[AJ_LIVETV_FORMATO]; }
 int   ajustes_livetv_modo(void)       { return valor[AJ_LIVETV_MODO]; }
@@ -4773,8 +4781,9 @@ static void spAdicionar(const char *url) {
 }
 // Espelho da escolha: o valor da linha e selospacote_ativo() + 1.
 static void spEspelhar(void) {
-  valor[AJ_SELOS_PACOTE] = selospacote_ativo() + 1;
-  valor[AJ_PLAYER_BADGES] = selospacote_player_preferencia();
+  int n = selospacote_n(), stream = selospacote_ativo(), player = selospacote_player_preferencia();
+  valor[AJ_SELOS_PACOTE] = stream == SELOS_LEGACY ? n + 1 : stream + 1;
+  valor[AJ_PLAYER_BADGES] = player == SELOS_LEGACY ? n + 1 : player == SELOS_XPERIENCE ? n + 2 : player;
   valor[AJ_PLAYER_SHOW] = selospacote_player_mostrar() ? 0 : 1;
 }
 static void spRecolher(void) {
@@ -6329,6 +6338,7 @@ static int somenteDesteAparelho(int op) {
     case AJ_ABAS_ESTILO:    /* #205: idem */
     case AJ_LOGO_TRAILER:   /* so a protecao de OLED desta TV */
     case AJ_LEG_MOSTRAR:
+    case AJ_BADGE_RES: case AJ_BADGE_HDR: case AJ_BADGE_ATMOS: case AJ_BADGE_AUDIO_CODEC: case AJ_BADGE_CHANNELS:
     case AJ_AFR:
     case AJ_TUNNELING:     /* Hardware playback capabilities belong to this device. */
     case AJ_HDR_INTERFACE: /* HDR output belongs to this panel. */
@@ -9986,8 +9996,8 @@ static int definirValorDireto(int op, int novo) {
   if (op == AJ_RESOLUCAO && novo == RES_AUTO) dados_apagar(RES_ARQ_AUTO);
   if (op == AJ_ENQUETES) enquete_definir_optout(novo != 0);
   if (op == AJ_ADDONS_PRINCIPAL) sync_iniciar();
-  if (op == AJ_SELOS_PACOTE) { selospacote_escolher(novo - 1); spEspelhar(); }
-  if (op == AJ_PLAYER_BADGES) { selospacote_player_escolher(novo ? novo + 1 : 0); spEspelhar(); }
+  if (op == AJ_SELOS_PACOTE) { selospacote_escolher(novo == selospacote_n()+1 ? SELOS_LEGACY : novo - 1); spEspelhar(); }
+  if (op == AJ_PLAYER_BADGES) { selospacote_player_escolher(novo == selospacote_n()+1 ? SELOS_LEGACY : novo == selospacote_n()+2 ? SELOS_XPERIENCE : novo ? novo + 1 : 0); spEspelhar(); }
   if (op == AJ_PLAYER_SHOW) { selospacote_player_definir_mostrar(novo == 0); spEspelhar(); }
   if (op == AJ_PLAYER_EXTERNO || op == AJ_PLAYER_ANIME) {
     int b = novo - ppBase(op) - 3, k = op == AJ_PLAYER_ANIME;
@@ -10590,8 +10600,8 @@ static int nValores(int op) {
   if(op==AJ_IPTV_CONTA){int n=iptv_contas(NULL,0);return n>0?n:1;}
   if (op == AJ_LEG_LINGUA || op == AJ_LEG_LINGUA2 || op == AJ_AUD_LINGUA || op == AJ_AUD_LINGUA2) return nLingua > 0 ? nLingua : 1;
   if (op == AJ_TRAILER_AUDIO) return nTrAud > 0 ? nTrAud : 1;
-  if (op == AJ_SELOS_PACOTE) return 1 + selospacote_n();
-  if (op == AJ_PLAYER_BADGES) return 1 + selospacote_n();
+  if (op == AJ_SELOS_PACOTE) return 2 + selospacote_n();
+  if (op == AJ_PLAYER_BADGES) return 3 + selospacote_n();
   if (op == AJ_PLAYER_EXTERNO) return 3 + ppN();
   if (op == AJ_PLAYER_ANIME) return 4 + ppN();
   if (op == AJ_URL_LISTA) return 1 + urlN;
@@ -10663,11 +10673,11 @@ static const char *textoValor(int op) {
   if (op == AJ_PLAYER_EXTERNO || op == AJ_PLAYER_ANIME) return ppNome(op, valor[op]);
   if (op == AJ_SELOS_PACOTE) {
     int v = valor[op];
-    return v > 0 && v <= selospacote_n() ? selospacote_nome(v - 1) : "Do Nuvio";
+    return v == selospacote_n()+1 ? "Legacy" : v > 0 && v <= selospacote_n() ? selospacote_nome(v - 1) : "Xperience";
   }
   if (op == AJ_PLAYER_BADGES) {
     int v = selospacote_player_preferencia();
-    return v > 0 && v <= selospacote_n() ? selospacote_url(v - 1) : "Same as stream badges";
+    return v == SELOS_LEGACY ? "Legacy" : v == SELOS_XPERIENCE ? "Xperience" : v > 0 && v <= selospacote_n() ? selospacote_url(v - 1) : "Same as stream badges";
   }
   if (op == AJ_URL_LISTA) return urlNomeValor(valor[op]);
   // FORA DO INTERVALO NAO LE FORA DO VETOR.

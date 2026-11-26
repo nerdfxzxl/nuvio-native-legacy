@@ -66,6 +66,7 @@ typedef struct {
   char titulo[160], sub[160], addon[64], provider[40], server[96];
   char filename[512], size[32], engine[48], resolucao[32], videoCodec[32];
   char codecHdr[64], videoFormat[32], fps[24], decoder[48], dropped[48];
+  char sourceCodec[32], sourceHdr[32], sourceResolution[32], sourceFormat[32];
   char frameLead[32], display[48], taxa[24];
   char audio[96], audioCodec[32], audioChannels[16], audioSampleRate[24];
   char audioLanguage[32], audioRoute[40], legenda[64];
@@ -623,8 +624,12 @@ static void montarTela(int taxaKbps) {
       snprintf(tela.size, sizeof tela.size, "%.2f GB", (double)s->tamanhoBytes / 1073741824.0);
     else if (s->tamanhoMB > 0)
       snprintf(tela.size, sizeof tela.size, "%ld MB", s->tamanhoMB);
-    snprintf(tela.videoCodec, sizeof tela.videoCodec, "%s", codecDe(s->badges));
-    snprintf(tela.videoFormat, sizeof tela.videoFormat, "%s", s->mp4 ? "MP4" : "Adaptive stream");
+    snprintf(tela.sourceCodec, sizeof tela.sourceCodec, "%s", codecDe(s->badges));
+    if (s->mp4) snprintf(tela.sourceFormat, sizeof tela.sourceFormat, "MP4");
+    if (s->altura > 0) snprintf(tela.sourceResolution, sizeof tela.sourceResolution, "%dp", s->altura);
+    int m = badges_fonte_hdr_marca(s->badges);
+    if (s->dolbyVision) snprintf(tela.sourceHdr, sizeof tela.sourceHdr, "Dolby Vision");
+    else if (m >= 0) snprintf(tela.sourceHdr, sizeof tela.sourceHdr, "%s", marca_formato_nome((FormatoMarca)m));
   }
 #ifdef NV_ANDROID
   snprintf(tela.engine, sizeof tela.engine, "Media3 ExoPlayer");
@@ -653,23 +658,11 @@ static void montarTela(int taxaKbps) {
     if (dw > 0 && dh > 0) snprintf(tela.display, sizeof tela.display, "%d × %d", dw, dh);
   }
   if (w > 0 && h > 0) snprintf(tela.resolucao, sizeof tela.resolucao, "%d × %d", w, h);
-  else if (s && s->altura > 0) snprintf(tela.resolucao, sizeof tela.resolucao, "%dp", s->altura);
-  { const char *cod = s ? codecDe(s->badges) : "";
-    char hd[24] = "";
-    int doAddon = 0;
-    if (!samsung && hdr && hdr[0] && strcmp(hdr, "none") && strcmp(hdr, "SDR"))
-      snprintf(hd, sizeof hd, "%s", !strcmp(hdr, "DolbyVision") ? "Dolby Vision" : hdr);
-    else if (s) {
-      int m = badges_fonte_hdr_marca(s->badges);
-      if (s->dolbyVision && !samsung) snprintf(hd, sizeof hd, "Dolby Vision");
-      else if (m >= 0) snprintf(hd, sizeof hd, "%s", marca_formato_nome((FormatoMarca)m));
-      doAddon = hd[0] != 0;
-    }
-    if (!hd[0]) snprintf(hd, sizeof hd, "SDR");
-    snprintf(tela.codecHdr, sizeof tela.codecHdr, "%s%s%s%s", cod, cod[0] ? " · " : "", hd,
-             doAddon && samsung ? " (add-on)" : "");
-    if (h > 0 && u < sizeof tela.sub && strcmp(hd, "SDR"))
-      snprintf(tela.sub + u, sizeof tela.sub - u, " %s", hd); }
+  // Never substitute filename hints for decoded playback properties.
+  if (!samsung && w > 0 && h > 0 && hdr && hdr[0] && strcmp(hdr,"none"))
+    snprintf(tela.codecHdr, sizeof tela.codecHdr, "%s", !strcmp(hdr,"DolbyVision") ? "Dolby Vision" : hdr);
+  if (tela.codecHdr[0] && u < sizeof tela.sub)
+    snprintf(tela.sub + u, sizeof tela.sub - u, " %s", tela.codecHdr);
   // #293: o audio e a legenda EM USO, do que o pipeline listou. Codec/canais so
   // quando a plataforma os da (audioinfo vazio = fica so o idioma); sem faixa, vazio.
   { const VideoFaixa *fa = video_audio(video_audio_atual());
@@ -681,6 +674,9 @@ static void montarTela(int taxaKbps) {
       audioinfo_texto(fa->codec, fa->canais, strstr(fa->rotulo, "Atmos") != NULL, cc, sizeof cc);
       snprintf(tela.audioCodec, sizeof tela.audioCodec, "%s", codec[0] ? codec : (fa->rotulo[0] ? fa->rotulo : "—"));
       snprintf(tela.audioChannels, sizeof tela.audioChannels, "%s", canais[0] ? canais : "—");
+#ifdef NV_ANDROID
+      if (fa->amostraHz > 0) snprintf(tela.audioSampleRate, sizeof tela.audioSampleRate, "%d Hz", fa->amostraHz);
+#endif
       snprintf(tela.audioLanguage, sizeof tela.audioLanguage, "%s",
                fa->idioma[0] ? i18n(ling_nome(fa->idioma)) : "—");
       switch (cacheboost_ganho_estado()) {
@@ -1549,8 +1545,12 @@ static void playerInfoMontarLinhas(void) {
   playerInfoAdicionar(0, "File", tela.filename);
   playerInfoAdicionar(0, "Size", tela.size);
   playerInfoAdicionar(0, "File bitrate (estimate)", tela.taxa);
+  playerInfoAdicionar(0, "Source codec (metadata)", tela.sourceCodec);
+  playerInfoAdicionar(0, "Source HDR (metadata)", tela.sourceHdr);
+  playerInfoAdicionar(0, "Source resolution (metadata)", tela.sourceResolution);
+  playerInfoAdicionar(0, "Source container (metadata)", tela.sourceFormat);
   playerInfoAdicionar(0, "Player Engine", tela.engine);
-  playerInfoAdicionar(1, "VIDEO", "");
+  playerInfoAdicionar(1, "VIDEO (PLAYBACK)", "");
   playerInfoAdicionar(0, "Codec", tela.videoCodec);
   playerInfoAdicionar(0, "Resolution", tela.resolucao);
   playerInfoAdicionar(0, "Frame rate", tela.fps);
@@ -1560,7 +1560,7 @@ static void playerInfoMontarLinhas(void) {
   playerInfoAdicionar(0, "Dropped", tela.dropped);
   playerInfoAdicionar(0, "Frame lead", tela.frameLead);
   playerInfoAdicionar(0, "UI rendering surface", tela.display);
-  playerInfoAdicionar(1, "AUDIO", "");
+  playerInfoAdicionar(1, "AUDIO (SELECTED TRACK)", "");
   playerInfoAdicionar(0, "Codec", tela.audioCodec);
   playerInfoAdicionar(0, "Channels", tela.audioChannels);
   playerInfoAdicionar(0, "Sample rate", tela.audioSampleRate);

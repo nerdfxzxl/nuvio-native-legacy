@@ -6315,15 +6315,19 @@ static float desenharSelosPacote(const Stream *s, float x, float y, float maxW, 
 // The playing source may use a different imported Fusion badge pack than
 // the source selection list. Cache matches for its unchanged metadata, so
 // player overlays never run regexes every frame.
+static int playerBadgePack(int choice) {
+  if(choice==0) return selospacote_ativo()==SELOS_LEGACY ? SELOS_LEGACY : -1;
+  return choice>=2 ? choice-2 : choice;
+}
 static unsigned short playerBadgeIds[SELOS_MAX_CASADOS];
 static int playerBadgeN, playerBadgeChoice=-1, playerBadgePointerRev=-1;
 static const Stream *playerBadgePointer;
 static unsigned playerBadgeVersion;
 static const unsigned short *playerBadgeDo(const Stream *s,int *count,int *pacote) {
   int choice=selospacote_player_fonte();
-  if(pacote)*pacote=choice>=2?choice-2:-1;
+  if(pacote)*pacote=playerBadgePack(choice);
   if(count)*count=0;
-  if(!s||choice==1)return NULL;
+  if(!s||choice==1||playerBadgePack(choice)==SELOS_LEGACY)return NULL;
   if(choice==0) {
     if(count)*count=selosPacoteDa((Stream *)s);
     return s->selosPacote;
@@ -6333,7 +6337,7 @@ static const unsigned short *playerBadgeDo(const Stream *s,int *count,int *pacot
   if(s!=playerBadgePointer||choice!=playerBadgeChoice||
      version!=playerBadgeVersion||rev!=playerBadgePointerRev) {
     const char *fields[]={s->arquivo,s->rotulo,s->descricao,s->provedor};
-    playerBadgeN=selospacote_casar_pacote(choice-2,fields,4,playerBadgeIds,SELOS_MAX_CASADOS);
+    playerBadgeN=selospacote_casar_pacote(playerBadgePack(choice),fields,4,playerBadgeIds,SELOS_MAX_CASADOS);
     playerBadgePointer=s;playerBadgeChoice=choice;
     playerBadgeVersion=version;playerBadgePointerRev=rev;
   }
@@ -6369,9 +6373,10 @@ float stream_selos_medidos(const char *texto, float x, float y, float maxW, floa
   static unsigned replaceNext;
   MedidosCache *slot = NULL;
   int choice = selospacote_player_fonte();
-  int pacote = choice >= 2 ? choice - 2 : -1;
+  int pacote = playerBadgePack(choice);
   unsigned versao;
   if (choice == 1 || !texto || !texto[0]) return 0.0f;
+  if (pacote == SELOS_LEGACY) return badges_desenhar_tom_medida(badges_detectar(texto),x,y,maxW,h,tom,tom,tom,a,medir);
   if (pacote < 0 && selospacote_ativo() < 0 && !selospacote_embutidos_ok()) return 0.0f;
   selospacote_colorido(ajustes_selos_coloridos());
   versao = selospacote_versao();
@@ -6415,13 +6420,14 @@ float stream_selos_player_titulo(const Stream *source, const char *medido,
   } PlayerTitleCache;
   static PlayerTitleCache cache;
   int choice = selospacote_player_fonte();
-  int pacote = choice >= 2 ? choice - 2 : -1;
+  int pacote = playerBadgePack(choice);
   // The embedded Xperience pack switches to its colored variant by settings.
   // Update that selector BEFORE reading the cache version.
   selospacote_colorido(ajustes_selos_coloridos());
   unsigned version = selospacote_versao();
   int rev = (int)atomic_load(&folhaRevisao);
   if (choice == 1 || (!source && (!medido || !medido[0]))) return 0.0f;
+  if (pacote == SELOS_LEGACY) return medido ? badges_desenhar_tom_medida(badges_detectar(medido),x,y,maxW,h,tom,tom,tom,alpha,medir) : 0.0f;
   if (pacote < 0 && selospacote_ativo() < 0 && !selospacote_embutidos_ok())
     return 0.0f;
   if (!medido) medido = "";

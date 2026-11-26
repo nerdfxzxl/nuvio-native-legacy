@@ -219,18 +219,21 @@ float badges_desenhar_escura(uint64_t mask,float x,float y,float maxW,float h,fl
 // os usa como a linha de especificacao, abaixo do titulo, entao eles entram
 // num cinza da hierarquia do texto e nao no branco cheio de selo de cartaz.
 // Selo sem arte cai no nome, na mesma tinta.
-float badges_desenhar_tom(uint64_t mask,float x,float y,float maxW,float h,float r,float g,float b,float a) {
+float badges_desenhar_tom_medida(uint64_t mask,float x,float y,float maxW,float h,float r,float g,float b,float a,int medir) {
   float start=x;int c=(int)(r*255.0f+.5f);
   for(size_t i=0;i<NB;i++)if(mask&(UINT64_C(1)<<i)) {
     GLuint t=art[i].image[0]?tex_obter_larg(art[i].image,128):0;
     float aspect=art[i].image[0]?tex_aspecto(art[i].image):0,w;
     if(t&&aspect>0){w=h*aspect;if(w>160)w=160;if(x+w>start+maxW)break;
-      float height=w/aspect;gfx_rect((GfxRect){x,y+(h-height)*.5f,w,height},t,GFX_MARCA,0,0,0,0,r,g,b,a);}
+      float height=w/aspect;if(!medir)gfx_rect((GfxRect){x,y+(h-height)*.5f,w,height},t,GFX_MARCA,0,0,0,0,r,g,b,a);}
     else{TxtLinha l=txt_linha(TXT_PG_FIM,art[i].name[0]?art[i].name:ids[i],c,c,c,255);w=(float)l.w;if(x+w>start+maxW)break;
-      txt_desenhar_alpha(l,x,y+(h-l.h)*.5f,a);}
+      if(!medir)txt_desenhar_alpha(l,x,y+(h-l.h)*.5f,a);}
     x+=w+18;
   }
   return x>start?x-start-18:0;
+}
+float badges_desenhar_tom(uint64_t mask,float x,float y,float maxW,float h,float r,float g,float b,float a) {
+  return badges_desenhar_tom_medida(mask,x,y,maxW,h,r,g,b,a,0);
 }
 
 // --- SELOS COLORIDOS (#198, 01/10/2026) --------------------------------------

@@ -14,7 +14,8 @@ static const Item TELA[] = {
   // Personal settings are the first category, not buried behind Playback.
   SEC("Nerd Fazal Settings", "Personal customizations and Fusion badges", "aj_sparkles"),
     ROT("Fusion badges"),
-      OPC(AJ_SELOS_PACOTE_ADD), OPC(AJ_PLAYER_SHOW), OPC(AJ_PLAYER_BADGES),
+      OPC(AJ_SELOS_PACOTE_ADD), OPC(AJ_SELOS_PACOTE), OPC(AJ_PLAYER_SHOW), OPC(AJ_PLAYER_BADGES),
+      OPC(AJ_BADGE_RES), OPC(AJ_BADGE_HDR), OPC(AJ_BADGE_ATMOS), OPC(AJ_BADGE_AUDIO_CODEC), OPC(AJ_BADGE_CHANNELS),
 #if defined(NV_ANDROID) && defined(NV_TOUCH_UI)
     ROT("Touch navigation"), OPC(AJ_GESTO_REMOTE),
 #endif
@@ -51,7 +52,7 @@ static const Item TELA[] = {
       OPC(AJ_FONTE_PRECARREGAR),   // so o Android tem o preload do player
 #endif
       OPC(AJ_TAM_MIN), OPC(AJ_FONTE_TEXTO), OPC(AJ_FONTE_ORDEM_ADDON), OPC(AJ_SELOS_CORES),
-      OPC(AJ_SELOS_PACOTE), OPC(AJ_SELOS_PACOTE_REM),
+      OPC(AJ_SELOS_PACOTE_REM),
     ROT("TV sound and video"),
       OPC(AJ_DTS_AC3),
 #ifdef NV_ANDROID

@@ -7763,6 +7763,7 @@ static void playerFusionCaracteristicas(char *dst, size_t cap) {
   if (!cap) return;
   dst[0] = 0;
   if (w <= 0 || h <= 0) return;  // Never infer capabilities before the decoder reports them.
+  if (ajustes_player_badge_ligado(PLAYER_BADGE_RES)) {
   if (w >= 3200 || h >= 1800) playerFusionAcrescentar(dst, cap, "2160p 4K UHD");
   else if (w >= 2400) playerFusionAcrescentar(dst, cap, "1440p");
   else if (w >= 1800 || h >= 1000) playerFusionAcrescentar(dst, cap, "1080p");
@@ -7771,19 +7772,18 @@ static void playerFusionCaracteristicas(char *dst, size_t cap) {
     snprintf(resolucao, sizeof resolucao, "%dp", h);
     playerFusionAcrescentar(dst, cap, resolucao);
   }
-  if (video_tem_dolby_vision()) playerFusionAcrescentar(dst, cap, "Dolby Vision DV");
-  else if (video_hdr()[0]) playerFusionAcrescentar(dst, cap, video_hdr());
-  if (video_tem_atmos()) playerFusionAcrescentar(dst, cap, "Dolby Atmos Atmos");
-  if (marcaDtsAtual() >= 0) playerFusionAcrescentar(dst, cap, marca_formato_nome((FormatoMarca)marcaDtsAtual()));
+  }
+  if (ajustes_player_badge_ligado(PLAYER_BADGE_HDR)) {
+    if (video_tem_dolby_vision()) playerFusionAcrescentar(dst, cap, "Dolby Vision DV");
+    else if (video_hdr()[0] && strcmp(video_hdr(),"none")) playerFusionAcrescentar(dst, cap, video_hdr());
+  }
+  if (ajustes_player_badge_ligado(PLAYER_BADGE_ATMOS) && video_tem_atmos()) playerFusionAcrescentar(dst, cap, "Dolby Atmos");
+  if (ajustes_player_badge_ligado(PLAYER_BADGE_AUDIO_CODEC) && marcaDtsAtual() >= 0) playerFusionAcrescentar(dst, cap, marca_formato_nome((FormatoMarca)marcaDtsAtual()));
   audio = ehCanal() ? NULL : video_audio(video_audio_atual());
   if (audio) {
     const char *codec = audioinfo_codec(audio->codec);
-    playerFusionAcrescentar(dst, cap, codec);
-    if (audio->rotulo[0]) {
-      if (strstr(audio->rotulo, "Atmos")) playerFusionAcrescentar(dst, cap, "Atmos");
-      if (strstr(audio->rotulo, "5.1")) playerFusionAcrescentar(dst, cap, "5.1");
-      if (strstr(audio->rotulo, "7.1")) playerFusionAcrescentar(dst, cap, "7.1");
-    }
+    if (ajustes_player_badge_ligado(PLAYER_BADGE_AUDIO_CODEC)) playerFusionAcrescentar(dst, cap, codec);
+    if (ajustes_player_badge_ligado(PLAYER_BADGE_CHANNELS)) playerFusionAcrescentar(dst, cap, audioinfo_canais(audio->canais));
   }
 }
 static float playerFusionTitulo(float x, float y, float alpha, int medir) {
@@ -7794,7 +7794,7 @@ static float playerFusionTitulo(float x, float y, float alpha, int medir) {
   // Match the real source filename/name and measured playback info separately.
   // A filename can identify Atmos-in-MKV or an HDR profile missing from the
   // decoder, while resolution always comes from the active video pipeline.
-  return stream_selos_player_titulo(stream_item(stream_atual()), metadata,
+  return stream_selos_player_titulo(NULL, metadata,
                                    x, y, 680.0f, 30.0f, 0.953f, alpha, medir);
 }
 
@@ -7842,7 +7842,7 @@ static float fileiraFormato(Uint32 agora, float x, float y, float ac, int medir,
   // A classe sai da LARGURA primeiro: filme 2.39:1 em 1080p chega como
   // 1920x800. A faixa do 1440p (2560) fica SEM selo: ausente e mais honesto
   // que errado.
-  { int w = video_largura(), h = video_altura();
+  if (ajustes_player_badge_ligado(PLAYER_BADGE_RES)) { int w = video_largura(), h = video_altura();
     if (w >= 3200 || h >= 1800)       selos[nSelos++] = FMT_4K;
     else if (w >= 2400)               { /* 1440p: sem selo */ }
     else if (w >= 1800 || h >= 1000)  selos[nSelos++] = FMT_1080;
@@ -7850,6 +7850,7 @@ static float fileiraFormato(Uint32 agora, float x, float y, float ac, int medir,
     else if (w > 0)                   selos[nSelos++] = FMT_SD; }
   // "Dolby Vision" so quando o PIPELINE devolveu DolbyVision no videoInfo
   // (MEDIDO: um MKV anunciado como DV volta HDR10 nesta TV).
+  if (ajustes_player_badge_ligado(PLAYER_BADGE_HDR)) {
   if (video_tem_dolby_vision())                  selos[nSelos++] = FMT_DV;
   else if (!strcasecmp(video_hdr(), "HDR10"))    selos[nSelos++] = FMT_HDR10;
 #if defined(__EMSCRIPTEN__) || defined(NV_TPK)
@@ -7861,8 +7862,9 @@ static float fileiraFormato(Uint32 agora, float x, float y, float ac, int medir,
     if (hdr >= 0) selos[nSelos++] = (FormatoMarca)hdr;
   }
 #endif
-  if (video_tem_atmos())        selos[nSelos++] = FMT_ATMOS;
-  if (marcaDtsAtual() >= 0)     selos[nSelos++] = (FormatoMarca)marcaDtsAtual();
+  }
+  if (ajustes_player_badge_ligado(PLAYER_BADGE_ATMOS) && video_tem_atmos()) selos[nSelos++] = FMT_ATMOS;
+  if (ajustes_player_badge_ligado(PLAYER_BADGE_AUDIO_CODEC) && marcaDtsAtual() >= 0) selos[nSelos++] = (FormatoMarca)marcaDtsAtual();
   const char *rotAudio = ehCanal() ? "" : rotuloAudioOsd();
   if (!nSelos && !rotAudio[0]) return 0.0f;
   // SELOS: os do pacote que o dono configurou (Ajustes > Selos), a mesma arte
@@ -7875,9 +7877,9 @@ static float fileiraFormato(Uint32 agora, float x, float y, float ac, int medir,
       size_t k = strlen(txtPac);
       snprintf(txtPac + k, sizeof txtPac - k, "%s%s", i ? " " : "", marca_formato_nome(selos[i]));
     }
-    if (cod[0]) {
+    if (cod[0] && ajustes_player_badge_ligado(PLAYER_BADGE_AUDIO_CODEC)) {
       size_t k = strlen(txtPac);
-      snprintf(txtPac + k, sizeof txtPac - k, " %s%s", cod, fa && strstr(fa->rotulo, "Atmos") ? " Atmos" : "");
+      snprintf(txtPac + k, sizeof txtPac - k, " %s", cod);
     }
     wPac = stream_selos_medidos(txtPac, 0.0f, 0.0f, 1200.0f, hPac, 0.953f, 1.0f, 1);
   }

@@ -383,3 +383,4 @@
   0, /* AJ_BUF_LOW_RAM */
   0, 4, 4, /* Parallel HTTP on, four connections of four MiB */
   0, /* AJ_AFR: Off (V_VIDRO_FOSCO) */
+  0, 0, 0, 0, 0, /* independent player badge switches, all On */

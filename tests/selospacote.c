@@ -263,6 +263,17 @@ int main(void) {
     r = regexjs_compilar_web("^b$", e, sizeof e);
     assert(r && !regexjs_testar(r, "a\nb\nc", 5)); regexjs_liberar(r);
   }
+  reiniciarPerfil(5);
+  selospacote_escolher(SELOS_LEGACY);
+  selospacote_player_escolher(SELOS_XPERIENCE);
+  selospacote_player_definir_mostrar(1);
+  reiniciarPerfil(4); reiniciarPerfil(5);
+  assert(selospacote_ativo() == SELOS_LEGACY);
+  assert(selospacote_player_fonte() == SELOS_XPERIENCE);
+  selospacote_player_escolher(SELOS_LEGACY);
+  reiniciarPerfil(4); reiniciarPerfil(5);
+  assert(selospacote_player_preferencia() == SELOS_LEGACY);
+  assert(selospacote_player_fonte() == SELOS_LEGACY);
   printf("selospacote: ok\n");
   return 0;
 }
