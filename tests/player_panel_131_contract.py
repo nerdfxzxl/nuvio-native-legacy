@@ -62,3 +62,14 @@ check("ajusteRepetir" in faixas
 check("1.0f,1.0f,1.0f,alpha" in parental
       and "GfxRect shade=" not in parental,
       "parental warning uses white vertical line without background plaque")
+
+# P8 Phase B: source-level contracts supplement runtime fixture tests.
+check("#define IL_W        960.0f" in faixas and "rolagemVisual[0] = anim_mola" in faixas
+      and "rolagemVisual=anim_mola" in leg, "960-unit panels and continuous D-pad scroll")
+check("gfx_anel_fora(lr,22.0f/lr.h,1.0f,3.0f" in faixas
+      and "gfx_anel_fora(lr,22.0f/lr.h,1.0f,3.0f" in leg
+      and "gfx_anel(small,0.5f,3.0f" in faixas, "selected/active ring and Show All focus")
+check("English (Embedded)" in leg and 'fonteModo?"English": "Subtitle"' in leg,
+      "embedded fallback and numbered opaque-name fallback")
+check("TXT_FAMILIA_ROBOTO" in plr and "const int bottomControls" in plr,
+      "Roboto default and side sheets do not lift subtitles")

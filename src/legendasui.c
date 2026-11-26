@@ -219,6 +219,8 @@ static int ver;
 static char verGrupo[96];
 static char focoChave[96];
 static int foco, rolagem, syncAcao;
+static float rolagemVisual;
+static int rolagemSnap;
 #ifdef NV_TOUCH_UI
 static ToqueRolagem toqueLegendas;
 static float toqueLegendasOffset;
@@ -228,7 +230,7 @@ static int toqueLegendasRolar(const PonteiroRolagem *e) {
 }
 #endif
 static void rolagemZerar(void) {
-  rolagem = 0;
+  rolagem = 0; rolagemVisual = 0.0f; rolagemSnap = 1;
 #ifdef NV_TOUCH_UI
   toqueLegendasOffset = 0; toquerol_limpar(&toqueLegendas);
 #endif
@@ -373,7 +375,7 @@ static void montarFontes(void) {
 static void fonteEscolher(int i) {
   if(i<0||i>=nFontes)return;
   fonteAtiva=fonteFoco=i;
-  fonteBarraFoco=0; focoChave[0]=0; foco=0;
+  fonteBarraFoco=0; focoChave[0]=0; foco=0; rolagemZerar();
   montarLinhas(); focarAtiva();
 }
 
@@ -642,6 +644,7 @@ void legendasui_atualizar(float dt) {
   // Molas do dropdown, por quadro (faixas_atualizar): abertura e foco por linha.
   menuT = anim_mola(menuT, menu ? 1.0f : 0.0f, dt, NV_MOLA_TELA);
   fonteScroll=anim_mola(fonteScroll,fonteScrollAlvo,dt,NV_MOLA_FOCO);
+  rolagemVisual=anim_mola(rolagemVisual,(float)rolagem,dt,NV_MOLA_FOCO);
   for (int i = 0; i < 3; i++) menuFocoA[i] = anim_mola(menuFocoA[i], menu && i == menuFoco ? 1.0f : 0.0f, dt, NV_MOLA_FOCO);
   if (!fonteModo && aberto && !menu && okPendente && !okLongo && SDL_GetTicks() - okDesde >= NV_HOLD_MS) {
     okLongo = 1;
@@ -672,7 +675,8 @@ static void menuEscolher(void) {
 int legendasui_evento(const SDL_Event *e) {
 #ifdef NV_TOUCH_UI
   if (telefoneui_ativo() && toquerol_navegacao(e)) {
-    rolagem = (int)(toqueLegendasOffset / 92.0f);
+    rolagemVisual = toqueLegendasOffset / 106.0f;
+    rolagem = (int)rolagemVisual;
     toquerol_limpar(&toqueLegendas);
   }
 #endif
@@ -1036,7 +1040,7 @@ static int nomeCandidato(const LegUiCand *c,char out[256]) {
         if(out[0]&&!nomeOpaco(out))return 1;
       }
     }
-    snprintf(out,256,"%s",fonteModo?"Embedded track":nomeIdioma(c->idioma));
+    snprintf(out,256,"%s",fonteModo?"English (Embedded)":nomeIdioma(c->idioma));
     return 0;
   }
   if(c->arquivo[0]&&!nomeOpaco(c->arquivo)) {
@@ -1077,7 +1081,7 @@ static int nomeCandidato(const LegUiCand *c,char out[256]) {
        !strstr(lower,"sync status")&&
        !strstr(lower,"syncs when picked"))return 1;
   }
-  snprintf(out,256,"Subtitle");
+  snprintf(out,256,"%s",fonteModo?"English": "Subtitle");
   return 0;
 }
 // Candidate index is used only to preserve an existing selected subtitle's
@@ -1098,7 +1102,7 @@ int legendasui_titulo(const LegUiCand *cs,int n,int i,char *out,size_t sz) {
     dup=1;
     if(j<i)pos++;
   }
-  if(!dup){corteLimpo(out,sz,title);return named;}
+  if(!dup && !(fonteModo && !named && !c->embutida)){corteLimpo(out,sz,title);return named;}
   snprintf(suffix,sizeof suffix," (%d)",pos+1);
   size_t extra=strlen(suffix);
   if(sz<=extra+1){corteLimpo(out,sz,title);return named;}
@@ -1211,7 +1215,11 @@ static void desenharLinha(const LuiLinha *l, int idx, int sel, float x, float y,
   GfxRect lr = { x, y, w, LU_LN_H };
   textoLinha(l, nome, sizeof nome, sub, sizeof sub, &idioma, &icone, &ativo, &apagada);
   if (apagada) aL = a * 0.55f;
-  if (sel) plrui_linha_foco(lr, 22.0f, a);
+  if (sel) {
+    plrui_linha_foco(lr,22.0f,a);
+    if (ativo) gfx_anel_fora(lr,22.0f/lr.h,1.0f,3.0f,1,1,1,a);
+    else gfx_anel(lr,22.0f/lr.h,3.0f,1,1,1,a);
+  }
   if (pont) ponteiro_alvo(x, y, w, LU_LN_H, ponteiroLinha, NULL, idx, 0);
   rosto((GfxRect){ x + 22.0f, y + (LU_LN_H - 52.0f) * 0.5f, 52.0f, 52.0f }, idioma, icone, sel, aL);
   if (ativo) {
@@ -1371,7 +1379,7 @@ static void desenharMenu(GfxRect c, float a) {
 
 void legendasui_corpo(GfxRect c, float a) {
   float x0 = c.x + LU_PAD_X, w = c.w - LU_PAD_X * 2.0f, y = c.y + LU_PAD_Y;
-  int vis = luVis(), fim, i;
+  int vis = luVis(), i;
   montarLinhas();
   pont = !menu && a > 0.99f && ponteiro_ativo();
   faixas_legenda_tabs(x0,y,w,a);
@@ -1383,7 +1391,7 @@ void legendasui_corpo(GfxRect c, float a) {
   // Smooth, bounded horizontal pill strip like the source-selector addon row.
   // Focus and selected source are independent; scrolling moves the strip.
   {
-    float sy=y+68.0f,gap=8.0f;
+    float sy=y+68.0f,gap=12.0f;
     float stripX=x0+8.0f,stripW=w-16.0f,position=0.0f;
     int watched=fonteBarraFoco?fonteFoco:fonteAtiva;
     float currentX=0.0f,currentW=0.0f;
@@ -1401,7 +1409,7 @@ void legendasui_corpo(GfxRect c, float a) {
     if(fonteScrollAlvo<0)fonteScrollAlvo=0;
     if(fonteScrollAlvo>maxScroll)fonteScrollAlvo=maxScroll;
     if(fonteScroll>maxScroll)fonteScroll=maxScroll;
-    gfx_recorte(stripX,sy,stripW,48.0f);
+    gfx_recorte(stripX,sy-2.0f,stripW,50.0f);
     float xx=stripX-fonteScroll;
     for(int k=0;k<nFontes;k++) {
       float ww=width[k];
@@ -1411,8 +1419,8 @@ void legendasui_corpo(GfxRect c, float a) {
       if(xx+ww>=stripX&&xx<=stripX+stripW) {
         if(selected)gfx_cor(pill,19.0f/pill.h,.97f,.975f,.99f,a);
         else gfx_cor(pill,19.0f/pill.h,.16f,.18f,.21f,.77f*a);
-        if(focused)gfx_anel(pill,19.0f/pill.h,2.0f,
-                            selected?.24f:1.0f,selected?.30f:1.0f,selected?.40f:1.0f,a);
+        if(focused && selected)gfx_anel_fora(pill,0.5f,1.0f,3.0f,1,1,1,a);
+        else if(focused)gfx_anel(pill,0.5f,3.0f,1,1,1,a);
         TxtLinha t=txt_linha_corta(TXT_ILHA_SUB,fontes[k].nome,
                        selected?25:227,selected?30:233,selected?37:240,255,ww-25.0f);
         txt_desenhar_alpha(t,pill.x+(pill.w-t.w)*.5f,pill.y+(pill.h-t.h)*.5f,a);
@@ -1425,42 +1433,36 @@ void legendasui_corpo(GfxRect c, float a) {
     gfx_recorte(c.x,c.y,c.w,c.h);
   }
   y+=126.0f;
+  ajustarRolagem(vis);
+  const float passo=LU_LN_H+LU_LN_VAO;
+  const int count=nLinhasV<vis?nLinhasV:vis;
+  const float area=count>0?count*passo-LU_LN_VAO:0.0f;
+  const float maxOffset=(nLinhasV>count)?(nLinhasV-count)*passo:0.0f;
+  if (rolagemSnap) { rolagemVisual=(float)rolagem; rolagemSnap=0; }
+  float offset=anim_clamp(rolagemVisual*passo,0.0f,maxOffset);
 #ifdef NV_TOUCH_UI
-  if (telefoneui_ativo()) {
-    if (!toquerol_livre(&toqueLegendas)) {
-      ajustarRolagem(vis);
-      toqueLegendasOffset = rolagem * (LU_LN_H + LU_LN_VAO);
-    }
-    { float passo = LU_LN_H + LU_LN_VAO;
-    int n = nLinhasV < vis ? nLinhasV : vis;
-    float area = n * passo - (n > 0 ? LU_LN_VAO : 0);
-    GfxRect ilha;
-    int ptr = pont;
-    toquerol_vincular(&toqueLegendas, (GfxRect){x0, y, w, area}, gfx_escala(),
-                     0, nLinhasV * passo - LU_LN_VAO - area, 1, &toqueLegendasOffset);
-    if (aberto && a > 0.99f) ponteiro_rolagem(toqueLegendasRolar);
-    gfx_recorte(x0, y, w, area);
-    for (i = 0; i < nLinhasV; i++) {
-      float ry = y + i * passo - toqueLegendasOffset;
-      if (ry + LU_LN_H < y || ry > y + area) continue;
-      pont = ptr && ry >= y && ry + LU_LN_H <= y + area;
-      desenharLinha(&linhas[i], i, i == foco, x0, ry, w, a);
-      if (ptr && !pont) ponteiro_alvo_faixa(x0, ry, w, LU_LN_H, y, y + area, ponteiroLinha, NULL, i, 0);
-    }
-    pont = ptr;
-    if (plrilha_rect(&ilha)) gfx_recorte(ilha.x, ilha.y, ilha.w, ilha.h);
-    else gfx_recorte(c.x, c.y, c.w, c.h);
-    y += area + 14.0f;
-    }
-  } else
-#endif
-  {
-    ajustarRolagem(vis);
-    fim = rolagem + vis; if (fim > nLinhasV) fim = nLinhasV;
-    for (i = rolagem; i < fim; i++)
-      desenharLinha(&linhas[i], i, i == foco, x0, y + (i - rolagem) * (LU_LN_H + LU_LN_VAO), w, a);
-    y += (fim - rolagem) * LU_LN_H + (fim - rolagem > 0 ? (fim - rolagem - 1) * LU_LN_VAO : 0.0f) + 14.0f;
+  if (telefoneui_ativo() && count>0) {
+    if (!toquerol_livre(&toqueLegendas)) toqueLegendasOffset=offset;
+    toquerol_vincular(&toqueLegendas,(GfxRect){x0,y,w,area},gfx_escala(),
+                      0,maxOffset,1,&toqueLegendasOffset);
+    if (aberto && a>0.99f) ponteiro_rolagem(toqueLegendasRolar);
+    offset=anim_clamp(toqueLegendasOffset,0.0f,maxOffset);
   }
+#endif
+  if (count>0) {
+    int ptr=pont;
+    gfx_recorte(x0,y,w,area);
+    for (i=0;i<nLinhasV;i++) {
+      float ry=y+i*passo-offset;
+      if (ry+LU_LN_H<=y || ry>=y+area) continue;
+      pont=ptr && ry>=y && ry+LU_LN_H<=y+area;
+      desenharLinha(&linhas[i],i,i==foco&&!fonteBarraFoco,x0,ry,w,a);
+      if (ptr&&!pont) ponteiro_alvo_faixa(x0,ry,w,LU_LN_H,y,y+area,ponteiroLinha,NULL,i,0);
+    }
+    pont=ptr;
+    gfx_recorte(c.x,c.y,c.w,c.h);
+  }
+  y+=area+14.0f;
   gfx_cor((GfxRect){ x0, y, w, 1.0f }, 0.0f, 1, 1, 1, 0.07f * a);
   {
     float yc=y+31.0f; char q[48];

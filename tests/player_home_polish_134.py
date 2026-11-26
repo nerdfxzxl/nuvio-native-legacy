@@ -25,7 +25,7 @@ check("if (!toque)" not in pill and "if (toque)" not in pill
       "touch input no longer selects a separate rendering layout")
 check("float baseX=(NV_VTELA_W-baseW)*0.5f;" in pill
       and "float x=baseX;" in pill
-      and "baseW+2.0f*expanded+28.0f" in pill,
+      and "baseW+expanded+28.0f" in pill,
       "icon row stays anchored while glass shell expands and collapses")
 check("const float ix = r.x + (diameter - size) * 0.5f;" in pill
       and "fminf(maxExtra" in pill and "float tx = ix + size + 12.0f" in pill,
@@ -63,7 +63,7 @@ baseW=7*68+6*12
 labelExtras=[71,92,133,65,180,97,106]
 def shell(focus):
     extra=sum(labelExtras[i]*focus[i] for i in range(7))
-    return baseW+2.0*extra+28,extra
+    return baseW+extra+28,extra
 rest,extent=shell([0.0]*7)
 assert extent==0.0 and rest==baseW+28
 for index in range(7):

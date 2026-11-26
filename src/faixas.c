@@ -89,6 +89,8 @@ static void audioAjEnviar(void);
 // nao. Guardar quantas linhas foram roladas e o suficiente porque a altura da
 // linha e fixa.
 static int rolagem[3];
+static float rolagemVisual[3];
+static int rolagemSnap[3];
 #ifdef NV_TOUCH_UI
 static ToqueRolagem toqueAudio;
 static float toqueAudioOffset;
@@ -709,7 +711,7 @@ void faixas_abrir_em(int col) {
       n = nLinhas(c);
       if (foco[c] >= n) foco[c] = n > 0 ? n - 1 : 0;
       if (foco[c] < 0)  foco[c] = 0;
-    rolagem[c] = 0;
+    rolagem[c] = 0; rolagemVisual[c] = 0.0f; rolagemSnap[c] = 1;
 #ifdef NV_TOUCH_UI
     toquerol_limpar(&toqueAudio); toqueAudioOffset = 0;
 #endif
@@ -1608,7 +1610,8 @@ static int estiloTecla(SDL_Keycode k, int rep) {
 void faixas_evento(const SDL_Event *e) {
 #ifdef NV_TOUCH_UI
   if (telefoneui_ativo() && toquerol_navegacao(e)) {
-    rolagem[0] = (int)(toqueAudioOffset / 92.0f);
+    rolagemVisual[0] = toqueAudioOffset / 92.0f;
+    rolagem[0] = (int)rolagemVisual[0];
     toquerol_limpar(&toqueAudio);
   }
 #endif
@@ -1794,6 +1797,9 @@ static void avisarQueda(int e) {
 
 void faixas_atualizar(float dt, Uint32 agora) {
   if (aberta && modo && coluna == 1) legendasui_atualizar(dt);
+  if (aberta && !modo && !audioPagina) {
+    rolagemVisual[0] = anim_mola(rolagemVisual[0], (float)rolagem[0], dt, NV_MOLA_FOCO);
+  }
   // #202: the platform refused the speed (LG/.tpk answer after the request):
   // the row is gone and playback is back at 1x; say it once.
   if (velPedidaUi != VEL_NORMAL && !video_velocidade_suportada()) {
@@ -1966,7 +1972,7 @@ static void ajustarRolagem(void) {
 // posicao e as dicas. A faixa em uso leva o check no acento (estado); o foco e
 // a superficie um degrau mais clara. Com o foco no Estilo a MESMA ilha se
 // alarga no topo (5 x 2 opcoes) e a previa fica no video, onde a legenda toca.
-#define IL_W        720.0f
+#define IL_W        960.0f
 #define IL_PAD_X     18.0f
 #define IL_PAD_Y     22.0f
 #define IL_TIT_H     42.0f
@@ -2033,7 +2039,7 @@ static void rostoIdioma(GfxRect r, const char *idioma, const char *icone, int se
 
 // Uma linha da lista (audio ou legenda) em (x, y), largura w.
 static void linhaLista(int col, int i, float x, float y, float w, float a) {
-  int sel = col == coluna && i == foco[col] && !(col == 0 && (volFoco || velFoco));
+  int sel = col == coluna && i == foco[col] && !(col == 0 && (volFoco || velFoco || audioTopoFoco));
   const char *marca = NULL, *icone = NULL, *idioma = NULL;
   char nome[64], sub[96];
   int ativo;
@@ -2045,6 +2051,7 @@ static void linhaLista(int col, int i, float x, float y, float w, float a) {
       // Show All/Less is a plain text row, not a separate rectangular chip.
       GfxRect small={x+14.0f,y+19.0f,156.0f,50.0f};
       const char *label=audioMostrarTudo?"Show Less":"Show All";
+      if (sel) gfx_anel(small,0.5f,3.0f,1,1,1,a);
       TxtLinha t=txt_linha(TXT_ILHA_SEG,label,239,245,255,255);
       txt_desenhar_alpha(t,small.x+18.0f,small.y+(small.h-t.h)*.5f,a);
       return;
@@ -2108,6 +2115,8 @@ static void linhaLista(int col, int i, float x, float y, float w, float a) {
   if (sel) plrui_linha_foco(lr, 22.0f, a);
   rostoIdioma((GfxRect){ x + 22.0f, y + (IL_LN_H - 52.0f) * 0.5f, 52.0f, 52.0f }, idioma, icone, sel, a);
   ativo = col == 0 ? audioIndiceNaLinha(i) == video_audio_atual() : legDaLinha(i - 1) == legendaAtiva();
+  if (sel && ativo) gfx_anel_fora(lr,22.0f/lr.h,1.0f,3.0f,1,1,1,a);
+  else if (sel) gfx_anel(lr,22.0f/lr.h,3.0f,1,1,1,a);
   { float tx = x + 22.0f + 52.0f + 18.0f, tw = w - (tx - x) - 22.0f - (ativo ? 46.0f : 0.0f);
     int c = sel ? 255 : 219, cs = 122;
     TxtLinha ln = txt_linha_corta(TXT_ILHA_FORTE, nome, c, c, c - 2, 255, tw);
@@ -2374,7 +2383,7 @@ static void audioAjDesenhar(GfxRect c, float a) {
 }
 
 static void corpoLista(GfxRect c, float a) {
-  int col = modo ? 1 : 0, n = nLinhas(col), r, fim, i;
+  int col = modo ? 1 : 0, n = nLinhas(col), i;
   float x0 = c.x + IL_PAD_X, w = c.w - IL_PAD_X * 2.0f, y = c.y + IL_PAD_Y;
   // Titulo (o filme ja esta no cabecalho); a direita, a contagem (audio) ou o segmentado (legendas).
   { TxtLinha t = txt_linha(TXT_ILHA_PERGUNTA, "Legendas",
@@ -2393,41 +2402,34 @@ static void corpoLista(GfxRect c, float a) {
   y += IL_TIT_H + 14.0f;
   // Audio list begins immediately below the tab underline; no Volume row.
   visiveis = IL_VIS_COL(col);
+  ajustarRolagem();
+  const float passo = IL_LN_H + IL_LN_VAO;
+  const int count = n < visiveis ? n : visiveis;
+  const float area = count > 0 ? count * passo - IL_LN_VAO : 0.0f;
+  const float maxOffset = fmaxf(0.0f, n * passo - IL_LN_VAO - area);
+  if (rolagemSnap[col]) { rolagemVisual[col] = (float)rolagem[col]; rolagemSnap[col] = 0; }
+  float offset = anim_clamp(rolagemVisual[col] * passo, 0.0f, maxOffset);
 #ifdef NV_TOUCH_UI
-  if (telefoneui_ativo()) {
-    if (!toquerol_livre(&toqueAudio)) {
-      ajustarRolagem();
-      toqueAudioOffset = rolagem[col] * (IL_LN_H + IL_LN_VAO);
-    }
-    { float passo = IL_LN_H + IL_LN_VAO;
-    float area = fminf(n, visiveis) * passo - (n > 0 ? IL_LN_VAO : 0);
-    GfxRect ilha;
-    toquerol_vincular(&toqueAudio, (GfxRect){x0, y, w, area}, gfx_escala(),
-                     0, n * passo - IL_LN_VAO - area, 1, &toqueAudioOffset);
+  if (telefoneui_ativo() && count > 0) {
+    if (!toquerol_livre(&toqueAudio)) toqueAudioOffset = offset;
+    toquerol_vincular(&toqueAudio, (GfxRect){x0,y,w,area}, gfx_escala(),
+                      0, maxOffset, 1, &toqueAudioOffset);
     if (aberta && a > 0.99f) ponteiro_rolagem(toqueAudioRolar);
-    gfx_recorte(x0, y, w, area);
-    for (i = 0; i < n; i++) {
-      float ry = y + i * passo - toqueAudioOffset;
-      if (ry + IL_LN_H < y || ry > y + area) continue;
-      if (!modo && a > 0.99f) ponteiro_alvo_faixa(x0, ry, w, IL_LN_H, y, y + area, ponteiroFaixa, NULL, i, 0);
-      linhaLista(col, i, x0, ry, w, a);
-    }
-    if (plrilha_rect(&ilha)) gfx_recorte(ilha.x, ilha.y, ilha.w, ilha.h);
-    else gfx_recorte(c.x, c.y, c.w, c.h);
-    r = 0; fim = n < visiveis ? n : visiveis;
-    }
-  } else
-#endif
-  {
-    ajustarRolagem();
-    r = rolagem[col]; fim = r + visiveis; if (fim > n) fim = n;
-    for (i = r; i < fim; i++) {
-      if (!modo && a > 0.99f) ponteiro_alvo(x0, y + (i - r) * (IL_LN_H + IL_LN_VAO), w, IL_LN_H, ponteiroFaixa, NULL, i, 0);
-      linhaLista(col, i, x0, y + (i - r) * (IL_LN_H + IL_LN_VAO), w, a);
-    }
+    offset = anim_clamp(toqueAudioOffset,0.0f,maxOffset);
   }
-  if (!n) txt_bloco(TXT_ILHA_TEXTO, "Nenhuma faixa disponível nesta fonte.", 160, 160, 158, x0 + 10.0f, y + 12.0f, w - 20.0f, 28, a, 2);
-  y += (n ? (fim - r) * IL_LN_H + (fim - r - 1) * IL_LN_VAO : 60.0f) + 14.0f;
+#endif
+  if (count > 0) {
+    gfx_recorte(x0,y,w,area);
+    for (i=0;i<n;i++) {
+      float ry=y+i*passo-offset;
+      if (ry+IL_LN_H<=y || ry>=y+area) continue;
+      if (!modo && a > 0.99f)
+        ponteiro_alvo_faixa(x0,ry,w,IL_LN_H,y,y+area,ponteiroFaixa,NULL,i,0);
+      linhaLista(col,i,x0,ry,w,a);
+    }
+    gfx_recorte(c.x,c.y,c.w,c.h);
+  } else txt_bloco(TXT_ILHA_TEXTO, "Nenhuma faixa disponível nesta fonte.", 160, 160, 158, x0 + 10.0f, y + 12.0f, w - 20.0f, 28, a, 2);
+  y += (count > 0 ? area : 60.0f) + 14.0f;
   // RODAPE: "2 de 4" e as dicas do codigo, sob um fio de 1 px.
   gfx_cor((GfxRect){ x0, y, w, 1.0f }, 0.0f, 1, 1, 1, 0.07f * a);
   { char q[32];
@@ -2836,7 +2838,7 @@ static void faixas_desenharCorpo_(Uint32 agora) {
     if (!aberta) return;   // fechando: a ilha encolhe com o ultimo corpo
     { PlrIlhaPedido p;
       memset(&p, 0, sizeof p);
-      p.w = IL_W;
+      p.w = fminf(IL_W, NV_TELA_W - 2.0f * NV_ILHA_MARGEM_D);
       p.h = modo && legendaSyncPagina ? alturaSync() : est ? alturaEstilo() :
             modo ? legendasui_altura() : alturaLista(0);
       p.corpo = corpoIlha;

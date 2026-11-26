@@ -1558,12 +1558,16 @@ static void *buscarUmAddon(void *u) {
               }
             }
           }
-          if (!nome[0]) {
+          if (legendaArquivoOpaco(nome)) {
             const char *host = strstr(link, "://");
             const char *path = host ? host + 3 : link;
             const char *end = path + strcspn(path, "?#"), *last = end;
             while (last > path && last[-1] != '/') last--;
-            if (last > path) snprintf(nome, sizeof nome, "%.*s", (int)(end - last), last);
+            if (last > path) {
+              char alternative[sizeof nome]="";
+              snprintf(alternative,sizeof alternative,"%.*s",(int)(end-last),last);
+              if (!legendaArquivoOpaco(alternative)) snprintf(nome,sizeof nome,"%s",alternative);
+            }
           }
           snprintf(d->idioma, sizeof d->idioma, "%s", cod);
           snprintf(d->provedor, sizeof d->provedor, "%s", origem->nome);

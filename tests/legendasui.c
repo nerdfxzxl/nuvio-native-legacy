@@ -178,9 +178,9 @@ int main(void) {
     assert(legendasui_titulo(names,4,2,title,sizeof title));
     assert(!strcmp(title,"A.Story.Of.Derry.2026.1080p.HMAX.WEB-DL.DDP5.1"));
     assert(!legendasui_titulo(names,4,1,title,sizeof title));
-    assert(!strcmp(title,"Subtitle (1)"));
+    assert(!strcmp(title,"English (1)"));
     assert(!legendasui_titulo(names,4,3,title,sizeof title));
-    assert(!strcmp(title,"Subtitle (2)"));
+    assert(!strcmp(title,"English (2)"));
     for(int k=0;k<205;k++)longName[k]=(char)('a'+k%26);
     strcpy(longName+205,".srt");
     snprintf(names[0].arquivo,sizeof names[0].arquivo,"%s",longName);
@@ -465,7 +465,7 @@ int main(void) {
         LuiLinha row = {0}; row.tipo = LR_CAND; row.cand = k;
         textoLinha(&row, title, sizeof title, detail, sizeof detail, &language, &icon, &active, &dim);
         // Format A never substitutes provider sync status for a filename.
-        const char *expected[] = {"Subtitle (1)", "Subtitle (2)", "Subtitle (3)", "Release"};
+        const char *expected[] = {"English (1)", "English (2)", "English (3)", "Release"};
         assert(!strcmp(title, expected[k]));
         assert(strstr(detail, labels[k]));
         assert(!strcmp(cand[k].arquivo, k == 3 ? "Release.srt" : ""));

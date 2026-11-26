@@ -1534,7 +1534,7 @@ static const char *prefsArquivo(void) {
 // ajustes.txt, que espelha as chaves de layout do app web. Padrao: tamanho 2
 // (o do aparelho), branco, sem fundo, posicao central, contorno.
 // -1 preserves the legacy outline preference until a border colour is chosen.
-static VideoLegendaEstilo legEstilo = { 120, 0, 0, 3, 1, 0, 0, TXT_FAMILIA_INTER, 0, -1,
+static VideoLegendaEstilo legEstilo = { 120, 0, 0, 3, 1, 0, 0, TXT_FAMILIA_ROBOTO, 0, -1,
                                        0, 100, 82, 4 };
 // Ver player_leg_estilo_tocou, em player.h: o que a pessoa mexeu vence o que o
 // arquivo ASS pede. Persistido junto com o resto — a preferencia nao pode
@@ -1626,7 +1626,7 @@ void player_leg_estilo_mudou(void) {
   if (prefsGravar()) sync_proteger_ajustes_locais();
 }
 const VideoLegendaEstilo *player_leg_estilo_padrao(void) {
-  static const VideoLegendaEstilo padrao = {120, 0, 0, 3, 1, 0, 0, TXT_FAMILIA_INTER, 0, 0,
+  static const VideoLegendaEstilo padrao = {120, 0, 0, 3, 1, 0, 0, TXT_FAMILIA_ROBOTO, 0, 0,
                                              0, 100, 82, 4};
   return &padrao;
 }
@@ -6085,8 +6085,9 @@ float player_base_legenda(float baseNormal, int cartaoProximoNoAr) {
   return cartaoProximoNoAr ? 690.f : baseNormal;
 }
 static float baseLegendaPrincipal(void) {
-  float base = (visivel && !faixas_estilo_topo() ? 760.f : 1000.f) - leg2Reserva;
-  if (visivel && transporteToque() && !faixas_estilo_topo())
+  const int bottomControls = visivel && !faixas_aberta() && !stream_folha_aberta() && !episodios_aberto();
+  float base = (bottomControls ? 760.f : 1000.f) - leg2Reserva;
+  if (bottomControls && transporteToque())
     base = fminf(base, (transporteBarraY() - 48.0f) * gfx_escala_ui() - leg2Reserva);
   // A LEGENDA SOBE SO ENQUANTO O CARTAO ESTA NA TELA (2.0.3). Subia pela
   // JANELA do cartao (a oferta do proximo), nao pelo cartao: ela continua
@@ -8112,8 +8113,9 @@ static void desenharOsdCorpo(Uint32 agora, float a, float ac, const CatItem *c) 
     int nAcoes = transporteAcoes(acoes);
     float maxExtra = 0.0f, expanded = 0.0f;
     float baseW = nAcoes * PLR_BTN_D + (nAcoes - 1) * PLR_BTN_GAP;
-    float maxRow = NV_VTELA_W - PLR_MARGEM * 2.0f - 28.0f;
-    int compacto = maxRow < baseW + 180.0f;
+    float baseX=(NV_VTELA_W-baseW)*0.5f;
+    float available=fmaxf(0.0f,NV_VTELA_W-PLR_MARGEM-14.0f-baseX-baseW);
+    int compacto = available < 90.0f;
     for (int j = 0; j < nAcoes && !compacto; j++) {
       int id=acoes[j].id;
       float labelW=(float)txt_largura(TXT_G21B,rotuloBotao(id));
@@ -8122,7 +8124,7 @@ static void desenharOsdCorpo(Uint32 agora, float a, float ac, const CatItem *c) 
       if(acoes[j].habilitada)
         expanded+=extra*anim_clamp(focoB[id],0.0f,1.0f);
     }
-    if (baseW + maxExtra > maxRow) maxExtra=fmaxf(0.0f,maxRow-baseW);
+    maxExtra=fminf(maxExtra,available);
     // Recompute the actual sum of visible expansions after clamping label
     // widths. During a focus handoff TWO buttons can be partially expanded;
     // the shell must cover both until the outgoing spring finishes.
@@ -8137,12 +8139,12 @@ static void desenharOsdCorpo(Uint32 agora, float a, float ac, const CatItem *c) 
     // Crucially the icon row always starts at baseX: don't re-center its x
     // based on whichever action happened to expand this frame. Labels push
     // their trailing neighbours, while previous icons stay anchored.
-    float baseX=(NV_VTELA_W-baseW)*0.5f;
+    float expansionScale=expanded>available && expanded>0.0f?available/expanded:1.0f;
+    expanded*=expansionScale;
     float x=baseX;
-    // Grow glass equally to the left and right of the resting shell. The
-    // extra left clearance gives space without shifting the icon row.
-    GfxRect capsule = {baseX-expanded-14.0f,yRow-10.0f,
-                       baseW+2.0f*expanded+28.0f,diameter+20.0f};
+    // Exactly cover the occupied icon/label row; no empty mirrored space.
+    GfxRect capsule = {baseX-14.0f,yRow-10.0f,
+                       baseW+expanded+28.0f,diameter+20.0f};
     plrui_material(capsule,capsule.h*0.5f,0,af);
     gfx_cor(capsule,0.5f,0.015f,0.018f,0.023f,af*0.48f);
     gfx_anel(capsule,0.5f,1.0f,0.85f,0.90f,1.0f,af*0.23f);
@@ -8155,7 +8157,7 @@ static void desenharOsdCorpo(Uint32 agora, float a, float ac, const CatItem *c) 
       float labelW = (float)txt_largura(TXT_G21B, label);
       float extra = fminf(maxExtra,
                    fmaxf(0.0f, 22.0f + 30.0f + 12.0f + labelW + 28.0f - diameter));
-      float width = diameter + extra * f;
+      float width = diameter + extra * f * expansionScale;
       GfxRect r = { x, yRow, width, diameter };
       // Pointer hit targets follow the same pill geometry on mobile and TV.
       GfxRect target = { r.x, r.y - 7.0f, r.w, r.h + 14.0f };
