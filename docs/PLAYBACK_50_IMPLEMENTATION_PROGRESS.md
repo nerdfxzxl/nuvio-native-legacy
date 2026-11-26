@@ -1262,3 +1262,7 @@ The scoped affected-source audit and required test-only gates are complete; no f
 Physical device gate remains OPEN: exact #135/#136 failure cause, real MediaCodec behavior and supported formats, HDR/display output, ARC/phone audio output and A/V sync, actual geometry/rebuffer/network and responsive playback remain unverified on a new integrated APK. No universal decoder compatibility claim, no separate video engine or transcoding. Q18 genuine embedded-P2P playable percentage remains the sole earlier authorized feature deferral.
 
 Phase A source work is closed. P8 overall remains partial; Phase B NOT STARTED / NOT AUTHORIZED by this signoff. Await separate owner instruction for Phase B. No APK assembled, published, or released; no default-branch merge or APK trigger change.
+
+## P8 Phase B combined continuation — 2026-11-26
+
+Owner authorized all of Phase B without splitting. Source implementation and tests committed through `85f5723cacce1f4c2748446e02cba14c601b83a3`; exact-source CI #10 Android, #15 Linux, #32 lifecycle pending/in progress. **Phase B remains PARTIAL pending source gates and final acceptance.** See [Phase B acceptance checkpoint](PLAYBACK_50_P8_PHASE_B_ACCEPTANCE.md) for requirement matrix, source revisions, run IDs and remaining gates. Phase A accepted source preserved; no APK triggered or physical acceptance claimed.
