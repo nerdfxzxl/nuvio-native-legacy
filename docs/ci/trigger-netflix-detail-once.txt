@@ -51,3 +51,6 @@ P8 #136 — owner-authorized compatibility fallback and cinematic overlay correc
 
 
 P8 integrated APK #137 request — owner authorized 2026-11-26 after both Phase A and Phase B source acceptance. Accepted HEAD 8369f012be7617779af1fc8c38d489b56a3eb83a; exact tested production revision 528224741a60fd5fba8f55553b26f44be5d80dac (Android #11, Linux #16 and P6 #33 all PASS). Trigger documentation only; existing full mandatory preflight and two-ABI debug APK workflow, unchanged Gradle/native/FFmpeg/P2P cache settings, Rust core, package and signing configuration. Q18 prior owner deferral remains. Physical device acceptance pending. No release or merge.
+
+
+APK #138 — owner-authorized critical playback recovery build after all four exact-source verification gates passed. Production revision 8965c0a250618502cc99932882aacc396d3aab37; test-only verification checkpoint bdcd051f2a132edf560212f209a79bbe6ecd93a8; P7 Android #12, P6 #34, Linux #17, P4 #15 successful. Full mandatory preflight, normal two-ABI cached debug workflow, existing package and signing. No release or merge. Physical TV comparison pending.
