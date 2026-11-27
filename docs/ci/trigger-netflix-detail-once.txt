@@ -54,3 +54,6 @@ P8 integrated APK #137 request — owner authorized 2026-11-26 after both Phase 
 
 
 APK #138 — owner-authorized critical playback recovery build after all four exact-source verification gates passed. Production revision 8965c0a250618502cc99932882aacc396d3aab37; test-only verification checkpoint bdcd051f2a132edf560212f209a79bbe6ecd93a8; P7 Android #12, P6 #34, Linux #17, P4 #15 successful. Full mandatory preflight, normal two-ABI cached debug workflow, existing package and signing. No release or merge. Physical TV comparison pending.
+
+
+APK #139 — owner-authorized isolated mobile compatibility correction, protected TV #138 baseline. Exact production revision e40218fe9ba3d64435541c4332ce39cac72eb4c4; P7 Android #13, P6 #35, P4 #16, P7 Linux #18 all successful. Full mandatory preflight, normal cached two-ABI debug workflow, original package/signing/caches. No release or merge. Physical TV/mobile acceptance pending.
