@@ -12,6 +12,7 @@ import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
 import android.view.Gravity
+import androidx.media3.decoder.ffmpeg.FfmpegAudioRenderer
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import android.view.View
@@ -273,7 +274,8 @@ object NvPlayer {
             if (acao == 2) { mostrarQuadro(quadroUrl, quadroTitulo); return@post }
             if (acao != 1 || !mornoLigado || capturando || tituloAberto.isEmpty() || !quadroVisto) return@post
             val sv = superficie ?: return@post
-            if (!sv.holder.surface.isValid) return@post
+            val p = player ?: return@post
+            if (!podeCapturarRetido(p, sv)) return@post
             val titulo = tituloAberto; val url = urlAtual; val token = ++quadroPedido
             val b = try { Bitmap.createBitmap(480, (480 * videoH / videoW.coerceAtLeast(1)).coerceIn(1, 480), Bitmap.Config.ARGB_8888) }
                     catch (_: OutOfMemoryError) { return@post }
@@ -346,7 +348,8 @@ object NvPlayer {
     private fun podeCapturarRetido(p: ExoPlayer, sv: SurfaceView): Boolean {
         if (android.os.Build.VERSION.SDK_INT < 26 || retidoVisivel) return false
         val f = p.videoFormat
-        val transfer = f?.colorInfo?.colorTransfer
+        if (f == null || f.drmInitData != null) return false
+        val transfer = f.colorInfo?.colorTransfer
         val hdrTransfer = transfer == C.COLOR_TRANSFER_ST2084 || transfer == C.COLOR_TRANSFER_HLG
         return FrameHoldP2B.mayCopy(
             quadroVisto, sv.holder.surface.isValid, player === p && superficie === sv,
@@ -438,6 +441,7 @@ object NvPlayer {
         processador?.amplificacaoDb = amplificacaoDb
         processador?.baixoDb = baixoDb
         processador?.centroDb = centroDb
+        recursosAtuais?.ffmpeg?.setCenterMixLevelDb(centroDb)
         processador?.noiteNivel = noiteNivel
     }
 
@@ -983,7 +987,11 @@ object NvPlayer {
         @Volatile var runtimeVideoRecovery: HdrCodecFallbackP5B.RuntimeRecovery? = null
         @Volatile var audioFormato = AudioSyncTap.FMT_NENHUM
         var phonePcm = false
-        var speedRequested = false
+        @Volatile var speedRequested = false
+        @Volatile var fallback16 = false
+        @Volatile var highResolutionInput = false
+        @Volatile var integerPrecision = false
+        fun needsIntegerPcm() = speedRequested || outputRate > 0 || fallback16
         lateinit var outputPolicy: AudioRouteP5D.OutputPolicy
         @Volatile var routePcm = false
         lateinit var routeObserver: AudioRouteObserverP5D
@@ -1005,7 +1013,14 @@ object NvPlayer {
         var routeInput: Format? = null
         var routeValidatedSerial = 0L
         var routeAwaitingPlay = false
+        var ffmpeg: FfmpegAudioRenderer? = null
         val proc = GanhoAudioProcessor()
+        var stereoMix: Boolean
+            get() = proc.stereo
+            set(stereo) {
+                proc.stereo = stereo
+                ffmpeg?.setAudioOutputChannels(if (stereo) "stereo" else null, if (stereo) 2 else 0)
+            }
         val resampler = androidx.media3.common.audio.SonicAudioProcessor()
         @Volatile var outputRate = -1
         var routeShapeKey: AudioRouteP5D.Key? = null
@@ -1687,6 +1702,10 @@ object NvPlayer {
             val p = player ?: return@post
             val r = recursosAtuais ?: return@post
             r.speedRequested = speed != 1f
+            if (r.highResolutionInput && r.integerPrecision != r.needsIntegerPcm()) {
+                r.routeCheck = true
+                r.routeChanged = true
+            }
             requestAudioPolicy(r)
             p.setPlaybackSpeed(speed)
         }
@@ -1791,9 +1810,10 @@ object NvPlayer {
 
     private fun displayHdr(act: Activity, type: Int): Boolean = try {
         val display = act.windowManager.defaultDisplay
-        val types = if (android.os.Build.VERSION.SDK_INT >= 34) display.mode.supportedHdrTypes
-            else display.hdrCapabilities?.supportedHdrTypes ?: intArrayOf()
-        type in types
+        val modeTypes = if (android.os.Build.VERSION.SDK_INT >= 34) display.mode.supportedHdrTypes else intArrayOf()
+        val types = if (modeTypes.isNotEmpty()) modeTypes else display.hdrCapabilities?.supportedHdrTypes ?: intArrayOf()
+        type in types || (type == android.view.Display.HdrCapabilities.HDR_TYPE_HDR10 &&
+            android.view.Display.HdrCapabilities.HDR_TYPE_HDR10_PLUS in types)
     } catch (_: Exception) { false }
 
     private fun verifiedBase(f: Format): HdrCodecFallbackP5B.VideoConfig? {
@@ -1812,19 +1832,7 @@ object NvPlayer {
         val config = recursosAtuais?.videoConfig ?: return false
         val act = activity ?: return false
         if (!config.matches(f, videoDecoderName) || config.info.mimeType != MimeTypes.VIDEO_DOLBY_VISION) return false
-        return try {
-            val profile = androidx.media3.common.util.CodecSpecificDataUtil.getCodecProfileAndLevel(f)
-                ?: return false
-            val caps = config.info.capabilities ?: return false
-            val exactProfile = caps.profileLevels.any { it.profile == profile.first && it.level >= profile.second }
-            val vc = caps.videoCapabilities
-            val size = f.width > 0 && f.height > 0 && vc != null &&
-                if (f.frameRate.isFinite() && f.frameRate > 0f)
-                    vc.areSizeAndRateSupported(f.width, f.height, f.frameRate.toDouble())
-                else vc.isSizeSupported(f.width, f.height)
-            HdrPolicyP5.compatibleDolby(displayHdr(act, android.view.Display.HdrCapabilities.HDR_TYPE_DOLBY_VISION),
-                exactProfile, size)
-        } catch (_: Exception) { false }
+        return displayHdr(act, android.view.Display.HdrCapabilities.HDR_TYPE_DOLBY_VISION)
     }
 
     // Cold opens and prepared opens share renderers, headers, cache, decoder
@@ -1968,7 +1976,6 @@ object NvPlayer {
                     out[slot] = HdrCodecFallbackP5B.GuardedRenderer(builder, { r.videoConfig },
                         { r.runtimeVideoRecovery },
                         { displayHdr(act, android.view.Display.HdrCapabilities.HDR_TYPE_DOLBY_VISION) },
-                        { displayHdr(act, android.view.Display.HdrCapabilities.HDR_TYPE_HDR10) },
                         { at ->
                             principal.post {
                                 if (recursosAtuais === r && atual(sessao) && !videoOutputFailed &&
@@ -1977,15 +1984,33 @@ object NvPlayer {
                             }
                         })
                 }
+                override fun buildAudioRenderers(context: Context, extensionRendererMode: Int,
+                    mediaCodecSelector: MediaCodecSelector, enableDecoderFallback: Boolean, audioSink: AudioSink,
+                    eventHandler: Handler, eventListener: androidx.media3.exoplayer.audio.AudioRendererEventListener,
+                    out: ArrayList<Renderer>) {
+                    super.buildAudioRenderers(context, extensionRendererMode, mediaCodecSelector,
+                        enableDecoderFallback, audioSink, eventHandler, eventListener, out)
+                    r.ffmpeg = out.filterIsInstance<FfmpegAudioRenderer>().singleOrNull()?.apply {
+                        setDownmixNormalizationEnabled(false)
+                        setLfeMixLevel(0f)
+                        setAudioOutputChannels(if (r.stereoMix) "stereo" else null, if (r.stereoMix) 2 else 0)
+                        setCenterMixLevelDb(centroDb)
+                    }
+                }
                 override fun buildAudioSink(context: Context, enableFloatOutput: Boolean,
                                             enableAudioTrackPlaybackParams: Boolean): AudioSink =
-                    // Sonic needs integer PCM; float output bypasses audio processors.
-                    AudioSyncSink(DefaultAudioSink.Builder(context).setEnableFloatOutput(false)
+                    // Apply user DSP before the stock sink chooses its integer or float path.
+                    AudioSyncSink(DefaultAudioSink.Builder(context).setEnableFloatOutput(true)
                         .setEnableAudioTrackPlaybackParams(false)
                         .setAudioTrackProvider(r.routeObserver)
-                        .setAudioProcessors(arrayOf(r.proc, r.resampler)).build(), r.tap,
+                        .setAudioProcessors(arrayOf(r.resampler)).build(), r.tap,
                         { r.outputPolicy.pcm || r.routePcm },
-                        { r.resampler.setOutputSampleRateHz(r.outputRate) })
+                        { r.resampler.setOutputSampleRateHz(r.outputRate) }, r.proc,
+                        { enc ->
+                            r.proc.decoderDownmixed = r.ffmpeg?.isCenterMixActive == true
+                            r.highResolutionInput = androidx.media3.common.util.Util.isEncodingHighResolutionPcm(enc)
+                            r.needsIntegerPcm().also { r.integerPrecision = it }
+                        })
             }.setExtensionRendererMode(androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
                 .setMediaCodecSelector(MediaCodecSelector { mime, secure, tunneling ->
                     val candidates = videoCodecSelector.getDecoderInfos(mime, secure, tunneling)
@@ -2022,7 +2047,6 @@ object NvPlayer {
         val builder = ExoPlayer.Builder(act, r.renderizadores).setLoadControl(r.carga).setMediaSourceFactory(r.fabricaMidia)
             // Renderer teardown runs on Media3's playback thread. Bound UI waits.
             .setReleaseTimeoutMs(200)
-            .setDetachSurfaceTimeoutMs(200)
             .setVideoChangeFrameRateStrategy(C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_OFF)
         val seletor = if (r.idiomaAudio.isNotEmpty()) SeletorAudioPreparo(act, r.idiomaAudio)
                       else DefaultTrackSelector(act)
@@ -3000,14 +3024,15 @@ object NvPlayer {
         val ticket = r.routeTx.begin(now)
         r.routeTarget = target
         r.routePcm = forcePcm
+        if (fatal && sinkConfigurationFailed(p)) r.fallback16 = true
         val fmt = target.first.getTrackFormat(target.second)
         val device = r.routeObserver.route()
         r.routeShapeKey = r.routeObserver.key(device)
-        r.proc.stereo = forcePcm && (shape?.stereo ?: AudioRouteP5D.needsStereo(fmt.channelCount,
+        r.stereoMix = forcePcm && (shape?.stereo ?: AudioRouteP5D.needsStereo(fmt.channelCount,
             device?.type == android.media.AudioDeviceInfo.TYPE_HDMI_ARC, device?.channelCounts,
             fatal && sinkConfigurationFailed(p)))
         r.outputRate = if (forcePcm) shape?.rate ?: AudioRouteP5D.fallbackSampleRate(fmt.sampleRate, device?.sampleRates) else -1
-        relatarAudio(minha, "Q49 begin ticket=$ticket pcm=$forcePcm stereo=${r.proc.stereo} pos=${p.currentPosition} buffered=${p.bufferedPosition}")
+        relatarAudio(minha, "Q49 begin ticket=$ticket pcm=$forcePcm stereo=${r.stereoMix} pos=${p.currentPosition} buffered=${p.bufferedPosition}")
         r.routeMuted = true
         r.routeOutputBefore = r.routeObserver.output?.serial ?: 0L
         routeOwner(r, true)
@@ -3098,6 +3123,7 @@ object NvPlayer {
             return
         }
         if (observed == AudioRouteP5D.Debounce.Result.CHANGED) {
+            r.fallback16 = false
             r.routeChanged = true
             r.routeCheck = true
         }
@@ -3133,7 +3159,7 @@ object NvPlayer {
         val coreCandidate = !audioDsp(r) && output != null &&
             AudioOutputProbeP5A.directCore(activity, route, fmt, fmt.sampleRate, output.config.channelConfig)
         val encoded = decision.encodedPassthrough || coreCandidate || core
-        val currentShape = AudioRouteP5D.PcmShape(r.proc.stereo, r.outputRate)
+        val currentShape = AudioRouteP5D.PcmShape(r.stereoMix, r.outputRate)
         // Evaluate the first initialized output as well as hot route changes.
         // Android can accept a 6-channel PCM track and downmix it downstream
         // of our center control on a stereo-only ARC route.
@@ -3145,7 +3171,8 @@ object NvPlayer {
             AudioRouteP5D.pcmShapeNeedsReselect(currentShape, newShape,
                 Integer.bitCount(pcmSink.channelConfig), pcmSink.sampleRate)
         val tunnelBypassesEffects = audioDsp(r) && output?.config?.tunneling == true
-        val compatible = output != null && formatMatches && !tunnelBypassesEffects &&
+        val precisionChanged = r.highResolutionInput && r.integerPrecision != r.needsIntegerPcm()
+        val compatible = output != null && formatMatches && !precisionChanged && !tunnelBypassesEffects &&
             (core || compatibleOutput(fmt, output.config, cap))
         if (r.routeTx.active) {
             val ticket = r.routeTx.ticket
@@ -3156,7 +3183,8 @@ object NvPlayer {
                 // A failed encoded or multichannel AudioTrack must not be
                 // prepared again with the same unusable sink configuration.
                 r.routePcm = true
-                r.proc.stereo = AudioRouteP5D.needsStereo(fmt.channelCount,
+                if (sinkConfigurationFailed(p)) r.fallback16 = true
+                r.stereoMix = AudioRouteP5D.needsStereo(fmt.channelCount,
                     route?.type == android.media.AudioDeviceInfo.TYPE_HDMI_ARC, route?.channelCounts,
                     sinkConfigurationFailed(p))
                 r.outputRate = AudioRouteP5D.fallbackSampleRate(fmt.sampleRate, route?.sampleRates)
@@ -3185,7 +3213,7 @@ object NvPlayer {
                         r.routePcm = pcm
                         r.routeShapeKey = routeKey
                         r.outputRate = if (pcm) newShape.rate else -1
-                        r.proc.stereo = pcm && newShape.stereo
+                        r.stereoMix = pcm && newShape.stereo
                         if (r.routePhase == 2) {
                             try { reselectAudioRoute(minha, r, target, ticket) }
                             catch (_: RuntimeException) { failAudioRoute(minha, r, "new route reselection failed") }
@@ -3511,7 +3539,8 @@ object NvPlayer {
                 }
                 if (rRoute.routeFailed && audioRenderer) return
                 if (audioRenderer && !rRoute.routeTx.active && (!rRoute.routePcm ||
-                        (!rRoute.proc.stereo && p != null && sinkConfigurationFailed(p) &&
+                        (!rRoute.fallback16 && rRoute.highResolutionInput && p != null && sinkConfigurationFailed(p) ||
+                        !rRoute.stereoMix && p != null && sinkConfigurationFailed(p) &&
                             (rRoute.routeSelected?.let { it.first.getTrackFormat(it.second).channelCount } ?: 0) in 3..8))) {
                     val target = rRoute.routeSelected ?: p?.let { selectedAudio(it) }
                     if (target != null && target.first.isTrackSupported(target.second)) {
@@ -3593,8 +3622,8 @@ object NvPlayer {
             val decoder = error.errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED ||
                 error.errorCode == PlaybackException.ERROR_CODE_DECODING_FAILED
             val outputRejected = generateSequence(error.cause) { it.cause }
-                .any { it is HdrCodecFallbackP5B.OutputRejected }
-            val videoFailure = if (outputRejected && tipo == C.TRACK_TYPE_VIDEO) HdrPolicyP5.FAIL_OUTPUT
+                .any { it is HdrCodecFallbackP5B.PacketFailure }
+            val videoFailure = if (outputRejected) HdrPolicyP5.FAIL_OUTPUT
                 else HdrPolicyP5.failure(error.errorCode, tipo == C.TRACK_TYPE_VIDEO,
                     tipo == C.TRACK_TYPE_AUDIO)
             if (videoFailure != 0) {
@@ -3604,7 +3633,7 @@ object NvPlayer {
                 // failed actual decoder for one same-player reprepare. Keep
                 // all original media, track parameters, position and effects.
                 if ((outputRejected || error.errorCode == PlaybackException.ERROR_CODE_DECODING_FAILED) &&
-                    r != null && p != null && tipo == C.TRACK_TYPE_VIDEO) {
+                    r != null && p != null && (outputRejected || tipo == C.TRACK_TYPE_VIDEO)) {
                     val failed = generateSequence(error.cause) { it.cause }
                         .filterIsInstance<MediaCodecDecoderException>().firstOrNull()?.codecInfo?.name
                     if (retryConfiguredVideo(minha, r, p, exo?.rendererFormat ?: p.videoFormat,
@@ -3752,19 +3781,15 @@ object NvPlayer {
             if (f?.sampleMimeType == MimeTypes.VIDEO_DOLBY_VISION) {
                 val nativeDv = compatibleDolby(f)
                 val base = if (nativeDv) null else verifiedBase(f)
-                if (!nativeDv && base == null) {
-                    falhaVideo(minha, HdrPolicyP5.FAIL_OUTPUT, 0, geracaoDaAbertura)
-                    return
-                }
-                // Actual first frame on the current Surface completes the
-                // independent same-source sample/decoder/output proof.
+                // Playback is established by the renderer's owned surface frame.
+                // Optional output-format fields determine only the badge.
                 baseLayerRendered = base
                 decoderDv = nativeDv
                 publicarHdr(p.currentTracks)
             }
             val r = recursosAtuais
             relatarAudio(minha, "P8 video frame codec=$videoDecoderName transfer=${r?.videoConfig?.outputTransfer} " +
-                "base=${baseLayerRendered != null} toneMapped=${baseLayerRendered?.base?.sdrOutput == true}")
+                "base=${baseLayerRendered != null} dv81=${r?.videoConfig?.convertedDv81} toneMapped=${baseLayerRendered?.base?.sdrOutput == true}")
             if (r?.runtimeVideoRecovery?.handoff(r.videoConfig, f, videoDecoderName) == false) {
                 falhaVideo(minha, HdrPolicyP5.FAIL_DECODER, 0, geracaoDaAbertura)
                 return

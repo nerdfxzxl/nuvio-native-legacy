@@ -73,7 +73,7 @@ internal object HdrCodecFallbackP5B {
             java.lang.Float.compare(old.frameRate, next.frameRate) != 0)
     }
 
-    class OutputRejected : IOException("No verified compatible video output")
+    class PacketFailure : IllegalStateException("Invalid clear Dolby Vision access unit")
 
     // Extend only the actual platform video renderer. Preserve Media3's
     // format negotiation, clock, surface and extension renderer behavior.
@@ -81,7 +81,6 @@ internal object HdrCodecFallbackP5B {
                           private val config: () -> VideoConfig?,
                           private val recovery: () -> RuntimeRecovery?,
                           private val displayDv: () -> Boolean,
-                          private val displayHdr10: () -> Boolean,
                           private val positionReset: (Long) -> Unit) : MediaCodecVideoRenderer(builder) {
         // Media3 1.8 deliberately omits a generic HEVC alternate for profile 7.
         // Expose only the independently parsed clear base to its normal HEVC
@@ -106,7 +105,11 @@ internal object HdrCodecFallbackP5B {
         override fun getDecoderInfos(selector: MediaCodecSelector, format: Format,
                                      requiresSecureDecoder: Boolean): List<MediaCodecInfo> {
             val stock = super.getDecoderInfos(selector, format, requiresSecureDecoder)
-            if (format.sampleMimeType != MimeTypes.VIDEO_DOLBY_VISION) return stock
+            if (format.sampleMimeType != MimeTypes.VIDEO_DOLBY_VISION) {
+                // Apply hardware preference after Media3 evaluated this representation.
+                val hardware = stock.filter { it.hardwareAccelerated && !it.softwareOnly }
+                return if (hardware.any { it.isFormatSupported(format) }) hardware else stock
+            }
             val native = stock.filter { it.mimeType == MimeTypes.VIDEO_DOLBY_VISION && displayDv() }
             val base = baseFormat(format) ?: return native
             if (requiresSecureDecoder) return native
@@ -137,20 +140,14 @@ internal object HdrCodecFallbackP5B {
             val current = config()
             current?.outputTransfer = mediaFormat?.takeIf { it.containsKey(MediaFormat.KEY_COLOR_TRANSFER) }
                 ?.getInteger(MediaFormat.KEY_COLOR_TRANSFER)
-            if (format.sampleMimeType == MimeTypes.VIDEO_DOLBY_VISION) {
-                val info = getCodecInfo()
-                val supported = current != null && info != null && current.matches(format, info.name) &&
-                    if (info.mimeType == MimeTypes.VIDEO_DOLBY_VISION) displayDv()
-                    else info.mimeType == MimeTypes.VIDEO_H265 && current.base?.ready() == true &&
-                        (current.base.requestSdr || displayHdr10())
-                if (!supported) throw createRendererException(OutputRejected(), format,
-                    PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED)
-            }
+            // A codec may omit color keys on surface output, including after a
+            // seek. Record available metadata without rejecting a decoded frame.
             super.onOutputFormatChanged(format, mediaFormat)
         }
     }
 
     data class VideoConfig(val info: MediaCodecInfo, val source: Format, val base: Proof?) {
+        var convertedDv81 = false
         var requestedToneMap = false
         @Volatile var outputTransfer: Int? = null
         fun matches(format: Format, name: String?): Boolean =
@@ -229,14 +226,26 @@ internal object HdrCodecFallbackP5B {
                 throw Rejection("Runtime video fallback cannot preserve the failed representation")
             val alternate = f.sampleMimeType == MimeTypes.VIDEO_DOLBY_VISION &&
                 info.mimeType != MimeTypes.VIDEO_DOLBY_VISION
+            val isDv = f.sampleMimeType == MimeTypes.VIDEO_DOLBY_VISION
+            val dv7 = isDv && f.codecs?.split('.')?.getOrNull(1)?.toIntOrNull() == 7
+            val caps = info.capabilities?.profileLevels.orEmpty()
+            val native7 = caps.any { it.profile == android.media.MediaCodecInfo.CodecProfileLevel.DolbyVisionProfileDvheDtb }
+            val accepts8 = caps.any { it.profile == android.media.MediaCodecInfo.CodecProfileLevel.DolbyVisionProfileDvheSt }
+            val convert = !alternate && dv7 && !native7 && displayDv() && info.hardwareAccelerated &&
+                (accepts8 || android.os.Build.MANUFACTURER.equals("Xiaomi", true)) &&
+                configuration.crypto == null && f.drmInitData == null && baseFormat(f) != null && DvPacket.available
             val proof = if (alternate) {
                 validateAlternate(configuration)
                 Proof().apply { requestSdr = !displayHdr10() }
             } else {
-                // Reject incompatible native DV before initialization. Media3
-                // can then try its remaining compatible same-source candidates,
-                // rather than accepting an invalid native DV frame first.
-                if (f.sampleMimeType == MimeTypes.VIDEO_DOLBY_VISION) validateNativeDolby(info, f)
+                if (isDv && !displayDv()) throw Rejection("Display does not advertise Dolby Vision")
+                if (dv7 && !native7 && !convert && baseFormat(f) != null)
+                    throw Rejection("Trying verified same-stream HEVC base")
+                if (convert) {
+                    stripEnhancementCsd(configuration)
+                    configuration.mediaFormat.setInteger(MediaFormat.KEY_PROFILE,
+                        android.media.MediaCodecInfo.CodecProfileLevel.DolbyVisionProfileDvheSt)
+                }
                 if (info.softwareOnly && !info.isFormatSupported(f))
                     throw Rejection("Software decoder cannot preserve the actual video format")
                 null
@@ -264,23 +273,19 @@ internal object HdrCodecFallbackP5B {
                 delegate.createAdapter(configuration)
             }
             trace("configured codec=${info.name} verifiedBase=${proof != null}")
-            report(VideoConfig(info, f, proof).also { it.requestedToneMap = toneMap })
-            return if (proof != null) ObservedBase(codec, proof) else codec
+            report(VideoConfig(info, f, proof).also {
+                it.requestedToneMap = toneMap
+                it.convertedDv81 = convert
+            })
+            return if (proof != null || convert) ObservedBase(codec, proof, convert) else codec
         }
 
-        private fun validateNativeDolby(info: MediaCodecInfo, f: Format) {
-            val profile = CodecSpecificDataUtil.getCodecProfileAndLevel(f)
-                ?: throw Rejection("Unrecognized Dolby Vision profile/level")
-            val caps = info.capabilities ?: throw Rejection("Unknown Dolby Vision decoder capabilities")
-            val vc = caps.videoCapabilities ?: throw Rejection("Unknown Dolby Vision video capabilities")
-            val size = f.width > 0 && f.height > 0 &&
-                if (f.frameRate.isFinite() && f.frameRate > 0f)
-                    vc.areSizeAndRateSupported(f.width, f.height, f.frameRate.toDouble())
-                else vc.isSizeSupported(f.width, f.height)
-            if (!HdrPolicyP5.compatibleDolby(displayDv(),
-                    caps.profileLevels.any { it.profile == profile.first && it.level >= profile.second }, size) ||
-                !info.isFormatSupported(f))
-                throw Rejection("Native Dolby Vision decoder/output cannot preserve this format")
+        private fun stripEnhancementCsd(c: MediaCodecAdapter.Configuration) {
+            for ((i, csd) in c.format.initializationData.withIndex()) {
+                val data = ByteBuffer.wrap(csd.copyOf())
+                data.limit(HdrBaseLayerP5B.keepBaseUnits(data, 0, csd.size))
+                c.mediaFormat.setByteBuffer("csd-$i", data)
+            }
         }
 
         private fun validateAlternate(c: MediaCodecAdapter.Configuration) {
@@ -294,23 +299,9 @@ internal object HdrCodecFallbackP5B {
             val baseFormat = baseFormat(f) ?: throw Rejection("No verified clear HDR10 base")
             val profile = CodecSpecificDataUtil.getCodecProfileAndLevel(baseFormat)
                 ?: throw Rejection("Unrecognized HEVC profile/level")
-            val caps = info.capabilities ?: throw Rejection("Unknown HEVC codec capabilities")
-            val vc = caps.videoCapabilities ?: throw Rejection("Unknown HEVC video capabilities")
-            val size = if (f.frameRate.isFinite() && f.frameRate > 0f)
-                vc.areSizeAndRateSupported(f.width, f.height, f.frameRate.toDouble())
-            else vc.isSizeSupported(f.width, f.height)
-            if (!size || caps.profileLevels.none { it.profile == profile.first && it.level >= profile.second } ||
-                !info.isFormatSupported(baseFormat))
-                throw Rejection("Alternate HEVC decoder cannot preserve the source format")
-            // MediaCodecVideoRenderer otherwise writes a DV profile even for
-            // its HEVC alternate. Use the independently parsed HEVC profile;
-            // preserve the actual CSD, size, rate, source and all other data.
-            for ((i, csd) in f.initializationData.withIndex()) {
-                val data = ByteBuffer.wrap(csd.copyOf())
-                val count = HdrBaseLayerP5B.keepBaseUnits(data, 0, csd.size)
-                data.limit(count)
-                c.mediaFormat.setByteBuffer("csd-$i", data)
-            }
+            // Media3 accounts for platform alignment and fractional frame rates.
+            if (!info.isFormatSupported(baseFormat)) throw Rejection("Unsupported HEVC representation")
+            stripEnhancementCsd(c)
             c.mediaFormat.setInteger(MediaFormat.KEY_PROFILE, profile.first)
             c.mediaFormat.setInteger(MediaFormat.KEY_COLOR_STANDARD, MediaFormat.COLOR_STANDARD_BT2020)
             c.mediaFormat.setInteger(MediaFormat.KEY_COLOR_TRANSFER, MediaFormat.COLOR_TRANSFER_ST2084)
@@ -322,8 +313,9 @@ internal object HdrCodecFallbackP5B {
     // Observe the real codec; do not copy, transcode or replace its samples.
     // Keep ordinary audio/video adapters untouched and delegate every other
     // operation, including asynchronous codec behavior and surface ownership.
-    private class ObservedBase(private val codec: MediaCodecAdapter, private val proof: Proof) :
+    private class ObservedBase(private val codec: MediaCodecAdapter, private val proof: Proof?, private val convertDv: Boolean) :
         MediaCodecAdapter by codec {
+        private var scratch: ByteBuffer? = null
         private var inputIndex = -1
         private var input: ByteBuffer? = null
 
@@ -335,43 +327,56 @@ internal object HdrCodecFallbackP5B {
 
         override fun queueInputBuffer(index: Int, offset: Int, size: Int,
                                       presentationTimeUs: Long, flags: Int) {
-            val candidate = !proof.sample && inputIndex == index &&
-                input?.let { HdrBaseLayerP5B.hasBaseRandomAccess(it, offset, size) } == true
-            val submitted = if (inputIndex == index && size > 0)
-                input?.let { HdrBaseLayerP5B.keepBaseUnits(it, offset, size) } ?: size else size
-            input = null; inputIndex = -1
+            val buffer = input?.takeIf { index == inputIndex }
+            val candidate = proof?.sample == false && buffer != null &&
+                HdrBaseLayerP5B.hasBaseRandomAccess(buffer, offset, size)
+            val submitted = when {
+                size == 0 -> 0
+                buffer == null -> throw PacketFailure()
+                convertDv -> {
+                    // A single reusable scratch buffer, sized to this access unit
+                    // plus RPU headroom and bounded by the codec's own input slot.
+                    val capacity = minOf(size.toLong() + 8192, (buffer.capacity() - offset).toLong()).toInt()
+                    val out = scratch?.takeIf { it.capacity() >= capacity } ?:
+                        ByteBuffer.allocateDirect(capacity).also { scratch = it }
+                    DvPacket.convert(buffer, offset, size, out).also { if (it < 0) throw PacketFailure() }
+                }
+                else -> HdrBaseLayerP5B.keepBaseUnits(buffer, offset, size)
+            }
+            input = null
+            inputIndex = -1
             codec.queueInputBuffer(index, offset, submitted, presentationTimeUs, flags)
-            if (candidate) proof.sample = true
+            if (candidate) proof?.sample = true
         }
 
         override fun queueSecureInputBuffer(index: Int, offset: Int, info: CryptoInfo,
                                             presentationTimeUs: Long, flags: Int) {
-            proof.valid = false
+            proof?.valid = false
             input = null; inputIndex = -1
             codec.queueSecureInputBuffer(index, offset, info, presentationTimeUs, flags)
         }
 
         override fun getOutputFormat(): MediaFormat {
             val f = codec.outputFormat
-            proof.hdrOutput = try {
+            proof?.hdrOutput = try {
                 f.getInteger(MediaFormat.KEY_COLOR_STANDARD) == MediaFormat.COLOR_STANDARD_BT2020 &&
                     f.getInteger(MediaFormat.KEY_COLOR_TRANSFER) == MediaFormat.COLOR_TRANSFER_ST2084 &&
                     f.getInteger(MediaFormat.KEY_COLOR_RANGE) == MediaFormat.COLOR_RANGE_LIMITED
             } catch (_: Exception) { false }
-            proof.sdrOutput = try {
+            proof?.sdrOutput = try {
                 f.getInteger(MediaFormat.KEY_COLOR_TRANSFER) == MediaFormat.COLOR_TRANSFER_SDR_VIDEO
             } catch (_: Exception) { false }
             return f
         }
 
         override fun flush() {
-            proof.sample = false
+            proof?.sample = false
             input = null; inputIndex = -1
             codec.flush()
         }
 
         override fun release() {
-            proof.valid = false
+            proof?.valid = false
             input = null; inputIndex = -1
             codec.release()
         }
@@ -383,4 +388,13 @@ internal object HdrCodecFallbackP5B {
             }, handler)
         }
     }
+}
+
+
+// The production Rust build supplies a separate JNI library for both Android ABIs.
+internal object DvPacket {
+    val available by lazy {
+        try { System.loadLibrary("nuvio_dovi"); true } catch (_: UnsatisfiedLinkError) { false }
+    }
+    external fun convert(input: ByteBuffer, offset: Int, length: Int, scratch: ByteBuffer): Int
 }

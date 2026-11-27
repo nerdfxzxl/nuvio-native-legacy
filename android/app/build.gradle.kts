@@ -17,6 +17,15 @@ require(ffmpegAar == null || ffmpegAar.isFile) {
     "nuvio.ffmpegAar must point to an existing AAR"
 }
 
+// Android Studio and test-only Gradle entry points use the same pinned decoder.
+val localDecoder = layout.buildDirectory.file("decoder/nuvio-ffmpeg.aar")
+val prepareDecoder = tasks.register<Exec>("preparePlaybackDecoder") {
+    val script = File(raiz, "tools/android/ffmpeg-android.sh")
+    inputs.file(script)
+    outputs.file(localDecoder)
+    commandLine("bash", script, localDecoder.get().asFile)
+}
+
 // Versao: fonte unica e deploy/app/appinfo.json (mesma do env.sh).
 val versao = Regex("\"version\"\\s*:\\s*\"([^\"]+)\"")
     .find(File(raiz, "deploy/app/appinfo.json").readText())!!.groupValues[1]
@@ -158,18 +167,8 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer:1.8.0")
     implementation("androidx.media3:media3-exoplayer-hls:1.8.0")
     implementation("androidx.media3:media3-exoplayer-dash:1.8.0")
-    // Decodificador de AUDIO por FFmpeg (DTS, DTS-HD, TrueHD, E-AC-3...) para
-    // quando a TV nao tem o decodificador nem passa o bitstream adiante: sem
-    // ele a fonte toca muda (evento 9). Compilado e publicado pela Jellyfin no
-    // Maven Central, na mesma versao do Media3. So entra quando a plataforma
-    // nao serve (EXTENSION_RENDERER_MODE_ON no NvPlayer).
-    if (ffmpegAar != null) {
-        // Published 1.8.0+1 classes/32-bit JNI; selected 64-bit JNI rebuilt for 16KB pages.
-        implementation(files(ffmpegAar))
-        implementation("androidx.media3:media3-decoder:1.8.0")
-    } else {
-        implementation("org.jellyfin.media3:media3-ffmpeg-decoder:1.8.0+1")
-    }
+    implementation(if (ffmpegAar != null) files(ffmpegAar) else files(localDecoder).builtBy(prepareDecoder))
+    implementation("androidx.media3:media3-decoder:1.8.0")
     implementation("androidx.core:core-ktx:1.13.1")
     testImplementation("junit:junit:4.13.2")
 }

@@ -193,6 +193,9 @@ jobs:
           set -euo pipefail
           NUVIO_ANDROID_CACHE="$RUNNER_TEMP/p6-isolated-harness" python3 tests/cacheboost_android.py
 
+      - name: Verify native Dolby Vision MEL and FEL conversion and access units
+        run: bash tests/dv7.sh
+
       - name: Execute production audio, HDR, AFR and surface transition policies
         shell: bash
         run: |

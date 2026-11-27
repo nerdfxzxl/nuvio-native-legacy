@@ -49,6 +49,9 @@ jobs:
       - name: Link full ARM64 libmain and compile production Kotlin and Java
         run: |
           bash tools/android.sh --verify-link
+          bridge=$(find android/app/build/intermediates/cxx -path '*/arm64-v8a/libnuvio_dovi.so' -print -quit)
+          test -s "$bridge"
+          nm -D --defined-only "$bridge" | grep 'Java_space_nuvio_nativelegacy_DvPacket_convert$'
           elf=$(find android/app/build/intermediates/cxx -path '*/arm64-v8a/libmain.so' -print -quit)
           test -s "$elf"
           readelf -h "$elf" | grep 'Machine:.*AArch64'

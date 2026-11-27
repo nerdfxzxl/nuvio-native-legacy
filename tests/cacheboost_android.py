@@ -64,6 +64,12 @@ with tempfile.TemporaryDirectory(prefix="nuvio-cacheboost-android-", dir=os.envi
     deps.append(aar_jar("androidx.annotation", "annotation-experimental", "1.4.0", tmp))
     guava = jar("com.google.guava", "guava", "33.3.1-android")
     deps.append(guava)
+    decoder = tmp / "official-ffmpeg.aar"
+    subprocess.run(["bash", str(root / "tools/android/ffmpeg-android.sh"), str(decoder)], check=True)
+    with zipfile.ZipFile(decoder) as z:
+        ffmpeg_jar = tmp / "official-ffmpeg.jar"
+        ffmpeg_jar.write_bytes(z.read("classes.jar"))
+    deps.append(ffmpeg_jar)
     sources = [kt / n for n in ("NvPlayer.kt", "ParaleloDataSource.kt", "PassivoMedidor.kt", "NuvioActivity.kt",
                                 "LiveWindowRecovery.kt", "FrameHoldP2B.kt", "RamBufferProfile.kt",
                                 "LimitedDataSource.kt", "LivePlaylistDataSource.kt",

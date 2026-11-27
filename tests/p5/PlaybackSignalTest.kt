@@ -83,6 +83,16 @@ fun main() {
     }
     check(isolated(6, 3).all { it == 0f })
     check(isolated(4, 2, 30).contentEquals(isolated(4, 2, 0)))
+    // Packed 24-bit input preserves detail below a 16-bit LSB.
+    val packed = GanhoAudioProcessor()
+    check(packed.configure(AudioProcessor.AudioFormat(rate, 2, C.ENCODING_PCM_24BIT)).encoding == C.ENCODING_PCM_FLOAT)
+    packed.flush()
+    packed.queueInput(ByteBuffer.wrap(byteArrayOf(1, 0, 0, -1, -1, -1)))
+    val precise = packed.output.order(ByteOrder.nativeOrder())
+    check(precise.float == 1f / 8388608 && precise.float == -1f / 8388608)
+    val nativeDownmix = processor { decoderDownmixed = true }
+    val limited = render(nativeDownmix, 1, 2) { _, ch -> if (ch == 0) 1.8f else .9f }
+    check(limited[0] < 1f && limited[0] > .99f && limited[0] == 2f * limited[1])
     val transition = processor()
     render(transition, 100, 2) { _, _ -> .05f }
     transition.amplificacaoDb = 10

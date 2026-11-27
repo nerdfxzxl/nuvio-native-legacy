@@ -16,6 +16,8 @@ if [ "${1:-}" = --android ]; then
   for par in aarch64-linux-android:arm64-v8a armv7-linux-androideabi:armeabi-v7a; do
     mkdir -p "$dest/${par#*:}"
     cp "$("$0" "${par%%:*}")" "$dest/${par#*:}/libmkvcore.a"
+    cargo build --quiet --locked --release --manifest-path tools/dv7/Cargo.toml --target "${par%%:*}"
+    cp "tools/dv7/target/${par%%:*}/release/libnuvio_dv7.a" "$dest/${par#*:}/"
   done
   echo "$dest"
   exit 0

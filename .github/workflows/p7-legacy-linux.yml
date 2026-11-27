@@ -4,7 +4,7 @@ on:
   push:
     branches: [feature/official-stream-selector]
     paths: [.github/workflows/p7-legacy-linux.yml]
-# CI #11: final Q46 diagnostics provenance correction and full regression.
+# Recovery after APK 137 exercises the complete protected playback and UI matrix.
 concurrency:
   group: p7-linux-legacy-${{ github.ref }}
   cancel-in-progress: true

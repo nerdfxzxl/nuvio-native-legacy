@@ -19,6 +19,9 @@ class GanhoAudioProcessor : BaseAudioProcessor() {
     @Volatile var noiteNivel = 0
     @Volatile var stereo = false
 
+    var decoderDownmixed = false
+    var requirePcm16 = false
+    var channelMap: IntArray? = null
     private var frame = FloatArray(0)
     private var z1 = DoubleArray(0)
     private var z2 = DoubleArray(0)
@@ -35,14 +38,21 @@ class GanhoAudioProcessor : BaseAudioProcessor() {
 
     override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
         val f = inputAudioFormat
-        if (f.encoding != C.ENCODING_PCM_16BIT && f.encoding != C.ENCODING_PCM_FLOAT)
-            return AudioProcessor.AudioFormat.NOT_SET
-        return if (stereo && f.channelCount in 3..8)
-            AudioProcessor.AudioFormat(f.sampleRate, 2, f.encoding) else f
+        val bits = when (f.encoding) {
+            C.ENCODING_PCM_FLOAT, C.ENCODING_PCM_32BIT, C.ENCODING_PCM_32BIT_BIG_ENDIAN -> 32
+            C.ENCODING_PCM_24BIT, C.ENCODING_PCM_24BIT_BIG_ENDIAN -> 24
+            C.ENCODING_PCM_16BIT, C.ENCODING_PCM_16BIT_BIG_ENDIAN -> 16
+            C.ENCODING_PCM_8BIT -> 8
+            else -> return AudioProcessor.AudioFormat.NOT_SET
+        }
+        val lanes = channelMap?.size ?: f.channelCount
+        val count = if (stereo && lanes in 3..8) 2 else lanes
+        val encoding = if (bits > 16 && !requirePcm16) C.ENCODING_PCM_FLOAT else C.ENCODING_PCM_16BIT
+        return AudioProcessor.AudioFormat(f.sampleRate, count, encoding)
     }
 
     override fun onFlush() {
-        val count = inputAudioFormat.channelCount.coerceAtLeast(0)
+        val count = (channelMap?.size ?: inputAudioFormat.channelCount).coerceAtLeast(0)
         frame = FloatArray(count)
         z1 = DoubleArray(count)
         z2 = DoubleArray(count)
@@ -72,15 +82,22 @@ class GanhoAudioProcessor : BaseAudioProcessor() {
         a2 = (a + 1 + (a - 1) * c - s) / d
     }
 
+    fun transparent() = !decoderDownmixed && inputAudioFormat == outputAudioFormat && channelMap == null &&
+        ganho == 1f && amplificacaoDb == 0 && baixoDb == 0 && centroDb == 0 && noiteNivel == 0 &&
+        (initial || (level == 1f && center == 1f && bass == 0f && dynamics.idle()))
+
     override fun queueInput(inputBuffer: ByteBuffer) {
         if (!inputBuffer.hasRemaining()) return
         val f = inputAudioFormat
         val outputs = outputAudioFormat.channelCount
-        val fold = outputs < f.channelCount
-        val float = f.encoding == C.ENCODING_PCM_FLOAT
+        val fold = outputs < frame.size
+        val floatOutput = outputAudioFormat.encoding == C.ENCODING_PCM_FLOAT
         val frames = inputBuffer.remaining() / f.bytesPerFrame
         val out = replaceOutputBuffer(frames * outputAudioFormat.bytesPerFrame).order(ByteOrder.nativeOrder())
-        val src = inputBuffer.order(ByteOrder.nativeOrder())
+        val bigEndian = f.encoding == C.ENCODING_PCM_16BIT_BIG_ENDIAN ||
+            f.encoding == C.ENCODING_PCM_24BIT_BIG_ENDIAN || f.encoding == C.ENCODING_PCM_32BIT_BIG_ENDIAN
+        val src = inputBuffer.order(if (bigEndian) ByteOrder.BIG_ENDIAN else ByteOrder.nativeOrder())
+        val bytesPerSample = f.bytesPerFrame / f.channelCount
         val gainTarget = ganho * linear(amplificacaoDb.coerceIn(0, 10))
         val centerTarget = linear(centroDb.coerceIn(-10, 30))
         val bassTarget = baixoDb.coerceIn(-12, 6).toFloat()
@@ -92,7 +109,7 @@ class GanhoAudioProcessor : BaseAudioProcessor() {
             setShelf(bassTarget, f.sampleRate)
             initial = false
         }
-        if (!fold && gainTarget == 1f && level == 1f && centerTarget == 1f && center == 1f &&
+        if (!decoderDownmixed && inputAudioFormat == outputAudioFormat && channelMap == null && !fold && gainTarget == 1f && level == 1f && centerTarget == 1f && center == 1f &&
             bassTarget == 0f && bass == 0f && night == 0 && dynamics.idle()) {
             out.put(src)
             out.flip()
@@ -104,9 +121,23 @@ class GanhoAudioProcessor : BaseAudioProcessor() {
             level = approach(level, gainTarget, slew)
             center = approach(center, centerTarget, slew)
             if (index % 16 == 0) setShelf(approach(bass, bassTarget, shelfSlew), f.sampleRate)
+            val start = src.position()
             for (ch in frame.indices) {
-                frame[ch] = if (float) src.float.let { if (it.isFinite()) it else 0f } else src.short / 32768f
+                val pos = start + (channelMap?.get(ch) ?: ch) * bytesPerSample
+                frame[ch] = when (f.encoding) {
+                    C.ENCODING_PCM_FLOAT -> src.getFloat(pos).let { if (it.isFinite()) it else 0f }
+                    C.ENCODING_PCM_8BIT -> ((src.get(pos).toInt() and 255) - 128) / 128f
+                    C.ENCODING_PCM_16BIT, C.ENCODING_PCM_16BIT_BIG_ENDIAN -> src.getShort(pos) / 32768f
+                    C.ENCODING_PCM_24BIT, C.ENCODING_PCM_24BIT_BIG_ENDIAN -> {
+                        val high = src.get(if (bigEndian) pos else pos + 2).toInt()
+                        val mid = src.get(pos + 1).toInt() and 255
+                        val low = src.get(if (bigEndian) pos + 2 else pos).toInt() and 255
+                        ((high shl 16) or (mid shl 8) or low) / 8388608f
+                    }
+                    else -> src.getInt(pos) / 2147483648f
+                }
             }
+            src.position(start + f.bytesPerFrame)
             if (frame.size in 3..8 && frame.size != 4) frame[2] *= center
             if (fold) AudioRouteP5D.foldStereo(frame)
             var peak = 0f
@@ -124,7 +155,7 @@ class GanhoAudioProcessor : BaseAudioProcessor() {
             val scale = dynamics.gain(peak, night)
             for (ch in 0 until outputs) {
                 val v = frame[ch] * scale
-                if (float) out.putFloat(v.coerceIn(-1f, 1f))
+                if (floatOutput) out.putFloat(v.coerceIn(-1f, 1f))
                 else out.putShort((v * 32768f).roundToInt().coerceIn(-32768, 32767).toShort())
             }
         }
@@ -208,7 +239,7 @@ private class PlaybackDynamics {
         }
         val current = limiter
         if (hold > 0) hold-- else if (limiter < 1f)
-            limiter = min(1f, max(Math.nextUp(limiter), limiter * release))
+            limiter = min(1f, max(java.lang.Math.nextUp(limiter), limiter * release))
         return lift * current
     }
 }

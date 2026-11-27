@@ -1,7 +1,7 @@
 name: P4 cache verification (tests only - no APK)
 
 # Dedicated push trigger; existing APK workflow paths are left untouched.
-# P4 Robolectric integration rerun: use Android-compatible loopback HTTP socket test.
+# Playback recovery verifies representation identity, RAM profiles and the cache adapter.
 on:
   workflow_dispatch:
   push:
