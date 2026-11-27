@@ -15,7 +15,18 @@ def function(start):
 assert '"buscar", "(II)V"' in native and 'fun buscar(ms: Int, revision: Int)' in kotlin
 assert 'if (live || validWindow) p.bufferedPosition else C.TIME_UNSET' in kotlin
 assert 'geracaoNative, appliedSeekRevision)' in kotlin
-assert 'p.seekTo(alvo)\n                        appliedSeekRevision = revision' in kotlin
+# The seek was routed through the startup surface handoff before APK #137.
+# Preserve generation/seek ownership, rather than requiring an obsolete direct call.
+seek = kotlin[kotlin.index("fun buscar(ms: Int, revision: Int)"):kotlin.index("@JvmStatic fun volume(pct: Int)")]
+assert 'if (pedido == pedidos.get() && player === p && busca == buscaSerial && !videoOutputFailed)' in seek
+assert 'buscarComHandoff(p, alvo)\n                        appliedSeekRevision = revision' in seek
+assert 'capturarRetido(p, sv, pedido, commit)' in seek and 'else commit()' in seek
+handoff = kotlin[kotlin.index("private fun buscarComHandoff("):kotlin.index("private fun invalidarQuadroSuperficie(")]
+assert 'if (estavelEmitido || !p.isCurrentMediaItemSeekable)' in handoff
+assert handoff.count('p.seekTo(alvo)') == 2
+assert 'startupSeekGate.begin()' in handoff and 'startupSeekGate.finish(ticket)' in handoff
+assert handoff.index('startupSeekGate.begin()') < handoff.rindex('p.seekTo(alvo)') < handoff.index('p.createMessage')
+
 
 source = r"""
 #include "vod_buffer.h"
@@ -29,8 +40,9 @@ typedef void *jclass;
 typedef int64_t jlong;
 typedef int jboolean, jint;
 static pthread_mutex_t travaRetomada = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t travaEvento = PTHREAD_MUTEX_INITIALIZER;
 static unsigned sessao;
-static int ativo=1, falhou, durMs, posMs, posNativoMs, seekRevision;
+static int ativo=1, falhou, durMs, posMs, posNativoMs, seekRevision, terminalVideoP5B;
 static int retomadaInicialEstado, liveRecuperandoAte, liveSegmentoMs, liveProgressoValido, liveBufferValido;
 static int sampleBytes, samplePeakBytes;
 static jlong livePosMs, liveBufferFimMs, vodBufferFimMs;
@@ -42,6 +54,9 @@ source += r"""
 #define REPORT(pos,end,live,gen,rev) Java_space_nuvio_nativelegacy_NvPlayer_nativePos(0,0,pos,end,live,0,gen,rev)
 int main(void) {
   unsigned first=novaRetomada(0);
+  terminalVideoP5B=1;
+  REPORT(12000,43000,0,first,0); assert(video_buffer_fim()==0 && posMs==0);
+  terminalVideoP5B=0;
   REPORT(12000,43000,0,first,0); assert(video_buffer_fim()==43.0);
   REPORT(13000,22000,0,first,0); assert(video_buffer_fim()==22.0);
   REPORT(13000,13000,0,first,0); assert(video_buffer_fim()==0);
