@@ -1,0 +1,9 @@
+# Mobile compatibility follow-up after APK #138
+
+Protected baseline: 3cb3a676e644793bcbdcbb9f432d307115e6ef7d. Owner reports TV 4K playback and audio markedly improved; direct audio A/B still pending. Phone plays some SDR/HDR/DV 4K but most fail, and a large 1080p source returned to selector. NuvioMobile ExoPlayer plays a 90+ GB remux; exact failing stream A/B and diagnostic logs unavailable.
+
+Reference NuvioMedia/NuvioMobile cmp-rewrite 6d2fdab63d5eeb4e2daaed3f0adedc0c61f100cf, PlayerEngine.android.kt: default video decoder selection, enabled fallback; customized Media3. Legacy previously sorted candidates hardware-first and discarded nonhardware candidates once hardware advertised support. For phones only, use default Media3 ordering in preload and playback, retain complete ordinary-format candidate list; still enforce real same-representation recovery and existing DV proof/tone mapping and software support guards. TV hardware ordering/pruning unchanged. No scaling, audio/DSP, renderer surface, bitrate cap, file-size rule, buffer allocation or automatic source substitution change.
+
+Manual opening previously ended at 25 seconds even while socket bytes were arriving. On physical phones only (automatic classification, not UI preference), allow a bounded 90-second deadline while loading with positive current rolling download evidence. A real error still exits immediately; unknown/stale/zero throughput retains original deadline. TV/non-Android unchanged. This is a targeted correction of source-level risks, not a confirmed diagnosis of the owner's exact runtime failures.
+
+Tests: new pure Kotlin ordered-list coverage and native deadline/dispatch test in P6; rerun P4 cache, P6 lifecycle/PCM, P7 Android linking and Linux regression workflows. Build one normal full preflight cached debug APK only after gates pass. User has authorized build. Physical TV/mobile test still required. No release/merge.

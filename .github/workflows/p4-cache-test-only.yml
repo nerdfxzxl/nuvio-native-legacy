@@ -152,3 +152,5 @@ jobs:
           echo "No APK assembled, packaged, signed, uploaded, or published." >> "$GITHUB_STEP_SUMMARY"
           echo "Green checks verify source contracts, targeted API35/Media3 production-source compilation, and host Kotlin tests only." >> "$GITHUB_STEP_SUMMARY"
           echo "Integrated Media3 cache/HTTP cancellation, eviction and runtime TV checks remain separately gated." >> "$GITHUB_STEP_SUMMARY"
+
+# APK 138 protected TV baseline: isolated mobile decoder/startup regression verification.

@@ -1240,7 +1240,7 @@ object NvPlayer {
         r.seletorPreparo = seletor
         val descritores = androidx.media3.exoplayer.DefaultRenderersFactory(act)
             .setExtensionRendererMode(androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
-            .setMediaCodecSelector(videoCodecSelector)
+            .setMediaCodecSelector(if (r.phonePcm) MediaCodecSelector.DEFAULT else videoCodecSelector)
             .setEnableDecoderFallback(true)
         val lista = DefaultRendererCapabilitiesList.Factory(descritores).createRendererCapabilitiesList()
         r.capacidadesPreparo = lista
@@ -1976,6 +1976,7 @@ object NvPlayer {
                     out[slot] = HdrCodecFallbackP5B.GuardedRenderer(builder, { r.videoConfig },
                         { r.runtimeVideoRecovery },
                         { displayHdr(act, android.view.Display.HdrCapabilities.HDR_TYPE_DOLBY_VISION) },
+                        r.phonePcm,
                         { at ->
                             principal.post {
                                 if (recursosAtuais === r && atual(sessao) && !videoOutputFailed &&
@@ -2013,7 +2014,9 @@ object NvPlayer {
                         })
             }.setExtensionRendererMode(androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
                 .setMediaCodecSelector(MediaCodecSelector { mime, secure, tunneling ->
-                    val candidates = videoCodecSelector.getDecoderInfos(mime, secure, tunneling)
+                    // Physical device classification, independent of interface layout preference.
+                    val selector = if (r.phonePcm) MediaCodecSelector.DEFAULT else videoCodecSelector
+                    val candidates = selector.getDecoderInfos(mime, secure, tunneling)
                     val excluded = r.runtimeVideoRecovery?.excluded
                     if (excluded != null && MimeTypes.isVideo(mime))
                         candidates.filter { it.name !in excluded } else candidates

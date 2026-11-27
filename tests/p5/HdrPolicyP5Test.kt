@@ -43,5 +43,13 @@ fun main() {
     check(order(listOf(sw2, sw1)) == listOf(sw2, sw1))
     check(order(listOf(unknown, sw1, hw1)) == listOf(hw1, unknown, sw1))
     check(order(emptyList()).isEmpty())
-    println("P5 Q37/Q39 HDR, video failure and decoder order: 27/27 PASS")
+    val stock = listOf(sw1, hw2, unknown, hw1, sw2)
+    fun candidates(mobile: Boolean, supported: Set<Decoder>) =
+        p.ordinaryDecoders(stock, mobile, { it.hardware }, { it.software }, { it in supported })
+    check(candidates(true, setOf(hw1)) == stock)
+    check(candidates(true, emptySet()) == stock)
+    check(candidates(false, setOf(hw1)) == listOf(hw2, hw1))
+    check(candidates(false, setOf(sw1)) == stock)
+    check(p.ordinaryDecoders(emptyList<Decoder>(), true, { it.hardware }, { it.software }, { true }).isEmpty())
+    println("P5 Q37/Q39 HDR, video failure and decoder order, mobile fallback: PASS")
 }

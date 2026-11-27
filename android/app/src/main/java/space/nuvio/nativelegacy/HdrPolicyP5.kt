@@ -36,6 +36,15 @@ internal object HdrPolicyP5 {
                           software: (T) -> Boolean): List<T> =
         candidates.sortedBy { if (hardware(it)) 0 else if (software(it)) 2 else 1 }
 
+    // Phone: retain Media3's full ordered candidate list, including platform
+    // fallback codecs. TV: preserve #138's exact hardware-first pruning.
+    fun <T> ordinaryDecoders(stock: List<T>, mobile: Boolean, hardware: (T) -> Boolean,
+                             software: (T) -> Boolean, supports: (T) -> Boolean): List<T> {
+        if (mobile) return stock
+        val accelerated = stock.filter { hardware(it) && !software(it) }
+        return if (accelerated.any(supports)) accelerated else stock
+    }
+
     fun compatibleDolby(displayDv: Boolean, profileSupported: Boolean, sizeSupported: Boolean): Boolean =
         displayDv && profileSupported && sizeSupported
 

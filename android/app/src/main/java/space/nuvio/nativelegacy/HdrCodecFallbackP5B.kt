@@ -81,6 +81,7 @@ internal object HdrCodecFallbackP5B {
                           private val config: () -> VideoConfig?,
                           private val recovery: () -> RuntimeRecovery?,
                           private val displayDv: () -> Boolean,
+                          private val mobile: Boolean,
                           private val positionReset: (Long) -> Unit) : MediaCodecVideoRenderer(builder) {
         // Media3 1.8 deliberately omits a generic HEVC alternate for profile 7.
         // Expose only the independently parsed clear base to its normal HEVC
@@ -107,8 +108,8 @@ internal object HdrCodecFallbackP5B {
             val stock = super.getDecoderInfos(selector, format, requiresSecureDecoder)
             if (format.sampleMimeType != MimeTypes.VIDEO_DOLBY_VISION) {
                 // Apply hardware preference after Media3 evaluated this representation.
-                val hardware = stock.filter { it.hardwareAccelerated && !it.softwareOnly }
-                return if (hardware.any { it.isFormatSupported(format) }) hardware else stock
+                return HdrPolicyP5.ordinaryDecoders(stock, mobile,
+                    { it.hardwareAccelerated }, { it.softwareOnly }, { it.isFormatSupported(format) })
             }
             val native = stock.filter { it.mimeType == MimeTypes.VIDEO_DOLBY_VISION && displayDv() }
             val base = baseFormat(format) ?: return native

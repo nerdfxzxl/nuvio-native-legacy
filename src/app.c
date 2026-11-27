@@ -882,6 +882,9 @@ static int iniciarPoliticaFonte(int preferida, int manual) {
 #include "gfx.h"
 #include "catalogo.h"
 #include "layout.h"
+#ifdef NV_ANDROID
+#include "mobile_startup.h"
+#endif
 #include "segurar.h"
 #include "servidores.h"
 #include "partes.h"
@@ -3253,8 +3256,16 @@ static void vigiarAberturaManual(void) {
 #endif
     return;
   }
-  if (!fontevolta_abertura_vencida(&g, FONTE_MANUAL_PRAZO_MS) &&
-      !(desde > FONTE_MANUAL_PRAZO_MS && !g.pronto)) return;
+  unsigned prazoManual = FONTE_MANUAL_PRAZO_MS;
+#ifdef NV_ANDROID
+  // Physical phone detection, not the user's chosen layout. Keep #138 TV
+  // deadline intact. A current rolling socket sample is required for grace.
+  const char *autoMobile = getenv("NUVIO_INTERFACE_AUTO");
+  if (autoMobile && autoMobile[0] == '1' && autoMobile[1] == '\0')
+    prazoManual = nv_mobile_startup_deadline(1, prazoManual, video_download_bps(), g.carregando);
+#endif
+  if (!fontevolta_abertura_vencida(&g, prazoManual) &&
+      !(desde > prazoManual && !g.pronto)) return;
   printf("[fonte] escolha manual nao abriu em %u ms: erro de fonte\n", (unsigned)desde);
   fflush(stdout);
   fonteManualDesde = 0;

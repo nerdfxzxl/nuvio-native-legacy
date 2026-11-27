@@ -206,6 +206,7 @@ jobs:
             bash tests/p5_audio_route.sh
             python3 tests/p5d_route_source_contract.py
             bash tests/p5_hdr_policy.sh
+            python3 tests/mobile_playback_138.py
             bash tests/p5_afr.sh
             bash tests/p5_surface_transition.sh
             bash tests/playback_p2_frame_policy.sh
