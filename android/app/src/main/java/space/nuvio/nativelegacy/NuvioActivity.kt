@@ -73,6 +73,35 @@ class NuvioActivity : SDLActivity() {
     private var p6RestoreToken = ""
     private val streamCardText by lazy { StreamCardText(this) }
 
+    // Read-only UI diagnostics. The memory estimate uses the existing Legacy
+    // allocator limits, not NuvioTV's native allocator budget.
+    private var lastUiThermalAt = -1L
+    private var lastUiThermal = -1L
+    fun playbackUiMemory(): LongArray {
+        val rt = Runtime.getRuntime()
+        val heap = rt.maxMemory()
+        val am = getSystemService(android.content.Context.ACTIVITY_SERVICE) as? android.app.ActivityManager
+        val total = am?.let { manager ->
+            android.app.ActivityManager.MemoryInfo().also { manager.getMemoryInfo(it) }.totalMem
+        } ?: 0L
+        val low = am != null && (am.isLowRamDevice || am.memoryClass <= 128 || total in 1L..(3L shl 30))
+        val cap = if (low) minOf(heap / 5, 80L shl 20) else minOf(heap / 3, 192L shl 20)
+        val parallel = minOf(heap / 12, if (low) 12L shl 20 else 32L shl 20)
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (lastUiThermalAt < 0 || now - lastUiThermalAt >= 10000L) {
+            lastUiThermalAt = now
+            val headroom = if (android.os.Build.VERSION.SDK_INT >= 30) runCatching {
+                (getSystemService(android.content.Context.POWER_SERVICE) as android.os.PowerManager)
+                    .getThermalHeadroom(0)
+            }.getOrDefault(Float.NaN) else Float.NaN
+            lastUiThermal = if (headroom.isFinite() && headroom >= 0f) (headroom * 1000).toLong() else -1L
+        }
+        return longArrayOf(rt.totalMemory() - rt.freeMemory(), heap,
+            android.os.Debug.getNativeHeapAllocatedSize(), lastUiThermal, cap, parallel)
+    }
+    fun playbackUiDetails(): Array<String> = NvPlayer.playbackUiDetails()
+
+
     fun layoutStreamCard(generation: Int, index: Int, width: Int, fields: ByteArray?) =
         streamCardText.layout(generation, index, width, fields)
 

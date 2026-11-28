@@ -53,7 +53,7 @@ void estatvivo_diag_finalizar(void);
 int  estatvivo_player_aberto(void);
 int  estatvivo_player_detalhado(void);
 void estatvivo_player_hud_toggle(void); // retained for settings compatibility
-void estatvivo_player_scroll(int direcao);
+int  estatvivo_player_scroll(int direcao); // 1 only when content moved
 void estatvivo_player_focar(int ativo);
 // A velocidade mais recente (kbps) para a linha "Tocando agora" da central;
 // -1 sem numero. `*estimada` = 1 quando nao e medida.

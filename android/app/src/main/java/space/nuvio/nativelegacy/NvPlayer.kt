@@ -172,6 +172,13 @@ object NvPlayer {
     private var assinatura = ""
     private var decoderDv = false
     private var videoDecoderName: String? = null
+    @Volatile private var uiDetails = emptyArray<String>()
+    private var uiFrameLead = ""
+    private var uiUnderruns = 0
+    private var uiLastRouteId = -1
+    private var uiRouteChanges = 0
+    fun playbackUiDetails(): Array<String> = uiDetails
+
     private var videoOutputFailed = false
     private var baseLayerRendered: HdrCodecFallbackP5B.VideoConfig? = null
     private var ultHdr = ""
@@ -2298,6 +2305,11 @@ object NvPlayer {
         audios = ArrayList(); capacidadesAudio = ArrayList(); legendas = ArrayList()
         decoderDv = false
         videoDecoderName = null
+        uiDetails = emptyArray()
+        uiFrameLead = ""
+        uiUnderruns = 0
+        uiLastRouteId = -1
+        uiRouteChanges = 0
         videoOutputFailed = false
         baseLayerRendered = null
         ultHdr = ""; ultDv = -1; ultAtmos = -1
@@ -2458,6 +2470,65 @@ object NvPlayer {
     private fun relatarStats(p: ExoPlayer) {
         val resources = recursosAtuais ?: return
         val e = resources.parallelStats
+        // Only publish observations from the active main-looper player.
+        // No setters, no track selection, no decoder/allocator changes.
+        runCatching {
+            val fmt = p.videoFormat
+            val cfg = resources.videoConfig?.takeIf { fmt != null && it.matches(fmt, videoDecoderName) }
+            val mime = cfg?.info?.mimeType ?: fmt?.sampleMimeType.orEmpty()
+            val fps = fmt?.frameRate?.takeIf { it > 0 && it.isFinite() }
+                ?.let { String.format(java.util.Locale.US, "%.3f fps", it) }.orEmpty()
+            val dv = fmt?.codecs?.let { Regex("""(?:dvhe|dvh1|dvav|dva1|dav1)\.(\d+)""", RegexOption.IGNORE_CASE).find(it) }
+                ?.groupValues?.getOrNull(1)?.toIntOrNull()?.let { profile ->
+                    when {
+                        cfg?.convertedDv81 == true -> "Profile $profile · converted to 8.1"
+                        cfg?.base != null -> "Profile $profile · HEVC base"
+                        cfg?.info?.mimeType == androidx.media3.common.MimeTypes.VIDEO_DOLBY_VISION -> "Profile $profile · native"
+                        else -> "Profile $profile (source)"
+                    }
+                }.orEmpty()
+            val depth = fmt?.colorInfo?.lumaBitdepth?.takeIf { it > 0 }?.let { "$it-bit (track)" }.orEmpty()
+            val display = activity?.windowManager?.defaultDisplay
+            val mode = display?.mode
+            val displayText = mode?.let {
+                "${it.physicalWidth}×${it.physicalHeight} · " +
+                    String.format(java.util.Locale.US, "%.2f Hz", it.refreshRate) +
+                    " · ${display.supportedModes.size} modes"
+            }.orEmpty()
+            val output = resources.routeObserver.output
+            val track = output?.track
+            val routed = track?.routedDevice
+            if (routed != null && routed.id != uiLastRouteId) {
+                if (uiLastRouteId >= 0) uiRouteChanges++
+                uiLastRouteId = routed.id
+            }
+            val route = routed?.let {
+                val type = when (it.type) {
+                    android.media.AudioDeviceInfo.TYPE_HDMI_ARC -> "HDMI ARC"
+                    android.media.AudioDeviceInfo.TYPE_HDMI_EARC -> "HDMI eARC"
+                    android.media.AudioDeviceInfo.TYPE_HDMI -> "HDMI"
+                    android.media.AudioDeviceInfo.TYPE_BUILTIN_SPEAKER -> "Speaker"
+                    else -> it.productName.toString()
+                }
+                "$type · $uiRouteChanges changes"
+            }.orEmpty()
+            val af = p.audioFormat
+            val channels = if (af != null && af.channelCount > 0 && track != null && track.channelCount > 0)
+                "${af.channelCount}ch→${track.channelCount}ch" else ""
+            val audioHz = track?.sampleRate?.takeIf { it > 0 }?.let {
+                String.format(java.util.Locale.US, "%.1f kHz", it / 1000.0)
+            }.orEmpty()
+            val underruns = if (track != null && android.os.Build.VERSION.SDK_INT >= 24)
+                "$uiUnderruns · native ${track.underrunCount}" else "$uiUnderruns"
+            val skipped = p.videoDecoderCounters?.skippedOutputBufferCount?.toString().orEmpty()
+            val bitrate = listOf(fmt?.bitrate ?: -1, af?.bitrate ?: -1).filter { it > 0 }.sumOf { it.toLong() }
+            val config = httpSettings
+            val connections = if (e.usado) "${e.conexoes.get()} / ${if (config.enabled) config.count else 1} active" else ""
+            uiDetails = arrayOf(mime, fps, videoDecoderName.orEmpty(), dv, depth, displayText,
+                uiFrameLead, channels, audioHz, route, underruns, skipped,
+                if (bitrate > 0) String.format(java.util.Locale.US, "%.1f Mbps tracks", bitrate / 1e6) else "",
+                connections)
+        }.onFailure { uiDetails = emptyArray() }
         val buf = (p.bufferedPosition - p.currentPosition).coerceIn(0L, Int.MAX_VALUE.toLong()).toInt()
         var quadros = -1L
         var perdidos = -1L
@@ -3791,6 +3862,16 @@ object NvPlayer {
 
         override fun onAudioCodecError(eventTime: AnalyticsListener.EventTime, audioCodecError: Exception) {
             relatarErroAudio("codec", audioCodecError)
+        }
+
+        override fun onAudioUnderrun(eventTime: AnalyticsListener.EventTime, bufferSize: Int,
+                                     bufferSizeMs: Long, elapsedSinceLastFeedMs: Long) {
+            if (atual(minha)) uiUnderruns++
+        }
+        override fun onVideoFrameProcessingOffset(eventTime: AnalyticsListener.EventTime,
+                                                  totalProcessingOffsetUs: Long, frameCount: Int) {
+            if (atual(minha) && frameCount > 0) uiFrameLead = String.format(java.util.Locale.US,
+                "%.1f ms", totalProcessingOffsetUs.toDouble() / frameCount / 1000.0)
         }
 
         override fun onDroppedVideoFrames(eventTime: AnalyticsListener.EventTime, droppedFrames: Int, elapsedMs: Long) {

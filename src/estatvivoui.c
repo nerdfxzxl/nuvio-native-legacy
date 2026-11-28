@@ -1,6 +1,7 @@
 // Ver estatvivoui.h. Geometria do mockup stats-velocidade (telas 2 e 3), em
 // pixels de layout 1920x1080.
 #include "estatvivoui.h"
+#include "playback_ui_metrics.h"
 #include "ajustes.h"
 #include "audioinfo.h"
 #include "badges.h"
@@ -70,7 +71,8 @@ typedef struct {
   char frameLead[32], display[48], taxa[24];
   char audio[96], audioCodec[32], audioChannels[16], audioSampleRate[24];
   char audioLanguage[32], audioRoute[40], legenda[64];
-  char selectedAtmos[48];
+  char selectedAtmos[48], dvProfile[96], outputChannels[64], outputHz[32],
+       outputDevice[120], underruns[64], skipped[32], trackBitrate[48];
   char buffer[32], backBuffer[32], network[80], connections[24];
   char requests[32], latency[32], rebuffers[32];
   int plataforma;
@@ -81,6 +83,7 @@ typedef struct {
   unsigned amostras, bufferAmostras;
   unsigned long long cpuTotal, cpuIdle, pagingTotal;
   long long rssKb, peakKb, totalKb;
+  int64_t managedUsed, managedMax, nativeUsed, thermalHeadroom;
 } EvSistema;
 typedef struct { int secao; char rotulo[48], valor[512]; } EvInfoLinha;
 
@@ -92,7 +95,7 @@ typedef struct { int secao; char rotulo[48], valor[512]; } EvInfoLinha;
 static int aberto, fixado, temSessao, tamanho;
 static EvSistema sistema;
 static int playerInfoAberto, playerInfoAuto, playerInfoModo, playerInfoHud, playerInfoCarregado;
-static int playerInfoScroll, playerInfoFoco, playerInfoHudFoco;
+static int playerInfoScroll;
 static int playerInfoFocused;
 #define EVU_ARQ_PLAYER_INFO "estatvivo-player-info.txt"
 static EvInfoLinha playerInfoLinhas[64];
@@ -339,7 +342,7 @@ void estatvivo_player_toggle(void) {
     playerInfoAuto = 1;
     playerInfoModo = 0;
     playerInfoHud = 0;
-    playerInfoScroll = playerInfoFoco = playerInfoHudFoco = 0;
+    playerInfoScroll = 0;
   }
   playerInfoSalvar();
 }
@@ -348,10 +351,11 @@ void estatvivo_player_expandir(void) {
   if (!playerInfoAberto) return;
   playerInfoModo = !playerInfoModo;
   if (playerInfoModo) {
-    playerInfoScroll = playerInfoFoco = playerInfoHudFoco = 0;
+    playerInfoScroll = 0;
     playerInfoHud = 0;
   }
   playerInfoAuto = 1;
+  if (playerInfoModo) playerInfoMontarLinhas();
   playerInfoSalvar();
 }
 void estatvivo_player_nova_sessao(void) {
@@ -359,16 +363,19 @@ void estatvivo_player_nova_sessao(void) {
   diagCarregar();
   playerInfoCarregar();
   playerInfoAberto = playerInfoAuto;
-  playerInfoScroll = playerInfoFoco = playerInfoHudFoco = playerInfoFocused = 0;
+  playerInfoScroll = playerInfoFocused = 0;
+  playerInfoN=0;
+  memset(&tela,0,sizeof tela);
 }
 int estatvivo_player_aberto(void) { playerInfoCarregar(); return playerInfoAberto; }
 int estatvivo_player_detalhado(void) { playerInfoCarregar(); return playerInfoModo; }
 void estatvivo_player_focar(int ativo) { playerInfoFocused = ativo && playerInfoAberto; }
-void estatvivo_player_scroll(int direcao) {
-  if (!playerInfoAberto || !playerInfoModo) return;
-  playerInfoScroll += (direcao > 0 ? 1 : -1) * 490;
-  if (playerInfoScroll < 0) playerInfoScroll = 0;
+int estatvivo_player_scroll(int direcao) {
+  if (!playerInfoAberto || !playerInfoModo) return 0;
+  int old=playerInfoScroll;
+  playerInfoScroll += (direcao > 0 ? 1 : -1) * 420;
   playerInfoGarantirScroll();
+  return old!=playerInfoScroll;
 }
 void estatvivo_player_hud_toggle(void) {
   playerInfoCarregar();
@@ -507,6 +514,7 @@ static void sistemaZerar(void) {
   sistema.cpuAtual = sistema.cpuMedia = sistema.pagingAtual = sistema.pagingMedia = -1.0;
   sistema.bufferMedia = sistema.thermalC = -1.0;
   sistema.rssKb = sistema.peakKb = sistema.totalKb = -1;
+  sistema.managedUsed = sistema.managedMax = sistema.nativeUsed = sistema.thermalHeadroom = -1;
 }
 
 static void sistemaAmostrar(void) {
@@ -574,8 +582,12 @@ static void sistemaAmostrar(void) {
   }
   // Thermal zones are device-specific (the first is often NOT CPU/GPU), so
   // never treat thermal_zone0 as the PowerManager headroom metric.
-  // Until an actual Android PowerManager snapshot arrives, omit this field.
   sistema.thermalC = -1.0;
+  int64_t uiMem[NV_UI_METRIC_N];
+  if (nv_ui_memory(uiMem)) {
+    sistema.managedUsed=uiMem[0]; sistema.managedMax=uiMem[1];
+    sistema.nativeUsed=uiMem[2]; sistema.thermalHeadroom=uiMem[3];
+  } else sistema.managedUsed=sistema.managedMax=sistema.nativeUsed=sistema.thermalHeadroom=-1;
   if (est.bufSeg >= 0) {
     sistema.bufferMedia = sistema.bufferAmostras ?
       (sistema.bufferMedia * sistema.bufferAmostras + est.bufSeg) / (sistema.bufferAmostras + 1) : est.bufSeg;
@@ -691,6 +703,17 @@ static void montarTela(int taxaKbps) {
     }
     if (fl) snprintf(tela.legenda, sizeof tela.legenda, "%s", fl->rotulo);
   }
+  {
+    char fields[NV_UI_DETAILS_N][NV_UI_DETAIL_LEN];
+    nv_ui_details(fields);
+#define UI_FIELD(member,i) do { if(fields[i][0]) snprintf(tela.member,sizeof tela.member,"%s",fields[i]); } while(0)
+    UI_FIELD(videoCodec,0); UI_FIELD(fps,1); UI_FIELD(decoder,2);
+    UI_FIELD(dvProfile,3); UI_FIELD(videoFormat,4); UI_FIELD(display,5);
+    UI_FIELD(frameLead,6); UI_FIELD(outputChannels,7); UI_FIELD(outputHz,8);
+    UI_FIELD(outputDevice,9); UI_FIELD(underruns,10); UI_FIELD(skipped,11);
+    UI_FIELD(trackBitrate,12); UI_FIELD(connections,13);
+#undef UI_FIELD
+  }
   if (taxaKbps > 0) {
     char m[16];
     ev_fmt_mbps(m, sizeof m, taxaKbps, sepDec());
@@ -745,6 +768,7 @@ void estatvivo_atualizar(Uint32 agora) {
   diagAmostrar(agora,&in);
   sistemaAmostrar();
   if (aberto || fixado || playerInfoAberto) montarTela(in.taxaKbps);
+  if (playerInfoAberto && playerInfoModo) playerInfoMontarLinhas();
 }
 
 
@@ -1507,253 +1531,187 @@ static void playerInfoAdicionar(int secao, const char *rotulo, const char *valor
   snprintf(l->rotulo, sizeof l->rotulo, "%s", rotulo ? rotulo : "");
   snprintf(l->valor, sizeof l->valor, "%s", valor && valor[0] ? valor : "—");
 }
+// Official compact dp->1920 scene conversion, shared by selector text.
+#define INFO_DP 1.6f
+#define INFO_PAD_X (14.0f*INFO_DP)
+#define INFO_PAD_Y (10.0f*INFO_DP)
+#define INFO_RADIUS (8.0f*INFO_DP)
+#define INFO_MARGIN (24.0f*INFO_DP)
+#define INFO_LABEL (64.0f*INFO_DP)
+#define INFO_ROW_GAP (3.0f*INFO_DP)
+#define INFO_DETAIL_ROW 29.0f
+#define INFO_DETAIL_SECTION 31.0f
+static float playerInfoW(void) { return fminf(850.0f,NV_VTELA_W-2*INFO_MARGIN); }
+static float playerInfoLabelW(void) { return fminf(220.0f,playerInfoW()*.35f); }
+static float playerInfoValueW(void) { return fmaxf(80.0f,playerInfoW()-playerInfoLabelW()-2*INFO_PAD_X-10); }
+static float playerInfoVisibleH(void) { return fmaxf(60.0f,NV_VTELA_H-2*INFO_MARGIN-2*INFO_PAD_Y); }
 static float playerInfoLinhaH(const EvInfoLinha *l) {
-  if (l->secao) return 40.0f;
-  if (!strcmp(l->rotulo, "File")) {
-    int chars = (int)strlen(l->valor);
-    int rows = (chars + 43) / 44;
-    if (rows < 2) rows = 2;
-    if (rows > 13) rows = 13;
-    return 14.0f + rows * 27.0f;
+  if (l->secao) return INFO_DETAIL_SECTION;
+  if (!strcmp(l->rotulo,"File")) {
+    // Same wrapping routine used by draw, including unbroken filenames.
+    static char last[512]; static float width, measured;
+    float w=playerInfoValueW();
+    if (width!=w || strcmp(last,l->valor)) {
+      snprintf(last,sizeof last,"%s",l->valor); width=w;
+      measured=txt_bloco_longas(TXT_G20M,l->valor,240,240,240,0,0,w,26.0f,0,0);
+    }
+    return fmaxf(INFO_DETAIL_ROW,measured+3);
   }
-  return 34.0f;
+  return INFO_DETAIL_ROW;
 }
 static float playerInfoAlturaTotal(void) {
-  float total = 0.0f;
-  for (int i = 0; i < playerInfoN; i++) total += playerInfoLinhaH(&playerInfoLinhas[i]);
+  float total=0;
+  for (int i=0;i<playerInfoN;i++) total+=playerInfoLinhaH(&playerInfoLinhas[i]);
   return total;
 }
 static void playerInfoGarantirScroll(void) {
-  float visible = NV_VTELA_H - EVU_TOPO - 24.0f - 178.0f;
-  float max = playerInfoAlturaTotal() - visible;
-  if (max < 0) max = 0;
-  if (playerInfoScroll < 0) playerInfoScroll = 0;
-  if (playerInfoScroll > (int)max) playerInfoScroll = (int)max;
+  int max=(int)ceilf(fmaxf(0,playerInfoAlturaTotal()-playerInfoVisibleH()));
+  if (playerInfoScroll<0) playerInfoScroll=0;
+  if (playerInfoScroll>max) playerInfoScroll=max;
 }
-
 static void playerInfoMontarLinhas(void) {
-  char b[512], pos[24], dur[24];
-  playerInfoN = 0;
-  playerInfoAdicionar(1, "PLAYBACK", "");
-  plrui_tempo(pos, sizeof pos, video_pos());
-  plrui_tempo(dur, sizeof dur, video_duracao());
-  snprintf(b, sizeof b, "%s / %s", pos, dur);
-  playerInfoAdicionar(0, "Position", b);
-  playerInfoAdicionar(0, "Duration", dur);
-  playerInfoAdicionar(1, "SOURCE", "");
-  playerInfoAdicionar(0, "Add-on", tela.addon);
-  playerInfoAdicionar(0, "Provider", tela.provider);
-  playerInfoAdicionar(0, "Server", tela.server);
-  playerInfoAdicionar(0, "File", tela.filename);
-  playerInfoAdicionar(0, "Size", tela.size);
-  playerInfoAdicionar(0, "File bitrate (estimate)", tela.taxa);
-  playerInfoAdicionar(0, "Source codec (metadata)", tela.sourceCodec);
-  playerInfoAdicionar(0, "Source HDR (metadata)", tela.sourceHdr);
-  playerInfoAdicionar(0, "Source resolution (metadata)", tela.sourceResolution);
-  playerInfoAdicionar(0, "Source container (metadata)", tela.sourceFormat);
-  playerInfoAdicionar(0, "Player Engine", tela.engine);
-  playerInfoAdicionar(1, "VIDEO (PLAYBACK)", "");
-  playerInfoAdicionar(0, "Codec", tela.videoCodec);
-  playerInfoAdicionar(0, "Resolution", tela.resolucao);
-  playerInfoAdicionar(0, "Frame rate", tela.fps);
-  playerInfoAdicionar(0, "HDR", tela.codecHdr);
-  playerInfoAdicionar(0, "Format", tela.videoFormat);
-  playerInfoAdicionar(0, "Decoder", tela.decoder);
-  playerInfoAdicionar(0, "Dropped", tela.dropped);
-  playerInfoAdicionar(0, "Frame lead", tela.frameLead);
-  playerInfoAdicionar(0, "UI rendering surface", tela.display);
-  playerInfoAdicionar(1, "AUDIO (SELECTED TRACK)", "");
-  playerInfoAdicionar(0, "Codec", tela.audioCodec);
-  playerInfoAdicionar(0, "Channels", tela.audioChannels);
-  playerInfoAdicionar(0, "Sample rate", tela.audioSampleRate);
-  playerInfoAdicionar(0, "Language", tela.audioLanguage);
-  playerInfoAdicionar(0, "Atmos (selected track)", tela.selectedAtmos);
-  playerInfoAdicionar(0, "Output route", tela.audioRoute);
-  playerInfoAdicionar(1, "NETWORK", "");
-  playerInfoAdicionar(0, "Buffer", tela.buffer);
-  playerInfoAdicionar(0, "Back buffer", tela.backBuffer);
-  playerInfoAdicionar(0, "Speed", tela.network);
-  playerInfoAdicionar(0, "Connections", tela.connections);
-  playerInfoAdicionar(0, "Requests", tela.requests);
-  playerInfoAdicionar(0, "Server latency", tela.latency);
-  playerInfoAdicionar(0, "Reconnections", tela.rebuffers);
-  playerInfoAdicionar(1, "SYSTEM", "");
-  if (sistema.cpuAtual >= 0)
-    snprintf(b, sizeof b, "%.0f%% · avg %.0f%%", sistema.cpuAtual, sistema.cpuMedia);
-  else snprintf(b, sizeof b, "—");
-  playerInfoAdicionar(0, "CPU", b);
-  if (sistema.pagingAtual >= 0)
-    snprintf(b, sizeof b, "%.0f/s · avg %.0f/s", sistema.pagingAtual, sistema.pagingMedia);
-  else snprintf(b, sizeof b, "—");
-  playerInfoAdicionar(0, "Paging", b);
-  if (sistema.rssKb >= 0) {
-    snprintf(b, sizeof b, "%lld MB RSS · %lld MB peak · %lld MB device",
-             sistema.rssKb / 1024, sistema.peakKb >= 0 ? sistema.peakKb / 1024 : 0,
-             sistema.totalKb >= 0 ? sistema.totalKb / 1024 : 0);
-  } else snprintf(b, sizeof b, "—");
-  playerInfoAdicionar(0, "Memory", b);
-  if (sistema.thermalC >= 0) snprintf(b, sizeof b, "%.1f °C", sistema.thermalC);
-  else snprintf(b, sizeof b, "—");
-  playerInfoAdicionar(0, "Thermal", b);
-  playerInfoAdicionar(1, "LAST SESSION", "");
-  // The read is cached by profile epoch; never perform per-frame disk I/O.
-  diagCarregar();
-  if (diagLastValid && nv_perfil_sessao_atual(diagLastOwner)) {
-    snprintf(b,sizeof b,"%llu",diagLast.samples);
-    playerInfoAdicionar(0,"Samples (1 s)",b);
-    snprintf(b,sizeof b,"%llu s",diagLast.playMs/1000);
-    playerInfoAdicionar(0,"Observed playback",b);
-    snprintf(b,sizeof b,"%llu s",diagLast.bufferMs/1000);
-    playerInfoAdicionar(0,"Observed buffering",b);
-    snprintf(b,sizeof b,"%llu",diagLast.buffers);
-    playerInfoAdicionar(0,"Observed rebuffers",b);
-    snprintf(b,sizeof b,"%llu",diagLast.recoveries);
-    playerInfoAdicionar(0,"Observed recoveries",b);
-    snprintf(b,sizeof b,"%llu",diagLast.errors);
-    playerInfoAdicionar(0,"Observed errors",b);
-    if (diagLast.speedN)
-      snprintf(b,sizeof b,"%.2f / %.2f Mbps (measured)",
-        (double)diagLast.speedSum/diagLast.speedN/1000.0,
-        (double)diagLast.peakKbps/1000.0);
-    else snprintf(b,sizeof b,"Unknown");
-    playerInfoAdicionar(0,"Avg / peak sampled speed",b);
-  } else playerInfoAdicionar(0,"Report","Unknown");
+  char b[512],pos[24],dur[24];
+  playerInfoN=0;
+  playerInfoAdicionar(1,"PLAYBACK","");
+  plrui_tempo(pos,sizeof pos,video_pos()); plrui_tempo(dur,sizeof dur,video_duracao());
+  snprintf(b,sizeof b,"%s / %s",pos,dur);
+  playerInfoAdicionar(0,"Position",b);
+  playerInfoAdicionar(1,"SOURCE","");
+  playerInfoAdicionar(0,"Add-on",tela.addon);
+  playerInfoAdicionar(0,"Provider",tela.provider);
+  playerInfoAdicionar(0,"Server",tela.server);
+  playerInfoAdicionar(0,"File",tela.filename);
+  // Retain source claims separately from observed playback (P8 badge policy).
+  if(tela.sourceHdr[0]||tela.sourceCodec[0]||tela.sourceResolution[0]||tela.sourceFormat[0]) {
+    snprintf(b,sizeof b,"%s %s %s %s",tela.sourceHdr,tela.sourceCodec,tela.sourceResolution,tela.sourceFormat);
+    playerInfoAdicionar(0,"Source metadata",b); // Source HDR (metadata)
+  }
+  playerInfoAdicionar(0,"Engine",tela.engine);
+  playerInfoAdicionar(1,"VIDEO (PLAYBACK)","");
+  snprintf(b,sizeof b,"%s · %s · %s",tela.resolucao,tela.fps,tela.videoCodec);
+  playerInfoAdicionar(0,"Video",b);
+  playerInfoAdicionar(0,"HDR",tela.codecHdr);
+  if(tela.dvProfile[0]) playerInfoAdicionar(0,"DV",tela.dvProfile);
+  playerInfoAdicionar(0,"Format",tela.videoFormat);
+  playerInfoAdicionar(0,"Decoder",tela.decoder);
+  if(tela.skipped[0]) playerInfoAdicionar(0,"Skipped",tela.skipped);
+  playerInfoAdicionar(0,"Frame lead",tela.frameLead);
+  playerInfoAdicionar(0,"Display",tela.display);
+  playerInfoAdicionar(1,"AUDIO","");
+  snprintf(b,sizeof b,"%s · %s · %s",tela.audioCodec,
+           tela.outputChannels[0]?tela.outputChannels:tela.audioChannels,
+           tela.outputHz[0]?tela.outputHz:tela.audioSampleRate);
+  playerInfoAdicionar(0,"Audio",b);
+  playerInfoAdicionar(0,"Output",tela.audioRoute);
+  playerInfoAdicionar(0,"Underruns",tela.underruns);
+  playerInfoAdicionar(0,"Route",tela.outputDevice);
+  playerInfoAdicionar(0,"Language",tela.audioLanguage);
+  if(tela.selectedAtmos[0]) playerInfoAdicionar(0,"Atmos",tela.selectedAtmos);
+  playerInfoAdicionar(1,"NETWORK","");
+  playerInfoAdicionar(0,"Connections",tela.connections);
+  // Request concurrency is not the same as socket count. Keep unknown honest.
+  playerInfoAdicionar(0,"Requests",tela.requests);
+  playerInfoAdicionar(0,"First byte",tela.latency);
+  snprintf(b,sizeof b,"%llu (%.1f s observed)",diagLive.report.buffers,diagLive.report.bufferMs/1000.0);
+  playerInfoAdicionar(0,"Rebuffers",b);
+  // CPU/paging/memory/thermal/buffer/file rate/network speed/drops are in compact only.
+  // Numeric last-session report remains persisted; it does not occupy this HUD.
   playerInfoGarantirScroll();
 }
-
-static void desenharPlayerHud(float a) {
-  const float px = EVU_MARG, py = EVU_TOPO;
-  char values[9][152], labels[9][20];
-  int severity[9] = {0}, n = 0;
-  char b[80], size[40], now[32], avg[32];
-  GfxRect p;
-  if (!playerInfoAberto || a < 0.01f) return;
-#define HUD_ADD(label,text,sev) do { \
-  if (n < 9) { snprintf(labels[n], sizeof labels[n], "%s", (label)); \
-    snprintf(values[n], sizeof values[n], "%s", (text)); severity[n++] = (sev); } \
-} while (0)
-  if (sistema.cpuAtual >= 0.0) {
-    snprintf(b, sizeof b, "%.0f%%   avg %.0f%%", sistema.cpuAtual, sistema.cpuMedia);
-    HUD_ADD("cpu", b, sistema.cpuAtual >= 60.0 ? 1 : 0);
-  }
-  if (sistema.pagingAtual >= 0.0) {
-    snprintf(b, sizeof b, "%.0f/s   avg %.0f/s", sistema.pagingAtual, sistema.pagingMedia);
-    HUD_ADD("paging", b, sistema.pagingAtual >= 100.0 ? 1 : 0);
-  }
-  if (sistema.rssKb >= 0) {
-    snprintf(b, sizeof b, "%lld MB app   peak %lld MB",
-             sistema.rssKb / 1024, sistema.peakKb / 1024);
-    HUD_ADD("memory", b, 0);
-  }
-  if (est.bufSeg >= 0.0) {
-    snprintf(b, sizeof b, "%.1fs   avg %.1fs", est.bufSeg,
-             sistema.bufferMedia >= 0.0 ? sistema.bufferMedia : est.bufSeg);
-    HUD_ADD("buffer", b, est.bufSeg < 5.0 ? 1 : 0);
-  }
-  if (tela.taxa[0] || tela.size[0]) {
-    snprintf(b, sizeof b, "%s file   %s",
-             tela.taxa[0] ? tela.taxa : "—", tela.size[0] ? tela.size : "—");
-    HUD_ADD("bitrate", b, 0);
-  }
-  if (est.kbps >= 0) {
-    ev_fmt_mbps(now, sizeof now, est.kbps, '.');
-    ev_fmt_mbps(avg, sizeof avg, est.mediaKbps, '.');
-    snprintf(b, sizeof b, "%s Mbps   avg %s (%s)", now, avg,
-             est.velOrigem == EVO_MEDIDO ? "measured" : "estimated");
-    HUD_ADD("network", b, 0);
-  }
-  if (est.perdidos >= 0) {
-    snprintf(b, sizeof b, "%lld frames", est.perdidos);
-    HUD_ADD("dropped", b, est.perdidos > 0 ? 1 : 0);
-  }
-  if (sistema.thermalC >= 0) {
-    snprintf(b, sizeof b, "%.1f °C", sistema.thermalC);
-    // Celsius is a sensor reading, NOT NuvioTV's thermal headroom score.
-    HUD_ADD("temp", b, 0);
-  }
-#undef HUD_ADD
-  if (!n) return;
-  p = (GfxRect){px,py, 440.0f, 19.0f + n * 27.0f};
-  // Match official NuvioTV's near-black translucent HUD, but with glass edges.
-  plrui_material(p, 13.0f, 0, a);
-  gfx_cor(p, 13.0f / p.h, 0.005f, 0.006f, 0.009f, 0.82f * a);
-  gfx_anel(p, 13.0f / p.h, 0.9f, 0.73f, 0.78f, 0.86f, 0.18f * a);
-  for (int i = 0; i < n; i++) {
-    int cr = severity[i] == 2 ? 244 : severity[i] == 1 ? 255 : 240;
-    int cg = severity[i] == 2 ? 67 : severity[i] == 1 ? 179 : 240;
-    int cb = severity[i] == 2 ? 54 : severity[i] == 1 ? 0 : 240;
-    float y = py + 12.0f + i * 27.0f;
-    TxtLinha label = txt_linha(TXT_AJ_VALOR18, labels[i], 138, 138, 138, 255);
-    TxtLinha val = txt_linha_corta(TXT_AJ_VALOR18, values[i], cr, cg, cb, 255, p.w - 115.0f);
-    txt_desenhar_alpha(label, px + 14.0f, y, a);
-    txt_desenhar_alpha(val, px + 110.0f, y, a);
-  }
-  (void)size;
+static void playerInfoMaterial(GfxRect p,float a) {
+  gfx_cor(p,INFO_RADIUS/p.h,0,0,0,.60f*a);
+  if(playerInfoFocused) gfx_anel_fora(p,INFO_RADIUS/p.h,0,3.0f,1,1,1,a);
 }
-
-static void desenharPlayerDetalhado(float a) {
-  // Compact Nuvio Arc proportions: only 850 virtual pixels, not 1240.
-  // The file name wraps; scrolling moves by pages instead of per-field focus.
-  GfxRect p = { (NV_VTELA_W - 850.0f) * 0.5f, EVU_TOPO, 850.0f,
-                NV_VTELA_H - EVU_TOPO - 24.0f };
-  float contentY, contentH, y, maxScroll, totalH;
-  if (!playerInfoAberto || !playerInfoModo || a < 0.01f) return;
-  playerInfoMontarLinhas();
-  contentY = p.y + 106.0f;
-  contentH = p.h - 158.0f;
-  totalH = playerInfoAlturaTotal();
-  maxScroll = fmaxf(0.0f, totalH - contentH);
-  if (playerInfoScroll > (int)maxScroll) playerInfoScroll = (int)maxScroll;
-  plrui_material(p, 24.0f, 0, a);
-  gfx_cor(p, 24.0f / p.h, 0.007f, 0.009f, 0.014f, 0.88f * a);
-  gfx_anel(p, 24.0f / p.h, playerInfoFocused ? 2.0f : 1.0f, 0.70f, 0.79f, 0.92f,
-           (playerInfoFocused ? 0.8f : 0.22f) * a);
-  {
-    TxtLinha title = txt_linha(TXT_ILHA_TITULO, "Playback Info", 241, 244, 248, 255);
-    TxtLinha name = txt_linha_corta(TXT_ILHA_SUB, tela.titulo, 176, 185, 199, 255, p.w - 56.0f);
-    txt_desenhar_alpha(title, p.x + 26.0f, p.y + 18.0f, a);
-    txt_desenhar_alpha(name, p.x + 28.0f, p.y + 69.0f, a);
+static void desenharPlayerHud(float a) {
+  char values[8][160],labels[8][20],b[160],now[32],avg[32];
+  int severity[8]={0},n=0;
+  if (!playerInfoAberto||a<.01f) return;
+#define HUD_ADD(label,value,sev) do { snprintf(labels[n],sizeof labels[n],"%s",label); snprintf(values[n],sizeof values[n],"%s",value); severity[n++]=sev; } while(0)
+  if(sistema.cpuAtual>=0) snprintf(b,sizeof b,"%.0f%%   avg %.0f%%",sistema.cpuAtual,sistema.cpuMedia); else snprintf(b,sizeof b,"—");
+  HUD_ADD("cpu",b,sistema.cpuAtual>=60?1:0);
+  if(sistema.pagingAtual>=0) snprintf(b,sizeof b,"%.0f/s   avg %.0f/s",sistema.pagingAtual,sistema.pagingMedia); else snprintf(b,sizeof b,"—");
+  HUD_ADD("paging",b,sistema.pagingAtual>=100?1:0);
+  int memSev=0;
+  if(sistema.managedMax>0 && sistema.managedUsed>=0) {
+    double ratio=(double)sistema.managedUsed/sistema.managedMax;
+    memSev=ratio>=.90?2:ratio>=.80?1:0;
+    if(sistema.nativeUsed>=0)
+      snprintf(b,sizeof b,"%lld / %lld MB   native %lld MB",(long long)(sistema.managedUsed/1048576),(long long)(sistema.managedMax/1048576),(long long)(sistema.nativeUsed/1048576));
+    else snprintf(b,sizeof b,"%lld / %lld MB",(long long)(sistema.managedUsed/1048576),(long long)(sistema.managedMax/1048576));
+  } else if(sistema.rssKb>=0) snprintf(b,sizeof b,"%lld MB RSS",sistema.rssKb/1024);
+  else snprintf(b,sizeof b,"—");
+  HUD_ADD("memory",b,memSev);
+  if(est.bufSeg>=0) snprintf(b,sizeof b,"%.1fs   avg %.1fs",est.bufSeg,sistema.bufferMedia>=0?sistema.bufferMedia:est.bufSeg); else snprintf(b,sizeof b,"—");
+  HUD_ADD("buffer",b,est.bufSeg>=0&&est.bufSeg<5?1:0);
+  if(tela.taxa[0]&&tela.size[0]) snprintf(b,sizeof b,"%s file   %s",tela.taxa,tela.size);
+  else snprintf(b,sizeof b,"%s",tela.trackBitrate[0]?tela.trackBitrate:"—");
+  HUD_ADD("bitrate",b,0);
+  if(est.kbps>=0) {
+    ev_fmt_mbps(now,sizeof now,est.kbps,'.'); ev_fmt_mbps(avg,sizeof avg,est.mediaKbps,'.');
+    snprintf(b,sizeof b,"%s Mbps   avg %s%s",now,avg,est.velOrigem==EVO_ESTIMADA?" (estimated)":"");
+  } else snprintf(b,sizeof b,"—");
+  HUD_ADD("network",b,0);
+  if(est.perdidos>=0) snprintf(b,sizeof b,"%lld frames",est.perdidos); else snprintf(b,sizeof b,"—");
+  HUD_ADD("dropped",b,est.perdidos>0?1:0);
+  if(sistema.thermalHeadroom>=0) snprintf(b,sizeof b,"%.2f / 1.00",sistema.thermalHeadroom/1000.0); else snprintf(b,sizeof b,"—");
+  HUD_ADD("thermal",b,sistema.thermalHeadroom>=900?1:0);
+#undef HUD_ADD
+  // Official width wraps content, not a hard-coded 440-unit card. Mono 18
+  // is the closest existing native style to 11sp at 1.6 units/dp.
+  float maxVal=0,rowH=0;
+  for(int i=0;i<n;i++) {
+    TxtLinha t=txt_linha(severity[i]?TXT_MONO18B:TXT_MONO18,values[i],240,240,240,255);
+    maxVal=fmaxf(maxVal,t.w); rowH=fmaxf(rowH,t.h);
   }
-  gfx_recorte(p.x + 14.0f, contentY, p.w - 28.0f, contentH);
-  y = contentY - (float)playerInfoScroll;
-  for (int i = 0; i < playerInfoN; i++) {
-    const EvInfoLinha *l = &playerInfoLinhas[i];
-    float h = playerInfoLinhaH(l);
-    if (y + h >= contentY && y < contentY + contentH) {
-      if (l->secao) {
-        TxtLinha sec = txt_linha(TXT_ILHA_SECAO, l->rotulo, 113, 167, 236, 255);
-        txt_desenhar_alpha(sec, p.x + 28.0f, y + 4.0f, a);
-        gfx_cor((GfxRect){p.x + 28.0f, y + h - 2.0f, p.w - 56.0f, 1.0f},
-                0.0f, 0.40f, 0.54f, 0.72f, 0.32f * a);
+  rowH=fmaxf(rowH,22.0f);
+  GfxRect p={INFO_MARGIN,INFO_MARGIN,fminf(2*INFO_PAD_X+INFO_LABEL+maxVal,NV_VTELA_W-2*INFO_MARGIN),
+             2*INFO_PAD_Y+n*rowH+(n-1)*INFO_ROW_GAP};
+  playerInfoMaterial(p,a);
+  for(int i=0;i<n;i++) {
+    int cr=severity[i]==2?244:severity[i]==1?255:240;
+    int cg=severity[i]==2?67:severity[i]==1?179:240;
+    int cb=severity[i]==2?54:severity[i]==1?0:240;
+    float y=p.y+INFO_PAD_Y+i*(rowH+INFO_ROW_GAP);
+    TxtLinha lab=txt_linha(TXT_MONO18,labels[i],138,138,138,255);
+    TxtLinha val=txt_linha_corta(severity[i]?TXT_MONO18B:TXT_MONO18,values[i],cr,cg,cb,255,p.w-2*INFO_PAD_X-INFO_LABEL);
+    txt_desenhar_alpha(lab,p.x+INFO_PAD_X,y,a);
+    txt_desenhar_alpha(val,p.x+INFO_PAD_X+INFO_LABEL,y,a);
+  }
+}
+static void desenharPlayerDetalhado(float a) {
+  if(!playerInfoAberto||!playerInfoModo||a<.01f) return;
+  if(!playerInfoN) playerInfoMontarLinhas();
+  float w=playerInfoW(), totalH=playerInfoAlturaTotal(), contentH=fminf(totalH,playerInfoVisibleH());
+  GfxRect p={NV_VTELA_W-INFO_MARGIN-w,INFO_MARGIN,w,contentH+2*INFO_PAD_Y};
+  float cy=p.y+INFO_PAD_Y, x=p.x+INFO_PAD_X, vx=x+playerInfoLabelW(), y=cy-playerInfoScroll;
+  playerInfoGarantirScroll(); y=cy-playerInfoScroll;
+  playerInfoMaterial(p,a);
+  gfx_recorte(p.x+4,cy,p.w-8,contentH);
+  for(int i=0;i<playerInfoN;i++) {
+    const EvInfoLinha *l=&playerInfoLinhas[i]; float h=playerInfoLinhaH(l);
+    if(y+h>=cy&&y<cy+contentH) {
+      if(l->secao) {
+        TxtLinha t=txt_linha(TXT_G20B,l->rotulo,220,220,220,255);
+        txt_desenhar_alpha(t,x,y+2,a);
+        gfx_cor((GfxRect){x,y+h-2,p.w-2*INFO_PAD_X,1},0,1,1,1,.23f*a);
       } else {
-        TxtLinha lab = txt_linha_corta(TXT_AJ_VALOR18, l->rotulo, 175, 184, 197, 255, 208.0f);
-        txt_desenhar_alpha(lab, p.x + 28.0f, y + 4.0f, a);
-        if (!strcmp(l->rotulo, "File")) {
-          txt_bloco_corta(TXT_AJ_VALOR18, l->valor, 242, 243, 247,
-                          p.x + 246.0f, y + 3.0f, p.w - 276.0f,
-                          26.0f, a, 14);
-        } else {
-          TxtLinha val = txt_linha_corta(TXT_AJ_VALOR18, l->valor,
-                                         239, 242, 247, 255, p.w - 281.0f);
-          txt_desenhar_alpha(val, p.x + 246.0f, y + 4.0f, a);
+        TxtLinha lab=txt_linha_corta(TXT_G20M,l->rotulo,176,176,176,255,playerInfoLabelW()-10);
+        txt_desenhar_alpha(lab,x,y+3,a);
+        if(!strcmp(l->rotulo,"File"))
+          txt_bloco_longas(TXT_G20M,l->valor,240,240,240,vx,y+2,playerInfoValueW(),26.0f,a,0);
+        else {
+          TxtLinha val=txt_linha_corta(TXT_G20M,l->valor,240,240,240,255,playerInfoValueW());
+          txt_desenhar_alpha(val,vx,y+3,a);
         }
       }
     }
-    y += h;
+    y+=h;
   }
   gfx_sem_recorte();
-  if (totalH > contentH) {
-    float track = contentH, thumbH = fmaxf(34.0f, track * contentH / totalH);
-    float thumbY = contentY + (track - thumbH) * (playerInfoScroll / maxScroll);
-    gfx_cor((GfxRect){p.x + p.w - 10.0f, contentY, 3.0f, track}, 1.5f, 1, 1, 1, 0.12f * a);
-    gfx_cor((GfxRect){p.x + p.w - 10.0f, thumbY, 3.0f, thumbH},
-            1.5f, 0.64f, 0.78f, 1.0f, 0.9f * a);
-  }
-  {
-    TxtLinha hint = txt_linha(TXT_ILHA_HORA,
-       "Up / Down: page scroll   •   OK: compact view   •   Left: seekbar",
-       175, 189, 209, 255);
-    txt_desenhar_alpha(hint, p.x + 28.0f, p.y + p.h - 41.0f, a);
+  if(totalH>contentH+.1f) {
+    float thumb=fmaxf(20,contentH*contentH/totalH), max=ceilf(totalH-contentH);
+    float top=cy+(contentH-thumb)*playerInfoScroll/max;
+    gfx_cor((GfxRect){p.x+p.w-7,top,3,thumb},1.5f/thumb,1,1,1,.7f*a);
   }
 }
 

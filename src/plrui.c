@@ -295,8 +295,11 @@ void plrui_barra(float x, float y, float w, float frac, float buf, int foco,
   gfx_cor((GfxRect){ x, yy, w, h }, 0.5f, 1, 1, 1, 0.13f * a);
   if (buf > frac + 0.002f) {
     if (buf > 1.0f) buf = 1.0f;
-    gfx_cor((GfxRect){ x + w * frac, yy, w * (buf - frac), h },
-            0.0f, 0.84f, 0.86f, 0.90f, 0.58f * a);
+    // Draw one continuous downloaded prefix beneath the played prefix.
+    // Their rounded caps overlap, so there is no slit at the playhead.
+    float bufferedW=w*buf;
+    gfx_cor((GfxRect){ x, yy, bufferedW, h },
+            fminf(.5f,bufferedW/(2*h)), 0.84f, 0.86f, 0.90f, 0.58f * a);
   }
   // If the playhead jumps AHEAD of the last measured buffer end, show the
   // unbuffered portion as a softer extension of the played/seek rail. Do not
@@ -307,8 +310,11 @@ void plrui_barra(float x, float y, float w, float frac, float buf, int foco,
       float readyW=w*buf;
       gfx_cor((GfxRect){x,yy,readyW,h},readyW<h?0.0f:0.5f,
               ar,ag,ab,a);
-      gfx_cor((GfxRect){x+readyW,yy,w*(frac-buf),h},0.0f,
-              ar,ag,ab,a*0.42f);
+      // The pending seek prefix is a separate softer rail, with a rounded
+      // endpoint and an overlap beneath the true played region.
+      float pendingW=w*(frac-buf), overlap=fminf(readyW,h*.5f);
+      gfx_cor((GfxRect){x+readyW-overlap,yy,pendingW+overlap,h},
+              fminf(.5f,(pendingW+overlap)/(2*h)), ar,ag,ab,a*0.42f);
     } else {
       float fw=w*frac;
       gfx_cor((GfxRect){x,yy,fw,h},fw<h?0.0f:0.5f,ar,ag,ab,a);

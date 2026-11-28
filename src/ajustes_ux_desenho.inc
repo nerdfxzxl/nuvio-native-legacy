@@ -10,6 +10,7 @@
 // lado ache cada peca.
 
 #include "home.h"
+#include "playback_ui_metrics.h"
 // A linha e o inspetor do "Guia de uso" moram com o guia (ajustes_ux_guia.inc).
 static void guiaInspetorAjustes(GfxRect ir);
 static int guiaTotal(void);
@@ -1409,6 +1410,32 @@ static void ajDesenharGrupo(int item, float y, float a) {
       t = ajTxtC(TXT_V3_GRP, b, w - 44.0f);
     } else t = ajTxt(TXT_V3_GRP, TELA[item].titulo); }
   txt_desenhar_alpha(t, x + 22, yc - t.h * 0.5f, a);
+#ifdef NV_ANDROID
+  // Official-style coloured estimate in the existing nonfocusable profile heading.
+  // It follows saved settings live and never changes the player's actual caps.
+  if (!strcmp(TELA[item].titulo,"RAM buffer · All Streams") ||
+      !strcmp(TELA[item].titulo,"RAM buffer · Below threshold")) {
+    int low=!strcmp(TELA[item].titulo,"RAM buffer · Below threshold");
+    int64_t mem[NV_UI_METRIC_N];
+    int requested=0,limit=0;
+    int preset=valor[low?AJ_BUF_LOW_RAM:AJ_BUFFER];
+    int mb=preset>=1&&preset<=3?32<<preset:0;
+    int status=nv_ui_memory(mem)?nv_ui_buffer_estimate(mem[4],mem[5],mb,
+       valor[AJ_HTTP_PARALLEL]==0,valor[AJ_HTTP_COUNT],valor[AJ_HTTP_CHUNK],&requested,&limit):0;
+    char note[96];
+    if(status) snprintf(note,sizeof note,"Estimated RAM: %s%d / %d MB",mb?"":"≤ ",requested,limit);
+    else snprintf(note,sizeof note,"Estimated RAM: unavailable");
+    int cr=status<0?244:status>0?78:170,cg=status<0?67:status>0?211:170,cb=status<0?54:status>0?124:170;
+    float maxW=w-66-t.w;
+    if(maxW>60) {
+      TxtLinha usage=txt_linha_corta(TXT_G18M,note,cr,cg,cb,255,maxW-20);
+      GfxRect badge={x+w-22-usage.w-20,yc-17,usage.w+20,34};
+      gfx_cor(badge,16.0f/badge.h,.09f,.09f,.09f,a);
+      gfx_anel(badge,16.0f/badge.h,1,cr/255.0f,cg/255.0f,cb/255.0f,.35f*a);
+      txt_desenhar_alpha(usage,badge.x+10,yc-usage.h*.5f,a);
+    }
+  }
+#endif
   if (TELA[item].sub && TELA[item].sub[0]) {
     TxtLinha c = ajTxtC(TXT_V2_24, TELA[item].sub, w - 44.0f - t.w - 24.0f);
     txt_desenhar_alpha(c, x + w - 22 - c.w, yc - c.h * 0.5f + 1.0f, 0.60f * a);

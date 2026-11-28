@@ -65,6 +65,9 @@ jobs:
             bash tests/p5_audio_route.sh
             bash tests/p5_hdr_policy.sh
             bash tests/fileiras.sh
+            python3 tests/player_panel_131_contract.py
+            python3 tests/stream_selector_perf.py
+            python3 tests/player_info_142.py
           fi
 
       - name: Stage and validate Android artwork before native dependencies or P2P

@@ -4705,7 +4705,7 @@ void player_evento(const SDL_Event *e) {
   if (!aberto || saindo || e->type != SDL_KEYDOWN) return;
   SDL_Keycode k = e->key.keysym.sym;
   if (visivel && !player_carregando() && !barraFoco && !skipFoco &&
-      !tempoFoco && botao == PLR_INFO &&
+      !tempoFoco && !infoPanelFoco && botao == PLR_INFO &&
       (k == SDLK_RETURN || k == SDLK_KP_ENTER || k == SDLK_SPACE)) {
     if (!infoTeclaEmBaixo) {
       infoTeclaEmBaixo = 1;
@@ -4758,7 +4758,7 @@ void player_evento(const SDL_Event *e) {
     if (pausao_visivel()) { pausao_fechar(); acordar(); return; }
     if (!erroFonte && !player_carregando() && !video_bufferando_ms()) {
       if (skipFoco) { skipFoco = 0; return; }
-      if (visivel || anim > 0.004f) {
+      if (visivel || anim > 0.004f || infoPanelFoco) {
         if (scrubbing) terminarSalto();
         infoPanelFoco = 0; tempoFoco = 0;
         estatvivo_player_focar(0);
@@ -4882,6 +4882,26 @@ void player_evento(const SDL_Event *e) {
     return;
   }
 
+  // Info is a single focus owner even if the controls timed out underneath.
+  // A Down at the bottom (or on compact) restores the HUD and seekbar.
+  if (infoPanelFoco && !estatvivo_player_aberto()) {
+    infoPanelFoco=0; estatvivo_player_focar(0);
+  }
+  if (infoPanelFoco) {
+    if (k == SDLK_RETURN || k == SDLK_KP_ENTER || k == SDLK_SPACE) {
+      if (!e->key.repeat) estatvivo_player_expandir();
+      estatvivo_player_focar(1); acordar(); return;
+    }
+    if (k == SDLK_UP || k == SDLK_PAGEUP) {
+      estatvivo_player_scroll(-1); acordar(); return;
+    }
+    if (k == SDLK_DOWN || k == SDLK_PAGEDOWN) {
+      if (estatvivo_player_scroll(1)) { acordar(); return; }
+      infoPanelFoco=0; barraFoco=1; tempoFoco=skipFoco=0; soBarra=0;
+      estatvivo_player_focar(0); acordar(); return;
+    }
+    if (k == SDLK_LEFT || k == SDLK_RIGHT) { acordar(); return; }
+  }
   if (!visivel) {
     // Tudo que acorda daqui acorda INTEIRO; so a busca abaixo volta a pedir
     // so a barra. Sem isto um soBarra de uma busca antiga, ja apagada, ficava
@@ -4941,25 +4961,6 @@ void player_evento(const SDL_Event *e) {
     return;
   }
 
-  // Focused information panel is independent of the controls. D-pad scrolls
-  // whole groups rather than stepping slowly through every technical field.
-  if (infoPanelFoco) {
-    if (k == SDLK_RETURN || k == SDLK_KP_ENTER || k == SDLK_SPACE) {
-      if (!e->key.repeat) estatvivo_player_expandir();
-      estatvivo_player_focar(1);
-      acordar(); return;
-    }
-    if (k == SDLK_UP || k == SDLK_DOWN || k == SDLK_PAGEUP || k == SDLK_PAGEDOWN) {
-      estatvivo_player_scroll(k == SDLK_UP || k == SDLK_PAGEUP ? -1 : 1);
-      acordar(); return;
-    }
-    if (k == SDLK_LEFT) {
-      infoPanelFoco = 0; barraFoco = 1; tempoFoco = 0;
-      estatvivo_player_focar(0);
-      acordar(); return;
-    }
-  }
-
   // CONTROLES EM PE: o foco anda pelos botoes e o OK aperta o botao em foco.
   if (skipFoco) {
     double fim;
@@ -4994,6 +4995,7 @@ void player_evento(const SDL_Event *e) {
     if (!barraFoco && transporteMoverLinha(-1)) { acordar(); return; }
     if (!barraFoco) { barraFoco = 1; tempoFoco = 0; }
     else if (estatvivo_player_aberto()) {
+      if (scrubbing) terminarSalto();
       barraFoco = 0; tempoFoco = 0; infoPanelFoco = 1;
       estatvivo_player_focar(1);
     }
@@ -6284,6 +6286,7 @@ static void ponteiroPlayPause(int a, int b) {
 static void ponteiroBotao(int i, int b) {
   (void)b;
   if (i < 0 || i >= PLR_NBTNS || !transporteHabilitado(i)) return;
+  infoPanelFoco=0; estatvivo_player_focar(0);
   botao = i; barraFoco = 0; skipFoco = 0; acordar();
 }
 static void ponteiroAtivarBotao(int i, int b) {
@@ -6296,7 +6299,7 @@ static void ponteiroAtivarBotao(int i, int b) {
   e.type = SDL_KEYUP; player_evento(&e);
 }
 static void ponteiroBotaoInativo(int i, int b) { (void)i; (void)b; }
-static void ponteiroBarra(int a, int b) { (void)a; (void)b; barraFoco = 1; skipFoco = 0; acordar(); }
+static void ponteiroBarra(int a, int b) { (void)a; (void)b; infoPanelFoco=0; estatvivo_player_focar(0); barraFoco = 1; skipFoco = 0; acordar(); }
 // Clique na barra PROCURA ali — o que o mouse faz em qualquer player. Canal ao
 // vivo nao tem para onde ir.
 static void ponteiroBuscar(int a, int b) {
@@ -7875,31 +7878,7 @@ static void desenharOsdCorpo(Uint32 agora, float a, float ac, const CatItem *c) 
         txt_desenhar_alpha(l1, cx, yBase, ac);
         if (sep) txt_desenhar_alpha(l2, cx + l1.w + 8.0f, yBase, ac);
         yBase -= 16.0f; }
-    } else if (!canalSessao && c && c->meta[0]) {
-      // "2026 · 2h 37min · Aventura": os campos do catalogo separados por um
-      // ponto de 4 px a 40%, 21/400 a 66%.
-      char m[sizeof c->meta];
-      char *q = m, *fimp;
-      float x = cx, h = (float)txt_linha(TXT_CAPTION2, "Ag", 243, 242, 239, 168).h;
-      int prim = 1;
-      snprintf(m, sizeof m, "%s", c->meta);
-      yBase -= h;
-      while (q && *q) {
-        fimp = strstr(q, " \xc2\xb7 ");
-        if (fimp) *fimp = 0;
-        if (!*q) { q = fimp ? fimp + 4 : NULL; continue; }   // campo vazio: sem ponto solto
-        if (!prim) {
-          gfx_cor((GfxRect){ x + 10.0f, yBase + h * 0.5f - 2.0f, 4.0f, 4.0f }, 0.5f, 0.953f, 0.949f, 0.937f, 0.40f * ac);
-          x += 24.0f;
-        }
-        { TxtLinha l = txt_linha(TXT_CAPTION2, q, 243, 242, 239, 168);
-          if (x + l.w > cx + cw * 0.6f) break;
-          txt_desenhar_alpha(l, x, yBase, ac); x += l.w; }
-        prim = 0;
-        q = fimp ? fimp + 4 : NULL;
-      }
-      yBase -= 12.0f;
-    }
+    } // Movie HUD matches idle: no year/runtime under the title artwork.
     if (logo) {
       float ar = tex_aspecto(marca), w = 480.0f, h = ar > 0.0f ? w / ar : 150.0f;
       if (h > 150.0f) { h = 150.0f; w = h * ar; }

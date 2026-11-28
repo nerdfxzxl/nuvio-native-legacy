@@ -78,7 +78,7 @@ check("TXT_FAMILIA_ROBOTO" in plr and "const int bottomControls" in plr,
 info=source("estatvivoui.c")
 pack=source("selospacote.c")
 settings=source("ajustes.c")
-check("stream_selos_player_titulo(NULL, metadata," in plr and "Source HDR (metadata)" in info and "VIDEO (PLAYBACK)" in info,
+check("stream_selos_player_titulo(NULL, metadata," in plr and '"Source metadata"' in info and "VIDEO (PLAYBACK)" in info,
       "source claims cannot override playback badges or measured resolution")
 check("@legacy" in pack and "@xperience" in pack and "SELOS_LEGACY" in settings,
       "independent persisted Legacy and Xperience selection")

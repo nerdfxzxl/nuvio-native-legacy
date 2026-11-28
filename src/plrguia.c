@@ -14,11 +14,12 @@
 // Official Compose uses 3dp line, 18dp rows, 11sp type and a 10dp
 // inner gap. Native's virtual-to-physical scale is different: these are
 // calibrated TV-layout coordinates, not literal Compose dp values.
-#define PG_LEFT  60.0f
-#define PG_TOP   30.0f
-#define PG_ROW   58.0f
-#define PG_LINE  8.0f
-#define PG_GAP   29.0f
+#define PG_LEFT  51.2f // 32dp
+#define PG_TOP   38.4f // 24dp
+#define PG_ROW   32.0f // 18dp row + 2dp gap
+#define PG_LINE  4.8f  // 3dp
+#define PG_GAP   16.0f // 10dp
+#define PG_ROW_H 28.8f
 
 static float pgEase(float t) {
   t=anim_clamp(t,0.0f,1.0f);
@@ -43,11 +44,11 @@ void plrguia_pedir(float tg,float osd,const char *classificacao) {
   float line=pgEase((tg-.30f)/.40f)*(1.0f-pgEase((tg-lineEnd)/.30f));
   // Real Nuvio has no dark rounded plaque behind the labels. The vertical
   // accent runs alongside the full three-row text stack.
-  float lineHeight=(float)(n-1)*PG_ROW+47.0f;
+  float lineHeight=(float)(n-1)*PG_ROW+PG_ROW_H;
   ESCALA_INI();
   if(line>.001f) {
     float h=lineHeight*line;
-    gfx_cor((GfxRect){PG_LEFT,PG_TOP,PG_LINE,h},.5f,
+    gfx_cor((GfxRect){PG_LEFT,PG_TOP,PG_LINE,h},fminf(.5f,1.6f/h),
             1.0f,1.0f,1.0f,alpha);
   }
   for(int i=0;i<n;i++) {
@@ -58,16 +59,15 @@ void plrguia_pedir(float tg,float osd,const char *classificacao) {
     float yy=PG_TOP+i*PG_ROW;
     const char *label=parental_rotulo(i),*severity=parental_gravidade(i);
     if(!label||!severity)continue;
-    // The 11sp Compose labels read like ~22 native virtual pixels on this
-    // renderer. All three components share one baseline and stagger together.
-    TxtLinha title=txt_linha(TXT_G26B,label,244,245,247,255);
-    TxtLinha dot=txt_linha(TXT_G22M," · ",140,140,144,255);
-    TxtLinha level=txt_linha(TXT_G22M,severity,170,173,178,255);
+    // 11sp at 1.6 scene units per dp; identical baseline and official opacities.
+    TxtLinha title=txt_linha(TXT_G20B,label,255,255,255,255);
+    TxtLinha dot=txt_linha(TXT_G18R," · ",255,255,255,255);
+    TxtLinha level=txt_linha(TXT_G18R,severity,255,255,255,255);
     float tx=PG_LEFT+PG_LINE+PG_GAP;
-    float textY=yy+10.0f;
-    txt_desenhar_alpha(title,tx,textY,itemA*.90f);
-    txt_desenhar_alpha(dot,tx+title.w,textY,itemA*.55f);
-    txt_desenhar_alpha(level,tx+title.w+dot.w,textY,itemA*.65f);
+    float textY=yy+(PG_ROW_H-title.h)*.5f;
+    txt_desenhar_alpha(title,tx,textY,itemA*.85f);
+    txt_desenhar_alpha(dot,tx+title.w,yy+(PG_ROW_H-dot.h)*.5f,itemA*.40f);
+    txt_desenhar_alpha(level,tx+title.w+dot.w,yy+(PG_ROW_H-level.h)*.5f,itemA*.50f);
   }
   ESCALA_FIM();
 }
