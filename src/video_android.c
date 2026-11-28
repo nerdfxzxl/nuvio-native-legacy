@@ -1118,7 +1118,7 @@ JNIEXPORT void JNICALL Java_space_nuvio_nativelegacy_NvPlayer_nativeEvento(JNIEn
     case 20: /* P8 same-language fallback selected; exact current opening. */
       if (a >= 0 && a < nAudio) audioAtual = a;
       break;
-    case EV_CARGA_FASE: if (a >= 0 && a <= 3) cargaFase = a; break;
+    case EV_CARGA_FASE: if (a >= 0 && a <= 4) cargaFase = a; break;
     case EV_SO_AUDIO:
       if (a == 1 && videoerro_p5b_retry_owned(&retryVideoP5B, sessao))
         terminalVideo(videoerro_p5b_retry_fail(&retryVideoP5B, sessao), 0);

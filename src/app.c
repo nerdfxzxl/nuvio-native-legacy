@@ -1360,12 +1360,12 @@ static int tocarFonteGuardada(void) {
   Uint32 started = SDL_GetTicks();
   // #618: a fresh automatic choice must use the add-on's current order.
   // Keep the saved link intact for the other selection modes.
-  if (ajustes_fonte_prioridade() == 3) return 0;
+  if (!retomarDiretoPendente && ajustes_fonte_prioridade() == 3) return 0;
   // "Escolher a fonte ao reproduzir": a URL da ultima sessao nao toca
   // sozinha. A folha e quem escolhe (detail_pediu_fontes, e o #62 quando a
   // lista chega). O Retomar do Continuar assistindo pede reproducao e cai
   // aqui tambem — com o ajuste ligado ele espera a folha, como o Play.
-  if (!fontevolta_toca_guardada(ajustes_fonte_manual(),
+  if (!fontevolta_toca_guardada(ajustes_fonte_manual() && !retomarDiretoPendente,
                                 player_id_canal()[0], player_aberto()))
     return 0;
   alvoPlayer(alvo, sizeof alvo);
@@ -3425,6 +3425,7 @@ static void bingeDaFonteAtual(void) {
   if (at == ultAtual && stream_lista_geracao() == ultGer) return;
   ultAtual = at; ultGer = stream_lista_geracao();
   s = at >= 0 ? stream_item(at) : NULL;
+  if (!s && voltaFonte.url[0]) s=&voltaFonte;
   audioesc_fonte_binge(s ? s->bingeGroup : "");
 }
 
@@ -6335,7 +6336,7 @@ void app_atualizar(float dt, Uint32 agora) {
       idDoAlvo(cat_item(detail_indice()), pedirFolhaAlvo, sizeof pedirFolhaAlvo);
     }
     if ((pediuReproduzir || doInicio) && aguardandoFonte != 2) {
-      retomarDiretoPendente = retomarDireto && ajustes_fonte_manual() && !doInicio;
+      retomarDiretoPendente = retomarDireto && !doInicio;
       marco("abrir: reproduzir pedido");
       if (escolherFonteInicial && !doInicio) {
         // Initial Play opens the native Dynamic Clock picker ON THE DETAIL PAGE.
@@ -6363,11 +6364,11 @@ void app_atualizar(float dt, Uint32 agora) {
           player_precarregar_cancelar(preparo.token); preparo.token = 0;
         }
   #endif
-        int usouPreparo = !escolherFonteInicial && !ajustes_fonte_manual() &&
+        int usouPreparo = !retomarDiretoPendente && !escolherFonteInicial && !ajustes_fonte_manual() &&
                          preparoUsar(alvoPreparo, lembradaPreparo, &idxPreparado);
         // Armado antes da abertura: o proximo quadro nao cancela o worker
         // quando a pagina do titulo cede lugar ao player.
-        if (!escolherFonteInicial && !usouPreparo && preparoEmCurso(alvoPreparo, lembradaPreparo)) {
+        if (!retomarDiretoPendente && !escolherFonteInicial && !usouPreparo && preparoEmCurso(alvoPreparo, lembradaPreparo)) {
           preparoEspera = 1; preparoLembradaPlay = lembradaPreparo;
         }
         diagnostico_cancelar_vazao();
@@ -6599,12 +6600,15 @@ void app_atualizar(float dt, Uint32 agora) {
       // #667: a remembered source sets the sheet's focus, never consent to play.
       // A late addon response must not resurrect the selector after the player was closed.
       if (player_aberto() && !player_quer_sair() &&
-          ((ajustes_fonte_manual() && !retomarDireto && !nextAutorizado()) || pedirFolhaNoPlay) && stream_n() > 0) {
+          (retomarDireto || (ajustes_fonte_manual() && !nextAutorizado()) || pedirFolhaNoPlay) && stream_n() > 0) {
         pedirFolhaNoPlay = 0;
         aguardandoFonte = 0;
         folhaParaTocar = 1;
         folhaCancelarTocar = 0;
         nomeParaFolha(); stream_folha_abrir();
+      } else if (retomarDireto) {
+        // No exact saved source and no candidates: never authorize a substitute.
+        aguardandoFonte=0; preparoEspera=0; player_erro_fonte();
       } else {
         pedirFolhaNoPlay = 0;
         pedirFolhaAlvo[0] = 0;

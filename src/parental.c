@@ -12,11 +12,11 @@
 // A ORDEM importa: e a mesma em que o web lista as categorias
 // (parentalGuideRepository.js:86), e por isso a mesma em que aparecem na tela.
 static const struct { const char *chave, *rotulo; } CATS[PG_MAX] = {
-  { "SEXUAL_CONTENT", "Sex & Nudity" },
   { "VIOLENCE", "Violence" },
   { "PROFANITY", "Profanity" },
-  { "ALCOHOL_DRUGS", "Alcohol & Drugs" },
-  { "FRIGHTENING_INTENSE_SCENES", "Frightening & Intense Scenes" },
+  { "FRIGHTENING_INTENSE_SCENES", "Frightening" },
+  { "SEXUAL_CONTENT", "Nudity" },
+  { "ALCOHOL_DRUGS", "Alcohol/Drugs" },
 };
 
 static const struct { const char *nivel, *rotulo; } NIVEIS[] = {

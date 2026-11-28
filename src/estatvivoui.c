@@ -72,7 +72,7 @@ typedef struct {
   char audio[96], audioCodec[32], audioChannels[16], audioSampleRate[24];
   char audioLanguage[32], audioRoute[40], legenda[64];
   char selectedAtmos[48], dvProfile[96], outputChannels[64], outputHz[32],
-       outputDevice[120], underruns[64], skipped[32], trackBitrate[48];
+       outputDevice[120], underruns[64], skipped[32], trackBitrate[48], liveVideoBitrate[48];
   char buffer[32], backBuffer[32], network[80], connections[24];
   char requests[32], latency[32], rebuffers[32];
   int plataforma;
@@ -83,7 +83,7 @@ typedef struct {
   unsigned amostras, bufferAmostras;
   unsigned long long cpuTotal, cpuIdle, pagingTotal;
   long long rssKb, peakKb, totalKb;
-  int64_t managedUsed, managedMax, nativeUsed, thermalHeadroom;
+  int64_t managedUsed, managedMax, nativeUsed, thermalHeadroom, thermalStatus;
 } EvSistema;
 typedef struct { int secao; char rotulo[48], valor[512]; } EvInfoLinha;
 
@@ -515,7 +515,7 @@ static void sistemaZerar(void) {
   sistema.cpuAtual = sistema.cpuMedia = sistema.pagingAtual = sistema.pagingMedia = -1.0;
   sistema.bufferMedia = sistema.thermalC = -1.0;
   sistema.rssKb = sistema.peakKb = sistema.totalKb = -1;
-  sistema.managedUsed = sistema.managedMax = sistema.nativeUsed = sistema.thermalHeadroom = -1;
+  sistema.managedUsed = sistema.managedMax = sistema.nativeUsed = sistema.thermalHeadroom = sistema.thermalStatus = -1;
 }
 
 static void sistemaAmostrar(void) {
@@ -587,8 +587,8 @@ static void sistemaAmostrar(void) {
   int64_t uiMem[NV_UI_METRIC_N];
   if (nv_ui_memory(uiMem)) {
     sistema.managedUsed=uiMem[0]; sistema.managedMax=uiMem[1];
-    sistema.nativeUsed=uiMem[2]; sistema.thermalHeadroom=uiMem[3];
-  } else sistema.managedUsed=sistema.managedMax=sistema.nativeUsed=sistema.thermalHeadroom=-1;
+    sistema.nativeUsed=uiMem[2]; sistema.thermalHeadroom=uiMem[3]; sistema.thermalStatus=uiMem[6];
+  } else sistema.managedUsed=sistema.managedMax=sistema.nativeUsed=sistema.thermalHeadroom=sistema.thermalStatus=-1;
   if (est.bufSeg >= 0) {
     sistema.bufferMedia = sistema.bufferAmostras ?
       (sistema.bufferMedia * sistema.bufferAmostras + est.bufSeg) / (sistema.bufferAmostras + 1) : est.bufSeg;
@@ -713,6 +713,7 @@ static void montarTela(int taxaKbps) {
     UI_FIELD(frameLead,6); UI_FIELD(outputChannels,7); UI_FIELD(outputHz,8);
     UI_FIELD(outputDevice,9); UI_FIELD(underruns,10); UI_FIELD(skipped,11);
     UI_FIELD(trackBitrate,12); UI_FIELD(connections,13);
+    UI_FIELD(liveVideoBitrate,14); UI_FIELD(requests,15);
 #undef UI_FIELD
   }
   if (taxaKbps > 0) {
@@ -1624,8 +1625,8 @@ static void playerInfoMaterial(GfxRect p,float a) {
   if(playerInfoFocused) gfx_anel_fora(p,INFO_RADIUS/p.h,0,3.0f,1,1,1,a);
 }
 static void desenharPlayerHud(float a) {
-  char values[8][160],labels[8][20],b[160],now[32],avg[32];
-  int severity[8]={0},n=0;
+  char values[9][160],labels[9][20],b[160],now[32],avg[32];
+  int severity[9]={0},n=0;
   if (!playerInfoAberto||a<.01f) return;
 #define HUD_ADD(label,value,sev) do { snprintf(labels[n],sizeof labels[n],"%s",label); snprintf(values[n],sizeof values[n],"%s",value); severity[n++]=sev; } while(0)
   if(sistema.cpuAtual>=0) snprintf(b,sizeof b,"%.0f%%   avg %.0f%%",sistema.cpuAtual,sistema.cpuMedia); else snprintf(b,sizeof b,"—");
@@ -1647,11 +1648,12 @@ static void desenharPlayerHud(float a) {
   if(tela.taxa[0]&&tela.size[0]) {
     double sizeGb;
     if (strstr(tela.size," GB") && sscanf(tela.size,"%lf",&sizeGb)==1)
-      snprintf(b,sizeof b,"%s file   %.1f GB",tela.taxa,sizeGb);
-    else snprintf(b,sizeof b,"%s file   %s",tela.taxa,tela.size);
+      snprintf(b,sizeof b,"%s file avg   %.1f GB",tela.taxa,sizeGb);
+    else snprintf(b,sizeof b,"%s file avg   %s",tela.taxa,tela.size);
   }
   else snprintf(b,sizeof b,"%s",tela.trackBitrate[0]?tela.trackBitrate:"—");
   HUD_ADD("bitrate",b,0);
+  HUD_ADD("video",tela.liveVideoBitrate[0]?tela.liveVideoBitrate:"—",0);
   if(est.kbps>=0) {
     ev_fmt_mbps(now,sizeof now,est.kbps,'.'); ev_fmt_mbps(avg,sizeof avg,est.mediaKbps,'.');
     snprintf(b,sizeof b,"%s Mbps   avg %s%s",now,avg,est.velOrigem==EVO_ESTIMADA?" (estimated)":"");
@@ -1659,8 +1661,11 @@ static void desenharPlayerHud(float a) {
   HUD_ADD("network",b,0);
   if(est.perdidos>=0) snprintf(b,sizeof b,"%lld frames",est.perdidos); else snprintf(b,sizeof b,"—");
   HUD_ADD("dropped",b,est.perdidos>0?1:0);
-  if(sistema.thermalHeadroom>=0) snprintf(b,sizeof b,"%.2f / 1.00",sistema.thermalHeadroom/1000.0); else snprintf(b,sizeof b,"—");
-  HUD_ADD("thermal",b,sistema.thermalHeadroom>=900?1:0);
+  const char *thermalName[]={"Normal","Light","Moderate","Severe","Critical","Emergency","Shutdown"};
+  const char *thermal=sistema.thermalStatus>=0 && sistema.thermalStatus<7?thermalName[sistema.thermalStatus]:NULL;
+  if(sistema.thermalHeadroom>=0) snprintf(b,sizeof b,"%.2f / 1.00%s%s",sistema.thermalHeadroom/1000.0,thermal?" · ":"",thermal?thermal:"");
+  else snprintf(b,sizeof b,"%s",thermal?thermal:"—");
+  HUD_ADD("thermal",b,sistema.thermalStatus>=4?2:(sistema.thermalHeadroom>=900||sistema.thermalStatus>=2)?1:0);
 #undef HUD_ADD
   // Official width wraps content, not a hard-coded 440-unit card. Mono 18
   // is the closest existing native style to 11sp at 1.6 units/dp.
@@ -1688,7 +1693,7 @@ static void desenharPlayerDetalhado(float a) {
   if(!playerInfoAberto||!playerInfoModo||a<.01f) return;
   if(!playerInfoN) playerInfoMontarLinhas();
   float w=playerInfoW(), totalH=playerInfoAlturaTotal(), contentH=fminf(totalH,playerInfoVisibleH());
-  GfxRect p={NV_VTELA_W-INFO_MARGIN-w,INFO_MARGIN,w,contentH+2*INFO_PAD_Y};
+  GfxRect p={INFO_MARGIN,INFO_MARGIN,w,contentH+2*INFO_PAD_Y};
   float cy=p.y+INFO_PAD_Y, x=p.x+INFO_PAD_X, vx=x+playerInfoLabelW(), y=cy-playerInfoScroll;
   playerInfoGarantirScroll(); y=cy-playerInfoScroll;
   playerInfoMaterial(p,a);

@@ -4,8 +4,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <SDL2/SDL.h>
-#define NV_UI_METRIC_N 6
-#define NV_UI_DETAILS_N 14
+#define NV_UI_METRIC_N 7
+#define NV_UI_DETAILS_N 16
 #define NV_UI_DETAIL_LEN 160
 #if defined(NV_ANDROID) && defined(__ANDROID__)
 #include <jni.h>

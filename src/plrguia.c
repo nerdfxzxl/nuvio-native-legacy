@@ -66,8 +66,10 @@ void plrguia_pedir(float tg,float osd,const char *classificacao) {
     float tx=PG_LEFT+PG_LINE+PG_GAP;
     float textY=yy+(PG_ROW_H-title.h)*.5f;
     txt_desenhar_alpha(title,tx,textY,itemA*.85f);
-    txt_desenhar_alpha(dot,tx+title.w,yy+(PG_ROW_H-dot.h)*.5f,itemA*.40f);
-    txt_desenhar_alpha(level,tx+title.w+dot.w,yy+(PG_ROW_H-level.h)*.5f,itemA*.50f);
+    // Font renderer can trim spaces; explicitly retain separation at both sides.
+    float dx=tx+title.w+4.0f;
+    txt_desenhar_alpha(dot,dx,yy+(PG_ROW_H-dot.h)*.5f,itemA*.40f);
+    txt_desenhar_alpha(level,dx+dot.w+4.0f,yy+(PG_ROW_H-level.h)*.5f,itemA*.50f);
   }
   ESCALA_FIM();
 }

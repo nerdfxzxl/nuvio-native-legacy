@@ -77,6 +77,7 @@ class NuvioActivity : SDLActivity() {
     // allocator limits, not NuvioTV's native allocator budget.
     private var lastUiThermalAt = -1L
     private var lastUiThermal = -1L
+    private var lastUiThermalStatus = -1L
     fun playbackUiMemory(): LongArray {
         val rt = Runtime.getRuntime()
         val heap = rt.maxMemory()
@@ -90,6 +91,9 @@ class NuvioActivity : SDLActivity() {
         val now = android.os.SystemClock.elapsedRealtime()
         if (lastUiThermalAt < 0 || now - lastUiThermalAt >= 10000L) {
             lastUiThermalAt = now
+            lastUiThermalStatus = if (android.os.Build.VERSION.SDK_INT >= 29) runCatching {
+                (getSystemService(android.content.Context.POWER_SERVICE) as android.os.PowerManager).currentThermalStatus.toLong()
+            }.getOrDefault(-1L) else -1L
             val headroom = if (android.os.Build.VERSION.SDK_INT >= 30) runCatching {
                 (getSystemService(android.content.Context.POWER_SERVICE) as android.os.PowerManager)
                     .getThermalHeadroom(0)
@@ -97,7 +101,7 @@ class NuvioActivity : SDLActivity() {
             lastUiThermal = if (headroom.isFinite() && headroom >= 0f) (headroom * 1000).toLong() else -1L
         }
         return longArrayOf(rt.totalMemory() - rt.freeMemory(), heap,
-            android.os.Debug.getNativeHeapAllocatedSize(), lastUiThermal, cap, parallel)
+            android.os.Debug.getNativeHeapAllocatedSize(), lastUiThermal, cap, parallel, lastUiThermalStatus)
     }
     fun playbackUiDetails(): Array<String> = NvPlayer.playbackUiDetails()
 

@@ -91,7 +91,14 @@ internal object HdrCodecFallbackP5B {
                           private val recovery: () -> RuntimeRecovery?,
                           private val displayDv: () -> Boolean,
                           private val mobile: Boolean,
-                          private val positionReset: (Long) -> Unit) : MediaCodecVideoRenderer(builder) {
+                          private val positionReset: (Long) -> Unit,
+                          private val videoSample: (Long, Int) -> Unit = { _, _ -> }) : MediaCodecVideoRenderer(builder) {
+        override fun onQueueInputBuffer(buffer: androidx.media3.decoder.DecoderInputBuffer) {
+            // Called after flip, before codec queue; never change position or data.
+            val size=buffer.data?.remaining() ?: 0
+            if(size>0) videoSample(buffer.timeUs-getStreamOffsetUs(),size)
+            super.onQueueInputBuffer(buffer)
+        }
         // Media3 1.8 deliberately omits a generic HEVC alternate for profile 7.
         // Expose only the independently parsed clear base to its normal HEVC
         // capability query; keep native DV first on a capable display.

@@ -1,0 +1,12 @@
+# Owner refinements after APK 142
+Baseline cf0a9264f83d1a5ec028bb99cfdc84c90e69a28a; official NuvioTV reference b3f8f6d03d825eb34b8b80e040e89af5ffb5416d. Owner screenshots are phone, not TV. Preserve TV focus rules and established decoder/HDMI recovery.
+- Parental guide: short labels, severity order, clear centered separator, bright rounded accent and generous legible typography; compare phone to official mobile and TV to official TV.
+- Compact/detailed info: both top-left, same material, no duplicated compact data in detailed; focus via Up from seekbar, OK swaps, Down returns, no individual row focus; overflow only scrolls. Real diagnostics only. Thermal headroom with status fallback; current compressed video bitrate as trailing two-second media-time measurement; file average and network separate.
+- Audio speaker icon: thicker consistent outline, generous woofer clearance, sharp asset on focus.
+- Resume: exact successful file only, no ranking fallback or dubbed track substitution; preserve saved audio and subtitles, original language when no manual choice. If exact link expires, refresh only exact identity, otherwise open picker. Short Resume bypasses manual Play policy.
+- Loading messages must follow actual events: source preparation, format detection, player building, starting, buffering, subtitle fetch only when applicable. Static logo.
+- Remove Related from movie transport pill; series episodes retained. Remember elapsed/total versus elapsed/remaining globally. Timestamp snaps to target, rail remains smooth.
+## This checkpoint
+Implemented direct timestamp, persistent time mode, movie transport removal, top-left info, thermal fallback, decoder-input bitrate telemetry, parallel HTTP attempt count, video format metadata and display rotation, parental label/spacing and icon geometry, short Resume saved-link bypass and no silent fallback, saved-source binge context, post-track startup status.
+## Remaining acceptance / limitations
+Exact expired-link identity refresh and cross-session selected-track restoration still require integration audit; original-language metadata arriving late, exact provider identification, full physical mobile parental scaling, typography/sharpness and TV geometry need verification. Frame lead depends on actual analytics callbacks; unknown remains unknown. Decoder-input rate includes codec framing and is unavailable on extension renderers or when the sample window is incomplete. The source is not full physical acceptance. Do not claim APK verification merely from workflow launch.

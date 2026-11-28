@@ -111,6 +111,7 @@ class ParaleloDataSource(
     class Estat {
         val bytes = java.util.concurrent.atomic.AtomicLong()
         val conexoes = java.util.concurrent.atomic.AtomicInteger()
+        val requests = java.util.concurrent.atomic.AtomicLong()
         @Volatile var usado = false
         @Volatile var primeiroByteMs = -1
         @Volatile var host = ""
@@ -276,6 +277,7 @@ class ParaleloDataSource(
         repeat(10) {
             val t0 = android.os.SystemClock.elapsedRealtime()
             val c = conectar1(u, ini, ultimo)
+            stats.requests.incrementAndGet() // Attempt, including redirects and retries.
             val code = try { c.responseCode } catch (e: IOException) {
                 desconectar(c)
                 throw e

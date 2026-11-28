@@ -383,7 +383,19 @@ static float barraBufferMem;
 static float cheio = 1.0f;
 static float focoB[PLR_NBTNS];     // mola de foco de cada botao
 static float focoBV[PLR_NBTNS];    // underdamped spring velocity for premium bounce
-static int tempoFoco, tempoRestante; // Right from Info -> elapsed / total or remaining
+static int tempoFoco, tempoRestante; // Global elapsed / total or remaining preference.
+static int tempoModoCarregado;
+static void tempoModoCarregar(void) {
+  if (tempoModoCarregado) return;
+  tempoModoCarregado=1;
+  char *saved=dados_ler("player-time-mode.txt");
+  if (saved) { tempoRestante=saved[0]=='1'; free(saved); }
+}
+static void tempoModoAlternar(void) {
+  tempoModoCarregar();
+  tempoRestante=!tempoRestante;
+  dados_gravar("player-time-mode.txt",tempoRestante?"1\n":"0\n");
+}
 static int infoPanelFoco; // Up from seekbar focuses the independent Playback Info overlay
 static int infoTeclaEmBaixo, infoSegurou;
 static Uint32 infoTeclaDesde;
@@ -2137,6 +2149,7 @@ void player_abrir(int indiceCatalogo, const char *url) {
   retomarSeg = 0.0; retomadaNaPreparacao = 0;
 #endif
   botao = PLR_PLAY;
+  tempoModoCarregar();
   tempoFoco = infoPanelFoco = infoTeclaEmBaixo = infoSegurou = 0;
   estatvivo_player_focar(0);
   memset(focoB, 0, sizeof focoB);
@@ -3735,7 +3748,7 @@ void player_mini_desenhar(Uint32 agora) {
 // que tenha o que mostrar. Num filme sem relacionado nenhum ele some, em vez de
 // ficar la sem fazer nada.
 static int temUltimoBotao(void) {
-  return epE > 0 || extras_n_relacionados() > 0;
+  return ehCanal() || epE > 0;
 }
 
 // Sources captures this token, never a mutable catalogue/list index.
@@ -4652,7 +4665,7 @@ static int ativarBotao(int i, int repetiu) {
     case PLR_EPISODIOS:
       if (ehCanal()) pedGuia = 1;
       else if (epE > 0) episodios_abrir(idxAtual(), epT, epE);
-      else posplay_abrir_relacionados(idxAtual());
+      else return 0; // No Related action for films.
       break;
     default: return 0;
   }
@@ -4951,7 +4964,7 @@ void player_evento(const SDL_Event *e) {
   // Quem aperta o centro com a barra correndo quer parar ali, e alternar o
   // estado deixaria o filme pausado no ponto novo — meio comando executado.
   if (tempoFoco && !barraFoco && (k == SDLK_RETURN || k == SDLK_KP_ENTER || k == SDLK_SPACE)) {
-    if (!e->key.repeat) tempoRestante = !tempoRestante;
+    if (!e->key.repeat) tempoModoAlternar();
     acordar();
     return;
   }
@@ -5900,7 +5913,7 @@ static const char *rotuloBotao(int i) {
     case PLR_PROXIMO:   return "Próximo episódio";
     case PLR_REINICIAR: return "Assistir do começo";
     case PLR_NESTE:     return "Neste episódio";
-    default:            return ehCanal() ? "Guia" : epE > 0 ? "Epis\xc3\xb3""dios" : "Relacionados";
+    default:            return ehCanal() ? "Guia" : "Epis\xc3\xb3""dios";
   }
 }
 
@@ -6450,6 +6463,7 @@ static const char *estadoCargaP2(void) {
     case 1: return "Building player…";
     case 2: return "Detecting stream format…";
     case 3: return "Starting stream…";
+    case 4: return "Buffering…";
     default: return "Preparing stream…";
   }
 #else
@@ -8002,7 +8016,7 @@ static void desenharOsdCorpo(Uint32 agora, float a, float ac, const CatItem *c) 
       TxtLinha l = txt_linha(TXT_ILHA_NOME, i18n("AO VIVO"), 243, 242, 239, 235);
       txt_desenhar_alpha(l, cx + cw - l.w, cyTempo - (float)l.h * 0.5f, a);
     } else {
-      plrui_tempo(t1, sizeof t1, posVisSolto ? posVis : posSeg);
+      plrui_tempo(t1, sizeof t1, posSeg); // Text follows exact target; only rail is animated.
       plrui_tempo(d, sizeof d, duracaoSeg);
       if (tempoRestante) {
         char restante[24];
@@ -8026,7 +8040,7 @@ static void desenharOsdCorpo(Uint32 agora, float a, float ac, const CatItem *c) 
       if (cheio < 0.99f) {
         char r[32];
         TxtLinha l1 = txt_linha(TXT_ILHA_NOME, t1, 243, 242, 239, 235), l2;
-        if (ajustes_seekr_ligado()) snprintf(r, sizeof r, "%s", d);
+        if (!tempoRestante) snprintf(r, sizeof r, "%s", d);
         else { char f[24]; plrui_tempo(f, sizeof f, duracaoSeg - posSeg); snprintf(r, sizeof r, "\xe2\x88\x92%s", f); }
         l2 = txt_linha(TXT_ILHA_NOME, r, 243, 242, 239, 128);
         txt_desenhar_alpha(l1, cx, yBarra + 32.0f, a * (1.0f - cheio));

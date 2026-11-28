@@ -980,6 +980,7 @@ object NvPlayer {
         lateinit var origem: OrigemPlayer
         val contadorHttp = ContadorHttp()
         val parallelStats = ParaleloDataSource.Estat()
+        val videoRate = PlaybackVideoRate()
         lateinit var rede: (Long) -> DataSource.Factory
         lateinit var renderizadores: androidx.media3.exoplayer.DefaultRenderersFactory
         lateinit var fabricaMidia: DefaultMediaSourceFactory
@@ -1986,12 +1987,13 @@ object NvPlayer {
                         { displayHdr(act, android.view.Display.HdrCapabilities.HDR_TYPE_DOLBY_VISION) },
                         r.phonePcm,
                         { at ->
+                            r.videoRate.reset()
                             principal.post {
                                 if (recursosAtuais === r && atual(sessao) && !videoOutputFailed &&
                                     !estavelEmitido && at >= superficieInvalidadaEm)
                                     invalidarQuadroSuperficie(at)
                             }
-                        })
+                        }, { pts, bytes -> r.videoRate.sample(pts,bytes) })
                 }
                 override fun buildAudioRenderers(context: Context, extensionRendererMode: Int,
                     mediaCodecSelector: MediaCodecSelector, enableDecoderFallback: Boolean, audioSink: AudioSink,
@@ -2476,8 +2478,10 @@ object NvPlayer {
             val fmt = p.videoFormat
             val cfg = resources.videoConfig?.takeIf { fmt != null && it.matches(fmt, videoDecoderName) }
             val mime = (cfg?.info?.mimeType ?: fmt?.sampleMimeType.orEmpty()).removePrefix("video/")
+            val measured=resources.videoRate.measure(p.currentPosition*1000L)
             val fps = fmt?.frameRate?.takeIf { it > 0 && it.isFinite() }
-                ?.let { String.format(java.util.Locale.US, "%.3f fps", it) }.orEmpty()
+                ?.let { String.format(java.util.Locale.US, "%.3f fps", it) }
+                ?: measured?.let { String.format(java.util.Locale.US, "~%.1f fps", it.fps) }.orEmpty()
             val dv = fmt?.codecs?.let { Regex("""(?:dvhe|dvh1|dvav|dva1|dav1)\.(\d+)""", RegexOption.IGNORE_CASE).find(it) }
                 ?.groupValues?.getOrNull(1)?.toIntOrNull()?.let { profile ->
                     when {
@@ -2487,11 +2491,14 @@ object NvPlayer {
                         else -> "Profile $profile (source)"
                     }
                 }.orEmpty()
-            val depth = fmt?.colorInfo?.lumaBitdepth?.takeIf { it > 0 }?.let { "$it-bit (track)" }.orEmpty()
+            val depth = listOfNotNull(fmt?.colorInfo?.lumaBitdepth?.takeIf { it > 0 }?.let { "$it-bit (track)" },fmt?.codecs?.takeIf { it.isNotBlank() }).joinToString(" · ")
             val display = activity?.windowManager?.defaultDisplay
             val mode = display?.mode
             val displayText = mode?.let {
-                "${it.physicalWidth}×${it.physicalHeight} · " +
+                val rotated = display?.rotation == android.view.Surface.ROTATION_90 || display?.rotation == android.view.Surface.ROTATION_270
+                val dw=if(rotated) it.physicalHeight else it.physicalWidth
+                val dh=if(rotated) it.physicalWidth else it.physicalHeight
+                "${dw}×${dh} · " +
                     String.format(java.util.Locale.US, "%.2f Hz", it.refreshRate) +
                     " · ${display?.supportedModes?.size ?: 0} modes"
             }.orEmpty()
@@ -2528,7 +2535,9 @@ object NvPlayer {
             uiDetails = arrayOf(mime, fps, videoDecoderName.orEmpty(), dv, depth, displayText,
                 uiFrameLead, channels, audioHz, route, underruns, skipped,
                 if (bitrate > 0) String.format(java.util.Locale.US, "%.1f Mbps tracks", bitrate / 1e6) else "",
-                connections)
+                connections,
+                measured?.let { String.format(java.util.Locale.US, "%.1f Mbps live",it.bps/1e6) }.orEmpty(),
+                if(e.usado) "${e.requests.get()} attempts" else "")
         }.onFailure { uiDetails = emptyArray() }
         val buf = (p.bufferedPosition - p.currentPosition).coerceIn(0L, Int.MAX_VALUE.toLong()).toInt()
         var quadros = -1L
@@ -3439,7 +3448,10 @@ object NvPlayer {
             Log.i(TAG, "[player] onPlaybackStateChanged state=$state renderer=audio(${p.audioFormat?.sampleMimeType}),video(${p.videoFormat?.sampleMimeType}) loadMs=${SystemClock.elapsedRealtime() - abriuEm}")
             relatarAudio(minha, "geometry state=$state display=${videoW}x$videoH rect=$jx,$jy,${jw}x$jh stable=$estavelEmitido")
             when (state) {
-                Player.STATE_BUFFERING -> ev(EV_BUFFER, 0)
+                Player.STATE_BUFFERING -> {
+                    if (!pronto && p.currentTracks.groups.isNotEmpty()) ev(EV_CARGA_FASE,4)
+                    ev(EV_BUFFER, 0)
+                }
                 Player.STATE_READY -> {
                     val groups = p.currentTracks.groups
                     val selectedVideo = groups.any { g ->
@@ -3583,6 +3595,9 @@ object NvPlayer {
         override fun onTracksChanged(tracks: Tracks) {
             if (!atual(minha) || videoOutputFailed) return
             val r = recursosAtuais
+            if (!pronto && tracks.groups.isNotEmpty()) {
+                ev(EV_CARGA_FASE,if(player?.playbackState==Player.STATE_BUFFERING) 4 else 3)
+            }
             if (tracks.groups.isNotEmpty()) r?.routeHasVideo = tracks.groups.any { it.type == C.TRACK_TYPE_VIDEO }
             if (r?.routeTx?.active == true || r?.routeNativeOwned == true) r?.let { audioRouteTick(minha, it) }
             else {
