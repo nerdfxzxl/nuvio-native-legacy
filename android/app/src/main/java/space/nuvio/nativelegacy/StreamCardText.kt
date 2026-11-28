@@ -98,6 +98,7 @@ internal class StreamCardText(private val context: Context) {
             activeGeneration = generation
             queuedLayouts.values.forEach { it.cancel(false) }
             queuedLayouts.clear()
+            StreamCardRenderWorker.executor.purge()
             cache.evictAll()
         }
         val key = Key(generation, index, width)
@@ -106,10 +107,14 @@ internal class StreamCardText(private val context: Context) {
         queuedLayouts[key]?.let { task ->
             if (!task.isDone) return null
             queuedLayouts.remove(key, task)
-            return try { task.get() } catch (_: Exception) { null }
+            // A completed future must not resurrect a paragraph already
+            // evicted by the LRU. Native can resubmit its original payload.
         }
         cache.get(key)?.let { return it }
         if (payload == null || width <= 0) return null
+        // Completed work belongs to the bounded cache, not an unbounded map
+        // of futures for every card the viewer has ever scrolled past.
+        queuedLayouts.entries.removeIf { it.value.isDone }
         try {
             val copy = payload.copyOf()
             queuedLayouts[key] = StreamCardRenderWorker.executor.submit<StreamCardParagraphs?> {

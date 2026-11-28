@@ -4676,6 +4676,7 @@ static float alturaArquivoDa(const Stream *s) {
 }
 #ifdef NV_ANDROID
 #include "stream_card_android.inc"
+#include "stream_scroll_clock.h"
 static float cardChromeHeight(void) {
   // Top and bottom 16dp, plus the top badge row and spacing.
   return 2 * FOLHA_TXT + FOLHA_SELO_NUVIO_H + 8.0f;
@@ -4950,9 +4951,9 @@ static float expansaoLinha(int row, float abertura, int automatica) {
   if (row < 0 || row >= nOrdem || ordem[row] < 0) return 0;
   return alturaLinha(ordem[row], automatica, abertura, linhaCabProv ? linhaCabProv[row] : 0) - linhaH[row];
 }
+static float folhaAlturaBase;
 static void montar(int automatica) {
   static unsigned versao;
-  static float base;
   folhaDados();
   if (versao != folhaDadosVersao) {
     int oldGrupo = grupo, oldAnt = linhaAnt;
@@ -4960,18 +4961,29 @@ static void montar(int automatica) {
     melhorFolha = folhaAuto;
     montarBase(automatica);
     grupo = oldGrupo; linhaAnt = oldAnt;
-    base = alturaTotal;
+    folhaAlturaBase = alturaTotal;
     versao = folhaDadosVersao;
   }
 #ifdef NV_ANDROID
   if ((folhaRelogio || folhaIlha()) && !canalFolha && filtro >= 0) {
     expansaoFoco = expansaoAnt = 0;
+    alturaTotal = folhaAlturaBase;
+    return;
+  }
+#endif
+  expansaoFoco = grupo == 1 ? expansaoLinha(foco, abreFoco, automatica) : 0;
+  expansaoAnt = linhaAnt != (grupo == 1 ? foco : -1) ? expansaoLinha(linhaAnt, abreAnt, automatica) : 0;
+  alturaTotal = folhaAlturaBase + expansaoFoco + expansaoAnt;
+}
+#ifdef NV_ANDROID
+static void refinarCartoes(int automatica) {
+  if ((folhaRelogio || folhaIlha()) && !canalFolha && filtro >= 0) {
     // Refine only the viewport and a small overscan. Once a row is measured
     // its real height survives tab/search changes and no JNI call is needed.
     const int width = (int)(FOLHA_W - FOLHA_PAD_E - FOLHA_PAD_D - 2 * FOLHA_TXT);
     float delta = 0;
     int row = primeiraVisivel(rolagem - 100);
-    for (; row < nOrdem && linhaY[row] + delta < rolagem + NV_TELA_H + 100; ++row) {
+    for (; row < nOrdem && linhaY[row] + delta < rolagem + fmaxf(0.0f, folhaBase - FOLHA_TOPO) + 100; ++row) {
       linhaY[row] += delta;
       int i = ordem[row];
       if (i < 0 || !lista[i].display.length || width <= 0) continue;
@@ -4996,16 +5008,12 @@ static void montar(int automatica) {
     }
     if (delta) {
       for (; row < nOrdem; ++row) linhaY[row] += delta;
-      base += delta;
+      folhaAlturaBase += delta;
     }
-    alturaTotal = base;
-    return;
+    alturaTotal = folhaAlturaBase;
   }
-#endif
-  expansaoFoco = grupo == 1 ? expansaoLinha(foco, abreFoco, automatica) : 0;
-  expansaoAnt = linhaAnt != (grupo == 1 ? foco : -1) ? expansaoLinha(linhaAnt, abreAnt, automatica) : 0;
-  alturaTotal = base + expansaoFoco + expansaoAnt;
 }
+#endif
 
 static int filtrado(int linha) {
   return linha >= 0 && linha < nOrdem ? ordem[linha] : -1;
@@ -5893,8 +5901,10 @@ void stream_folha_atualizar(float dt, Uint32 agora) {
       grupo = -2; // Keep the expanded search control and its last value.
     }
   }
-  medirCabecalho();
-  if (aberta || anim > 0.001f) folhaGeometria();
+  if (aberta || anim > 0.001f) {
+    if (!folhaRelogio && !folhaIlha()) medirCabecalho();
+    folhaGeometria();
+  }
   anim=anim_mola(anim,aberta?1:0,dt,NV_MOLA_TELA);
   buscaAnim=anim_mola(buscaAnim,(aberta && (grupo==-2 || folhaBusca[0]))?1.0f:0.0f,dt,NV_MOLA_TELA);
   provChipOffset=anim_mola2(&provChipVel,provChipOffset,provChipTarget,dt,NV_MOLA2_SCROLL);
@@ -5975,6 +5985,9 @@ void stream_folha_atualizar(float dt, Uint32 agora) {
       focoFixoY = foco >= 0 && foco < nOrdem ? linhaTopo(foco) : 0;
     } }
   montar(automaticaDaFolha());
+#ifdef NV_ANDROID
+  refinarCartoes(automaticaDaFolha());
+#endif
   p3RestaurarAposResposta();
   // On failed recovery, focus the first AVAILABLE stream (not a rejected,
   // outside-cache or informational row). A user D-pad move takes precedence.
@@ -6028,7 +6041,14 @@ void stream_folha_atualizar(float dt, Uint32 agora) {
   if (toquerol_livre(&toqueFontes)) { rolagem = toquerol_clamp(rolagem, 0, fmaxf(0, alturaTotal - areaLista() + 40)); velRol = 0; }
   else
 #endif
-  rolagem=anim_mola2(&velRol,rolagem,alvoRolagem(),dt,NV_MOLA2_SCROLL);
+  {
+#ifdef NV_ANDROID
+    if ((folhaRelogio || folhaIlha()) && !canalFolha)
+      rolagem=nv_stream_scroll_step(&velRol,rolagem,alvoRolagem(),dt,NV_MOLA2_SCROLL);
+    else
+#endif
+      rolagem=anim_mola2(&velRol,rolagem,alvoRolagem(),dt,NV_MOLA2_SCROLL);
+  }
   memoriaFolhaGuardar();
 }
 int stream_folha_escolher_externo(int indice, unsigned geracao) {
@@ -7007,7 +7027,7 @@ static void corpoFolha(float x, float w, float anim, Uint32 agora, int ilha) {
   // Official Nuvio TV layout: one addon-chip row (Refresh, All, providers)
   // above a provider-grouped stream list. The title/detail page remains visible
   // beside the Dynamic Clock panel; no legacy title or filter toolbar.
-  medirCabecalho();
+  if (!folhaRelogio && !folhaIlha()) medirCabecalho();
   { float iw[14], sx, segY=FOLHA_ABAS_Y+oy;
     const float pin=(FOLHA_ABAS_H-FOLHA_ABA_H)*.5f;
     TxtLinha nome[14];
@@ -7075,6 +7095,7 @@ static void corpoFolha(float x, float w, float anim, Uint32 agora, int ilha) {
         for(int i=1;i<nProvedores;i++) {
           GfxRect r={tabX,segY+pin,iw[i]-6.0f,FOLHA_ABA_H};
           int sel=i==filtro;
+          if(r.x+r.w<=providerX || r.x>=providerX+providerW) { tabX+=iw[i]+6.0f; continue; }
           if(ptr) {
             float l=fmaxf(r.x,providerX), d=fminf(r.x+r.w,providerX+providerW);
             if(d>l) ponteiro_alvo(l,r.y,d-l,r.h,NULL,ponteiroFolhaFiltro,i,0);
@@ -7153,7 +7174,7 @@ static void corpoFolha(float x, float w, float anim, Uint32 agora, int ilha) {
   }
   for(int row=primeiraVisivel(rolagem-8);row<nf;row++) {
     float y=FOLHA_TOPO+linhaTopo(row)-rolagem, h=linhaAltura(row), cy, colW, txtW;
-    if (y>NV_TELA_H) break;
+    if (y>folhaBase) break;
     int i=ordem[row], sel=grupo==1&&foco==row;
     const Stream *s=i>=0?&lista[i]:NULL;
     uint64_t tira, logos;
@@ -7239,7 +7260,7 @@ static void corpoFolha(float x, float w, float anim, Uint32 agora, int ilha) {
       ty+=FOLHA_SELO_NUVIO_H+8.0f;
 #ifdef NV_ANDROID
       if (nativeText) {
-        if (drawCardText(i,t->cardWidth,t->cardHeight,tx,ty,anim)) continue;
+        if (drawCardText(i,t->cardWidth,t->cardHeight,&t->cardRetryAt,tx,ty,anim)) continue;
         textoAddonMedirCompleto(t,s);
       }
 #endif
@@ -7527,7 +7548,8 @@ static void corpoFolha(float x, float w, float anim, Uint32 agora, int ilha) {
     const char *message=state==ONDE_BUSCANDO ? "Buscando onde assistir…" : state==ONDE_FALHOU ? "Não foi possível consultar a disponibilidade." : "Nenhum serviço informado para esta região.";
     txt_desenhar_alpha(txt_linha_corta(TXT_PG_FIM,message,160,164,172,255,rw),lx,FOLHA_TOPO+36,anim);
   }
-  if (nf && filtro != -1 && dicaTorrentsAltura > 0) {
+  if (nf && filtro != -1 && dicaTorrentsAltura > 0 &&
+      FOLHA_TOPO+alturaTotal-dicaTorrentsAltura-rolagem < folhaBase) {
     char texto[1536];
     if (dicaTorrents(texto, sizeof texto))
       txt_bloco(TXT_PG_FIM,texto,110,110,108,tx,

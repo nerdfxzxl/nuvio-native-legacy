@@ -82,3 +82,5 @@ jobs:
 # Sweet Max unsupported-subtype follow-up: verify clear-base hardware trial and rejection diagnostics.
 
 # Exact follow-up: short-circuit mobile-only capability query on TV.
+
+# Selector-only scroll and cache regression; rerun complete Linux matrix.

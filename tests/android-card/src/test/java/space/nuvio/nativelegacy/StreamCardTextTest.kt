@@ -71,6 +71,27 @@ class StreamCardTextTest {
             pixelsExpected, actual)
     }
 
+    @Test fun evictedLayoutCanBeRequestedAgainWithOriginalPayload() {
+        val fields = """["Release","unused","🔥 2160p filename"]""".toByteArray()
+        fun awaitRow(index: Int, submit: ByteArray): StreamCardParagraphs {
+            var prepared = renderer.layoutAsync(123, index, 420, submit)
+            repeat(300) {
+                if (prepared != null) return requireNotNull(prepared)
+                Thread.sleep(10)
+                prepared = renderer.layoutAsync(123, index, 420, null)
+            }
+            return requireNotNull(prepared)
+        }
+        val original = awaitRow(0, fields)
+        val expected = pixels(original)
+        for (i in 1..30) awaitRow(i, """["Other $i",null,"other file"]""".toByteArray())
+        assertNull("evicted paragraph should not be returned as a stale future",
+            renderer.layoutAsync(123, 0, 420, null))
+        val restored = awaitRow(0, fields)
+        assertEquals(original.height, restored.height)
+        assertArrayEquals(expected, pixels(restored))
+    }
+
     @Test fun multilineAndTiledRenderingMatchAtBothWidths() {
         val filename = "Bullet.Train." + "2160p.".repeat(42) + "മലയാളം.mkv"
         fun payload(separator: String) = JSONArray(listOf("[TB⚡] ElfCache", "unused",

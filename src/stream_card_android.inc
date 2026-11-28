@@ -66,12 +66,12 @@ static int cardMeasure(int index, int width, int sendPayload) {
   return height;
 }
 
-static GLuint cardTile(int index, int width, int top, int rows) {
+static GLuint cardTile(int index, int width, int top, int rows, Uint32 *retryAt) {
   CardTile *slot = cardTiles;
   for (int i = 0; i < CARD_TILE_COUNT; ++i) {
     CardTile *t = &cardTiles[i];
     if (t->texture && t->generation == listaGeracao && t->index == index &&
-        t->width == width && t->top == top) {
+        t->width == width && t->top == top && t->rows == rows) {
       t->used = ++cardTileUse;
       return t->texture;
     }
@@ -81,6 +81,15 @@ static GLuint cardTile(int index, int width, int top, int rows) {
   JNIEnv *env = SDL_AndroidGetJNIEnv();
   if (!env || (*env)->PushLocalFrame(env, 16) < 0) { if (env) cardException(env); return 0; }
   jobject row = cardLayout(env, index, width, 0);
+  // Native height outlives the Java paragraph LRU. If a previously visited
+  // card has lost both its texture and its paragraph, re-request its payload.
+  // Pending/overflow retries stay bounded; no synchronous text shaping here.
+  Uint32 now = SDL_GetTicks();
+  if (!row && !cardException(env) &&
+      (!*retryAt || SDL_TICKS_PASSED(now, *retryAt))) {
+    *retryAt = now + 750u;
+    row = cardLayout(env, index, width, 1);
+  }
   GLuint result = 0;
   if (!cardException(env) && row) {
     jclass cls = (*env)->GetObjectClass(env, row);
@@ -119,14 +128,26 @@ static GLuint cardTile(int index, int width, int top, int rows) {
   return result;
 }
 
-static int drawCardText(int index, int width, int height, float x, float y, float alpha) {
+static int drawCardText(int index, int width, int height, Uint32 *retryAt,
+                        float x, float y, float alpha) {
   int first = (int)fmaxf(0, FOLHA_TOPO - 8.0f - y) / CARD_TILE_H * CARD_TILE_H;
+  GLuint ready[CARD_TILE_COUNT];
+  int count = 0, complete = 1;
+  // Collect every visible tile before drawing. Never draw half a card and
+  // then redraw the whole card with the fallback (duplicate text/overdraw).
   for (int top = first; top < height && y + top < folhaBase; top += CARD_TILE_H) {
+    if (count == CARD_TILE_COUNT) return 0;
     int rows = height - top < CARD_TILE_H ? height - top : CARD_TILE_H;
-    GLuint texture = cardTile(index, width, top, rows);
-    if (!texture) return 0;
+    ready[count] = cardTile(index, width, top, rows, retryAt);
+    if (!ready[count]) complete = 0;
+    count++;
+  }
+  if (!complete) return 0;
+  for (int i = 0; i < count; ++i) {
+    int top = first + i * CARD_TILE_H;
+    int rows = height - top < CARD_TILE_H ? height - top : CARD_TILE_H;
     gfx_tex_aspect_atual = 0;
-    gfx_rect((GfxRect){x, y + top, width, rows}, texture, GFX_TEXTO, 0, 0, 0, 0, 1, 1, 1, alpha);
+    gfx_rect((GfxRect){x, y + top, width, rows}, ready[i], GFX_TEXTO, 0, 0, 0, 0, 1, 1, 1, alpha);
   }
   return 1;
 }
