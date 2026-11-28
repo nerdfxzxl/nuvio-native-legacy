@@ -2516,6 +2516,12 @@ static void dvTelaAtualizar(float dt, Uint32 agora) {
 // plano de hardware, e furar a superficie cedo trocava a arte por um retangulo
 // PRETO enquanto o fluxo abria — que era o "clica em reproduzir e fica preto".
 #ifdef NV_ANDROID
+void player_p6_armar_faixas_resume(unsigned long long audio, int subtitleMode,
+                                  unsigned long long subtitle, const char *external) {
+  if (!aberto || comVideo || ehCanal()) return;
+  p6RestoreAudio=audio;
+  faixas_p6_armar_restauro(subtitleMode,subtitle,external);
+}
 void player_p6_armar_restauro(double segundos, long long duration, unsigned long long audio,
                              int subtitleMode, unsigned long long subtitle, const char *external) {
   if (!aberto || comVideo || ehCanal() || !isfinite(segundos) || segundos < 0.0) return;
@@ -2942,6 +2948,9 @@ fim:
 // passou por aqui. So a sessao que TOCOU guarda: pronto, sem erro, duracao de
 // titulo (o clipe de aviso de 30 s do debrid nao conta) e sem ter terminado.
 // Falhou ou terminou: apaga, para o Retomar nao reabrir o que nao serve.
+#ifdef NV_ANDROID
+static int p6_checkpoint_identity(int resume);
+#endif
 static void lembrarFonte(void) {
   const Stream *s = stream_item(stream_atual());
   const char *url = video_url_atual();
@@ -2952,6 +2961,9 @@ static void lembrarFonte(void) {
     fontevolta_esquecer_alvo(alvo, sessao_usuario(), perfis_ativo(), "sessao falhou"); return;
   }
   if (!video_pronto() || duracaoSeg < 120.0f) return;
+#ifdef NV_ANDROID
+  p6_checkpoint_identity(1);
+#endif
   if (p6WatchState > 0 && !p6WatchOverride(item()) && posSeg >= duracaoSeg - 1.0) {
     fontevolta_esquecer_alvo(alvo, sessao_usuario(), perfis_ativo(), "titulo concluido"); return;
   }
@@ -3345,10 +3357,10 @@ void player_descartar_retido(void) {
 #ifdef NV_ANDROID
 static unsigned p6CheckpointGen;
 static uint64_t p6CheckpointProfile;
-static int p6_checkpoint_restauro(void) {
-  const char *task = getenv("NUVIO_P6_TASK");
+static int p6_checkpoint_identity(int resume) {
+  const char *task = resume ? P6_RESUME_TASK : getenv("NUVIO_P6_TASK");
   const CatItem *c = item();
-  if (!p6_restore_token(task) || !aberto || saindo || pediuSair || !comVideo ||
+  if (!p6_restore_token(task) || !aberto || (!resume && (saindo || pediuSair)) || !comVideo ||
       !fontePrincipal() || ehCanal() || !identidadeValida() || !c ||
       !duracaoReal || esperandoFonte || erroFonte || video_falhou() || !video_pronto() ||
       video_terminou() || partesAtiva() || !video_quadro_visto()) return 0;
@@ -3394,8 +3406,24 @@ static int p6_checkpoint_restauro(void) {
     if (t.subtitleTrack) t.subtitleMode = 2;
   }
   char ticket[P6_RESTORE_TEXT_CAP];
+  if (resume) {
+    char filename[64];
+    p6_resume_filename(filename,sizeof filename,t.account,t.profile,t.target);
+    // Preserve a proven stable addon/file identity when a saved direct link is reopened outside the list.
+    char *old=dados_ler(filename);
+    P6RestoreTicket prior;
+    if (t.file<0 && old && p6_restore_decode(old,&prior) &&
+        p6_restore_owner(&prior,P6_RESUME_TASK,t.account,t.profile) &&
+        !strcmp(t.target,prior.target) && !strcmp(t.fingerprint,prior.fingerprint) && prior.file>=0) {
+      memcpy(t.addon,prior.addon,sizeof t.addon); memcpy(t.hash,prior.hash,sizeof t.hash);
+      t.file=prior.file; t.bytes=prior.bytes;
+    }
+    free(old);
+    return p6_restore_encode(&t,ticket,sizeof ticket) && dados_gravar(filename,ticket);
+  }
   return p6_restore_encode(&t, ticket, sizeof ticket) && dados_gravar(P6_RESTORE_FILE, ticket);
 }
+static int p6_checkpoint_restauro(void) { return p6_checkpoint_identity(0); }
 #endif
 void player_ciclo_evento(Uint32 tipo) {
   const int fundo = tipo == SDL_APP_WILLENTERBACKGROUND || tipo == SDL_APP_DIDENTERBACKGROUND;

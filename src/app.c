@@ -1354,6 +1354,30 @@ static int retentarCanal(void) {
   return 0;
 }
 
+#ifdef NV_ANDROID
+static int resumeTicket(P6RestoreTicket *t) {
+  char target[NV_STREAM_ID_CAP],filename[64];
+  alvoPlayer(target,sizeof target);
+  const char *account=sessao_usuario();
+  if (!target[0] || !account || !*account) return 0;
+  p6_resume_filename(filename,sizeof filename,account,perfis_ativo(),target);
+  char *saved=dados_ler(filename);
+  int ok=saved && p6_restore_decode(saved,t) &&
+      p6_restore_owner(t,P6_RESUME_TASK,account,perfis_ativo()) && !strcmp(t->target,target);
+  free(saved); return ok;
+}
+static int resumeMatch(const P6RestoreTicket *t,const Stream *s) {
+  char digest[65]="";
+  if (!s) return 0;
+  const char *hash=s->infoHash[0]?s->infoHash:s->hashTorrent;
+  if (p6_restore_source(t,NULL,s->addonChave,hash,s->fileIdx,s->tamanhoBytes)) return 1;
+  return s->url[0] && video_p6_fingerprint(s->url,s->cabecalhos,digest,sizeof digest) &&
+      p6_restore_source(t,digest,NULL,NULL,-1,0);
+}
+static void resumeTracks(const P6RestoreTicket *t) {
+  player_p6_armar_faixas_resume(t->audioTrack,t->subtitleMode,t->subtitleTrack,t->external);
+}
+#endif
 static int tocarFonteGuardada(void) {
   Stream s;
   char alvo[NV_STREAM_ID_CAP];
@@ -1376,6 +1400,15 @@ static int tocarFonteGuardada(void) {
     fontevolta_esquecer_alvo(alvo, sessao_usuario(), perfis_ativo(), "fonte falhou antes");
     return 0;
   }
+#ifdef NV_ANDROID
+  if (retomarDiretoPendente) {
+    P6RestoreTicket t;
+    if (resumeTicket(&t)) {
+      if (!resumeMatch(&t,&s)) return 0;
+      resumeTracks(&t);
+    }
+  }
+#endif
   marco("abrir: fonte guardada, sem busca");
   stream_definir_atual(-1);
   voltaFonte = s;
@@ -6351,6 +6384,8 @@ void app_atualizar(float dt, Uint32 agora) {
         // sem verificar entregava o video de aviso do debrid — que toca normal e
         // por isso passa por sucesso.
         const CatItem *ci = cat_item(detail_indice());
+        if (cwTocarE>0 && ci && (cwTocarT!=ci->temporada || cwTocarE!=ci->episodio ||
+            !cat_retomavel(ci,ajustes_cw_concluido()))) retomarDiretoPendente=0;
         limparFonteVOD();
         char alvoPreparo[NV_STREAM_ID_CAP], basePreparo[64];
         int idxPreparado = -1;
@@ -6508,7 +6543,7 @@ void app_atualizar(float dt, Uint32 agora) {
   // No autoplay/recovery decision may consume them as playable sources.
   if (aguardandoFonte == 1 && !stream_recarregar_retendo() &&
       (addons_estado() != ADD_BUSCANDO ||
-       ((player_id_canal()[0] || !fontefalha_ativa()) && autoParcialPronto()))) {
+       (!retomarDiretoPendente && (player_id_canal()[0] || !fontefalha_ativa()) && autoParcialPronto()))) {
     int retomarDireto = retomarDiretoPendente;
     retomarDiretoPendente = 0;
     unsigned geracao = novaGeracaoFonte();
@@ -6599,6 +6634,30 @@ void app_atualizar(float dt, Uint32 agora) {
       //
       // #667: a remembered source sets the sheet's focus, never consent to play.
       // A late addon response must not resurrect the selector after the player was closed.
+#ifdef NV_ANDROID
+      int resumedExact=0;
+      if (retomarDireto && player_aberto() && !player_quer_sair()) {
+        P6RestoreTicket t;
+        if (resumeTicket(&t) && stream_lista_do_alvo(t.target)) {
+          int match=-1;
+          for (int i=0;i<stream_n();++i) {
+            const Stream *s=stream_item(i);
+            if (!s || !stream_filtro_permite(s) || !resumeMatch(&t,s)) continue;
+            if (match>=0) { match=-1; break; }
+            match=i;
+          }
+          const Stream *s=match>=0?stream_item(match):NULL;
+          if (s && s->url[0] && fontesmortas_idade(s)<0) {
+            stream_definir_atual(match);
+            resumeTracks(&t);
+            abrirFonteManualDireta(s);
+            resumedExact=1;
+          }
+        }
+      }
+      if (resumedExact) { /* Exact identity restored; no alternative ranking. */ }
+      else
+#endif
       if (player_aberto() && !player_quer_sair() &&
           (retomarDireto || (ajustes_fonte_manual() && !nextAutorizado()) || pedirFolhaNoPlay) && stream_n() > 0) {
         pedirFolhaNoPlay = 0;

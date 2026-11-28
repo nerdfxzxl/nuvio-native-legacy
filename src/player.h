@@ -178,6 +178,8 @@ void player_definir_fonte(const char *url);
 // Zero e um ponto valido (a pessoa voltou ao inicio), nao retomada ausente.
 void player_definir_retomada_fonte(double segundos);
 #ifdef NV_ANDROID
+void player_p6_armar_faixas_resume(unsigned long long audio, int subtitleMode,
+                                  unsigned long long subtitle, const char *external);
 void player_p6_armar_restauro(double segundos, long long duration, unsigned long long audio,
                              int subtitleMode, unsigned long long subtitle, const char *external);
 #endif

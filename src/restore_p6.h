@@ -110,4 +110,13 @@ static inline int p6_restore_source(const P6RestoreTicket *r, const char *digest
       !strcmp(r->addon, addon) && !strcasecmp(r->hash, hash) &&
       (!r->bytes || !bytes || r->bytes == bytes);
 }
+// App-private, per-account/profile/target identity; no raw URL.
+#define P6_RESUME_TASK "00000000-0000-0000-0000-000000000001"
+static inline void p6_resume_filename(char *out, size_t cap, const char *account, int profile, const char *target) {
+  uint64_t v=UINT64_C(14695981039346656037);
+  for (const unsigned char *p=(const unsigned char *)account; *p; ++p) {v^=*p;v*=UINT64_C(1099511628211);}
+  v^=0xff;v*=UINT64_C(1099511628211);
+  for (const unsigned char *p=(const unsigned char *)target; *p; ++p) {v^=*p;v*=UINT64_C(1099511628211);}
+  snprintf(out,cap,"resume-%d-%016llx.txt",profile,(unsigned long long)v);
+}
 #endif
