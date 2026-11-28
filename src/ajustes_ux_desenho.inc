@@ -1396,6 +1396,34 @@ static void ajDesenharLinha(int item, float y, float f, float a) {
 // A3: margem 20 e 8 embaixo (era 26 e 12); o nome continua 26/800 a 100%.
 #define AJ2_GRUPO_H (20.0f + 31.2f + 8.0f + 2.0f + 2.0f)
 // 2.0.2: sem a contagem a direita (so a nota de um ROTS, "para quem faz o app").
+#ifdef NV_ANDROID
+static int ajRamSetting(int op) {
+  return ajEditandoLinha(op)?uxPendente:valor[op];
+}
+static void ajRamEstimate(int low,float x,float y,float w,float h,float a,int right) {
+  int64_t mem[NV_UI_METRIC_N]; int requested=0,limit=0;
+  int preset=ajRamSetting(low?AJ_BUF_LOW_RAM:AJ_BUFFER);
+  int mb=preset>=1&&preset<=3?32<<preset:0;
+  int status=nv_ui_memory(mem)?nv_ui_buffer_estimate(mem[4],mem[5],mb,
+    ajRamSetting(AJ_HTTP_PARALLEL)==0,ajRamSetting(AJ_HTTP_COUNT),
+    ajRamSetting(AJ_HTTP_CHUNK),&requested,&limit):0;
+  char note[112];
+  if(status) snprintf(note,sizeof note,"Estimated RAM: %s%d / %d MB",mb?"":"≤ ",requested,limit);
+  else snprintf(note,sizeof note,"Estimated RAM: unavailable");
+  int cr=status<0?244:status>0?78:170,cg=status<0?67:status>0?211:170,cb=status<0?54:status>0?124:170;
+  TxtLinha usage=txt_linha_corta(TXT_G18M,note,cr,cg,cb,255,fmaxf(1,w-20));
+  float bw=right?fminf(w,usage.w+20):w;
+  GfxRect badge={right?x+w-bw:x,y,bw,h};
+  gfx_cor(badge,16.0f/h,.09f,.09f,.09f,a);
+  gfx_anel(badge,16.0f/h,1,cr/255.0f,cg/255.0f,cb/255.0f,.35f*a);
+  txt_desenhar_alpha(usage,badge.x+10,y+(h-usage.h)*.5f,a);
+}
+static int ajRamProfileOp(int op) {
+  if(op==AJ_BUFFER||(op>=AJ_BUF_ALL_MIN&&op<=AJ_BUF_ALL_TIME)) return 0;
+  if(op==AJ_BUF_THRESHOLD||(op>=AJ_BUF_LOW_MIN&&op<=AJ_BUF_LOW_RAM)) return 1;
+  return -1;
+}
+#endif
 static void ajDesenharGrupo(int item, float y, float a) {
   GfxRect fr = aj2ListaR();
   float x = fr.x + 18.0f, w = fr.w - 36.0f, yc = y + 20.0f + 15.6f;
@@ -1411,29 +1439,11 @@ static void ajDesenharGrupo(int item, float y, float a) {
     } else t = ajTxt(TXT_V3_GRP, TELA[item].titulo); }
   txt_desenhar_alpha(t, x + 22, yc - t.h * 0.5f, a);
 #ifdef NV_ANDROID
-  // Official-style coloured estimate in the existing nonfocusable profile heading.
-  // It follows saved settings live and never changes the player's actual caps.
   if (!strcmp(TELA[item].titulo,"RAM buffer · All Streams") ||
       !strcmp(TELA[item].titulo,"RAM buffer · Below threshold")) {
     int low=!strcmp(TELA[item].titulo,"RAM buffer · Below threshold");
-    int64_t mem[NV_UI_METRIC_N];
-    int requested=0,limit=0;
-    int preset=valor[low?AJ_BUF_LOW_RAM:AJ_BUFFER];
-    int mb=preset>=1&&preset<=3?32<<preset:0;
-    int status=nv_ui_memory(mem)?nv_ui_buffer_estimate(mem[4],mem[5],mb,
-       valor[AJ_HTTP_PARALLEL]==0,valor[AJ_HTTP_COUNT],valor[AJ_HTTP_CHUNK],&requested,&limit):0;
-    char note[96];
-    if(status) snprintf(note,sizeof note,"Estimated RAM: %s%d / %d MB",mb?"":"≤ ",requested,limit);
-    else snprintf(note,sizeof note,"Estimated RAM: unavailable");
-    int cr=status<0?244:status>0?78:170,cg=status<0?67:status>0?211:170,cb=status<0?54:status>0?124:170;
     float maxW=w-66-t.w;
-    if(maxW>60) {
-      TxtLinha usage=txt_linha_corta(TXT_G18M,note,cr,cg,cb,255,maxW-20);
-      GfxRect badge={x+w-22-usage.w-20,yc-17,usage.w+20,34};
-      gfx_cor(badge,16.0f/badge.h,.09f,.09f,.09f,a);
-      gfx_anel(badge,16.0f/badge.h,1,cr/255.0f,cg/255.0f,cb/255.0f,.35f*a);
-      txt_desenhar_alpha(usage,badge.x+10,yc-usage.h*.5f,a);
-    }
+    if(maxW>60) ajRamEstimate(low,x+w-22-maxW,yc-17,maxW,34,a,1);
   }
 #endif
   if (TELA[item].sub && TELA[item].sub[0]) {

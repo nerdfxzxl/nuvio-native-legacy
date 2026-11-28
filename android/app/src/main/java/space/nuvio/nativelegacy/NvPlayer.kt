@@ -2475,7 +2475,7 @@ object NvPlayer {
         runCatching {
             val fmt = p.videoFormat
             val cfg = resources.videoConfig?.takeIf { fmt != null && it.matches(fmt, videoDecoderName) }
-            val mime = cfg?.info?.mimeType ?: fmt?.sampleMimeType.orEmpty()
+            val mime = (cfg?.info?.mimeType ?: fmt?.sampleMimeType.orEmpty()).removePrefix("video/")
             val fps = fmt?.frameRate?.takeIf { it > 0 && it.isFinite() }
                 ?.let { String.format(java.util.Locale.US, "%.3f fps", it) }.orEmpty()
             val dv = fmt?.codecs?.let { Regex("""(?:dvhe|dvh1|dvav|dva1|dav1)\.(\d+)""", RegexOption.IGNORE_CASE).find(it) }
@@ -2493,11 +2493,11 @@ object NvPlayer {
             val displayText = mode?.let {
                 "${it.physicalWidth}×${it.physicalHeight} · " +
                     String.format(java.util.Locale.US, "%.2f Hz", it.refreshRate) +
-                    " · ${display.supportedModes.size} modes"
+                    " · ${display?.supportedModes?.size ?: 0} modes"
             }.orEmpty()
             val output = resources.routeObserver.output
             val track = output?.track
-            val routed = track?.routedDevice
+            val routed = runCatching { track?.routedDevice }.getOrNull()
             if (routed != null && routed.id != uiLastRouteId) {
                 if (uiLastRouteId >= 0) uiRouteChanges++
                 uiLastRouteId = routed.id
@@ -2518,8 +2518,9 @@ object NvPlayer {
             val audioHz = track?.sampleRate?.takeIf { it > 0 }?.let {
                 String.format(java.util.Locale.US, "%.1f kHz", it / 1000.0)
             }.orEmpty()
-            val underruns = if (track != null && android.os.Build.VERSION.SDK_INT >= 24)
-                "$uiUnderruns · native ${track.underrunCount}" else "$uiUnderruns"
+            val nativeUnderruns = if (track != null && android.os.Build.VERSION.SDK_INT >= 24)
+                runCatching { track.underrunCount }.getOrNull() else null
+            val underruns = if (nativeUnderruns != null) "$uiUnderruns · native $nativeUnderruns" else "$uiUnderruns"
             val skipped = p.videoDecoderCounters?.skippedOutputBufferCount?.toString().orEmpty()
             val bitrate = listOf(fmt?.bitrate ?: -1, af?.bitrate ?: -1).filter { it > 0 }.sumOf { it.toLong() }
             val config = httpSettings

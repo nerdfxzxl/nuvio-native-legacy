@@ -78,8 +78,9 @@ static inline int nv_ui_buffer_estimate(int64_t cap, int64_t parallel, int prese
   int64_t overhead=enabled?chunk*(count+1):0;
   int64_t requested=preset>0?(int64_t)preset*1048576:cap;
   *requestedMb=(int)((requested+overhead+1048575)/1048576);
-  *limitMb=(int)((cap+parallel)/1048576);
+  int64_t totalLimit=cap+(enabled?parallel:0);
+  *limitMb=(int)((totalLimit+1048575)/1048576);
   // Flag the requested buffer against its own cap as well as the total.
-  return requested>cap || requested+overhead>cap+parallel ? -1 : 1;
+  return requested>cap || requested+overhead>totalLimit ? -1 : 1;
 }
 #endif

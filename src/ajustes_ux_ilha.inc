@@ -129,6 +129,13 @@ static void ajDesenharInspetor(void) {
   int op = categoria ? -1 : focoOp;
   int rtl = ajustes_idioma() == IDIOMA_AR;
   if (!aj2TemInsp()) return;
+#ifdef NV_ANDROID
+  int ramProfile=ajRamProfileOp(op);
+  if(ramProfile>=0) {
+    ajRamEstimate(ramProfile,x,y,w,42,1,0);
+    y+=54.0f;
+  }
+#endif
   if (ajRetrato()) {
     float pw = fminf(w, 560.0f), px = x + (w - pw) * 0.5f;
     int salvo = op >= 0 ? valor[op] : 0, ed = op >= 0 && ajEditandoLinha(op);

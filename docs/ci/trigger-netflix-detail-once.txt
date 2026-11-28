@@ -63,3 +63,6 @@ APK #140 — owner-authorized stock Sweet Max compatibility and rejection diagno
 
 
 APK #141 — owner-authorized stream-selector-only performance correction. Exact tested production revision 167149361020745a20e5f5e7c4b9459327b9df8c; P7 Android #16 and P7 Linux #21 passed. Normal two-ABI debug build with full mandatory preflight (including Android graphics/cache eviction tests); no release or merge. Preserve APK #140 playback baseline. Physical smoothness acceptance pending.
+
+
+APK #142 — owner-authorized seekbar, compact/detailed playback info, buffer settings memory preview, title and parental-guide UI polish. Protected APK #141 75b509429da943c658aa2adb2ab0a506b583ef90; initial UI implementation c79386f30b9d9fc486a751c4377cad466a3c9fbe. Full mandatory two-ABI debug build and preflight with new player info and selector tests; no release/merge. Physical UI/TV acceptance pending.

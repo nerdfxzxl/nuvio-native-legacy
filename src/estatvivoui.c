@@ -344,6 +344,7 @@ void estatvivo_player_toggle(void) {
     playerInfoHud = 0;
     playerInfoScroll = 0;
   }
+  if (!playerInfoAberto) playerInfoFocused=0;
   playerInfoSalvar();
 }
 void estatvivo_player_expandir(void) {
@@ -668,7 +669,7 @@ static void montarTela(int taxaKbps) {
   {
     int dw=0, dh=0;
     gfx_tamanho_tela(&dw, &dh);
-    if (dw > 0 && dh > 0) snprintf(tela.display, sizeof tela.display, "%d × %d", dw, dh);
+    if (dw > 0 && dh > 0) snprintf(tela.display, sizeof tela.display, "%d × %d (UI)", dw, dh);
   }
   if (w > 0 && h > 0) snprintf(tela.resolucao, sizeof tela.resolucao, "%d × %d", w, h);
   // Never substitute filename hints for decoded playback properties.
@@ -1643,7 +1644,12 @@ static void desenharPlayerHud(float a) {
   HUD_ADD("memory",b,memSev);
   if(est.bufSeg>=0) snprintf(b,sizeof b,"%.1fs   avg %.1fs",est.bufSeg,sistema.bufferMedia>=0?sistema.bufferMedia:est.bufSeg); else snprintf(b,sizeof b,"—");
   HUD_ADD("buffer",b,est.bufSeg>=0&&est.bufSeg<5?1:0);
-  if(tela.taxa[0]&&tela.size[0]) snprintf(b,sizeof b,"%s file   %s",tela.taxa,tela.size);
+  if(tela.taxa[0]&&tela.size[0]) {
+    double sizeGb;
+    if (strstr(tela.size," GB") && sscanf(tela.size,"%lf",&sizeGb)==1)
+      snprintf(b,sizeof b,"%s file   %.1f GB",tela.taxa,sizeGb);
+    else snprintf(b,sizeof b,"%s file   %s",tela.taxa,tela.size);
+  }
   else snprintf(b,sizeof b,"%s",tela.trackBitrate[0]?tela.trackBitrate:"—");
   HUD_ADD("bitrate",b,0);
   if(est.kbps>=0) {

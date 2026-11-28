@@ -4834,6 +4834,7 @@ void player_evento(const SDL_Event *e) {
   // SDLK_PAUSE) e o C trata como o que e. SDLK_AUDIOPLAY/STOP cobrem o SDL que
   // mapeia teclas de midia (Mac; LG, se o firmware entregar — nao verificado).
   if (k == SDLK_PAUSE || k == SDLK_AUDIOPLAY) {
+    infoPanelFoco=0; estatvivo_player_focar(0);
     alternarTocando(); botao = PLR_PLAY; barraFoco = 0; skipFoco = 0;
     acordar(); return;
   }

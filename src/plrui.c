@@ -308,13 +308,12 @@ void plrui_barra(float x, float y, float w, float frac, float buf, int foco,
   if (w*frac>0.5f) {
     if (buf>0.001f && buf<frac-0.002f) {
       float readyW=w*buf;
-      gfx_cor((GfxRect){x,yy,readyW,h},readyW<h?0.0f:0.5f,
-              ar,ag,ab,a);
       // The pending seek prefix is a separate softer rail, with a rounded
       // endpoint and an overlap beneath the true played region.
       float pendingW=w*(frac-buf), overlap=fminf(readyW,h*.5f);
       gfx_cor((GfxRect){x+readyW-overlap,yy,pendingW+overlap,h},
               fminf(.5f,(pendingW+overlap)/(2*h)), ar,ag,ab,a*0.42f);
+      gfx_cor((GfxRect){x,yy,readyW,h},fminf(.5f,readyW/(2*h)),ar,ag,ab,a);
     } else {
       float fw=w*frac;
       gfx_cor((GfxRect){x,yy,fw,h},fw<h?0.0f:0.5f,ar,ag,ab,a);
