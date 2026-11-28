@@ -60,3 +60,6 @@ APK #139 — owner-authorized isolated mobile compatibility correction, protecte
 
 
 APK #140 — owner-authorized stock Sweet Max compatibility and rejection diagnostics follow-up. Exact tested production revision 51c2d710813a0240a92b8624f28578c2f64a13d4; P7 Android #15, P7 Linux #20, P4 #18, P6 #37 all passed. Normal cached two-ABI debug workflow with full mandatory preflight; no release or merge. Keep #138 TV rollback and #139 baseline. Physical acceptance pending.
+
+
+APK #141 — owner-authorized stream-selector-only performance correction. Exact tested production revision 167149361020745a20e5f5e7c4b9459327b9df8c; P7 Android #16 and P7 Linux #21 passed. Normal two-ABI debug build with full mandatory preflight (including Android graphics/cache eviction tests); no release or merge. Preserve APK #140 playback baseline. Physical smoothness acceptance pending.
