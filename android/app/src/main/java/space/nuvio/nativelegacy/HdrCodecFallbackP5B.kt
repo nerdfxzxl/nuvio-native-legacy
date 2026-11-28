@@ -68,9 +68,9 @@ internal object HdrCodecFallbackP5B {
     // when stock firmware reports that the requested size/rate exceeds caps.
     private fun canTryBase(info: MediaCodecInfo, base: Format, mobile: Boolean): Boolean =
         info.mimeType == MimeTypes.VIDEO_H265 &&
-            (info.isFormatSupported(base) || HdrPolicyP5.canProbeVerifiedBase(
-                mobile, info.hardwareAccelerated, info.softwareOnly, info.secure,
-                info.isFormatFunctionallySupported(base)))
+            (info.isFormatSupported(base) || (mobile && HdrPolicyP5.canProbeVerifiedBase(
+                true, info.hardwareAccelerated, info.softwareOnly, info.secure,
+                info.isFormatFunctionallySupported(base))))
 
     // Stock Media3 may reuse a codec even when Dolby profile/CSD changes.
     // Require a fresh capability check for changed DV or software-decoded

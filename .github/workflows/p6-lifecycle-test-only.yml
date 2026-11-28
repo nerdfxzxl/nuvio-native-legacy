@@ -233,3 +233,5 @@ jobs:
 # P8 final acceptance correction: single selected compact top-left badge row.
 
 # Sweet Max unsupported-subtype follow-up: verify clear-base hardware trial and rejection diagnostics.
+
+# Exact follow-up: short-circuit mobile-only capability query on TV.

@@ -133,3 +133,5 @@ jobs:
 # APK 138 protected TV baseline: isolated mobile decoder/startup regression verification.
 
 # Sweet Max unsupported-subtype follow-up: verify clear-base hardware trial and rejection diagnostics.
+
+# Exact follow-up: short-circuit mobile-only capability query on TV.
