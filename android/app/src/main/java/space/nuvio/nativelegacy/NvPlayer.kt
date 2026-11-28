@@ -1948,6 +1948,7 @@ object NvPlayer {
                         { displayHdr(act, android.view.Display.HdrCapabilities.HDR_TYPE_HDR10) },
                         { displayHdr(act, android.view.Display.HdrCapabilities.HDR_TYPE_DOLBY_VISION) },
                         { displayHdr(act, android.view.Display.HdrCapabilities.HDR_TYPE_HLG) },
+                        r.phonePcm,
                         { r.runtimeVideoRecovery },
                         { config -> r.videoConfig = config },
                         { detail -> principal.post {
@@ -3378,6 +3379,30 @@ object NvPlayer {
                         }) {
                         relatarAudio(minha, "P8 video no selectable renderer support=" +
                             videoGroups.take(4).joinToString(",") { it.getTrackSupport(0).toString() })
+                        if (recursosAtuais?.phonePcm == true) {
+                            // Diagnostic only: never log a stream URL, header,
+                            // filename, title, track id or initialization bytes.
+                            fun safeCodec(value: String?) = value?.take(96)
+                                ?.replace(Regex("[^A-Za-z0-9./_, +\\-]"), "?") ?: "unknown"
+                            for (group in videoGroups.take(4)) {
+                                for (i in 0 until minOf(group.length, 4)) {
+                                    val f = group.getTrackFormat(i)
+                                    val base = HdrCodecFallbackP5B.baseFormat(f)
+                                    val mime = f.sampleMimeType
+                                    fun inventory(type: String?): String = if (type == null) "none" else try {
+                                        MediaCodecSelector.DEFAULT.getDecoderInfos(type, f.drmInitData != null, false)
+                                            .take(8).joinToString(",") { safeCodec(it.name) }.ifEmpty { "none" }
+                                    } catch (_: Exception) { "query_failed" }
+                                    relatarAudio(minha, "mobile rejected video mime=${safeCodec(mime)} " +
+                                        "codecs=${safeCodec(f.codecs)} size=${f.width}x${f.height} fps=${f.frameRate} " +
+                                        "support=${group.getTrackSupport(i)} drm=${f.drmInitData != null} " +
+                                        "csdSizes=${f.initializationData.take(8).map { it.size }} " +
+                                        "transfer=${f.colorInfo?.colorTransfer} baseVerified=${base != null} " +
+                                        "nativeCandidates=${inventory(mime)} " +
+                                        "hevcCandidates=${if (mime == MimeTypes.VIDEO_DOLBY_VISION) inventory(MimeTypes.VIDEO_H265) else "n/a"}")
+                                }
+                            }
+                        }
                         falhaVideo(minha, HdrPolicyP5.FAIL_FORMAT, 0, geracaoDaAbertura)
                         return
                     }

@@ -45,6 +45,13 @@ internal object HdrPolicyP5 {
         return if (accelerated.any(supports)) accelerated else stock
     }
 
+    // A verified clear base may be attempted by a real hardware decoder
+    // that supports its codec/profile but under-reports size or rate. Do not
+    // advertise full support, bypass DRM, or broaden TV/software eligibility.
+    fun canProbeVerifiedBase(mobile: Boolean, hardware: Boolean, software: Boolean,
+                             secure: Boolean, functional: Boolean): Boolean =
+        mobile && hardware && !software && !secure && functional
+
     fun compatibleDolby(displayDv: Boolean, profileSupported: Boolean, sizeSupported: Boolean): Boolean =
         displayDv && profileSupported && sizeSupported
 

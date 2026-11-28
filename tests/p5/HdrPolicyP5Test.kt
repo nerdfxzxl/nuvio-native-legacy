@@ -51,5 +51,11 @@ fun main() {
     check(candidates(false, setOf(hw1)) == listOf(hw2, hw1))
     check(candidates(false, setOf(sw1)) == stock)
     check(p.ordinaryDecoders(emptyList<Decoder>(), true, { it.hardware }, { it.software }, { true }).isEmpty())
+    check(p.canProbeVerifiedBase(true, true, false, false, true))
+    check(!p.canProbeVerifiedBase(false, true, false, false, true))
+    check(!p.canProbeVerifiedBase(true, false, true, false, true))
+    check(!p.canProbeVerifiedBase(true, true, true, false, true))
+    check(!p.canProbeVerifiedBase(true, true, false, true, true))
+    check(!p.canProbeVerifiedBase(true, true, false, false, false))
     println("P5 Q37/Q39 HDR, video failure and decoder order, mobile fallback: PASS")
 }

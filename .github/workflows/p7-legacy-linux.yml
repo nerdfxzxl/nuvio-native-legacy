@@ -78,3 +78,5 @@ jobs:
 # P8 Phase B final fixture and focus-clip correction, exact revision.
 
 # APK 138 protected TV baseline: isolated mobile decoder/startup regression verification.
+
+# Sweet Max unsupported-subtype follow-up: verify clear-base hardware trial and rejection diagnostics.

@@ -34,3 +34,13 @@ with tempfile.TemporaryDirectory() as d:
     subprocess.run(["cc", "-std=c11", "-Wall", "-Werror", "-I", str(root/"src"), "-x", "c", "-", "-o", str(exe)], input=code, text=True, check=True)
     subprocess.run([str(exe)], check=True)
 print("Mobile progress deadline and TV/phone decoder dispatch PASS")
+
+# Rejecting unsupported tracks must expose safe format metadata, not URLs.
+assert "mobile rejected video mime=" in player
+assert "baseVerified=${base != null}" in player
+assert "nativeCandidates=" in player and "hevcCandidates=" in player
+assert "baseSupport == C.FORMAT_EXCEEDS_CAPABILITIES" in renderer
+assert "RendererCapabilities.create(C.FORMAT_EXCEEDS_CAPABILITIES)" in renderer
+assert "canTryBase(it, base, mobile)" in renderer
+assert "canTryBase(info, baseFormat, mobile)" in renderer
+print("Verified-base mobile capability and rejection diagnostics contracts PASS")

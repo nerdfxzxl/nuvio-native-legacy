@@ -63,6 +63,15 @@ internal object HdrCodecFallbackP5B {
             .setCodecs(codecs).setColorInfo(baseColor).build()
     }
 
+    // Actual parsed base is mandatory at all call sites. A phone can try a
+    // hardware codec with positive functional (MIME/profile) support even
+    // when stock firmware reports that the requested size/rate exceeds caps.
+    private fun canTryBase(info: MediaCodecInfo, base: Format, mobile: Boolean): Boolean =
+        info.mimeType == MimeTypes.VIDEO_H265 &&
+            (info.isFormatSupported(base) || HdrPolicyP5.canProbeVerifiedBase(
+                mobile, info.hardwareAccelerated, info.softwareOnly, info.secure,
+                info.isFormatFunctionallySupported(base)))
+
     // Stock Media3 may reuse a codec even when Dolby profile/CSD changes.
     // Require a fresh capability check for changed DV or software-decoded
     // formats; ordinary hardware SDR/HDR adaptation stays stock.
@@ -99,8 +108,15 @@ internal object HdrCodecFallbackP5B {
             val base = baseFormat(format) ?: return native
             val support = super.supportsFormat(selector, base)
             // This custom base adapter does not negotiate tunneled or seamless adaptive playback.
-            return if (RendererCapabilities.getFormatSupport(support) == C.FORMAT_HANDLED)
-                RendererCapabilities.create(C.FORMAT_HANDLED) else native
+            val baseSupport = RendererCapabilities.getFormatSupport(support)
+            if (baseSupport == C.FORMAT_HANDLED)
+                return RendererCapabilities.create(C.FORMAT_HANDLED)
+            // Media3's normal EXCEEDS_CAPABILITIES outcome is selectable when
+            // enabled by the track selector; keep it distinct from HANDLED.
+            if (mobile && baseSupport == C.FORMAT_EXCEEDS_CAPABILITIES &&
+                super.getDecoderInfos(selector, base, false).any { canTryBase(it, base, true) })
+                return RendererCapabilities.create(C.FORMAT_EXCEEDS_CAPABILITIES)
+            return native
         }
 
         override fun getDecoderInfos(selector: MediaCodecSelector, format: Format,
@@ -115,7 +131,7 @@ internal object HdrCodecFallbackP5B {
             val base = baseFormat(format) ?: return native
             if (requiresSecureDecoder) return native
             return native + super.getDecoderInfos(selector, base, false).filter {
-                it.mimeType == MimeTypes.VIDEO_H265 && it.isFormatSupported(base)
+                canTryBase(it, base, mobile)
             }
         }
 
@@ -200,6 +216,7 @@ internal object HdrCodecFallbackP5B {
                   private val displayHdr10: () -> Boolean,
                   private val displayDv: () -> Boolean,
                   private val displayHlg: () -> Boolean,
+                  private val mobile: Boolean,
                   private val runtimeRecovery: () -> RuntimeRecovery?,
                   private val report: (VideoConfig?) -> Unit,
                   private val trace: (String) -> Unit = {}) : MediaCodecAdapter.Factory {
@@ -301,7 +318,9 @@ internal object HdrCodecFallbackP5B {
             val profile = CodecSpecificDataUtil.getCodecProfileAndLevel(baseFormat)
                 ?: throw Rejection("Unrecognized HEVC profile/level")
             // Media3 accounts for platform alignment and fractional frame rates.
-            if (!info.isFormatSupported(baseFormat)) throw Rejection("Unsupported HEVC representation")
+            if (!canTryBase(info, baseFormat, mobile)) throw Rejection("Unsupported HEVC representation")
+            if (mobile && !info.isFormatSupported(baseFormat))
+                trace("verified clear HEVC base hardware trial; platform size/rate capability exceeded")
             stripEnhancementCsd(c)
             c.mediaFormat.setInteger(MediaFormat.KEY_PROFILE, profile.first)
             c.mediaFormat.setInteger(MediaFormat.KEY_COLOR_STANDARD, MediaFormat.COLOR_STANDARD_BT2020)

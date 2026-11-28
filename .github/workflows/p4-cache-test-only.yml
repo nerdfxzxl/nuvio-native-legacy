@@ -154,3 +154,5 @@ jobs:
           echo "Integrated Media3 cache/HTTP cancellation, eviction and runtime TV checks remain separately gated." >> "$GITHUB_STEP_SUMMARY"
 
 # APK 138 protected TV baseline: isolated mobile decoder/startup regression verification.
+
+# Sweet Max unsupported-subtype follow-up: verify clear-base hardware trial and rejection diagnostics.
